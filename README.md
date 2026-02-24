@@ -9,6 +9,7 @@ Sabela is a reactive notebook environment for Haskell. The name is derived from 
 ```bash
 git clone https://github.com/DataHaskell/sabela
 cd sabela
+cabal update
 cabal run
 ```
 
