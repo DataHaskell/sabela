@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sabela Notebook</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/nord.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+
+  :root {
+    --bg: #1e1e2e;
+    --bg-cell: #262637;
+    --bg-output: #1a1a28;
+    --bg-sidebar: #1a1a28;
+    --bg-panel: #181825;
+    --fg: #cdd6f4;
+    --fg-dim: #6c7086;
+    --fg-bright: #f5f5ff;
+    --accent: #89b4fa;
+    --accent-dim: #45475a;
+    --green: #a6e3a1;
+    --red: #f38ba8;
+    --yellow: #f9e2af;
+    --peach: #fab387;
+    --mauve: #cba6f7;
+    --border: #313244;
+    --radius: 8px;
+    --sidebar-w: 240px;
+    --panel-w: 320px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Source Serif 4', Georgia, serif;
+    background: var(--bg); color: var(--fg);
+    line-height: 1.7; min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+
+  /* ── Toolbar ───────────────────────────────── */
+  .toolbar {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-panel); border-bottom: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+  }
+  .toolbar-title { font-weight: 600; color: var(--accent); margin-right: auto; font-size: 14px; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+  .toolbar button, .toolbar .tbtn {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--fg); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .toolbar button:hover, .toolbar .tbtn:hover { background: var(--bg-cell); border-color: var(--accent-dim); }
+  .toolbar .primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
+  .toolbar .primary:hover { opacity: 0.9; }
+  .toolbar .sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+  .status { font-size: 11px; white-space: nowrap; }
+  .status.running { color: var(--yellow); }
+  .status.error { color: var(--red); }
+  .sse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-dim); display: inline-block; flex-shrink: 0; }
+  .sse-dot.connected { background: var(--green); }
+
+  /* ── Layout ────────────────────────────────── */
+  .main-layout { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Sidebar ───────────────────────────────── */
+  .sidebar {
+    width: var(--sidebar-w); min-width: var(--sidebar-w);
+    background: var(--bg-sidebar); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    overflow-y: auto; transition: width 0.15s, min-width 0.15s;
+  }
+  .sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; border-right: none; }
+  .sidebar-header {
+    display: flex; align-items: center; padding: 8px 10px;
+    border-bottom: 1px solid var(--border); color: var(--fg-dim);
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+    gap: 4px; flex-shrink: 0;
+  }
+  .sidebar-header span:first-child { flex: 1; }
+  .sidebar-header button {
+    background: none; border: none; color: var(--fg-dim); cursor: pointer;
+    font-size: 13px; padding: 0 3px; line-height: 1;
+  }
+  .sidebar-header button:hover { color: var(--fg); }
+  .sidebar-toggle {
+    background: none; border: none; color: var(--fg-dim); cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace; font-size: 14px;
+    padding: 5px 8px; transition: all 0.15s;
+  }
+  .sidebar-toggle:hover { color: var(--accent); }
+  .file-tree { padding: 4px 0; flex: 1; overflow-y: auto; }
+  .file-entry {
+    display: flex; align-items: center; gap: 5px;
+    padding: 2px 10px; cursor: pointer; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.1s;
+  }
+  .file-entry:hover { background: var(--bg-cell); }
+  .file-entry.active { background: var(--accent-dim); color: var(--accent); }
+  .file-entry .icon { flex-shrink: 0; font-size: 11px; width: 14px; text-align: center; }
+  .file-entry .icon.dir { color: var(--peach); }
+  .file-entry .icon.md { color: var(--accent); }
+  .file-entry .icon.hs { color: var(--green); }
+  .file-entry .icon.file { color: var(--fg-dim); }
+  .file-entry .name { overflow: hidden; text-overflow: ellipsis; }
+  .file-indent { display: inline-block; }
+
+  /* sidebar new-file input */
+  .sidebar-input {
+    display: flex; padding: 4px 10px; gap: 4px;
+  }
+  .sidebar-input input {
+    flex: 1; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    background: var(--bg-cell); border: 1px solid var(--accent-dim); border-radius: 3px;
+    color: var(--fg); padding: 3px 6px; outline: none;
+  }
+  .sidebar-input input:focus { border-color: var(--accent); }
+  .sidebar-input button {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    background: var(--accent); color: var(--bg); border: none; border-radius: 3px;
+    padding: 3px 8px; cursor: pointer;
+  }
+
+  /* ── Right panel (info / examples) ─────────── */
+  .right-panel {
+    width: var(--panel-w); min-width: var(--panel-w);
+    background: var(--bg-sidebar); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    overflow: hidden; transition: width 0.15s, min-width 0.15s;
+  }
+  .right-panel.collapsed { width: 0; min-width: 0; border-left: none; }
+  .panel-tabs {
+    display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .panel-tab {
+    flex: 1; padding: 8px 12px; text-align: center;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--fg-dim); cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none;
+  }
+  .panel-tab:hover { color: var(--fg); }
+  .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+  /* Info panel */
+  .info-content { white-space: pre-wrap; line-height: 1.6; color: var(--fg); }
+  .info-content .info-label { color: var(--fg-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: block; }
+  .info-content .info-block { background: var(--bg-cell); border-radius: 4px; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); }
+  .info-search {
+    display: flex; gap: 4px; margin-bottom: 12px;
+  }
+  .info-search input {
+    flex: 1; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    background: var(--bg-cell); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--fg); padding: 6px 10px; outline: none;
+  }
+  .info-search input:focus { border-color: var(--accent); }
+  .info-search button {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    background: var(--accent); color: var(--bg); border: none; border-radius: 4px;
+    padding: 6px 12px; cursor: pointer;
+  }
+
+  /* Examples panel */
+  .example-category { margin-bottom: 16px; }
+  .example-category-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--fg-dim); margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+  }
+  .example-card {
+    background: var(--bg-cell); border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 8px; overflow: hidden; transition: border-color 0.15s;
+  }
+  .example-card:hover { border-color: var(--accent-dim); }
+  .example-card-header {
+    display: flex; align-items: center; padding: 8px 10px; cursor: pointer;
+  }
+  .example-card-header .title { flex: 1; font-weight: 500; color: var(--fg-bright); font-size: 12px; }
+  .example-card-header .desc { color: var(--fg-dim); font-size: 10px; margin-left: 8px; }
+  .example-card-body { display: none; border-top: 1px solid var(--border); }
+  .example-card.expanded .example-card-body { display: block; }
+  .example-code {
+    padding: 10px; background: var(--bg-output); font-size: 11.5px;
+    white-space: pre-wrap; line-height: 1.5; color: var(--fg); max-height: 200px; overflow-y: auto;
+  }
+  .example-actions { display: flex; gap: 6px; padding: 6px 10px; background: var(--bg-cell); }
+  .example-actions button {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    padding: 3px 10px; border: 1px solid var(--border); border-radius: 3px;
+    background: transparent; color: var(--fg); cursor: pointer; transition: all 0.1s;
+  }
+  .example-actions button:hover { border-color: var(--accent); color: var(--accent); }
+  .example-actions button.insert-btn:hover { border-color: var(--green); color: var(--green); }
+  .example-actions .copied { color: var(--green); font-size: 10px; opacity: 0; transition: opacity 0.2s; }
+  .example-actions .copied.show { opacity: 1; }
+
+  /* ── Notebook area ─────────────────────────── */
+  .notebook-area { flex: 1; overflow-y: auto; }
+  .notebook { max-width: 900px; margin: 0 auto; padding: 32px 24px 120px; }
+
+  /* ── Cell ──────────────────────────────────── */
+  .cell { position: relative; margin-bottom: 4px; border-radius: var(--radius); transition: all 0.15s; }
+  .cell:hover .cell-actions { opacity: 1; }
+  .cell-actions {
+    position: absolute; top: 4px; right: 8px;
+    display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; z-index: 10;
+  }
+  .cell-actions button {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    padding: 3px 8px; border: 1px solid var(--border); border-radius: 3px;
+    background: var(--bg); color: var(--fg-dim); cursor: pointer; transition: all 0.1s;
+  }
+  .cell-actions button:hover { color: var(--fg); border-color: var(--fg-dim); }
+  .cell-actions button.run-btn:hover { color: var(--green); border-color: var(--green); }
+  .cell-actions button.delete-btn:hover { color: var(--red); border-color: var(--red); }
+
+  /* Prose */
+  .cell.prose { padding: 8px 16px; cursor: text; }
+  .cell.prose .prose-rendered { max-width: 720px; }
+  .cell.prose .prose-rendered h1 { font-size: 1.8em; font-weight: 600; color: var(--fg-bright); margin: 0.6em 0 0.3em; line-height: 1.3; }
+  .cell.prose .prose-rendered h2 { font-size: 1.4em; font-weight: 600; color: var(--fg-bright); margin: 0.5em 0 0.2em; }
+  .cell.prose .prose-rendered h3 { font-size: 1.15em; font-weight: 600; color: var(--fg-bright); margin: 0.4em 0 0.2em; }
+  .cell.prose .prose-rendered p { margin: 0.4em 0; }
+  .cell.prose .prose-rendered code { font-family: 'IBM Plex Mono', monospace; font-size: 0.88em; background: var(--bg-cell); padding: 2px 6px; border-radius: 3px; }
+  .cell.prose .prose-rendered a { color: var(--accent); }
+  .cell.prose .prose-edit {
+    display: none; width: 100%; min-height: 60px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+    background: var(--bg-cell); color: var(--fg);
+    border: 1px solid var(--accent-dim); border-radius: var(--radius);
+    padding: 12px; resize: vertical; line-height: 1.5;
+  }
+  .cell.prose.editing .prose-rendered { display: none; }
+  .cell.prose.editing .prose-edit { display: block; }
+
+  /* Code */
+  .cell.code { background: var(--bg-cell); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .cell.code.running { border-color: var(--yellow); }
+  .cell.code.has-error { border-color: var(--red); }
+  .cell.code.dirty { border-left: 3px solid var(--yellow); }
+  .cell.code .cell-gutter { display: flex; align-items: center; padding: 6px 12px 0; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--fg-dim); gap: 8px; }
+  .cell.code .cell-gutter .lang-tag { background: var(--accent-dim); padding: 1px 6px; border-radius: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .cell.code .CodeMirror { height: auto; font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; line-height: 1.55; background: transparent; padding: 4px 0; }
+  .cell.code .CodeMirror-scroll { min-height: 28px; }
+
+  /* Error gutter markers */
+  .error-gutter { width: 12px; }
+  .error-marker { color: var(--red); font-size: 14px; line-height: 1.55; cursor: pointer; text-align: center; }
+  .error-line { background: rgba(243, 139, 168, 0.08) !important; }
+  .error-tooltip {
+    position: absolute; z-index: 200;
+    background: #2a1a1e; border: 1px solid var(--red); border-radius: 6px;
+    padding: 8px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: var(--red); max-width: 500px; white-space: pre-wrap; line-height: 1.4;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4); pointer-events: none;
+  }
+
+  /* Completion hints */
+  .CodeMirror-hints { z-index: 200 !important; font-family: 'IBM Plex Mono', monospace !important; font-size: 12px !important; background: var(--bg-cell) !important; border: 1px solid var(--border) !important; border-radius: 6px !important; padding: 4px 0 !important; box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important; }
+  .CodeMirror-hint { color: var(--fg) !important; padding: 3px 10px !important; }
+  .CodeMirror-hint-active { background: var(--accent-dim) !important; color: var(--accent) !important; }
+
+  /* Output */
+  .cell-output {
+    border-top: 1px solid var(--border); padding: 10px 14px;
+    background: var(--bg-output);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+    line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+    color: var(--fg); max-height: 500px; overflow-y: auto;
+  }
+  .cell-output.error { color: var(--red); }
+  .cell-output.running-indicator { color: var(--yellow); font-style: italic; border-top: 1px solid var(--yellow); }
+  .cell-output.mime-html { white-space: normal; font-family: 'Source Serif 4', Georgia, serif; }
+  .cell-output.mime-html iframe { border: none; width: 100%; min-height: 60px; border-radius: 4px; }
+  .cell-output.mime-markdown { white-space: normal; font-family: 'Source Serif 4', Georgia, serif; }
+  .cell-output.mime-markdown h1, .cell-output.mime-markdown h2, .cell-output.mime-markdown h3 { color: var(--fg-bright); }
+  .cell-output.mime-markdown p { margin: 0.3em 0; }
+  .cell-output.mime-markdown code { font-family: 'IBM Plex Mono', monospace; background: var(--bg-cell); padding: 2px 6px; border-radius: 3px; font-size: 0.88em; }
+  .cell-output.mime-svg { white-space: normal; text-align: center; background: #fff; border-radius: 4px; padding: 16px; }
+  .cell-output.mime-svg svg { max-width: 100%; }
+  .cell-output.mime-image { text-align: center; white-space: normal; }
+  .cell-output.mime-image img { max-width: 100%; border-radius: 4px; }
+  .cell-output.mime-json { color: var(--green); }
+
+  /* Add cell */
+  .add-cell-row { display: flex; justify-content: center; gap: 8px; padding: 6px 0; opacity: 0; transition: opacity 0.15s; }
+  .cell:hover + .add-cell-row, .add-cell-row:hover, .add-cell-row:first-child { opacity: 1; }
+  .add-cell-row:first-child { opacity: 0.6; }
+  .add-cell-row:first-child:hover { opacity: 1; }
+  .add-cell-row button {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    padding: 3px 12px; border: 1px dashed var(--border); border-radius: 3px;
+    background: transparent; color: var(--fg-dim); cursor: pointer; transition: all 0.1s;
+  }
+  .add-cell-row button:hover { border-color: var(--accent-dim); color: var(--accent); border-style: solid; }
+
+  /* Saved indicator */
+  .save-indicator { font-size: 10px; color: var(--green); opacity: 0; transition: opacity 0.2s; }
+  .save-indicator.show { opacity: 1; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle file explorer (Ctrl+B)">☰</button>
+  <span class="toolbar-title" id="toolbar-title">λ sabela</span>
+  <button class="primary" onclick="runAll()" title="Ctrl+Shift+Enter">▶ run all</button>
+  <button onclick="saveNotebook()" title="Ctrl+S">💾 save</button>
+  <button onclick="resetNotebook()">reset</button>
+  <span class="sep"></span>
+  <button onclick="togglePanel('examples')" title="Examples">📚</button>
+  <button onclick="togglePanel('info')" title="Haddock / Info (Ctrl+I)">🔍</button>
+  <span class="sep"></span>
+  <span class="save-indicator" id="save-indicator">saved ✓</span>
+  <span class="sse-dot" id="sse-dot"></span>
+  <span class="status" id="status"></span>
+</div>
+
+<div class="main-layout">
+  <!-- Left sidebar: file explorer -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span>files</span>
+      <button onclick="startNewFile()" title="New file">+</button>
+      <button onclick="startNewFolder()" title="New folder">📁</button>
+      <button onclick="refreshFiles()" title="Refresh">↻</button>
+    </div>
+    <div id="new-item-input" style="display:none"></div>
+    <div class="file-tree" id="file-tree"></div>
+  </div>
+
+  <!-- Notebook area -->
+  <div class="notebook-area" id="notebook-area">
+    <div class="notebook" id="notebook"></div>
+  </div>
+
+  <!-- Right panel: info + examples -->
+  <div class="right-panel collapsed" id="right-panel">
+    <div class="panel-tabs">
+      <button class="panel-tab active" data-tab="info" onclick="switchTab('info')">🔍 Info</button>
+      <button class="panel-tab" data-tab="examples" onclick="switchTab('examples')">📚 Examples</button>
+    </div>
+    <div class="panel-content" id="panel-info" style="display:block">
+      <div class="info-search">
+        <input type="text" id="info-input" placeholder="Type name, e.g. map" onkeydown="if(event.key==='Enter')lookupInfo()">
+        <button onclick="lookupInfo()">lookup</button>
+      </div>
+      <div class="info-content" id="info-result">
+        <div style="color:var(--fg-dim)">Type a Haskell identifier and press Enter, or press <kbd style="background:var(--bg-cell);padding:2px 6px;border-radius:3px">Ctrl+I</kbd> in a code cell to look up the word under cursor.</div>
+      </div>
+    </div>
+    <div class="panel-content" id="panel-examples" style="display:none"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/haskell/haskell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+<script>
+const editors = {};        // cellId → CodeMirror instance
+const cellErrors = {};     // cellId → [CellError]
+let notebook = null;
+let evtSource = null;
+let activeTab = 'info';
+let examples = [];
+
+// ── API helpers ──────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch('/api/' + path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function setStatus(text, cls) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = 'status ' + (cls || '');
+  if (!cls || cls !== 'running')
+    setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 4000);
+}
+
+function flashSaved() {
+  const el = document.getElementById('save-indicator');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── SSE ──────────────────────────────────────────────────────────
+function connectSSE() {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/api/events');
+  evtSource.onopen = () => document.getElementById('sse-dot').classList.add('connected');
+  evtSource.onerror = () => document.getElementById('sse-dot').classList.remove('connected');
+  evtSource.onmessage = (e) => {
+    try { handleSSE(JSON.parse(e.data)); }
+    catch (err) { console.error('SSE parse error:', err); }
+  };
+}
+
+function handleSSE(ev) {
+  switch (ev.type) {
+    case 'cellUpdating':
+      setCellRunning(ev.cellId, true);
+      break;
+    case 'cellResult':
+      setCellRunning(ev.cellId, false);
+      updateCellOutput(ev.cellId, ev.output, ev.error, ev.mime || 'text/plain');
+      if (ev.errors && ev.errors.length) applyErrorMarkers(ev.cellId, ev.errors);
+      else clearErrorMarkers(ev.cellId);
+      break;
+    case 'executionDone':
+      setStatus('Done', '');
+      document.querySelectorAll('.cell.code.running').forEach(el => el.classList.remove('running'));
+      break;
+    case 'sessionStatus':
+      setStatus(ev.message, 'running');
+      break;
+  }
+}
+
+function setCellRunning(cellId, running) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  if (running) {
+    el.classList.add('running');
+    setStatus(`Running cell ${cellId}...`, 'running');
+    let out = el.querySelector('.cell-output');
+    if (!out) { out = document.createElement('div'); el.appendChild(out); }
+    out.className = 'cell-output running-indicator';
+    out.textContent = 'Running...';
+  } else {
+    el.classList.remove('running');
+  }
+}
+
+// ── Error markers (gutter) ───────────────────────────────────────
+function applyErrorMarkers(cellId, errors) {
+  cellErrors[cellId] = errors;
+  const cm = editors[cellId];
+  if (!cm) return;
+  // Clear old markers
+  cm.clearGutter('error-gutter');
+  for (let i = 0; i < cm.lineCount(); i++) cm.removeLineClass(i, 'background', 'error-line');
+
+  for (const err of errors) {
+    if (err.ceLine != null) {
+      const line = err.ceLine - 1;  // 0-indexed
+      if (line >= 0 && line < cm.lineCount()) {
+        const marker = document.createElement('div');
+        marker.className = 'error-marker';
+        marker.textContent = '●';
+        marker.title = err.ceMessage;
+        marker.onmouseenter = (e) => showErrorTooltip(e, err.ceMessage);
+        marker.onmouseleave = hideErrorTooltip;
+        cm.setGutterMarker(line, 'error-gutter', marker);
+        cm.addLineClass(line, 'background', 'error-line');
+      }
+    }
+  }
+  // Mark the cell
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (el) el.classList.add('has-error');
+}
+
+function clearErrorMarkers(cellId) {
+  cellErrors[cellId] = [];
+  const cm = editors[cellId];
+  if (!cm) return;
+  cm.clearGutter('error-gutter');
+  for (let i = 0; i < cm.lineCount(); i++) cm.removeLineClass(i, 'background', 'error-line');
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (el) el.classList.remove('has-error');
+}
+
+let tooltipEl = null;
+function showErrorTooltip(e, msg) {
+  hideErrorTooltip();
+  tooltipEl = document.createElement('div');
+  tooltipEl.className = 'error-tooltip';
+  tooltipEl.textContent = msg;
+  document.body.appendChild(tooltipEl);
+  const r = e.target.getBoundingClientRect();
+  tooltipEl.style.left = (r.right + 8) + 'px';
+  tooltipEl.style.top = (r.top - 4) + 'px';
+}
+function hideErrorTooltip() {
+  if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
+}
+
+// ── Tab completions ──────────────────────────────────────────────
+async function haskellHint(cm) {
+  const cur = cm.getCursor();
+  const token = cm.getTokenAt(cur);
+  let start = token.start, end = cur.ch;
+  const prefix = cm.getRange({line: cur.line, ch: start}, cur);
+
+  if (prefix.length < 2) return;  // don't complete single chars
+
+  try {
+    const res = await api('POST', 'complete', { crPrefix: prefix });
+    if (!res.crCompletions || !res.crCompletions.length) return;
+    return {
+      list: res.crCompletions.slice(0, 30),
+      from: CodeMirror.Pos(cur.line, start),
+      to: CodeMirror.Pos(cur.line, end)
+    };
+  } catch { return; }
+}
+
+// ── Info / Haddock panel ─────────────────────────────────────────
+async function lookupInfo(name) {
+  if (!name) name = document.getElementById('info-input').value.trim();
+  if (!name) return;
+  document.getElementById('info-input').value = name;
+  const container = document.getElementById('info-result');
+  container.innerHTML = '<div style="color:var(--fg-dim)">Looking up...</div>';
+
+  // Open panel if closed
+  const panel = document.getElementById('right-panel');
+  if (panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
+  switchTab('info');
+
+  try {
+    const res = await api('POST', 'info', { irName: name });
+    container.innerHTML = '';
+    if (res.irText) {
+      const block = document.createElement('div');
+      block.className = 'info-block';
+      block.textContent = res.irText;
+      container.appendChild(block);
+    } else {
+      container.innerHTML = '<div style="color:var(--fg-dim)">No information found.</div>';
+    }
+  } catch (e) {
+    container.innerHTML = `<div style="color:var(--red)">Error: ${e.message}</div>`;
+  }
+}
+
+function lookupWordUnderCursor() {
+  // Find focused CodeMirror
+  for (const [id, cm] of Object.entries(editors)) {
+    if (cm.hasFocus()) {
+      const cur = cm.getCursor();
+      const token = cm.getTokenAt(cur);
+      const word = token.string.trim();
+      if (word && /^[a-zA-Z_]/.test(word)) {
+        lookupInfo(word);
+      }
+      return;
+    }
+  }
+}
+
+// ── MIME-aware output rendering ──────────────────────────────────
+function updateCellOutput(cellId, output, error, mime) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  el.classList.remove('dirty');
+  el.classList.toggle('has-error', !!error && !output);
+
+  if (notebook) {
+    const cell = notebook.nbCells.find(c => c.cellId === cellId);
+    if (cell) { cell.cellOutput = output; cell.cellError = error; cell.cellMime = mime; cell.cellDirty = false; }
+  }
+
+  let out = el.querySelector('.cell-output');
+  const hasContent = (output && output.trim()) || (error && error.trim());
+  if (!hasContent) { if (out) out.remove(); return; }
+  if (!out) { out = document.createElement('div'); el.appendChild(out); }
+
+  if (error && !output) {
+    out.className = 'cell-output error';
+    out.textContent = error;
+    return;
+  }
+  renderMimeOutput(out, output || '', mime);
+  if (error && error.trim()) {
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'color: var(--red); margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; white-space: pre-wrap;';
+    errDiv.textContent = error;
+    out.appendChild(errDiv);
+  }
+}
+
+function renderMimeOutput(container, content, mime) {
+  container.innerHTML = '';
+  if (mime === 'text/html') {
+    container.className = 'cell-output mime-html';
+    const iframe = document.createElement('iframe');
+    iframe.sandbox = 'allow-scripts';
+    container.appendChild(iframe);
+    requestAnimationFrame(() => {
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open(); doc.write(content); doc.close();
+      const resize = () => { iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px'; };
+      iframe.onload = resize; setTimeout(resize, 100); setTimeout(resize, 500);
+    });
+  } else if (mime === 'text/markdown') {
+    container.className = 'cell-output mime-markdown';
+    container.innerHTML = marked.parse(content);
+  } else if (mime === 'image/svg+xml') {
+    container.className = 'cell-output mime-svg';
+    container.innerHTML = content;
+  } else if (mime.startsWith('image/') && mime.includes('base64')) {
+    container.className = 'cell-output mime-image';
+    const mimeClean = mime.replace(';base64', '');
+    container.innerHTML = `<img src="data:${mimeClean};base64,${content.trim()}" />`;
+  } else if (mime === 'application/json') {
+    container.className = 'cell-output mime-json';
+    try { container.textContent = JSON.stringify(JSON.parse(content), null, 2); }
+    catch { container.textContent = content; }
+  } else {
+    container.className = 'cell-output';
+    container.textContent = content;
+  }
+}
+
+function renderOutputDiv(cell) {
+  const hasContent = (cell.cellOutput && cell.cellOutput.trim()) || (cell.cellError && cell.cellError.trim());
+  if (!hasContent) return null;
+  const out = document.createElement('div');
+  if (cell.cellError && !cell.cellOutput) { out.className = 'cell-output error'; out.textContent = cell.cellError; return out; }
+  renderMimeOutput(out, cell.cellOutput || '', cell.cellMime || 'text/plain');
+  if (cell.cellError && cell.cellError.trim()) {
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'color: var(--red); margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px;';
+    errDiv.textContent = cell.cellError;
+    out.appendChild(errDiv);
+  }
+  return out;
+}
+
+// ── File explorer ────────────────────────────────────────────────
+const expandedDirs = new Set(['']);
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+
+async function loadFileTree(path, container, depth) {
+  try {
+    const entries = await api('GET', 'files?path=' + encodeURIComponent(path || '.'));
+    container.innerHTML = '';
+    for (const entry of entries) {
+      // Skip hidden files
+      if (entry.feName.startsWith('.')) continue;
+      const row = document.createElement('div');
+      row.className = 'file-entry';
+      if (notebook && notebook.nbTitle === entry.fePath) row.classList.add('active');
+
+      const indent = document.createElement('span');
+      indent.className = 'file-indent'; indent.style.width = (depth * 14) + 'px';
+      row.appendChild(indent);
+
+      const icon = document.createElement('span');
+      icon.className = 'icon';
+      if (entry.feIsDir) {
+        icon.className += ' dir'; icon.textContent = expandedDirs.has(entry.fePath) ? '▾' : '▸';
+      } else {
+        const ext = entry.feName.split('.').pop();
+        if (ext === 'md') { icon.className += ' md'; icon.textContent = '◇'; }
+        else if (ext === 'hs') { icon.className += ' hs'; icon.textContent = 'λ'; }
+        else { icon.className += ' file'; icon.textContent = '·'; }
+      }
+      row.appendChild(icon);
+
+      const name = document.createElement('span');
+      name.className = 'name'; name.textContent = entry.feName;
+      row.appendChild(name);
+
+      if (entry.feIsDir) {
+        const childContainer = document.createElement('div');
+        row.onclick = async (e) => {
+          e.stopPropagation();
+          if (expandedDirs.has(entry.fePath)) {
+            expandedDirs.delete(entry.fePath); childContainer.innerHTML = ''; icon.textContent = '▸';
+          } else {
+            expandedDirs.add(entry.fePath); icon.textContent = '▾';
+            await loadFileTree(entry.fePath, childContainer, depth + 1);
+          }
+        };
+        container.appendChild(row); container.appendChild(childContainer);
+        if (expandedDirs.has(entry.fePath)) loadFileTree(entry.fePath, childContainer, depth + 1);
+      } else {
+        row.onclick = () => openFile(entry);
+        container.appendChild(row);
+      }
+    }
+  } catch (e) { container.textContent = 'Error loading files'; console.error(e); }
+}
+
+async function openFile(entry) {
+  const ext = entry.feName.split('.').pop();
+  if (ext === 'md') {
+    setStatus('Loading ' + entry.fePath + '...', 'running');
+    try {
+      const nb = await api('POST', 'load', { lrPath: entry.fePath });
+      Object.keys(editors).forEach(k => delete editors[k]);
+      render(nb); setStatus('Loaded ' + entry.fePath, ''); refreshFiles();
+    } catch (e) { setStatus('Load failed: ' + e.message, 'error'); }
+  } else {
+    try {
+      const content = await api('GET', 'file?path=' + encodeURIComponent(entry.fePath));
+      showReadOnlyFile(entry.feName, entry.fePath, content);
+    } catch (e) { setStatus('Could not read file', 'error'); }
+  }
+}
+
+function showReadOnlyFile(name, path, content) {
+  const container = document.getElementById('notebook');
+  Object.keys(editors).forEach(k => delete editors[k]);
+  notebook = null; container.innerHTML = '';
+  document.getElementById('toolbar-title').textContent = '📄 ' + name;
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'background: var(--bg-cell); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;';
+  container.appendChild(wrapper);
+
+  requestAnimationFrame(() => {
+    const ext = name.split('.').pop();
+    const mode = ext === 'hs' ? 'haskell' : null;
+    const cm = CodeMirror(wrapper, {
+      value: content, mode: mode, theme: 'nord', lineNumbers: true,
+      readOnly: false, viewportMargin: Infinity,
+    });
+    // Allow saving arbitrary files
+    cm._filePath = path;
+    cm.on('change', () => { cm._dirty = true; });
+    cm.setOption('extraKeys', {
+      'Ctrl-S': () => saveArbitraryFile(cm),
+      'Cmd-S': () => saveArbitraryFile(cm),
+    });
+  });
+}
+
+async function saveArbitraryFile(cm) {
+  if (!cm._filePath) return;
+  try {
+    await api('POST', 'file/write', { wfPath: cm._filePath, wfContent: cm.getValue() });
+    cm._dirty = false; flashSaved();
+  } catch (e) { setStatus('Save failed: ' + e.message, 'error'); }
+}
+
+function startNewFile() {
+  showNewItemInput('file');
+}
+function startNewFolder() {
+  showNewItemInput('folder');
+}
+
+function showNewItemInput(type) {
+  const container = document.getElementById('new-item-input');
+  container.style.display = 'block';
+  container.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'sidebar-input';
+  const input = document.createElement('input');
+  input.placeholder = type === 'folder' ? 'folder name' : 'filename.md';
+  const btn = document.createElement('button');
+  btn.textContent = '✓';
+  btn.onclick = () => createNewItem(type, input.value);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') createNewItem(type, input.value);
+    if (e.key === 'Escape') { container.style.display = 'none'; }
+  };
+  div.appendChild(input); div.appendChild(btn);
+  container.appendChild(div);
+  requestAnimationFrame(() => input.focus());
+}
+
+async function createNewItem(type, name) {
+  if (!name.trim()) return;
+  const container = document.getElementById('new-item-input');
+  container.style.display = 'none';
+  try {
+    await api('POST', 'file/create', {
+      cfPath: name.trim(),
+      cfContent: type === 'folder' ? '' : (name.endsWith('.md') ? '# ' + name.replace('.md','') + '\n\n```haskell\nputStrLn "Hello!"\n```\n' : ''),
+      cfIsDir: type === 'folder'
+    });
+    refreshFiles();
+    setStatus('Created ' + name.trim(), '');
+  } catch (e) { setStatus('Create failed: ' + e.message, 'error'); }
+}
+
+function refreshFiles() { loadFileTree('.', document.getElementById('file-tree'), 0); }
+
+// ── Save notebook ────────────────────────────────────────────────
+async function saveNotebook() {
+  if (!notebook) return;
+  // Flush all editors
+  for (const [id, cm] of Object.entries(editors)) {
+    const cell = notebook.nbCells.find(c => c.cellId === parseInt(id));
+    if (cell) cell.cellSource = cm.getValue();
+  }
+  try {
+    const nb = await api('POST', 'save', { srPath: null });
+    notebook = nb;
+    document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
+    flashSaved();
+  } catch (e) { setStatus('Save failed: ' + e.message, 'error'); }
+}
+
+// ── Right panel ──────────────────────────────────────────────────
+function togglePanel(tab) {
+  const panel = document.getElementById('right-panel');
+  if (panel.classList.contains('collapsed')) {
+    panel.classList.remove('collapsed');
+    switchTab(tab || activeTab);
+  } else if (activeTab === tab) {
+    panel.classList.add('collapsed');
+  } else {
+    switchTab(tab);
+  }
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('panel-info').style.display = tab === 'info' ? 'block' : 'none';
+  document.getElementById('panel-examples').style.display = tab === 'examples' ? 'block' : 'none';
+}
+
+// ── Examples ─────────────────────────────────────────────────────
+async function loadExamples() {
+  try {
+    examples = await api('GET', 'examples');
+    renderExamples();
+  } catch (e) { console.error('Failed to load examples:', e); }
+}
+
+function renderExamples() {
+  const container = document.getElementById('panel-examples');
+  container.innerHTML = '';
+  const categories = {};
+  for (const ex of examples) {
+    if (!categories[ex.exCategory]) categories[ex.exCategory] = [];
+    categories[ex.exCategory].push(ex);
+  }
+
+  for (const [cat, exs] of Object.entries(categories)) {
+    const catDiv = document.createElement('div');
+    catDiv.className = 'example-category';
+    const title = document.createElement('div');
+    title.className = 'example-category-title';
+    title.textContent = cat;
+    catDiv.appendChild(title);
+
+    for (const ex of exs) {
+      const card = document.createElement('div');
+      card.className = 'example-card';
+
+      const header = document.createElement('div');
+      header.className = 'example-card-header';
+      header.innerHTML = `<span class="title">${esc(ex.exTitle)}</span><span class="desc">${esc(ex.exDesc)}</span>`;
+      header.onclick = () => card.classList.toggle('expanded');
+
+      const body = document.createElement('div');
+      body.className = 'example-card-body';
+
+      const code = document.createElement('div');
+      code.className = 'example-code';
+      code.textContent = ex.exCode;
+
+      const actions = document.createElement('div');
+      actions.className = 'example-actions';
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = '📋 copy';
+      const copiedSpan = document.createElement('span');
+      copiedSpan.className = 'copied';
+      copiedSpan.textContent = 'copied!';
+      copyBtn.onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(ex.exCode);
+        copiedSpan.classList.add('show');
+        setTimeout(() => copiedSpan.classList.remove('show'), 1500);
+      };
+      const insertBtn = document.createElement('button');
+      insertBtn.className = 'insert-btn';
+      insertBtn.textContent = '+ insert cell';
+      insertBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const afterId = notebook && notebook.nbCells.length > 0
+          ? notebook.nbCells[notebook.nbCells.length - 1].cellId : -1;
+        await api('POST', 'cell', { icAfter: afterId, icType: 'CodeCell', icSource: ex.exCode });
+        const nb = await api('GET', 'notebook');
+        render(nb);
+        setStatus('Inserted: ' + ex.exTitle, '');
+      };
+
+      actions.appendChild(copyBtn);
+      actions.appendChild(copiedSpan);
+      actions.appendChild(insertBtn);
+      body.appendChild(code);
+      body.appendChild(actions);
+      card.appendChild(header);
+      card.appendChild(body);
+      catDiv.appendChild(card);
+    }
+    container.appendChild(catDiv);
+  }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Render notebook ──────────────────────────────────────────────
+function render(nb) {
+  notebook = nb;
+  document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
+  const container = document.getElementById('notebook');
+  container.innerHTML = '';
+  Object.keys(editors).forEach(k => delete editors[k]);
+
+  container.appendChild(makeAddRow(-1));
+  for (const cell of nb.nbCells) {
+    const el = cell.cellType === 'CodeCell' ? renderCodeCell(cell) : renderProseCell(cell);
+    container.appendChild(el);
+    container.appendChild(makeAddRow(cell.cellId));
+  }
+}
+
+function renderCodeCell(cell) {
+  const div = document.createElement('div');
+  div.className = 'cell code'; div.dataset.id = cell.cellId;
+  if (cell.cellDirty) div.classList.add('dirty');
+  if (cell.cellError) div.classList.add('has-error');
+
+  const gutter = document.createElement('div');
+  gutter.className = 'cell-gutter';
+  gutter.innerHTML = '<span class="lang-tag">hs</span>';
+  div.appendChild(gutter);
+
+  const actions = document.createElement('div');
+  actions.className = 'cell-actions';
+  actions.innerHTML = `
+    <button class="run-btn" onclick="runCell(${cell.cellId})">▶ run</button>
+    <button class="delete-btn" onclick="deleteCell(${cell.cellId})">✕</button>`;
+  div.appendChild(actions);
+
+  const editorDiv = document.createElement('div');
+  div.appendChild(editorDiv);
+
+  const outDiv = renderOutputDiv(cell);
+  if (outDiv) div.appendChild(outDiv);
+
+  requestAnimationFrame(() => {
+    if (editors[cell.cellId]) return;
+    const cm = CodeMirror(editorDiv, {
+      value: cell.cellSource, mode: 'haskell', theme: 'nord',
+      lineNumbers: false, viewportMargin: Infinity, indentUnit: 2,
+      tabSize: 2, lineWrapping: true,
+      gutters: ['error-gutter'],
+      extraKeys: {
+        'Shift-Enter': () => runCell(cell.cellId),
+        'Ctrl-Enter': () => runCell(cell.cellId),
+        'Tab': (cm) => {
+          if (cm.somethingSelected()) cm.indentSelection('add');
+          else cm.showHint({ hint: haskellHint, completeSingle: false });
+        },
+        'Ctrl-Space': (cm) => cm.showHint({ hint: haskellHint, completeSingle: false }),
+        'Ctrl-I': () => lookupWordUnderCursor(),
+        'Cmd-I': () => lookupWordUnderCursor(),
+        'Ctrl-S': () => saveNotebook(),
+        'Cmd-S': () => saveNotebook(),
+      }
+    });
+    cm.on('change', () => {
+      const newSrc = cm.getValue();
+      if (newSrc !== cell.cellSource) {
+        cell.cellDirty = true; div.classList.add('dirty');
+        clearTimeout(cm._saveTimeout);
+        cm._saveTimeout = setTimeout(() => {
+          cell.cellSource = newSrc;
+          api('PUT', `cell/${cell.cellId}`, { ucSource: newSrc }).catch(console.error);
+        }, 400);
+      }
+    });
+    editors[cell.cellId] = cm;
+  });
+  return div;
+}
+
+function renderProseCell(cell) {
+  const div = document.createElement('div');
+  div.className = 'cell prose'; div.dataset.id = cell.cellId;
+  const actions = document.createElement('div');
+  actions.className = 'cell-actions';
+  actions.innerHTML = `<button onclick="editProse(${cell.cellId})">edit</button><button class="delete-btn" onclick="deleteCell(${cell.cellId})">✕</button>`;
+  div.appendChild(actions);
+  const rendered = document.createElement('div');
+  rendered.className = 'prose-rendered';
+  rendered.innerHTML = marked.parse(cell.cellSource);
+  div.appendChild(rendered);
+  const textarea = document.createElement('textarea');
+  textarea.className = 'prose-edit'; textarea.value = cell.cellSource;
+  textarea.onblur = () => finishEditProse(cell.cellId, textarea);
+  textarea.onkeydown = (e) => { if (e.key === 'Escape') finishEditProse(cell.cellId, textarea); };
+  div.appendChild(textarea);
+  return div;
+}
+
+function makeAddRow(afterId) {
+  const row = document.createElement('div');
+  row.className = 'add-cell-row';
+  row.innerHTML = `<button onclick="addCell(${afterId}, 'CodeCell')">+ code</button><button onclick="addCell(${afterId}, 'ProseCell')">+ markdown</button>`;
+  return row;
+}
+
+// ── Actions ──────────────────────────────────────────────────────
+async function runCell(cellId) {
+  if (editors[cellId]) await api('PUT', `cell/${cellId}`, { ucSource: editors[cellId].getValue() }).catch(()=>{});
+  api('POST', `run/${cellId}`).catch(console.error);
+}
+
+async function runAll() {
+  for (const [id, cm] of Object.entries(editors))
+    await api('PUT', `cell/${parseInt(id)}`, { ucSource: cm.getValue() }).catch(()=>{});
+  api('POST', 'run-all').catch(console.error);
+  setStatus('Running all cells...', 'running');
+}
+
+async function resetNotebook() { api('POST', 'reset').then(render).catch(console.error); }
+
+async function addCell(afterId, type) {
+  await api('POST', 'cell', { icAfter: afterId, icType: type, icSource: type === 'CodeCell' ? '' : 'New text' });
+  const nb = await api('GET', 'notebook');
+  render(nb);
+}
+
+async function deleteCell(cellId) {
+  const nb = await api('DELETE', `cell/${cellId}`);
+  delete editors[cellId]; render(nb);
+}
+
+function editProse(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  el.classList.add('editing');
+  const ta = el.querySelector('.prose-edit');
+  ta.focus(); ta.style.height = Math.max(80, ta.scrollHeight) + 'px';
+}
+
+async function finishEditProse(cellId, textarea) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  el.classList.remove('editing');
+  await api('PUT', `cell/${cellId}`, { ucSource: textarea.value });
+  el.querySelector('.prose-rendered').innerHTML = marked.parse(textarea.value);
+}
+
+// ── Keyboard shortcuts ───────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); toggleSidebar(); }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Enter') { e.preventDefault(); runAll(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    // Let CodeMirror handle it if focused, otherwise save notebook
+    if (!document.querySelector('.CodeMirror-focused')) {
+      e.preventDefault(); saveNotebook();
+    }
+  }
+});
+
+// ── Init ─────────────────────────────────────────────────────────
+(async () => {
+  connectSSE();
+  refreshFiles();
+  loadExamples();
+  try { const nb = await api('GET', 'notebook'); render(nb); }
+  catch (e) { setStatus('Could not connect to server', 'error'); }
+})();
+</script>
+</body>
+</html>

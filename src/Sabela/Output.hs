@@ -1,0 +1,107 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+module Sabela.Output where
+
+import Data.Text (Text)
+import qualified Data.Text as T
+import Sabela.Api (Example (..))
+
+mimeMarkerPrefix :: Text
+mimeMarkerPrefix = "---MIME:"
+
+mimeMarkerSuffix :: Text
+mimeMarkerSuffix = "---"
+
+parseMimeOutput :: Text -> (Text, Text)
+parseMimeOutput raw =
+    case T.lines raw of
+        (firstLine : rest)
+            | Just afterPrefix <- T.stripPrefix mimeMarkerPrefix firstLine
+            , Just mimeType <- T.stripSuffix mimeMarkerSuffix afterPrefix
+            , not (T.null mimeType) ->
+                (T.strip mimeType, T.unlines rest)
+        _ -> ("text/plain", raw)
+
+displayPrelude :: Text
+displayPrelude =
+    T.unlines
+        [ ":{"
+        , "let { displayMime_ t c = putStrLn (\"---MIME:\" ++ t ++ \"---\") >> putStrLn c"
+        , "    ; displayHtml     = displayMime_ \"text/html\""
+        , "    ; displayMarkdown = displayMime_ \"text/markdown\""
+        , "    ; displaySvg      = displayMime_ \"image/svg+xml\""
+        , "    ; displayLatex    = displayMime_ \"text/latex\""
+        , "    ; displayJson     = displayMime_ \"application/json\""
+        , "    ; displayImage mime b64 = putStrLn (\"---MIME:\" ++ mime ++ \";base64---\") >> putStrLn b64"
+        , "    }"
+        , ":}"
+        ]
+
+builtinExamples :: [Example]
+builtinExamples =
+    [ Example
+        "Hello World"
+        "Print a greeting"
+        "Basics"
+        "putStrLn \"Hello, Sabela!\""
+    , Example
+        "Fibonacci"
+        "Lazy infinite list"
+        "Basics"
+        "let fibs = 0 : 1 : zipWith (+) fibs (tail fibs)\nmapM_ print (take 15 fibs)"
+    , Example
+        "List comprehension"
+        "Pythagorean triples"
+        "Basics"
+        "let triples = [(a,b,c) | c <- [1..20], b <- [1..c], a <- [1..b], a*a + b*b == c*c]\nprint triples"
+    , Example
+        "Map & Filter"
+        "Higher-order functions"
+        "Basics"
+        "let xs = [1..20]\nprint $ filter even $ map (^2) xs"
+    , Example
+        "Working with Text"
+        "Text manipulation with the text library"
+        "Libraries"
+        "-- cabal: build-depends: text\nimport qualified Data.Text as T\nimport qualified Data.Text.IO as TIO\n\nlet msg = T.pack \"Hello, World!\"\nTIO.putStrLn $ T.toUpper msg\nTIO.putStrLn $ T.reverse msg\nprint $ T.words msg"
+    , Example
+        "HTTP Request"
+        "Fetch a URL with http-conduit"
+        "Libraries"
+        "-- cabal: build-depends: http-conduit, bytestring\nimport Network.HTTP.Simple\nimport qualified Data.ByteString.Lazy.Char8 as L8\n\nresponse <- httpLBS \"http://httpbin.org/get\"\nL8.putStrLn $ getResponseBody response"
+    , Example
+        "JSON Parsing"
+        "Decode JSON with aeson"
+        "Libraries"
+        "-- cabal: build-depends: aeson, text, bytestring\n{-# LANGUAGE DeriveGeneric #-}\nimport Data.Aeson\nimport GHC.Generics\nimport qualified Data.ByteString.Lazy.Char8 as L8\n\ndata Person = Person { name :: String, age :: Int } deriving (Show, Generic)\ninstance FromJSON Person\n\nlet json = L8.pack \"{\\\"name\\\": \\\"Alice\\\", \\\"age\\\": 30}\"\nprint (decode json :: Maybe Person)"
+    , Example
+        "HTML Output"
+        "Render rich HTML output"
+        "Display"
+        "displayHtml $ unlines\n  [ \"<div style='font-family: sans-serif; padding: 16px;'>\"\n  , \"  <h2 style='color: #4a9eff;'>Hello from Sabela</h2>\"\n  , \"  <p>This is <strong>rich HTML</strong> output.</p>\"\n  , \"  <ul>\"\n  , \"    <li>Item one</li>\"\n  , \"    <li>Item two</li>\"\n  , \"  </ul>\"\n  , \"</div>\"\n  ]"
+    , Example
+        "SVG Chart"
+        "Draw an SVG bar chart"
+        "Display"
+        "let bars = zip [\"Mon\",\"Tue\",\"Wed\",\"Thu\",\"Fri\"] [40,65,30,80,55 :: Int]\n    bar (label, h) i = unlines\n      [ \"<rect x='\" ++ show (i*60+10) ++ \"' y='\" ++ show (100-h) ++ \"' width='40' height='\" ++ show h ++ \"' fill='#89b4fa' rx='4'/>\"\n      , \"<text x='\" ++ show (i*60+30) ++ \"' y='115' text-anchor='middle' fill='#cdd6f4' font-size='11'>\" ++ label ++ \"</text>\" ]\n    svg = \"<svg width='320' height='130' style='background:#1e1e2e;padding:8px'>\" ++ concatMap (\\(b,i) -> bar b i) (zip bars [0..]) ++ \"</svg>\"\ndisplaySvg svg"
+    , Example
+        "Markdown Output"
+        "Render formatted markdown"
+        "Display"
+        "displayMarkdown $ unlines\n  [ \"# Analysis Results\"\n  , \"\"\n  , \"The computation found **42** as the answer.\"\n  , \"\"\n  , \"| Metric | Value |\"\n  , \"|--------|-------|\"\n  , \"| Speed  | Fast  |\"\n  , \"| Memory | Low   |\"\n  ]"
+    , Example
+        "Concurrent IO"
+        "Async with threads"
+        "Advanced"
+        "import Control.Concurrent\nimport Control.Monad\n\nmv <- newMVar (0 :: Int)\nlet inc = modifyMVar_ mv (\\n -> pure (n+1))\nts <- forM [1..100] (\\_ -> forkIO inc)\nmapM_ (\\_ -> threadDelay 1000) ts\nthreadDelay 50000\nresult <- readMVar mv\nputStrLn $ \"Counter: \" ++ show result"
+    , Example
+        "QuickCheck"
+        "Property-based testing"
+        "Advanced"
+        "-- cabal: build-depends: QuickCheck\nimport Test.QuickCheck\n\nlet prop_reverse xs = reverse (reverse xs) == (xs :: [Int])\nquickCheck prop_reverse\n\nlet prop_sort_length xs = length (filter even xs) + length (filter odd xs) == length (xs :: [Int])\nquickCheck prop_sort_length"
+    , Example
+        "File I/O"
+        "Read and write files"
+        "Advanced"
+        "writeFile \"/tmp/sabela-test.txt\" \"Hello from Sabela!\\nLine two.\\n\"\ncontents <- readFile \"/tmp/sabela-test.txt\"\nputStrLn contents\nputStrLn $ \"Lines: \" ++ show (length (lines contents))"
+    ]
