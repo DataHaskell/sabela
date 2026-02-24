@@ -1,6 +1,6 @@
 # sabela
 
-A reactive notebook for Haskell.
+Sabela is a reactive notebook environment for Haskell. The name is derived from the [Ndebele](https://en.wikipedia.org/wiki/Northern_Ndebele_language) word meaning "to respond." The project has two purposes. Firstly, it is an attempt to design and create a modern Haskell notebook where reactivity is a first class concern. Secondly, it is an experiment ground for package/environment management in Haskell notebooks (a significant pain point in IHaskell).
 
 ![A screenshot of the web ui](./static/images/screenshot.png)
 
