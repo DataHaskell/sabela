@@ -111,7 +111,14 @@ executeSingleCell st gen cid = do
             [] -> broadcast st EvExecutionDone
 
 executeFullRestart :: AppState -> Int -> IO ()
-executeFullRestart = undefined
+executeFullRestart st gen = do
+  putStrLn "[handler] executeFullRestart: killing session, running all"
+  nb <- readMVar (stNotebook st)
+  let allCode = filter (\c -> cellType c == CodeCell) (nbCells nb)
+      needed  = collectMetadata nb
+  killSession st
+  ok <- installAndRestart st gen needed
+  when ok $ runCellList st gen allCode
 
 bumpGeneration :: AppState -> IO Int
 bumpGeneration st = atomicModifyIORef' (stGeneration st) (\g -> let g' = g + 1 in (g', g'))

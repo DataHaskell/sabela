@@ -1,74 +1,46 @@
-# Sabela Example
-
-This is an example of Sabela, a reactive notebook system for Haskell.
+# DataFrame Example
 
 
-Let's start with something boring - regular evaluation:
-
+We're going to create two dataframes and join them. First we have to install
+the dataframe library.
 
 
 ```haskell
-print (5 + 5)
-```
-
-The notebook is reactive - meaning cells are automatically rerun when their
-dependencies change.
-
-
-Run the following three cells then come back, change the value of `x` from 10
-to 15. The value of `x + y` should automatically update.
-
-
-```haskell
-x = 10
-```
-
-```haskell
-y = 10
-```
-
-
-```haskell
-x + y
-```
-
-We can even install dependencies on the fly similar to how cabal scripts
-manage/install dependencies.
-
-
-```haskell
--- Main.ghci
--- cabal: build-depends: base, dataframe, text, time
+-- cabal: build-depends: base, dataframe, text
 -- cabal: default-extensions: TemplateHaskell, TypeApplications, OverloadedStrings, DataKinds
 
 import qualified DataFrame as D
 import Data.Text (Text)
 
-df = D.fromNamedColumns [("key", D.fromList ["K0" :: Text, "K1", "K2", "K3"]), ("A", D.fromList ["A0", "A1", "A2", "A3"])]
 ```
 
-We can also run remote scripts (use with caution). This remote script, for example, sets up all the boilerplate
-you need to run dataframes (imports, defaults, language extensions etc).
-
-We can also run import code inline as we do with GHCi.
 
 
 
 ```haskell
-:! curl -s --output dataframe.script https://raw.githubusercontent.com/mchav/ihaskell-dataframe/refs/heads/main/rc.hs
-:script dataframe.script
+import qualified DataFrame.Functions as F
 
-:set prompt ""
+df = D.fromNamedColumns [("key", D.fromList ["K0" :: Text, "K1", "K2", "K3"]), ("A", D.fromList ["A0", "A1", "A2", "A3"])]
+other = D.fromNamedColumns [("key", D.fromList ["K0" :: Text, "K1", "K2"]), ("B", D.fromList ["B0", "B1", "B2"])]
 
 $(F.declareColumns df)
+$(F.declareColumns other)
 
-other = D.fromNamedColumns [("key", D.fromList ["K0", "K1", "K2"]), ("B", D.fromList ["B0", "B1", "B2"])]
 ```
+
+
 
 ```haskell
+import DataFrame ((|>))
+import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
-displayMarkdown $ T.unpack $ D.toMarkdownTable $ D.innerJoin [F.name key] df other
+df |> D.innerJoin [F.name key] other
+   |> D.derive "joint" (F.lift2 (<>) a b)
+   |> D.toMarkdownTable
+   |> T.unpack
+   |> displayMarkdown
 ```
+
 
 That's it!
