@@ -599,10 +599,11 @@ function renderMimeOutput(container, content, mime) {
   if (mime === 'text/html') {
     container.className = 'cell-output mime-html';
     const iframe = document.createElement('iframe');
-    iframe.sandbox = 'allow-scripts';
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
     container.appendChild(iframe);
     requestAnimationFrame(() => {
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) { console.error('Cannot access iframe document'); return; }
       doc.open(); doc.write(content); doc.close();
       const resize = () => { iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px'; };
       iframe.onload = resize; setTimeout(resize, 100); setTimeout(resize, 500);
