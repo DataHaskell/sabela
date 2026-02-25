@@ -11,11 +11,7 @@ the dataframe library.
 
 import qualified DataFrame as D
 import Data.Text (Text)
-
 ```
-
-
-
 
 ```haskell
 import qualified DataFrame.Functions as F
