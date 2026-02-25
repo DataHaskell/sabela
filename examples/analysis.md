@@ -9,7 +9,6 @@ Let's start with something boring - regular evaluation:
 
 ```haskell
 print (5 + 5)
-
 ```
 
 The notebook is reactive - meaning cells are automatically rerun when their
@@ -24,26 +23,17 @@ to 15. The value of `x + y` should automatically update.
 x = 10
 ```
 
-
-
-
 ```haskell
 y = 10
-
-
 ```
-
 
 
 ```haskell
 x + y
-
-
 ```
 
 We can even install dependencies on the fly similar to how cabal scripts
 manage/install dependencies.
-
 
 
 ```haskell
@@ -55,8 +45,6 @@ import qualified DataFrame as D
 import Data.Text (Text)
 
 df = D.fromNamedColumns [("key", D.fromList ["K0" :: Text, "K1", "K2", "K3"]), ("A", D.fromList ["A0", "A1", "A2", "A3"])]
-
-
 ```
 
 We can also run remote scripts (use with caution). This remote script, for example, sets up all the boilerplate
@@ -70,11 +58,17 @@ We can also run import code inline as we do with GHCi.
 :! curl -s --output dataframe.script https://raw.githubusercontent.com/mchav/ihaskell-dataframe/refs/heads/main/rc.hs
 :script dataframe.script
 
+:set prompt ""
+
 $(F.declareColumns df)
 
 other = D.fromNamedColumns [("key", D.fromList ["K0", "K1", "K2"]), ("B", D.fromList ["B0", "B1", "B2"])]
+```
 
-D.innerJoin [F.name key] df other
+```haskell
+import qualified Data.Text.IO as TIO
+
+displayMarkdown $ T.unpack $ D.toMarkdownTable $ D.innerJoin [F.name key] df other
 ```
 
 That's it!
