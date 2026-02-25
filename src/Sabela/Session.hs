@@ -3,9 +3,15 @@
 
 module Sabela.Session where
 
-import Control.Concurrent (MVar, forkIO, newChan, readChan, withMVar)
-import Control.Concurrent.Chan (Chan, writeChan)
+import Control.Concurrent (MVar, forkIO, withMVar)
 import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent.STM (
+    TBQueue,
+    atomically,
+    newTBQueueIO,
+    readTBQueue,
+    writeTBQueue,
+ )
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
@@ -41,7 +47,7 @@ data Session = Session
     , sessStdout :: Handle
     , sessStderr :: Handle
     , sessProc :: ProcessHandle
-    , sessLines :: Chan Text
+    , sessLines :: TBQueue Text
     , sessErrBuf :: IORef [Text]
     , sessCounter :: IORef Int
     , sessConfig :: SessionConfig
@@ -81,7 +87,7 @@ newSession cfg = do
         [hIn, hOut, hErr]
 
     lock <- newMVar ()
-    lineCh <- newChan
+    lineCh <- newTBQueueIO 256
     errBuf <- newIORef []
     counter <- newIORef 0
 
@@ -181,15 +187,18 @@ toText (QueryInfo t) = ":info " <> t
 toText (QueryDoc t) = ":doc " <> t
 toText (QueryComplete t) = ":complete repl " <> t
 
-readLoop :: Handle -> Chan Text -> IO ()
+readLoop :: Handle -> TBQueue Text -> IO ()
 readLoop h ch = do
     _ <-
-        try (forever (processHandle h (const (writeChan ch eofText)) writeOutput)) ::
+        try
+            ( forever
+                (processHandle h (const (atomically $ writeTBQueue ch eofText)) writeOutput)
+            ) ::
             IO (Either SomeException ())
     pure ()
   where
     writeOutput :: Handle -> IO ()
-    writeOutput h' = hGetLine h' >>= writeChan ch . T.pack
+    writeOutput h' = hGetLine h' >>= atomically . writeTBQueue ch . T.pack
 
 errLoop :: Handle -> IORef [Text] -> IO ()
 errLoop h ref = do
@@ -229,7 +238,7 @@ drainUntilMarker Session{sessLines} (Marker mk) = fmap (T.strip . T.unlines) (go
   where
     go :: [Text] -> IO [Text]
     go acc = do
-        line <- readChan sessLines
+        line <- atomically $ readTBQueue sessLines
         if T.isInfixOf mk line || T.isInfixOf eofText line
             then pure (reverse acc)
             else go (line : acc)

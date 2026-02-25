@@ -299,7 +299,10 @@ listFilesH st mPath = liftIO $ do
                         }
 
             let (dirs, files) =
-                    foldr (\e (ds, fs) -> if feIsDir e then (e : ds, fs) else (ds, e : fs)) ([], []) fes
+                    foldr
+                        (\e (ds, fs) -> if feIsDir e then (e : ds, fs) else (ds, e : fs))
+                        ([], [])
+                        fes
 
             pure (dirs ++ files)
 

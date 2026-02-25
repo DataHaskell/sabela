@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Control.Monad (when)
+import Control.Monad (unless)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.Wai.Handler.Warp (run)
 import Sabela.Handlers (setupReactive)
@@ -41,7 +41,9 @@ start port staticDir workDir = do
             exitFailure
         else do
             indexExists <- doesFileExist (staticDir ++ "/index.html")
-            when (not indexExists) $ putStrLn $ "Warning: " ++ staticDir ++ "/index.html not found"
+            unless indexExists $
+                putStrLn $
+                    "Warning: " ++ staticDir ++ "/index.html not found"
 
             putStrLn $ "Serving static files from: " ++ staticDir
 

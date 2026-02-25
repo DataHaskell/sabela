@@ -3,9 +3,9 @@
 
 module Test.SessionSpec (spec) where
 
-import Control.Concurrent (Chan, forkIO)
-import Control.Concurrent.Chan (newChan, writeChan)
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent.STM (TBQueue, atomically, newTBQueueIO, writeTBQueue)
 import Control.Exception (evaluate)
 import Data.Function ((&))
 import Data.IORef (IORef, newIORef, writeIORef)
@@ -44,7 +44,7 @@ import Sabela.Session (
 Any attempt to touch the other fields will crash, which is fine for unit tests that don't use them.
 -}
 dummySession ::
-    Chan Text ->
+    TBQueue Text ->
     IORef [Text] ->
     IORef Int ->
     SessionConfig ->
@@ -88,7 +88,7 @@ spec = do
 
     describe "error buffer helpers" $ do
         it "resetErrorBuffer clears, readErrorBuffer returns lines in original order" $ do
-            ch <- newChan
+            ch <- newTBQueueIO 256
             errRef <- newIORef []
             ctrRef <- newIORef 0
             sess <- dummySession ch errRef ctrRef defaultCfg
@@ -103,7 +103,7 @@ spec = do
 
     describe "drainUntilMarker" $ do
         it "collects output until marker, excluding marker" $ do
-            ch <- newChan
+            ch <- newTBQueueIO 256
             errRef <- newIORef []
             ctrRef <- newIORef 0
             sess <- dummySession ch errRef ctrRef defaultCfg
@@ -111,16 +111,16 @@ spec = do
             let mk = Marker "---SABELA_MARKER_0---"
 
             _ <- forkIO $ do
-                writeChan ch "line 1"
-                writeChan ch "line 2"
-                writeChan ch "---SABELA_MARKER_0---"
-                writeChan ch "line after (should not be read)"
+                atomically $ writeTBQueue ch "line 1"
+                atomically $ writeTBQueue ch "line 2"
+                atomically $ writeTBQueue ch "---SABELA_MARKER_0---"
+                atomically $ writeTBQueue ch "line after (should not be read)"
 
             out <- withTimeout 2_000_000 (drainUntilMarker sess mk)
             out `shouldBe` "line 1\nline 2"
 
         it "stops on eofText even if marker never arrives" $ do
-            ch <- newChan
+            ch <- newTBQueueIO 256
             errRef <- newIORef []
             ctrRef <- newIORef 0
             sess <- dummySession ch errRef ctrRef defaultCfg
@@ -128,16 +128,16 @@ spec = do
             let mk = Marker "---SABELA_MARKER_999---"
 
             _ <- forkIO $ do
-                writeChan ch "hello"
-                writeChan ch eofText
-                writeChan ch "after eof (ignored)"
+                atomically $ writeTBQueue ch "hello"
+                atomically $ writeTBQueue ch eofText
+                atomically $ writeTBQueue ch "after eof (ignored)"
 
             out <- withTimeout 2_000_000 (drainUntilMarker sess mk)
             out `shouldBe` "hello"
 
     describe "getMarker" $ do
         it "increments counter and produces distinct markers" $ do
-            ch <- newChan
+            ch <- newTBQueueIO 256
             errRef <- newIORef []
             ctrRef <- newIORef 0
             sess <- dummySession ch errRef ctrRef defaultCfg
