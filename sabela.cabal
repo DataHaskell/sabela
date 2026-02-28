@@ -32,7 +32,7 @@ library
                       filepath >= 1.4 && < 1.6,
                       http-types >= 0.12 && < 0.13,
                       process >= 1.6 && < 1.8,
-                      scripths <= 1,
+                      scripths >= 0.1.0.2 && <= 1,
                       servant-server ^>= 0.20,
                       stm >= 2.4 && < 3,
                       tagged >= 0.8 && < 0.9,

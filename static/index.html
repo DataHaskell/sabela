@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 
   :root {
     --bg: #1e1e2e;
@@ -278,7 +279,37 @@
   .cell-output.running-indicator { color: var(--yellow); font-style: italic; border-top: 1px solid var(--yellow); }
   .cell-output.mime-html { white-space: normal; font-family: 'Source Serif 4', Georgia, serif; }
   .cell-output.mime-html iframe { border: none; width: 100%; min-height: 60px; border-radius: 4px; }
-  .cell-output.mime-markdown { white-space: normal; font-family: 'Source Serif 4', Georgia, serif; }
+  .cell-output.mime-markdown {
+    white-space: pre-wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d4d4d4;
+  }
+
+  /* Table styling */
+  .cell-output.mime-markdown table {
+    border-collapse: collapse;
+    width: auto;
+    margin: 0.75em 0;
+    font-size: 13px;
+  }
+
+  .cell-output.mime-markdown th,
+  .cell-output.mime-markdown td {
+    border: 1px solid #444;
+    padding: 6px 12px;
+    text-align: left;
+  }
+
+  .cell-output.mime-markdown th {
+    background: rgba(255, 255, 255, 0.08);
+    font-weight: 700;
+  }
+
+  .cell-output.mime-markdown tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+  }
   .cell-output.mime-markdown h1, .cell-output.mime-markdown h2, .cell-output.mime-markdown h3 { color: var(--fg-bright); }
   .cell-output.mime-markdown p { margin: 0.3em 0; }
   .cell-output.mime-markdown code { font-family: 'IBM Plex Mono', monospace; background: var(--bg-cell); padding: 2px 6px; border-radius: 3px; font-size: 0.88em; }
