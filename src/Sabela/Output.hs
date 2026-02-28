@@ -83,7 +83,14 @@ builtinExamples =
         "SVG Chart"
         "Draw an SVG bar chart"
         "Display"
-        "let bars = zip [\"Mon\",\"Tue\",\"Wed\",\"Thu\",\"Fri\"] [40,65,30,80,55 :: Int]\n    bar (label, h) i = unlines\n      [ \"<rect x='\" ++ show (i*60+10) ++ \"' y='\" ++ show (100-h) ++ \"' width='40' height='\" ++ show h ++ \"' fill='#89b4fa' rx='4'/>\"\n      , \"<text x='\" ++ show (i*60+30) ++ \"' y='115' text-anchor='middle' fill='#cdd6f4' font-size='11'>\" ++ label ++ \"</text>\" ]\n    svg = \"<svg width='320' height='130' style='background:#1e1e2e;padding:8px'>\" ++ concatMap (\\(b,i) -> bar b i) (zip bars [0..]) ++ \"</svg>\"\n\ndisplaySvg svg"
+        T.unlines
+        [ "-- cabal: build-depends: text, granite"
+        , "{-# LANGUAGE OverloadedStrings #-}"
+        , "import qualified Data.Text as T"
+        , "import Granite.Svg"
+        , ""
+        , "displaySvg $ T.unpack (bars [(\"Q1\",12),(\"Q2\",18),(\"Q3\",9),(\"Q4\",15)] defPlot {plotTitle=\"Sales\"})"
+        ]
     , Example
         "Markdown Output"
         "Render formatted markdown"
