@@ -83,14 +83,15 @@ builtinExamples =
         "SVG Chart"
         "Draw an SVG bar chart"
         "Display"
-        T.unlines
-        [ "-- cabal: build-depends: text, granite"
-        , "{-# LANGUAGE OverloadedStrings #-}"
-        , "import qualified Data.Text as T"
-        , "import Granite.Svg"
-        , ""
-        , "displaySvg $ T.unpack (bars [(\"Q1\",12),(\"Q2\",18),(\"Q3\",9),(\"Q4\",15)] defPlot {plotTitle=\"Sales\"})"
-        ]
+        ( T.unlines
+            [ "-- cabal: build-depends: text, granite"
+            , "{-# LANGUAGE OverloadedStrings #-}"
+            , "import qualified Data.Text as T"
+            , "import Granite.Svg"
+            , ""
+            , "displaySvg $ T.unpack (bars [(\"Q1\",12),(\"Q2\",18),(\"Q3\",9),(\"Q4\",15)] defPlot {plotTitle=\"Sales\"})"
+            ]
+        )
     , Example
         "Markdown Output"
         "Render formatted markdown"
