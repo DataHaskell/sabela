@@ -8,7 +8,7 @@ We'll be re-doing the example from chapter 2 of Hands-on machine learning with S
 The data is already in our root directory. We'll use the readCsv function to read the data into a dataframe.
 
 ```haskell
--- cabal: build-depends: dataframe, text
+-- cabal: build-depends: dataframe-0.5.0.0, text
 -- cabal: default-extensions: TemplateHaskell, TypeApplications, OverloadedStrings
 
 import qualified DataFrame as D
@@ -107,7 +107,7 @@ priceBucket p
 
 withPriceBuckets = df
                  |> D.derive "price_bucket" (F.lift priceBucket median_house_value)
-                 |> D.sortBy [D.Desc (F.name median_house_value)]
+                 |> D.sortBy [D.Desc median_house_value]
 
 -- We use the `name` function to get the text that our column refers to.
 -- Saves us from having typos is the code.
@@ -121,6 +121,8 @@ From the plot above we can see that there are specific population centers where 
 Now let's declare these attributes.
 
 ```haskell
+import DataFrame.Operators
+
 ordinalOceanProximity :: Text -> Double
 ordinalOceanProximity op = case op of
     "ISLAND"     -> 5
@@ -132,11 +134,13 @@ ordinalOceanProximity op = case op of
 
 
 meanTotalBedrooms = D.meanMaybe total_bedrooms df
-augmented = df |> D.derive "rooms_per_household" (total_rooms / households)
-               |> D.derive "total_bedrooms" (F.fromMaybe meanTotalBedrooms total_bedrooms)
-               |> D.derive "bedrooms_per_household" (F.col "total_bedrooms" / total_rooms)
-               |> D.derive "population_per_household" (population / households)
-               |> D.derive "ocean_proximity" (F.lift ordinalOceanProximity ocean_proximity)
+augmented = df |> D.deriveMany
+                     [ "rooms_per_household" .= total_rooms / households
+                     , "total_bedrooms" .= F.fromMaybe meanTotalBedrooms total_bedrooms
+                     , "bedrooms_per_household" .= F.col "total_bedrooms" / total_rooms
+                     , "population_per_household".= population / households
+                     , "ocean_proximity" .= F.lift ordinalOceanProximity ocean_proximity
+                     ]
 
 ```
 
