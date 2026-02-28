@@ -13,6 +13,9 @@ cabal update
 cabal run
 ```
 
-Open `localhost:3000/index.html` and explore `./examples/analysis.md` for a quick tutorial.
+Open `localhost:3000/index.html` and explore either:
+
+* `./examples/analysis.md` for a quick tutorial.
+* or click on the book icon on the top left for some ready to use snippets.
 
 The execution and dependency management model is based on [scripths](https://github.com/DataHaskell/scripths).
