@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/nord.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
 
@@ -286,6 +287,7 @@
   .cell-output.mime-image { text-align: center; white-space: normal; }
   .cell-output.mime-image img { max-width: 100%; border-radius: 4px; }
   .cell-output.mime-json { color: var(--green); }
+  .cell-output.mime-latex { white-space: normal; }
 
   /* Add cell */
   .add-cell-row { display: flex; justify-content: center; gap: 8px; padding: 6px 0; opacity: 0; transition: opacity 0.15s; }
@@ -366,6 +368,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/haskell/haskell.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 <script>
 const editors = {};        // cellId → CodeMirror instance
 const cellErrors = {};     // cellId → [CellError]
@@ -622,6 +626,13 @@ function renderMimeOutput(container, content, mime) {
     container.className = 'cell-output mime-json';
     try { container.textContent = JSON.stringify(JSON.parse(content), null, 2); }
     catch { container.textContent = content; }
+  } else if (mime === 'text/latex') {
+    container.className = 'cell-output mime-latex';
+    try {
+      katex.render(content, container, { displayMode: true, throwOnError: false });
+    } catch (e) {
+      container.textContent = content;
+    }
   } else {
     container.className = 'cell-output';
     container.textContent = content;

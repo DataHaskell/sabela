@@ -98,6 +98,11 @@ builtinExamples =
         "Display"
         "displayMarkdown $ unlines\n  [ \"# Analysis Results\"\n  , \"\"\n  , \"The computation found **42** as the answer.\"\n  , \"\"\n  , \"| Metric | Value |\"\n  , \"|--------|-------|\"\n  , \"| Speed  | Fast  |\"\n  , \"| Memory | Low   |\"\n  ]"
     , Example
+        "Latex Output"
+        "Render latex equations"
+        "Display"
+        "displayLatex \"x^2 + y^2 = z^2\""
+    , Example
         "Concurrent IO"
         "Async with threads"
         "Advanced"
