@@ -324,10 +324,10 @@ print squares
 displayMarkdown $ unlines
   [ "# Summary"
   , ""
-  , "We computed **squares** for the numbers 1 through 10."
+  , "We computed **squares** for the numbers " ++ show (head numbers) ++ " through " ++ show (last numbers) ++ "."
   , ""
-  , "- Count: 10"
-  , "- Max: 100"
+  , "- Count: " ++ show (last numbers) 
+  , "- Max: " ++ show (last squares)
   ]
 ```
 ````
