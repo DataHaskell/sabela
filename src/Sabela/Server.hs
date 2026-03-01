@@ -49,7 +49,13 @@ import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output (builtinExamples)
 import Sabela.Session (queryComplete, queryDoc, queryInfo, queryType)
-import ScriptHs.Markdown (Segment (..), parseMarkdown, reassemble)
+import ScriptHs.Markdown (
+    CodeOutput (..),
+    MimeType (..),
+    Segment (..),
+    parseMarkdown,
+    reassemble,
+ )
 import System.IO.Temp (createTempDirectory, getCanonicalTemporaryDirectory)
 
 -- ── API types ────────────────────────────────────────────────────
@@ -201,7 +207,28 @@ loadNotebookH st rn (LoadRequest path) = liftIO $ do
     pure nb
   where
     go (acc, n) (Prose t) = (Cell n ProseCell t Nothing Nothing "text/plain" False : acc, n + 1)
-    go (acc, n) (CodeBlock _ code _) = (Cell n CodeCell code Nothing Nothing "text/plain" False : acc, n + 1)
+    go (acc, n) (CodeBlock _ code Nothing) = (Cell n CodeCell code Nothing Nothing "text/plain" False : acc, n + 1)
+    go (acc, n) (CodeBlock _ code (Just (CodeOutput m o))) = (Cell n CodeCell code (Just o) Nothing (mimeIndicator m) False : acc, n + 1)
+
+mimeIndicator :: MimeType -> Text
+mimeIndicator m = case m of
+    MimeHtml -> "text/html"
+    MimeMarkdown -> "text/markdown"
+    MimeSvg -> "image/svg+xml"
+    MimeLatex -> "text/latex"
+    MimeJson -> "application/json"
+    MimeImage t -> t <> ";base64"
+    MimePlain -> "text/plain"
+
+textToMime :: Text -> MimeType
+textToMime m = case m of
+    "text/html" -> MimeHtml
+    "text/markdown" -> MimeMarkdown
+    "image/svg+xml" -> MimeSvg
+    "text/latex" -> MimeLatex
+    "application/json" -> MimeJson
+    -- image isn't covered
+    _ -> MimePlain
 
 -- | Save notebook back to markdown file.
 saveNotebookH :: AppState -> SaveRequest -> Handler Notebook
@@ -222,7 +249,13 @@ saveNotebookH st (SaveRequest mPath) = liftIO $ do
   where
     cellToSegment c = case cellType c of
         ProseCell -> Prose (cellSource c)
-        CodeCell -> CodeBlock "haskell" (cellSource c) (cellOutput c)
+        CodeCell -> case cellOutput c of
+            Nothing -> CodeBlock "haskell" (cellSource c) Nothing
+            Just o ->
+                CodeBlock
+                    "haskell"
+                    (cellSource c)
+                    (Just (CodeOutput (textToMime (cellMime c)) o))
 
 updateCellH :: AppState -> ReactiveNotebook -> Int -> UpdateCell -> Handler Cell
 updateCellH st rn cid (UpdateCell src) = liftIO $ do
