@@ -222,7 +222,7 @@ saveNotebookH st (SaveRequest mPath) = liftIO $ do
   where
     cellToSegment c = case cellType c of
         ProseCell -> Prose (cellSource c)
-        CodeCell -> CodeBlock "haskell" (cellSource c) Nothing
+        CodeCell -> CodeBlock "haskell" (cellSource c) (cellOutput c)
 
 updateCellH :: AppState -> ReactiveNotebook -> Int -> UpdateCell -> Handler Cell
 updateCellH st rn cid (UpdateCell src) = liftIO $ do
