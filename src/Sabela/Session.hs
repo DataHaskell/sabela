@@ -65,16 +65,12 @@ newSession :: SessionConfig -> IO Session
 newSession cfg = do
     let envFlags = maybe [] ((["-package-env="] ++) . singleton) (scEnvFile cfg)
         extFlags = map (("-X" ++) . T.unpack) (scExts cfg)
-        -- TODO: If you specify package bounds this breaks.
-        -- Parse out the package name.
-        deps = concatMap (\p -> ["-package", T.unpack p]) (scDeps cfg)
         optFlags = map T.unpack (scGhcOptions cfg)
         args =
             ["--interactive", "-ignore-dot-ghci", "v0"]
                 ++ envFlags
                 ++ extFlags
                 ++ optFlags
-                ++ deps
         cp =
             (proc "ghc" args)
                 { std_in = CreatePipe

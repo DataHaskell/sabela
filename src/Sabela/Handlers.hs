@@ -68,6 +68,8 @@ handleCellEdit st cid src = do
 handleRunCell :: AppState -> Int -> IO ()
 handleRunCell st cid = do
     TIO.hPutStrLn stderr $ "[handler] handleRunCell: cell " <> T.pack (show cid)
+    -- Some commands remove prelude.
+    loadSabelaPrelude st
     gen <- bumpGeneration st
     void $ forkIO $ executeSingleCell st gen cid
 
@@ -205,6 +207,13 @@ startSessionWith st deps exts = do
     _ <- runBlock sess displayPrelude
     modifyMVar_ (stSession st) (\_ -> pure (Just sess))
     broadcast st (EvSessionStatus SReady)
+
+loadSabelaPrelude :: AppState -> IO ()
+loadSabelaPrelude st = do
+    mSess <- readMVar (stSession st)
+    case mSess of
+        Just sess -> void (runBlock sess displayPrelude)
+        Nothing -> pure ()
 
 isCurrentGen :: AppState -> Int -> IO Bool
 isCurrentGen st gen = (== gen) <$> readIORef (stGeneration st)
