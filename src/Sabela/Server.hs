@@ -58,8 +58,6 @@ import ScriptHs.Markdown (
  )
 import System.IO.Temp (createTempDirectory, getCanonicalTemporaryDirectory)
 
-import Debug.Trace (trace)
-
 -- ── API types ────────────────────────────────────────────────────
 
 type JsonAPI =
@@ -199,7 +197,7 @@ loadNotebookH :: AppState -> ReactiveNotebook -> LoadRequest -> Handler Notebook
 loadNotebookH st rn (LoadRequest path) = liftIO $ do
     let absPath = if "/" `isPrefixOf` path then path else stWorkDir st </> path
     raw <- TIO.readFile absPath
-    let segs = trace (show $ parseMarkdown raw) $ parseMarkdown raw
+    let segs = parseMarkdown raw
     nid <- readIORef (stNextId st)
     let (cells, nid') = foldl go ([], nid) segs
         nb = Notebook (T.pack path) (reverse cells)
@@ -211,7 +209,7 @@ loadNotebookH st rn (LoadRequest path) = liftIO $ do
     addMimeToOutput m o = "---MIME:" <> mimeIndicator m <> "---" <> "\n" <> o
     go (acc, n) (Prose t) = (Cell n ProseCell t Nothing Nothing "text/plain" False : acc, n + 1)
     go (acc, n) (CodeBlock _ code Nothing) = (Cell n CodeCell code Nothing Nothing "text/plain" False : acc, n + 1)
-    go (acc, n) (CodeBlock _ code q@(Just (CodeOutput m o))) =
+    go (acc, n) (CodeBlock _ code (Just (CodeOutput m o))) =
         ( Cell
             n
             CodeCell
