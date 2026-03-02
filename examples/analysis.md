@@ -134,10 +134,11 @@ ordinalOceanProximity op = case op of
 
 
 meanTotalBedrooms = D.meanMaybe total_bedrooms df
+imputedTotalBedrooms = F.fromMaybe meanTotalBedrooms total_bedrooms
 augmented = df |> D.deriveMany
                      [ "rooms_per_household" .= total_rooms / households
-                     , "total_bedrooms" .= F.fromMaybe meanTotalBedrooms total_bedrooms
-                     , "bedrooms_per_household" .= F.col "total_bedrooms" / total_rooms
+                     , "total_bedrooms" .= imputedTotalBedrooms
+                     , "bedrooms_per_household" .= imputedTotalBedrooms / total_rooms
                      , "population_per_household".= population / households
                      , "ocean_proximity" .= F.lift ordinalOceanProximity ocean_proximity
                      ]
