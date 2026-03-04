@@ -140,7 +140,7 @@ server st rn staticDir =
 
 initState :: FilePath -> IO AppState
 initState workDir = do
-    nb <- newMVar (Notebook "Untitled" [])
+    nb <- newMVar (Notebook "Untitled.md" [])
     sess <- newMVar Nothing
     tmpBase <- getCanonicalTemporaryDirectory
     tmpDir <- createTempDirectory tmpBase "sabela-server"
