@@ -1016,17 +1016,6 @@ function renderCodeCell(cell) {
         'Cmd-S': () => saveNotebook(),
       }
     });
-    cm.on('change', () => {
-      const newSrc = cm.getValue();
-      if (newSrc !== cell.cellSource) {
-        cell.cellDirty = true; div.classList.add('dirty');
-        clearTimeout(cm._saveTimeout);
-        cm._saveTimeout = setTimeout(() => {
-          cell.cellSource = newSrc;
-          api('PUT', `cell/${cell.cellId}`, { ucSource: newSrc }).catch(console.error);
-        }, 400);
-      }
-    });
     editors[cell.cellId] = cm;
   });
   return div;
