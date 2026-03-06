@@ -471,10 +471,8 @@ function setCellRunning(cellId, running) {
   if (running) {
     el.classList.add('running');
     setStatus(`Running cell ${cellId}...`, 'running');
-    let out = el.querySelector('.cell-output');
-    if (!out) { out = document.createElement('div'); el.appendChild(out); }
-    out.className = 'cell-output running-indicator';
-    out.textContent = 'Running...';
+
+    // TODO: mchavinda: Add a spinner here.
   } else {
     el.classList.remove('running');
   }
