@@ -220,6 +220,9 @@ You can also declare extensions:
 -- cabal: default-extensions: DeriveGeneric, OverloadedStrings
 ```
 
+If you want cross notebook dependencies put them in a file called `global.md`
+and define them as above.
+
 ### What happens under the hood
 
 Sabela scans **all code cells**, merges their `-- cabal:` metadata, and computes the full required package/extension set for the notebook.

@@ -70,7 +70,7 @@ defaultCfg =
         { scDeps = []
         , scExts = []
         , scGhcOptions = []
-        , scEnvFile = Nothing
+        , scEnvFiles = []
         }
 
 withTimeout :: Int -> IO a -> IO a

@@ -535,19 +535,18 @@ function hideErrorTooltip() {
 // ── Tab completions ──────────────────────────────────────────────
 async function haskellHint(cm) {
   const cur = cm.getCursor();
-  const token = cm.getTokenAt(cur);
-  let start = token.start, end = cur.ch;
-  const prefix = cm.getRange({line: cur.line, ch: start}, cur);
-
-  if (prefix.length < 2) return;  // don't complete single chars
-
+  const lineUpToCursor = cm.getRange({line: cur.line, ch: 0}, cur);
+  const match = lineUpToCursor.match(/[A-Za-z_'][A-Za-z0-9_']*(?:\.[A-Za-z_'][A-Za-z0-9_']*)*\.?$/);
+  if (!match) return;
+  const prefix = match[0];
+  const start = cur.ch - prefix.length;
   try {
     const res = await api('POST', 'complete', { crPrefix: prefix });
     if (!res.crCompletions || !res.crCompletions.length) return;
     return {
       list: res.crCompletions.slice(0, 30),
       from: CodeMirror.Pos(cur.line, start),
-      to: CodeMirror.Pos(cur.line, end)
+      to: CodeMirror.Pos(cur.line, cur.ch)
     };
   } catch { return; }
 }
@@ -1004,10 +1003,28 @@ function renderCodeCell(cell) {
         'Shift-Enter': () => runCell(cell.cellId),
         'Ctrl-Enter': () => runCell(cell.cellId),
         'Tab': (cm) => {
-          if (cm.somethingSelected()) cm.indentSelection('add');
-          else cm.showHint({ hint: haskellHint, completeSingle: false });
+          if (cm.somethingSelected()) {
+            cm.indentSelection('add');
+          } else {
+            const cur = cm.getCursor();
+            const lineUpToCursor = cm.getRange({line: cur.line, ch: 0}, cur);
+            const match = lineUpToCursor.match(/[A-Za-z_'][A-Za-z0-9_']*(?:\.[A-Za-z_'][A-Za-z0-9_']*)*\.?$/);
+            if (match) {
+              cm.showHint({
+                hint: haskellHint,
+                completeSingle: true,
+                extraKeys: { Tab: (cm, handle) => handle.pick() },
+              });
+            } else {
+              cm.execCommand('insertSoftTab');
+            }
+          }
         },
-        'Ctrl-Space': (cm) => cm.showHint({ hint: haskellHint, completeSingle: false }),
+        'Ctrl-Space': (cm) => cm.showHint({
+          hint: haskellHint,
+          completeSingle: true,
+          extraKeys: { Tab: (cm, handle) => handle.pick() },
+        }),
         'Ctrl-I': () => lookupWordUnderCursor(),
         'Cmd-I': () => lookupWordUnderCursor(),
         'Ctrl-S': () => saveNotebook(),

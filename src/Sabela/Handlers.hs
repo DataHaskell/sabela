@@ -1,13 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Sabela.Handlers where
 
 import Control.Concurrent (forkIO, modifyMVar_, readMVar)
 import Control.Concurrent.STM (atomically, writeTChan)
-import Control.Exception (SomeException, try)
+import Control.Exception (IOException, SomeException, catch, try)
 import Control.Monad (forM_, unless, void, when)
-import Data.Char
 import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
+import qualified Data.Map.Strict as M
+import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -25,6 +27,8 @@ import Sabela.Model (
  )
 import Sabela.Output (displayPrelude, parseMimeOutput)
 import Sabela.Session (SessionConfig (..), closeSession, newSession, runBlock)
+import qualified Sabela.Topo as Topo
+import ScriptHs.Markdown (Segment (..), parseMarkdown)
 import ScriptHs.Parser (
     CabalMeta (..),
     ScriptFile (..),
@@ -33,8 +37,41 @@ import ScriptHs.Parser (
  )
 import ScriptHs.Render (toGhciScript)
 import ScriptHs.Run (resolveDeps)
-import System.FilePath ((</>))
+import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.FilePath (takeDirectory, (</>))
 import System.IO (stderr)
+
+initGlobalEnv :: FilePath -> IO (Maybe FilePath, Set Text)
+initGlobalEnv globalMdPath = do
+    exists <- doesFileExist globalMdPath
+    if not exists
+        then pure (Nothing, S.empty)
+        else do
+            let dir = takeDirectory globalMdPath
+                envPath = dir </> ".ghc.environment"
+                hashPath = dir </> "global.hash"
+            currentContent <- TIO.readFile globalMdPath
+            storedContent <-
+                (Just <$> TIO.readFile hashPath)
+                    `catch` (\(_ :: IOException) -> pure Nothing)
+            let meta = collectMetadataFromContent currentContent
+                deps = metaDeps meta
+            when (Just currentContent /= storedContent) $ do
+                createDirectoryIfMissing True dir
+                TIO.hPutStrLn stderr "[sabela] Installing global dependencies..."
+                unless (null deps) $ resolveDeps envPath deps
+                TIO.writeFile hashPath currentContent
+            envExists <- doesFileExist envPath
+            pure
+                ( if envExists && not (null deps) then Just envPath else Nothing
+                , S.fromList deps
+                )
+
+collectMetadataFromContent :: Text -> CabalMeta
+collectMetadataFromContent content =
+    let segs = parseMarkdown content
+        codeSrcs = [src | CodeBlock _ src _ <- segs]
+     in mergeMetas (map (scriptMeta . parseScript) codeSrcs)
 
 data ReactiveNotebook = ReactiveNotebook
     { rnCellEdit :: Int -> Text -> IO ()
@@ -120,7 +157,13 @@ executeFullRestart st gen = do
         needed = collectMetadata nb
     killSession st
     ok <- installAndRestart st gen needed
-    when ok $ runCellList st gen allCode
+    when ok $ do
+        let (topoResult, redefMap) = Topo.computeTopoOrder allCode
+        broadcastRedefinitionErrors st redefMap
+        broadcastCycleErrors st (Topo.trCycleIds topoResult)
+        let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
+            toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
+        runCellList st gen toRun
 
 bumpGeneration :: AppState -> IO Int
 bumpGeneration st = atomicModifyIORef' (stGeneration st) (\g -> let g' = g + 1 in (g', g'))
@@ -148,17 +191,14 @@ ensureSessionAlive st gen metas = do
     installed <- readIORef (stInstalledDeps st)
     instExts <- readIORef (stInstalledExts st)
     mSess <- readMVar (stSession st)
-    let allMetaApplicable =
-            S.fromList (metaDeps metas) == installed
+    let globalDeps = stGlobalDeps st
+        allMetaApplicable =
+            S.fromList (metaDeps metas) `S.isSubsetOf` (installed `S.union` globalDeps)
                 && S.fromList (metaExts metas) == instExts
     case mSess of
         Just _ | allMetaApplicable -> pure True
         _ -> installAndRestart st gen metas
 
--- TODO: We should instead sort the cells in topological order.
--- That is, the cells that have not dependencies shoudl run first.
--- We also need to think through how we deal with circular dependencies.
--- I'm not sure at what stage we filter them out.
 installAndRestart :: AppState -> Int -> CabalMeta -> IO Bool
 installAndRestart st gen metas = do
     -- If we restarted after some changes (not in the notebook generation)
@@ -168,24 +208,26 @@ installAndRestart st gen metas = do
         then pure False
         else do
             installedDeps <- readIORef (stInstalledDeps st)
-            let requiredDeps = S.fromList (metaDeps metas)
-                depsUpToDate = requiredDeps == installedDeps
+            let globalDeps = stGlobalDeps st
+                requiredDeps = S.fromList (metaDeps metas)
+                notebookDeps = S.difference requiredDeps globalDeps
+                depsUpToDate = notebookDeps `S.isSubsetOf` installedDeps
             unless depsUpToDate $ do
-                let newDeps = S.difference requiredDeps installedDeps
+                let newDeps = S.difference notebookDeps installedDeps
                 broadcast st $
                     EvSessionStatus $
                         if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
-                if null (metaDeps metas)
+                if S.null notebookDeps
                     then do
                         writeIORef (stEnvFile st) Nothing
                         writeIORef (stInstalledDeps st) S.empty
                     else do
                         let envPath = stTmpDir st </> ".ghc.environment"
                         TIO.hPutStrLn stderr $
-                            "[sabela] cabal install --lib " <> T.unwords (metaDeps metas)
-                        resolveDeps envPath (metaDeps metas)
+                            "[sabela] cabal install --lib " <> T.unwords (S.toList notebookDeps)
+                        resolveDeps envPath (S.toList notebookDeps)
                         writeIORef (stEnvFile st) (Just envPath)
-                        writeIORef (stInstalledDeps st) requiredDeps
+                        writeIORef (stInstalledDeps st) notebookDeps
             writeIORef (stInstalledExts st) (S.fromList (metaExts metas))
             broadcast st (EvSessionStatus SStarting)
             killSession st
@@ -194,13 +236,14 @@ installAndRestart st gen metas = do
 
 startSessionWith :: AppState -> [Text] -> [Text] -> IO ()
 startSessionWith st deps exts = do
-    envFile <- readIORef (stEnvFile st)
-    let cfg =
+    perNotebookEnv <- readIORef (stEnvFile st)
+    let envFiles = [p | Just p <- [stGlobalEnvFile st, perNotebookEnv]]
+        cfg =
             SessionConfig
                 { scDeps = deps
                 , scExts = exts
                 , scGhcOptions = []
-                , scEnvFile = envFile
+                , scEnvFiles = envFiles
                 }
     TIO.hPutStrLn stderr "[handler] Injecting display prelude"
     sess <- newSession cfg
@@ -281,11 +324,11 @@ applyResult r c
     | otherwise = c
 
 executeAffected :: AppState -> Int -> Int -> IO ()
-executeAffected st gen editedCids = do
+executeAffected st gen editedCid = do
     TIO.hPutStrLn stderr $
         T.pack $
-            "[handler] smartExecuteAffected: editedCid="
-                ++ show editedCids
+            "[handler] executeAffected: editedCid="
+                ++ show editedCid
     nb <- readMVar (stNotebook st)
     let allCode = filter (\c -> cellType c == CodeCell) (nbCells nb)
         needed = collectMetadata nb
@@ -296,27 +339,29 @@ executeAffected st gen editedCids = do
 
     let neededD = S.fromList (metaDeps needed)
         neededE = S.fromList (metaExts needed)
-        depsOk = neededD == installed
+        globalDeps = stGlobalDeps st
+        depsOk = neededD `S.isSubsetOf` (installed `S.union` globalDeps)
         extsOk = neededE == instExts
 
     case (mSess, depsOk && extsOk) of
         (Just _, True) -> do
-            let toRun = selectAffected editedCids allCode
+            let (topoResult, redefMap) = Topo.selectAffectedTopo editedCid allCode
                 allIds = map cellId allCode
-                runIds = map cellId toRun
-                skipIds = filter (`notElem` runIds) allIds
+                runIds = map cellId (Topo.trOrdered topoResult)
 
             TIO.hPutStrLn stderr $ T.pack $ "[handler] All code cells: " ++ show allIds
             TIO.hPutStrLn stderr $
                 T.pack $
-                    "[handler] From edited cell onward: " ++ show allIds
-            TIO.hPutStrLn stderr $ T.pack $ "[handler] WILL RUN (affected): " ++ show runIds
+                    "[handler] WILL RUN (affected, topo order): " ++ show runIds
             TIO.hPutStrLn stderr $
                 T.pack $
-                    "[handler] WILL SKIP (unaffected): " ++ show skipIds
+                    "[handler] Cycle cells: " ++ show (S.toList (Topo.trCycleIds topoResult))
+            TIO.hPutStrLn stderr $
+                T.pack $
+                    "[handler] Redef cells: " ++ show (M.keys redefMap)
 
             forM_ allCode $ \c -> do
-                let (defs, uses) = cellNames (cellSource c)
+                let (defs, uses) = Topo.cellNames (cellSource c)
                 TIO.hPutStrLn stderr $
                     T.pack $
                         "[handler]   cell "
@@ -327,19 +372,63 @@ executeAffected st gen editedCids = do
                             ++ show (take 10 (S.toList uses))
                             ++ (if S.size uses > 10 then "..." else "")
 
+            broadcastRedefinitionErrors st redefMap
+            broadcastCycleErrors st (Topo.trCycleIds topoResult)
+            let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
+                toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
             runCellList st gen toRun
 
         -- ── Deps changed → full restart ──
         (_, False) -> do
             putStrLn "[handler] Deps/exts changed → full restart"
             ok <- installAndRestart st gen needed
-            when ok $ runCellList st gen allCode
+            when ok $ do
+                let (topoResult, redefMap) = Topo.computeTopoOrder allCode
+                broadcastRedefinitionErrors st redefMap
+                broadcastCycleErrors st (Topo.trCycleIds topoResult)
+                let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
+                    toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
+                runCellList st gen toRun
 
         -- ── No session → create + run all ──
         (Nothing, True) -> do
             putStrLn "[handler] No session → starting fresh, running all"
             ok <- installAndRestart st gen needed
-            when ok $ runCellList st gen allCode
+            when ok $ do
+                let (topoResult, redefMap) = Topo.computeTopoOrder allCode
+                broadcastRedefinitionErrors st redefMap
+                broadcastCycleErrors st (Topo.trCycleIds topoResult)
+                let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
+                    toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
+                runCellList st gen toRun
+
+broadcastCellError :: AppState -> Int -> Text -> IO ()
+broadcastCellError st cid msg = do
+    let err = CellError{ceLine = Nothing, ceCol = Nothing, ceMessage = msg}
+    broadcast st (EvCellResult cid Nothing Nothing "text/plain" [err])
+
+broadcastRedefinitionErrors :: AppState -> M.Map Int [Text] -> IO ()
+broadcastRedefinitionErrors st redefMap =
+    forM_ (M.toList redefMap) $ \(cid, names) ->
+        forM_ names $ \name ->
+            broadcastCellError st cid $
+                "Cell defines '"
+                    <> name
+                    <> "', which is already defined by another cell."
+                    <> " Remove the duplicate definition to resolve this conflict."
+
+broadcastCycleErrors :: AppState -> S.Set Int -> IO ()
+broadcastCycleErrors st cycleIds
+    | S.null cycleIds = pure ()
+    | otherwise = do
+        let cids = S.toList cycleIds
+            cycleMsg = T.intercalate ", " (map (T.pack . show) cids)
+            msg =
+                "This cell is part of a circular dependency and cannot be executed."
+                    <> " Cells in the cycle: ["
+                    <> cycleMsg
+                    <> "]."
+        forM_ cids $ \cid -> broadcastCellError st cid msg
 
 runCellList :: AppState -> Int -> [Cell] -> IO ()
 runCellList st gen cells = do
@@ -348,78 +437,3 @@ runCellList st gen cells = do
         when still $ runAndBroadcast st gen cell
     still <- isCurrentGen st gen
     when still $ broadcast st EvExecutionDone
-
-cellNames :: Text -> (S.Set Text, S.Set Text)
-cellNames src = (defs, uses)
-  where
-    ls = T.lines src
-    defs = S.fromList $ concatMap extractDefs ls
-    uses = S.fromList $ concatMap extractTokens ls
-
-extractDefs :: Text -> [Text]
-extractDefs line
-    | T.null s = []
-    | T.isPrefixOf "--" s = [] -- comment
-    | T.isPrefixOf ":" s = [] -- GHCi command
-    | T.isPrefixOf "import " s = []
-    | T.isPrefixOf "{-#" s = [] -- pragma
-    -- let binding: "let x = ..."
-    | Just rest <- stripKW "let" s = firstLowerIdent rest
-    -- type-level: "data X", "type X", "newtype X", "class X"
-    | Just rest <- stripKW "data" s = firstAnyIdent rest
-    | Just rest <- stripKW "type" s = firstAnyIdent rest
-    | Just rest <- stripKW "newtype" s = firstAnyIdent rest
-    | Just rest <- stripKW "class" s = firstAnyIdent rest
-    -- value binding: "name ... =" or monadic bind: "name <- ..."
-    | otherwise =
-        let toks = T.words s
-         in case toks of
-                (w : rest)
-                    | isLowerIdent w
-                    , any (\t -> t == "=" || t == "<-") (take 8 rest) ->
-                        [w]
-                _ -> []
-  where
-    s = T.strip line
-
-stripKW :: Text -> Text -> Maybe Text
-stripKW kw t = case T.stripPrefix kw t of
-    Just rest
-        | T.null rest -> Nothing
-        | not (isIdentChar (T.head rest)) -> Just (T.stripStart rest)
-    _ -> Nothing
-
-firstLowerIdent :: Text -> [Text]
-firstLowerIdent t =
-    let w = T.takeWhile isIdentChar (T.stripStart t)
-     in [w | isLowerIdent w]
-
-firstAnyIdent :: Text -> [Text]
-firstAnyIdent t =
-    let w = T.takeWhile isIdentChar (T.stripStart t)
-     in [w | not (T.null w), isAlpha (T.head w) || T.head w == '_']
-
-isLowerIdent :: Text -> Bool
-isLowerIdent t =
-    not (T.null t)
-        && let c = T.head t in (isAlpha c && not (isAsciiUpper c)) || c == '_'
-
-isIdentChar :: Char -> Bool
-isIdentChar c = isAlphaNum c || c == '_' || c == '\''
-
-extractTokens :: Text -> [Text]
-extractTokens = filter isIdent . T.split (not . isIdentChar)
-  where
-    isIdent t = not (T.null t) && (isAlpha (T.head t) || T.head t == '_')
-
-selectAffected :: Int -> [Cell] -> [Cell]
-selectAffected editedSet = go S.empty
-  where
-    go _ [] = []
-    go changed (c : cs) =
-        let (defs, uses) = cellNames (cellSource c)
-            isEdited = cellId c == editedSet
-            isAffected = not (S.null (S.intersection uses changed))
-         in if isEdited || isAffected
-                then c : go (S.union changed defs) cs
-                else go changed cs

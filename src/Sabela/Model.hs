@@ -26,6 +26,8 @@ data AppState = AppState
     , stBroadcast :: TChan NotebookEvent
     , stGeneration :: IORef Int
     , stDebounceRef :: MVar (Maybe (Int, Set Int))
+    , stGlobalEnvFile :: Maybe FilePath
+    , stGlobalDeps :: Set Text
     }
 
 data Notebook = Notebook

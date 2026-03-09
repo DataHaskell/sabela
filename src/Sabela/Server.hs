@@ -22,6 +22,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Char
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf, sort)
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -138,8 +139,8 @@ server st rn staticDir =
         :<|> Tagged (sseApp st)
         :<|> serveDirectoryWebApp staticDir
 
-initState :: FilePath -> IO AppState
-initState workDir = do
+initState :: FilePath -> Maybe FilePath -> Set Text -> IO AppState
+initState workDir mGlobalEnvFile globalDeps = do
     nb <- newMVar (Notebook "Untitled.md" [])
     sess <- newMVar Nothing
     tmpBase <- getCanonicalTemporaryDirectory
@@ -165,6 +166,8 @@ initState workDir = do
             , stBroadcast = bcast
             , stGeneration = gen
             , stDebounceRef = debounce
+            , stGlobalEnvFile = mGlobalEnvFile
+            , stGlobalDeps = globalDeps
             }
 
 -- ── SSE ──────────────────────────────────────────────────────────

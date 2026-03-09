@@ -15,7 +15,7 @@ import Control.Concurrent.STM (
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
-import Data.List (singleton)
+
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.IO (
@@ -57,13 +57,13 @@ data SessionConfig = SessionConfig
     { scDeps :: [Text]
     , scExts :: [Text]
     , scGhcOptions :: [Text]
-    , scEnvFile :: Maybe FilePath
+    , scEnvFiles :: [FilePath]
     }
     deriving (Show, Eq)
 
 newSession :: SessionConfig -> IO Session
 newSession cfg = do
-    let envFlags = maybe [] ((["-package-env="] ++) . singleton) (scEnvFile cfg)
+    let envFlags = map ("-package-env=" ++) (scEnvFiles cfg)
         extFlags = map (("-X" ++) . T.unpack) (scExts cfg)
         optFlags = map T.unpack (scGhcOptions cfg)
         args =
