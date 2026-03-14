@@ -34,6 +34,7 @@ cellNames src = (defs, uses)
 
 extractDefs :: Text -> [Text]
 extractDefs line
+    | isIndented = []
     | T.null s = []
     | T.isPrefixOf "--" s = []
     | T.isPrefixOf ":" s = []
@@ -54,6 +55,7 @@ extractDefs line
                 _ -> []
   where
     s = T.strip line
+    isIndented = not (T.null line) && (T.head line == ' ' || T.head line == '\t')
 
 stripKW :: Text -> Text -> Maybe Text
 stripKW kw t = case T.stripPrefix kw t of

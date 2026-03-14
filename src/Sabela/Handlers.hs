@@ -4,6 +4,7 @@
 module Sabela.Handlers where
 
 import Control.Concurrent (forkIO, modifyMVar_, readMVar)
+import Control.Concurrent.MVar (withMVar)
 import Control.Concurrent.STM (atomically, writeTChan)
 import Control.Exception (IOException, SomeException, catch, try)
 import Control.Monad (forM_, unless, void, when)
@@ -135,16 +136,25 @@ handleReset st = do
 
 executeSingleCell :: AppState -> Int -> Int -> IO ()
 executeSingleCell st gen cid = do
-    TIO.hPutStrLn stderr "[handler] handleReset"
+    TIO.hPutStrLn stderr "[handler] executeSingleCell"
     nb <- readMVar (stNotebook st)
     let metas = collectMetadata nb
         allCode = filter (\c -> cellType c == CodeCell) (nbCells nb)
+        (topoResult, redefMap) = Topo.computeTopoOrder allCode
+        skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
     ok <- ensureSessionAlive st gen metas
     when ok $
         case filter (\c -> cellId c == cid) allCode of
             (cell : _) -> do
                 still <- isCurrentGen st gen
-                when still $ runAndBroadcast st gen cell
+                when still $
+                    if S.member cid skipIds
+                        then do
+                            broadcastRedefinitionErrors st (M.filterWithKey (\k _ -> k == cid) redefMap)
+                            broadcastCycleErrors
+                                st
+                                (S.intersection (Topo.trCycleIds topoResult) (S.singleton cid))
+                        else runAndBroadcast st gen cell
                 still' <- isCurrentGen st gen
                 when still' $ broadcast st EvExecutionDone
             [] -> broadcast st EvExecutionDone
@@ -279,6 +289,14 @@ runAndBroadcast st gen cell = do
                 errs
             )
 
+widgetPreamble :: Int -> M.Map Text Text -> Text
+widgetPreamble cid vals =
+    let pairs = show [(T.unpack k, T.unpack v) | (k, v) <- M.toList vals]
+     in T.unlines
+            [ "writeIORef _sabelaWidgetRef " <> T.pack pairs
+            , "writeIORef _sabelaCellIdRef " <> T.pack (show (show cid))
+            ]
+
 execCell :: AppState -> Cell -> IO (RunResult, [CellError])
 execCell st cell = do
     mSess <- readMVar (stSession st)
@@ -286,8 +304,12 @@ execCell st cell = do
         Nothing ->
             pure (RunResult (cellId cell) Nothing (Just "No GHCi session") "text/plain", [])
         Just sess -> do
-            let sf = scriptLines (parseScript (cellSource cell))
-            let ghci = toGhciScript sf
+            cellWidgets <-
+                withMVar (stWidgetValues st) $
+                    pure . M.findWithDefault M.empty (cellId cell)
+            let preamble = widgetPreamble (cellId cell) cellWidgets
+                sf = scriptLines (parseScript (cellSource cell))
+                ghci = preamble <> toGhciScript sf
             TIO.hPutStrLn stderr $
                 T.pack $
                     "[handler] Cell " ++ show (cellId cell) ++ ":\n" ++ T.unpack ghci
@@ -405,7 +427,7 @@ executeAffected st gen editedCid = do
 broadcastCellError :: AppState -> Int -> Text -> IO ()
 broadcastCellError st cid msg = do
     let err = CellError{ceLine = Nothing, ceCol = Nothing, ceMessage = msg}
-    broadcast st (EvCellResult cid Nothing Nothing "text/plain" [err])
+    broadcast st (EvCellResult cid Nothing (Just msg) "text/plain" [err])
 
 broadcastRedefinitionErrors :: AppState -> M.Map Int [Text] -> IO ()
 broadcastRedefinitionErrors st redefMap =

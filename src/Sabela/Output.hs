@@ -25,7 +25,10 @@ parseMimeOutput raw =
 displayPrelude :: Text
 displayPrelude =
     T.unlines
-        [ ":{"
+        [ "import Data.IORef"
+        , "_sabelaWidgetRef <- newIORef ([] :: [(String, String)])"
+        , "_sabelaCellIdRef <- newIORef (\"0\" :: String)"
+        , ":{"
         , "let { displayMime_ t c = putStrLn (\"---MIME:\" ++ t ++ \"---\") >> putStrLn c"
         , "    ; displayHtml     = displayMime_ \"text/html\""
         , "    ; displayMarkdown = displayMime_ \"text/markdown\""
@@ -33,6 +36,20 @@ displayPrelude =
         , "    ; displayLatex    = displayMime_ \"text/latex\""
         , "    ; displayJson     = displayMime_ \"application/json\""
         , "    ; displayImage mime b64 = putStrLn (\"---MIME:\" ++ mime ++ \";base64---\") >> putStrLn b64"
+        , "    ; widgetGet name = fmap (lookup name) (readIORef _sabelaWidgetRef)"
+        , "    ; displaySlider name lo hi val = readIORef _sabelaCellIdRef >>= \\cid -> displayHtml $ concat"
+        , "        [ \"<input type='range' min='\" ++ show lo ++ \"' max='\" ++ show hi"
+        , "        , \"' value='\" ++ show val ++ \"' \""
+        , "        , \"oninput=\\\"parent.postMessage({type:'widget',cellId:\" ++ cid"
+        , "        , \",name:'\" ++ name ++ \"',value:this.value},'*')\\\">\" ]"
+        , "    ; displayButton label name = readIORef _sabelaCellIdRef >>= \\cid -> displayHtml $ concat"
+        , "        [ \"<button onclick=\\\"parent.postMessage({type:'widget',cellId:\" ++ cid"
+        , "        , \",name:'\" ++ name ++ \"',value:'clicked'},'*')\\\">\" ++ label ++ \"</button>\" ]"
+        , "    ; displaySelect name opts val = readIORef _sabelaCellIdRef >>= \\cid -> displayHtml $ concat"
+        , "        [ \"<select onchange=\\\"parent.postMessage({type:'widget',cellId:\" ++ cid"
+        , "        , \",name:'\" ++ name ++ \"',value:this.value},'*')\\\">\""
+        , "        , concatMap (\\o -> \"<option\" ++ (if o == val then \" selected\" else \"\") ++ \">\" ++ o ++ \"</option>\") opts"
+        , "        , \"</select>\" ]"
         , "    }"
         , ":}"
         ]
@@ -102,6 +119,21 @@ builtinExamples =
         "Render latex equations"
         "Display"
         "displayLatex \"x^2 + y^2 = z^2\""
+    , Example
+        "Interactive Slider"
+        "Temperature converter with a live slider"
+        "Widgets"
+        "val <- widgetGet \"celsius\"\nlet c = maybe 20 read val :: Int\n    f = c * 9 `div` 5 + 32\n    k = c + 273\ndisplaySlider \"celsius\" (-40) 120 c\ndisplayHtml $ \"<p><b>\" ++ show c ++ \" \176C</b> = \" ++ show f ++ \" \176F = \" ++ show k ++ \" K</p>\""
+    , Example
+        "Interactive Dropdown"
+        "Shape viewer driven by a select control"
+        "Widgets"
+        "val <- widgetGet \"shape\"\nlet shape = maybe \"Circle\" id val\ndisplaySelect \"shape\" [\"Circle\", \"Square\", \"Triangle\"] shape\nlet svg = case shape of\n      \"Circle\"   -> \"<circle cx='60' cy='60' r='50' fill='#3498db'/>\"\n      \"Square\"   -> \"<rect x='10' y='10' width='100' height='100' rx='4' fill='#e74c3c'/>\"\n      _          -> \"<polygon points='60,10 110,110 10,110' fill='#2ecc71'/>\"\ndisplayHtml $ \"<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>\" ++ svg ++ \"</svg>\""
+    , Example
+        "Interactive Button"
+        "Prime sieve with a slider and compute button"
+        "Widgets"
+        "val <- widgetGet \"limit\"\nlet n = maybe 50 read val :: Int\n    sieve []     = []\n    sieve (p:xs) = p : sieve [x | x <- xs, x `mod` p /= 0]\n    ps = sieve [2..n]\ndisplaySlider \"limit\" 2 500 n\ndisplayButton \"Compute primes\" \"go\"\ndisplayHtml $ \"<p><b>\" ++ show (length ps) ++ \" primes \\8804 \" ++ show n ++ \"</b><br>\" ++ unwords (map show ps) ++ \"</p>\""
     , Example
         "Concurrent IO"
         "Async with threads"

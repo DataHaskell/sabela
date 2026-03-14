@@ -9,6 +9,16 @@ import Sabela.Model (CellType)
 
 -- Request bodies.
 
+data WidgetUpdate = WidgetUpdate
+    { wuCellId :: Int
+    , wuName :: Text
+    , wuValue :: Text
+    }
+    deriving (Show, Eq, Generic)
+
+instance ToJSON WidgetUpdate
+instance FromJSON WidgetUpdate
+
 newtype UpdateCell = UpdateCell
     {ucSource :: Text}
     deriving (Show, Eq, Generic)

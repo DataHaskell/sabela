@@ -22,6 +22,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Char
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf, sort)
+import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -105,6 +106,8 @@ type JsonAPI =
             :> Post '[JSON] InfoResult
         -- Examples
         :<|> "api" :> "examples" :> Get '[JSON] [Example]
+        -- Widgets
+        :<|> "api" :> "widget" :> ReqBody '[JSON] WidgetUpdate :> Post '[JSON] NoContent
 
 type FullAPI =
     JsonAPI
@@ -135,6 +138,7 @@ server st rn staticDir =
         :<|> completeH st
         :<|> infoH st
         :<|> examplesH
+        :<|> setWidgetH st rn
     )
         :<|> Tagged (sseApp st)
         :<|> serveDirectoryWebApp staticDir
@@ -153,6 +157,7 @@ initState workDir mGlobalEnvFile globalDeps = do
     gen <- newIORef 0
     debounce <- newMVar Nothing
     absWork <- makeAbsolute workDir
+    widgets <- newMVar Map.empty
     pure
         AppState
             { stNotebook = nb
@@ -168,6 +173,7 @@ initState workDir mGlobalEnvFile globalDeps = do
             , stDebounceRef = debounce
             , stGlobalEnvFile = mGlobalEnvFile
             , stGlobalDeps = globalDeps
+            , stWidgetValues = widgets
             }
 
 -- ── SSE ──────────────────────────────────────────────────────────
@@ -430,6 +436,16 @@ infoH st (InfoRequest name) = liftIO $ do
 
 examplesH :: Handler [Example]
 examplesH = pure builtinExamples
+
+-- ── Widgets ───────────────────────────────────────────────────────
+
+setWidgetH :: AppState -> ReactiveNotebook -> WidgetUpdate -> Handler NoContent
+setWidgetH st rn (WidgetUpdate cid name val) = liftIO $ do
+    modifyMVar_ (stWidgetValues st) $ \wmap ->
+        let cellMap = Map.findWithDefault Map.empty cid wmap
+         in pure (Map.insert cid (Map.insert name val cellMap) wmap)
+    rnRunCell rn cid
+    pure NoContent
 
 -- ── Helpers ──────────────────────────────────────────────────────
 

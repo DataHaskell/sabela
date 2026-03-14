@@ -8,6 +8,7 @@ import Control.Concurrent (MVar)
 import Control.Concurrent.STM (TChan)
 import Data.Aeson (FromJSON, ToJSON (..), object, (.=))
 import Data.IORef (IORef)
+import Data.Map.Strict (Map)
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -28,6 +29,8 @@ data AppState = AppState
     , stDebounceRef :: MVar (Maybe (Int, Set Int))
     , stGlobalEnvFile :: Maybe FilePath
     , stGlobalDeps :: Set Text
+    , stWidgetValues :: MVar (Map Int (Map Text Text))
+    -- ^ cellId → name → value; set by POST /api/widget
     }
 
 data Notebook = Notebook

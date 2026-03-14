@@ -320,6 +320,24 @@
   .cell-output.mime-json { color: var(--green); }
   .cell-output.mime-latex { white-space: normal; }
 
+  /* Collapsed cells */
+  .cell.code.collapsed .cell-editor { display: none; }
+  .cell.code.collapsed .cell-gutter { padding-bottom: 6px; }
+  .cell.prose.collapsed .prose-rendered { display: none; }
+  .cell.prose.collapsed .prose-edit { display: none !important; }
+  .cell-summary {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: var(--fg-dim); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Code cell summary lives inside .cell-gutter */
+  .cell.code .cell-gutter .cell-summary { display: none; padding-left: 8px; }
+  .cell.code.collapsed .cell-gutter .cell-summary { display: inline; }
+  /* Prose cell summary is a direct child */
+  .cell.prose > .cell-summary { display: none; padding: 4px 16px 8px; }
+  .cell.prose.collapsed > .cell-summary { display: block; }
+  .cell-actions button.collapse-btn { min-width: 16px; }
+
   /* Add cell */
   .add-cell-row { display: flex; justify-content: center; gap: 8px; padding: 6px 0; opacity: 0; transition: opacity 0.15s; }
   .cell:hover + .add-cell-row, .add-cell-row:hover, .add-cell-row:first-child { opacity: 1; }
@@ -404,6 +422,7 @@
 <script>
 const editors = {};        // cellId → CodeMirror instance
 const cellErrors = {};     // cellId → [CellError]
+const collapsedCells = new Set(); // cellId → collapsed
 let notebook = null;
 let evtSource = null;
 let activeTab = 'info';
@@ -957,12 +976,22 @@ function render(nb) {
   notebook = nb;
   document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
   const container = document.getElementById('notebook');
+
+  // Capture unsaved editor content before clearing (preserves user edits across add/delete)
+  const draftContent = {};
+  for (const [id, cm] of Object.entries(editors)) {
+    draftContent[parseInt(id)] = cm.getValue();
+  }
+
   container.innerHTML = '';
   Object.keys(editors).forEach(k => delete editors[k]);
 
   container.appendChild(makeAddRow(-1));
   for (const cell of nb.nbCells) {
-    const el = cell.cellType === 'CodeCell' ? renderCodeCell(cell) : renderProseCell(cell);
+    const src = draftContent[cell.cellId] !== undefined ? draftContent[cell.cellId] : cell.cellSource;
+    const el = cell.cellType === 'CodeCell'
+      ? renderCodeCell({...cell, cellSource: src})
+      : renderProseCell(cell);
     container.appendChild(el);
     container.appendChild(makeAddRow(cell.cellId));
   }
@@ -979,14 +1008,24 @@ function renderCodeCell(cell) {
   gutter.innerHTML = '<span class="lang-tag">hs</span>';
   div.appendChild(gutter);
 
+  const collapsed = collapsedCells.has(cell.cellId);
+  if (collapsed) div.classList.add('collapsed');
+
   const actions = document.createElement('div');
   actions.className = 'cell-actions';
   actions.innerHTML = `
+    <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell">${collapsed ? '▸' : '▾'}</button>
     <button class="run-btn" onclick="runCell(${cell.cellId})">▶ run</button>
     <button class="delete-btn" onclick="deleteCell(${cell.cellId})">✕</button>`;
   div.appendChild(actions);
 
+  const summary = document.createElement('div');
+  summary.className = 'cell-summary';
+  summary.textContent = (cell.cellSource || '').split('\n')[0].trim() || '(empty)';
+  gutter.appendChild(summary);
+
   const editorDiv = document.createElement('div');
+  editorDiv.className = 'cell-editor';
   div.appendChild(editorDiv);
 
   const outDiv = renderOutputDiv(cell);
@@ -1039,10 +1078,19 @@ function renderCodeCell(cell) {
 function renderProseCell(cell) {
   const div = document.createElement('div');
   div.className = 'cell prose'; div.dataset.id = cell.cellId;
+  const collapsed = collapsedCells.has(cell.cellId);
+  if (collapsed) div.classList.add('collapsed');
   const actions = document.createElement('div');
   actions.className = 'cell-actions';
-  actions.innerHTML = `<button onclick="editProse(${cell.cellId})">edit</button><button class="delete-btn" onclick="deleteCell(${cell.cellId})">✕</button>`;
+  actions.innerHTML = `
+    <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell">${collapsed ? '▸' : '▾'}</button>
+    <button onclick="editProse(${cell.cellId})">edit</button>
+    <button class="delete-btn" onclick="deleteCell(${cell.cellId})">✕</button>`;
   div.appendChild(actions);
+  const summary = document.createElement('div');
+  summary.className = 'cell-summary';
+  summary.textContent = (cell.cellSource || '').replace(/^#+\s*/, '').split('\n')[0].trim() || '(empty)';
+  div.appendChild(summary);
   const rendered = document.createElement('div');
   rendered.className = 'prose-rendered';
   rendered.innerHTML = marked.parse(cell.cellSource);
@@ -1060,6 +1108,22 @@ function makeAddRow(afterId) {
   row.className = 'add-cell-row';
   row.innerHTML = `<button onclick="addCell(${afterId}, 'CodeCell')">+ code</button><button onclick="addCell(${afterId}, 'ProseCell')">+ markdown</button>`;
   return row;
+}
+
+// ── Cell collapse ────────────────────────────────────────────────
+function toggleCellCollapse(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  const btn = el.querySelector('.collapse-btn');
+  if (collapsedCells.has(cellId)) {
+    collapsedCells.delete(cellId);
+    el.classList.remove('collapsed');
+    if (btn) btn.textContent = '▾';
+  } else {
+    collapsedCells.add(cellId);
+    el.classList.add('collapsed');
+    if (btn) btn.textContent = '▸';
+  }
 }
 
 // ── Actions ──────────────────────────────────────────────────────
@@ -1112,6 +1176,18 @@ document.addEventListener('keydown', (e) => {
     if (!document.querySelector('.CodeMirror-focused')) {
       e.preventDefault(); saveNotebook();
     }
+  }
+});
+
+// ── Widget postMessage bridge ─────────────────────────────────────
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (d && d.type === 'widget') {
+    fetch('/api/widget', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
+    });
   }
 });
 
