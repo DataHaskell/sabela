@@ -10,6 +10,13 @@ module Test.WebDriverHelpers (
     waitForOutput,
     getCellOutput,
     getCellError,
+    countIframesInCell,
+    waitForIframeCount,
+    stampCellIframe,
+    getCellIframeStamp,
+    countOutputBlocks,
+    waitForOutputBlockCount,
+    postWidgetMessage,
 ) where
 
 import Control.Concurrent (forkIO, threadDelay)
@@ -51,6 +58,7 @@ import Test.WebDriver (
 import Test.WebDriver.Commands (JSArg (..), executeJS)
 import Test.WebDriver.Commands.Wait (waitUntil)
 
+import qualified Data.Set as Set
 import Sabela.Handlers (setupReactive)
 import Sabela.Server (initState, mkApp)
 
@@ -59,7 +67,7 @@ The server runs in a forked thread; this function returns once it is ready.
 -}
 withTestServer :: Int -> FilePath -> IO () -> IO ()
 withTestServer port workDir action = do
-    st <- initState workDir
+    st <- initState workDir Nothing Set.empty
     rn <- setupReactive st
     _ <- forkIO $ run port (mkApp st rn "static")
     waitForServer port
@@ -181,3 +189,75 @@ getCellError cid = do
         (el : _) -> do
             txt <- getText el
             if T.null (T.strip txt) then return Nothing else return (Just txt)
+
+-- | Count the number of iframes rendered inside a cell's output area.
+countIframesInCell :: Int -> WD Int
+countIframesInCell cid = do
+    let sel = ByCSS $ ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output iframe"
+    elems <- findElems sel
+    return (length elems)
+
+-- | Wait until a cell has exactly @n@ iframes in its output.
+waitForIframeCount :: Int -> Int -> Int -> WD ()
+waitForIframeCount cid timeoutSecs n =
+    waitUntil (fromIntegral timeoutSecs) $ do
+        count <- countIframesInCell cid
+        if count == n
+            then return ()
+            else
+                liftIO $
+                    ioError $
+                        userError $
+                            "expected " ++ show n ++ " iframe(s), got " ++ show count
+
+{- | Stamp the first iframe in a cell's output with a test marker.
+Returns True if an iframe was found and stamped.
+-}
+stampCellIframe :: Int -> Text -> WD Bool
+stampCellIframe cid stamp = do
+    let sel = ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output iframe" :: Text
+    executeJS
+        [JSArg sel, JSArg stamp]
+        "var el=document.querySelector(arguments[0]); if(!el) return false; el.setAttribute('data-stamp',arguments[1]); return true;"
+
+-- | Read the stamp attribute from the first iframe in a cell's output.
+getCellIframeStamp :: Int -> WD (Maybe Text)
+getCellIframeStamp cid = do
+    let sel = ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output iframe" :: Text
+    executeJS
+        [JSArg sel]
+        "var el=document.querySelector(arguments[0]); return el ? el.getAttribute('data-stamp') : null;"
+
+-- | Count non-error output blocks in a cell's output area.
+countOutputBlocks :: Int -> WD Int
+countOutputBlocks cid = do
+    let sel =
+            ByCSS $
+                ".cell[data-id='"
+                    <> T.pack (show cid)
+                    <> "'] .cell-output > div:not(.output-error-trail)"
+    elems <- findElems sel
+    return (length elems)
+
+-- | Wait until a cell has exactly @n@ output blocks.
+waitForOutputBlockCount :: Int -> Int -> Int -> WD ()
+waitForOutputBlockCount cid timeoutSecs n =
+    waitUntil (fromIntegral timeoutSecs) $ do
+        count <- countOutputBlocks cid
+        if count == n
+            then return ()
+            else
+                liftIO $
+                    ioError $
+                        userError $
+                            "expected " ++ show n ++ " output block(s), got " ++ show count
+
+-- | Post a synthetic widget postMessage to the page (simulates an iframe slider).
+postWidgetMessage :: Int -> Text -> Text -> WD ()
+postWidgetMessage cid name value = do
+    _ <-
+        executeJS
+            [JSArg (T.pack (show cid) :: Text), JSArg name, JSArg value]
+            "window.postMessage({type:'widget',cellId:parseInt(arguments[0]),name:arguments[1],value:arguments[2]},'*');" ::
+            WD Text
+    return ()

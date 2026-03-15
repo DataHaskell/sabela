@@ -24,9 +24,10 @@ import Sabela.Model (
     CellType (..),
     Notebook (nbCells),
     NotebookEvent (..),
+    OutputItem (..),
     SessionStatus (..),
  )
-import Sabela.Output (displayPrelude, parseMimeOutput)
+import Sabela.Output (displayPrelude, parseMimeOutputs)
 import Sabela.Session (SessionConfig (..), closeSession, newSession, runBlock)
 import qualified Sabela.Topo as Topo
 import ScriptHs.Markdown (Segment (..), parseMarkdown)
@@ -79,6 +80,7 @@ data ReactiveNotebook = ReactiveNotebook
     , rnRunCell :: Int -> IO ()
     , rnRunAll :: IO ()
     , rnReset :: IO ()
+    , rnWidgetCell :: Int -> IO ()
     }
 
 setupReactive :: AppState -> IO ReactiveNotebook
@@ -89,6 +91,7 @@ setupReactive st =
             , rnRunCell = handleRunCell st
             , rnRunAll = handleRunAll st
             , rnReset = handleReset st
+            , rnWidgetCell = handleWidgetCell st
             }
 
 handleCellEdit :: AppState -> Int -> Text -> IO ()
@@ -102,6 +105,12 @@ handleCellEdit st cid src = do
     upd c
         | cellId c == cid = c{cellSource = src, cellDirty = True}
         | otherwise = c
+
+handleWidgetCell :: AppState -> Int -> IO ()
+handleWidgetCell st cid = do
+    TIO.hPutStrLn stderr $ "[handler] handleWidgetCell: cell " <> T.pack (show cid)
+    gen <- bumpGeneration st
+    void $ forkIO $ executeAffected st gen cid
 
 handleRunCell :: AppState -> Int -> IO ()
 handleRunCell st cid = do
@@ -128,9 +137,8 @@ handleReset st = do
   where
     clr c =
         c
-            { cellOutput = Nothing
+            { cellOutputs = []
             , cellError = Nothing
-            , cellMime = "text/plain"
             , cellDirty = False
             }
 
@@ -283,9 +291,8 @@ runAndBroadcast st gen cell = do
             st
             ( EvCellResult
                 (rrCellId result)
-                (rrOutput result)
+                (rrOutputs result)
                 (rrError result)
-                (rrMime result)
                 errs
             )
 
@@ -302,7 +309,7 @@ execCell st cell = do
     mSess <- readMVar (stSession st)
     case mSess of
         Nothing ->
-            pure (RunResult (cellId cell) Nothing (Just "No GHCi session") "text/plain", [])
+            pure (RunResult (cellId cell) [] (Just "No GHCi session"), [])
         Just sess -> do
             cellWidgets <-
                 withMVar (stWidgetValues st) $
@@ -314,22 +321,20 @@ execCell st cell = do
                 T.pack $
                     "[handler] Cell " ++ show (cellId cell) ++ ":\n" ++ T.unpack ghci
             (rawOut, rawErr) <- runBlock sess ghci
-            let (mime, body) = parseMimeOutput rawOut
+            let items = parseMimeOutputs rawOut
+                outputs = [OutputItem m b | (m, b) <- items, not (T.null (T.strip b))]
                 errs = parseErrors rawErr
             TIO.hPutStrLn stderr $
                 T.pack $
-                    "[handler] → mime="
-                        ++ T.unpack mime
-                        ++ " out="
-                        ++ show (T.take 80 body)
+                    "[handler] → outputs="
+                        ++ show (length outputs)
                         ++ " errors="
                         ++ show (length errs)
             pure
                 ( RunResult
                     { rrCellId = cellId cell
-                    , rrOutput = if T.null body then Nothing else Just body
+                    , rrOutputs = outputs
                     , rrError = if T.null rawErr then Nothing else Just rawErr
-                    , rrMime = mime
                     }
                 , errs
                 )
@@ -338,9 +343,8 @@ applyResult :: RunResult -> Cell -> Cell
 applyResult r c
     | cellId c == rrCellId r =
         c
-            { cellOutput = rrOutput r
+            { cellOutputs = rrOutputs r
             , cellError = rrError r
-            , cellMime = rrMime r
             , cellDirty = False
             }
     | otherwise = c
@@ -427,7 +431,7 @@ executeAffected st gen editedCid = do
 broadcastCellError :: AppState -> Int -> Text -> IO ()
 broadcastCellError st cid msg = do
     let err = CellError{ceLine = Nothing, ceCol = Nothing, ceMessage = msg}
-    broadcast st (EvCellResult cid Nothing (Just msg) "text/plain" [err])
+    broadcast st (EvCellResult cid [] (Just msg) [err])
 
 broadcastRedefinitionErrors :: AppState -> M.Map Int [Text] -> IO ()
 broadcastRedefinitionErrors st redefMap =

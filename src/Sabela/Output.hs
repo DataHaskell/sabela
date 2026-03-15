@@ -12,15 +12,28 @@ mimeMarkerPrefix = "---MIME:"
 mimeMarkerSuffix :: Text
 mimeMarkerSuffix = "---"
 
-parseMimeOutput :: Text -> (Text, Text)
-parseMimeOutput raw =
-    case T.lines raw of
-        (firstLine : rest)
-            | Just afterPrefix <- T.stripPrefix mimeMarkerPrefix firstLine
-            , Just mimeType <- T.stripSuffix mimeMarkerSuffix afterPrefix
-            , not (T.null mimeType) ->
-                (T.strip mimeType, T.unlines rest)
-        _ -> ("text/plain", raw)
+parseMimeOutputs :: Text -> [(Text, Text)]
+parseMimeOutputs raw =
+    let ls = T.lines raw
+        (finalMime, finalLines, acc) = foldl step ("text/plain", [], []) ls
+        finalBlock = T.unlines (reverse finalLines)
+        result =
+            if T.null (T.strip finalBlock)
+                then acc
+                else (T.strip finalMime, finalBlock) : acc
+     in reverse result
+  where
+    step (curMime, curLines, acc) l =
+        case T.stripPrefix mimeMarkerPrefix l >>= T.stripSuffix mimeMarkerSuffix of
+            Just mime
+                | not (T.null (T.strip mime)) ->
+                    let block = T.unlines (reverse curLines)
+                        acc' =
+                            if T.null (T.strip block)
+                                then acc
+                                else (T.strip curMime, block) : acc
+                     in (mime, [], acc')
+            _ -> (curMime, l : curLines, acc)
 
 displayPrelude :: Text
 displayPrelude =

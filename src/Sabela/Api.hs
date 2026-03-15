@@ -5,7 +5,7 @@ module Sabela.Api where
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Sabela.Model (CellType)
+import Sabela.Model (CellType, OutputItem)
 
 -- Request bodies.
 
@@ -93,9 +93,8 @@ instance FromJSON InfoRequest
 
 data RunResult = RunResult
     { rrCellId :: Int
-    , rrOutput :: Maybe Text
+    , rrOutputs :: [OutputItem]
     , rrError :: Maybe Text
-    , rrMime :: Text
     }
     deriving (Show, Generic)
 

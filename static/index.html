@@ -19,7 +19,7 @@
     --bg-sidebar: #1a1a28;
     --bg-panel: #181825;
     --fg: #cdd6f4;
-    --fg-dim: #6c7086;
+    --fg-dim: #9399b2;
     --fg-bright: #f5f5ff;
     --accent: #89b4fa;
     --accent-dim: #45475a;
@@ -210,7 +210,7 @@
   .cell:hover .cell-actions { opacity: 1; }
   .cell-actions {
     position: absolute; top: 4px; right: 8px;
-    display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; z-index: 10;
+    display: flex; gap: 4px; opacity: 0.25; transition: opacity 0.15s; z-index: 10;
   }
   .cell-actions button {
     font-family: 'IBM Plex Mono', monospace; font-size: 10px;
@@ -277,7 +277,7 @@
   }
   .cell-output.error { color: var(--red); }
   .cell-output.running-indicator { color: var(--yellow); font-style: italic; border-top: 1px solid var(--yellow); }
-  .cell-output.mime-html { white-space: normal; font-family: 'Source Serif 4', Georgia, serif; }
+  .cell-output.mime-html { white-space: normal; font-family: 'Source Serif 4', Georgia, serif; background: #ffffff; border-radius: 4px; }
   .cell-output.mime-html iframe { border: none; width: 100%; min-height: 60px; border-radius: 4px; }
   .cell-output.mime-markdown {
     white-space: pre-wrap;
@@ -357,19 +357,32 @@
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 3px; }
+
+  /* ── Focus-visible for keyboard navigation ─── */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── Trailing error in output ──────────────── */
+  .output-error-trail {
+    color: var(--red);
+    margin-top: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
 
 <div class="toolbar">
-  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle file explorer (Ctrl+B)">☰</button>
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle file explorer (Ctrl+B)" aria-label="Toggle file explorer">☰</button>
   <span class="toolbar-title" id="toolbar-title">λ sabela</span>
-  <button class="primary" onclick="runAll()" title="Ctrl+Shift+Enter">▶ run all</button>
-  <button onclick="saveNotebook()" title="Ctrl+S">💾 save</button>
-  <button onclick="resetNotebook()">reset</button>
+  <button class="primary" onclick="runAll()" title="Ctrl+Shift+Enter" aria-label="Run all cells">▶ run all</button>
+  <button onclick="saveNotebook()" title="Ctrl+S" aria-label="Save notebook">💾 save</button>
+  <button onclick="resetNotebook()" aria-label="Reset notebook">reset</button>
   <span class="sep"></span>
-  <button onclick="togglePanel('examples')" title="Examples">📚</button>
-  <button onclick="togglePanel('info')" title="Haddock / Info (Ctrl+I)">🔍</button>
+  <button onclick="togglePanel('examples')" title="Examples" aria-label="Examples panel">📚</button>
+  <button onclick="togglePanel('info')" title="Haddock / Info (Ctrl+I)" aria-label="Info / Haddock panel">🔍</button>
   <span class="sep"></span>
   <span class="save-indicator" id="save-indicator">saved ✓</span>
   <span class="sse-dot" id="sse-dot"></span>
@@ -381,9 +394,9 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span>files</span>
-      <button onclick="startNewFile()" title="New file">+</button>
-      <button onclick="startNewFolder()" title="New folder">📁</button>
-      <button onclick="refreshFiles()" title="Refresh">↻</button>
+      <button onclick="startNewFile()" title="New file" aria-label="New file">+</button>
+      <button onclick="startNewFolder()" title="New folder" aria-label="New folder">📁</button>
+      <button onclick="refreshFiles()" title="Refresh" aria-label="Refresh file tree">↻</button>
     </div>
     <div id="new-item-input" style="display:none"></div>
     <div class="file-tree" id="file-tree"></div>
@@ -396,20 +409,20 @@
 
   <!-- Right panel: info + examples -->
   <div class="right-panel collapsed" id="right-panel">
-    <div class="panel-tabs">
-      <button class="panel-tab active" data-tab="info" onclick="switchTab('info')">🔍 Info</button>
-      <button class="panel-tab" data-tab="examples" onclick="switchTab('examples')">📚 Examples</button>
+    <div class="panel-tabs" role="tablist" aria-label="Panel tabs">
+      <button class="panel-tab active" role="tab" data-tab="info" onclick="switchTab('info')" aria-selected="true" aria-controls="panel-info">🔍 Info</button>
+      <button class="panel-tab" role="tab" data-tab="examples" onclick="switchTab('examples')" aria-selected="false" aria-controls="panel-examples">📚 Examples</button>
     </div>
-    <div class="panel-content" id="panel-info" style="display:block">
+    <div class="panel-content" id="panel-info" role="tabpanel" aria-labelledby="tab-info" style="display:block">
       <div class="info-search">
-        <input type="text" id="info-input" placeholder="Type name, e.g. map" onkeydown="if(event.key==='Enter')lookupInfo()">
-        <button onclick="lookupInfo()">lookup</button>
+        <input type="text" id="info-input" placeholder="Type name, e.g. map" aria-label="Haskell identifier to look up" onkeydown="if(event.key==='Enter')lookupInfo()">
+        <button onclick="lookupInfo()" aria-label="Look up identifier">lookup</button>
       </div>
       <div class="info-content" id="info-result">
         <div style="color:var(--fg-dim)">Type a Haskell identifier and press Enter, or press <kbd style="background:var(--bg-cell);padding:2px 6px;border-radius:3px">Ctrl+I</kbd> in a code cell to look up the word under cursor.</div>
       </div>
     </div>
-    <div class="panel-content" id="panel-examples" style="display:none"></div>
+    <div class="panel-content" id="panel-examples" role="tabpanel" aria-labelledby="tab-examples" style="display:none"></div>
   </div>
 </div>
 
@@ -470,7 +483,7 @@ function handleSSE(ev) {
       break;
     case 'cellResult':
       setCellRunning(ev.cellId, false);
-      updateCellOutput(ev.cellId, ev.output, ev.error, ev.mime || 'text/plain');
+      updateCellOutput(ev.cellId, ev.outputs || [], ev.error);
       if (ev.errors && ev.errors.length) applyErrorMarkers(ev.cellId, ev.errors);
       else clearErrorMarkers(ev.cellId);
       break;
@@ -615,65 +628,108 @@ function lookupWordUnderCursor() {
 }
 
 // ── MIME-aware output rendering ──────────────────────────────────
-function updateCellOutput(cellId, output, error, mime) {
+function mergeOutputs(outputs) {
+  const merged = [];
+  for (const item of outputs) {
+    const last = merged[merged.length - 1];
+    if (last && last.oiMime === item.oiMime && item.oiMime === 'text/html') {
+      merged[merged.length - 1] = { oiMime: item.oiMime, oiOutput: last.oiOutput + '\n' + item.oiOutput };
+    } else {
+      merged.push({ ...item });
+    }
+  }
+  return merged;
+}
+
+function updateCellOutput(cellId, outputs, error) {
   const el = document.querySelector(`.cell[data-id="${cellId}"]`);
   if (!el) return;
   el.classList.remove('dirty');
-  el.classList.toggle('has-error', !!error && !output);
+  const hasOutput = outputs && outputs.length > 0 && outputs.some(o => o.oiOutput && o.oiOutput.trim());
+  el.classList.toggle('has-error', !!error && !hasOutput);
 
   if (notebook) {
     const cell = notebook.nbCells.find(c => c.cellId === cellId);
-    if (cell) { cell.cellOutput = output; cell.cellError = error; cell.cellMime = mime; cell.cellDirty = false; }
+    if (cell) { cell.cellOutputs = outputs; cell.cellError = error; cell.cellDirty = false; }
   }
 
   let out = el.querySelector('.cell-output');
-  const hasContent = (output && output.trim()) || (error && error.trim());
+  const hasContent = hasOutput || (error && error.trim());
   if (!hasContent) { if (out) out.remove(); return; }
-  if (!out) { out = document.createElement('div'); el.appendChild(out); }
+  if (!out) { out = document.createElement('div'); out.className = 'cell-output'; el.appendChild(out); }
+  out.className = 'cell-output';
 
-  if (error && !output) {
+  if (error && !hasOutput) {
+    out.innerHTML = '';
     out.className = 'cell-output error';
     out.textContent = error;
     return;
   }
-  renderMimeOutput(out, output || '', mime);
+
+  const items = mergeOutputs(outputs).filter(i => i.oiOutput && i.oiOutput.trim());
+  const existingBlocks = Array.from(out.querySelectorAll(':scope > div:not(.output-error-trail)'));
+  for (let i = 0; i < items.length; i++) {
+    let block = existingBlocks[i];
+    if (!block) { block = document.createElement('div'); out.appendChild(block); }
+    renderMimeOutput(block, items[i].oiOutput, items[i].oiMime);
+  }
+  for (let i = items.length; i < existingBlocks.length; i++) {
+    existingBlocks[i].remove();
+  }
+  let errDiv = out.querySelector('.output-error-trail');
   if (error && error.trim()) {
-    const errDiv = document.createElement('div');
-    errDiv.style.cssText = 'color: var(--red); margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; white-space: pre-wrap;';
+    if (!errDiv) { errDiv = document.createElement('div'); errDiv.className = 'output-error-trail'; out.appendChild(errDiv); }
     errDiv.textContent = error;
-    out.appendChild(errDiv);
+  } else {
+    if (errDiv) errDiv.remove();
   }
 }
 
 function renderMimeOutput(container, content, mime) {
-  container.innerHTML = '';
   if (mime === 'text/html') {
     container.className = 'cell-output mime-html';
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-    container.appendChild(iframe);
+    let iframe = container.querySelector('iframe');
+    const isNew = !iframe;
+    if (isNew) {
+      iframe = document.createElement('iframe');
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+      container.appendChild(iframe);
+    }
     requestAnimationFrame(() => {
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
       if (!doc) { console.error('Cannot access iframe document'); return; }
-      doc.open(); doc.write(content); doc.close();
-      const resize = () => { iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px'; };
-      iframe.onload = resize; setTimeout(resize, 100); setTimeout(resize, 500);
+      const iframeBase = '<style>body{background:#ffffff;color:#1e1e2e;font-family:\'IBM Plex Mono\',monospace;font-size:13px;margin:0;padding:4px 8px}input,select{accent-color:#89b4fa;font-family:inherit;font-size:13px;cursor:pointer}button{accent-color:#89b4fa;font-family:inherit;font-size:13px;cursor:pointer}</style>';
+      if (isNew) iframe.style.height = '0px';
+      doc.open();
+      iframe.onload = () => {
+        // Collapse to 1px before reading scrollHeight so the viewport does not
+        // inflate doc.body.scrollHeight — all three assignments are synchronous
+        // inside this onload callback so the browser never paints the 1px state.
+        iframe.style.height = '1px';
+        iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
+      };
+      doc.write(iframeBase + content); doc.close();
     });
   } else if (mime === 'text/markdown') {
+    container.innerHTML = '';
     container.className = 'cell-output mime-markdown';
     container.innerHTML = marked.parse(content);
   } else if (mime === 'image/svg+xml') {
+    container.innerHTML = '';
     container.className = 'cell-output mime-svg';
     container.innerHTML = content;
   } else if (mime.startsWith('image/') && mime.includes('base64')) {
+    container.innerHTML = '';
     container.className = 'cell-output mime-image';
     const mimeClean = mime.replace(';base64', '');
     container.innerHTML = `<img src="data:${mimeClean};base64,${content.trim()}" />`;
   } else if (mime === 'application/json') {
+    container.innerHTML = '';
     container.className = 'cell-output mime-json';
     try { container.textContent = JSON.stringify(JSON.parse(content), null, 2); }
     catch { container.textContent = content; }
   } else if (mime === 'text/latex') {
+    container.innerHTML = '';
     container.className = 'cell-output mime-latex';
     try {
       katex.render(content, container, { displayMode: true, throwOnError: false });
@@ -681,20 +737,29 @@ function renderMimeOutput(container, content, mime) {
       container.textContent = content;
     }
   } else {
+    container.innerHTML = '';
     container.className = 'cell-output';
     container.textContent = content;
   }
 }
 
 function renderOutputDiv(cell) {
-  const hasContent = (cell.cellOutput && cell.cellOutput.trim()) || (cell.cellError && cell.cellError.trim());
+  const outputs = cell.cellOutputs || [];
+  const hasOutput = outputs.length > 0 && outputs.some(o => o.oiOutput && o.oiOutput.trim());
+  const hasContent = hasOutput || (cell.cellError && cell.cellError.trim());
   if (!hasContent) return null;
   const out = document.createElement('div');
-  if (cell.cellError && !cell.cellOutput) { out.className = 'cell-output error'; out.textContent = cell.cellError; return out; }
-  renderMimeOutput(out, cell.cellOutput || '', cell.cellMime || 'text/plain');
+  out.className = 'cell-output';
+  if (cell.cellError && !hasOutput) { out.className = 'cell-output error'; out.textContent = cell.cellError; return out; }
+  for (const item of mergeOutputs(outputs)) {
+    if (!item.oiOutput || !item.oiOutput.trim()) continue;
+    const block = document.createElement('div');
+    out.appendChild(block);
+    renderMimeOutput(block, item.oiOutput, item.oiMime);
+  }
   if (cell.cellError && cell.cellError.trim()) {
     const errDiv = document.createElement('div');
-    errDiv.style.cssText = 'color: var(--red); margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px;';
+    errDiv.className = 'output-error-trail';
     errDiv.textContent = cell.cellError;
     out.appendChild(errDiv);
   }
@@ -884,7 +949,11 @@ function togglePanel(tab) {
 
 function switchTab(tab) {
   activeTab = tab;
-  document.querySelectorAll('.panel-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.panel-tab').forEach(t => {
+    const isActive = t.dataset.tab === tab;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
   document.getElementById('panel-info').style.display = tab === 'info' ? 'block' : 'none';
   document.getElementById('panel-examples').style.display = tab === 'examples' ? 'block' : 'none';
 }
@@ -1014,9 +1083,9 @@ function renderCodeCell(cell) {
   const actions = document.createElement('div');
   actions.className = 'cell-actions';
   actions.innerHTML = `
-    <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell">${collapsed ? '▸' : '▾'}</button>
-    <button class="run-btn" onclick="runCell(${cell.cellId})">▶ run</button>
-    <button class="delete-btn" onclick="deleteCell(${cell.cellId})">✕</button>`;
+    <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell" aria-label="Toggle cell visibility" aria-expanded="${collapsed ? 'false' : 'true'}">${collapsed ? '▸' : '▾'}</button>
+    <button class="run-btn" onclick="runCell(${cell.cellId})" aria-label="Run cell">▶ run</button>
+    <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell">✕</button>`;
   div.appendChild(actions);
 
   const summary = document.createElement('div');
@@ -1083,9 +1152,9 @@ function renderProseCell(cell) {
   const actions = document.createElement('div');
   actions.className = 'cell-actions';
   actions.innerHTML = `
-    <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell">${collapsed ? '▸' : '▾'}</button>
-    <button onclick="editProse(${cell.cellId})">edit</button>
-    <button class="delete-btn" onclick="deleteCell(${cell.cellId})">✕</button>`;
+    <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell" aria-label="Toggle cell visibility" aria-expanded="${collapsed ? 'false' : 'true'}">${collapsed ? '▸' : '▾'}</button>
+    <button onclick="editProse(${cell.cellId})" aria-label="Edit prose cell">edit</button>
+    <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell">✕</button>`;
   div.appendChild(actions);
   const summary = document.createElement('div');
   summary.className = 'cell-summary';
@@ -1098,6 +1167,7 @@ function renderProseCell(cell) {
   const textarea = document.createElement('textarea');
   textarea.className = 'prose-edit'; textarea.value = cell.cellSource;
   textarea.onblur = () => finishEditProse(cell.cellId, textarea);
+  textarea.oninput = () => { textarea.style.height = 'auto'; textarea.style.height = Math.max(80, textarea.scrollHeight) + 'px'; };
   textarea.onkeydown = (e) => { if (e.key === 'Escape') finishEditProse(cell.cellId, textarea); };
   div.appendChild(textarea);
   return div;
@@ -1118,11 +1188,11 @@ function toggleCellCollapse(cellId) {
   if (collapsedCells.has(cellId)) {
     collapsedCells.delete(cellId);
     el.classList.remove('collapsed');
-    if (btn) btn.textContent = '▾';
+    if (btn) { btn.textContent = '▾'; btn.setAttribute('aria-expanded', 'true'); }
   } else {
     collapsedCells.add(cellId);
     el.classList.add('collapsed');
-    if (btn) btn.textContent = '▸';
+    if (btn) { btn.textContent = '▸'; btn.setAttribute('aria-expanded', 'false'); }
   }
 }
 
@@ -1156,7 +1226,9 @@ function editProse(cellId) {
   const el = document.querySelector(`.cell[data-id="${cellId}"]`);
   el.classList.add('editing');
   const ta = el.querySelector('.prose-edit');
-  ta.focus(); ta.style.height = Math.max(80, ta.scrollHeight) + 'px';
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(80, ta.scrollHeight) + 'px';
+  ta.focus();
 }
 
 async function finishEditProse(cellId, textarea) {
@@ -1180,14 +1252,20 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Widget postMessage bridge ─────────────────────────────────────
+const _widgetDebounceTimers = new Map();
 window.addEventListener('message', (e) => {
   const d = e.data;
   if (d && d.type === 'widget') {
-    fetch('/api/widget', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
-    });
+    const key = d.cellId + ':' + d.name;
+    clearTimeout(_widgetDebounceTimers.get(key));
+    _widgetDebounceTimers.set(key, setTimeout(() => {
+      _widgetDebounceTimers.delete(key);
+      fetch('/api/widget', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
+      });
+    }, 150));
   }
 });
 

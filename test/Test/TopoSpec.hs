@@ -17,9 +17,8 @@ mkCell cid src =
         { cellId = cid
         , cellType = CodeCell
         , cellSource = src
-        , cellOutput = Nothing
+        , cellOutputs = []
         , cellError = Nothing
-        , cellMime = "text/plain"
         , cellDirty = False
         }
 

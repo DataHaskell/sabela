@@ -49,7 +49,7 @@ import System.FilePath (
 import Sabela.Api
 import Sabela.Handlers
 import Sabela.Model
-import Sabela.Output (builtinExamples)
+import Sabela.Output (builtinExamples, parseMimeOutputs)
 import Sabela.Session (queryComplete, queryDoc, queryInfo, queryType)
 import ScriptHs.Markdown (
     CodeOutput (..),
@@ -215,21 +215,17 @@ loadNotebookH st rn (LoadRequest path) = liftIO $ do
     rnRunAll rn
     pure nb
   where
-    addMimeToOutput m o = "---MIME:" <> mimeIndicator m <> "---" <> "\n" <> o
-    go (acc, n) (Prose t) = (Cell n ProseCell t Nothing Nothing "text/plain" False : acc, n + 1)
-    go (acc, n) (CodeBlock _ code Nothing) = (Cell n CodeCell code Nothing Nothing "text/plain" False : acc, n + 1)
+    go (acc, n) (Prose t) = (Cell n ProseCell t [] Nothing False : acc, n + 1)
+    go (acc, n) (CodeBlock _ code Nothing) = (Cell n CodeCell code [] Nothing False : acc, n + 1)
     go (acc, n) (CodeBlock _ code (Just (CodeOutput m o))) =
-        ( Cell
-            n
-            CodeCell
-            code
-            (Just (addMimeToOutput m o))
-            Nothing
-            (mimeIndicator m)
-            False
-            : acc
-        , n + 1
-        )
+        let items = case m of
+                MimePlain ->
+                    [ OutputItem mt b
+                    | (mt, b) <- parseMimeOutputs o
+                    , not (T.null (T.strip b))
+                    ]
+                _ -> [OutputItem (mimeIndicator m) o]
+         in (Cell n CodeCell code items Nothing False : acc, n + 1)
 
 mimeIndicator :: MimeType -> Text
 mimeIndicator m = case m of
@@ -270,13 +266,23 @@ saveNotebookH st (SaveRequest mPath) = liftIO $ do
   where
     cellToSegment c = case cellType c of
         ProseCell -> Prose (cellSource c)
-        CodeCell -> case cellOutput c of
-            Nothing -> CodeBlock "haskell" (cellSource c) Nothing
-            Just o ->
+        CodeCell -> case filter (not . T.null . T.strip . oiOutput) (cellOutputs c) of
+            [] -> CodeBlock "haskell" (cellSource c) Nothing
+            [OutputItem mime o] ->
                 CodeBlock
                     "haskell"
                     (cellSource c)
-                    (Just (CodeOutput (textToMime (cellMime c)) o))
+                    (Just (CodeOutput (textToMime mime) o))
+            items ->
+                let serialized =
+                        T.concat
+                            [ "---MIME:" <> mime <> "---\n" <> o
+                            | OutputItem mime o <- items
+                            ]
+                 in CodeBlock
+                        "haskell"
+                        (cellSource c)
+                        (Just (CodeOutput MimePlain serialized))
 
 updateCellH :: AppState -> ReactiveNotebook -> Int -> UpdateCell -> Handler Cell
 updateCellH st rn cid (UpdateCell src) = liftIO $ do
@@ -284,13 +290,13 @@ updateCellH st rn cid (UpdateCell src) = liftIO $ do
     nb <- readMVar (stNotebook st)
     case filter (\c -> cellId c == cid) (nbCells nb) of
         (c : _) -> pure c
-        [] -> pure (Cell cid CodeCell src Nothing Nothing "text/plain" True)
+        [] -> pure (Cell cid CodeCell src [] Nothing True)
 
 insertCellH :: AppState -> InsertCell -> Handler Cell
 insertCellH st (InsertCell afterId typ src) = liftIO $ do
     nid <- readIORef (stNextId st)
     writeIORef (stNextId st) (nid + 1)
-    let cell = Cell nid typ src Nothing Nothing "text/plain" True
+    let cell = Cell nid typ src [] Nothing True
     modifyMVar_ (stNotebook st) $ \nb ->
         pure nb{nbCells = ins afterId cell (nbCells nb)}
     pure cell
@@ -310,7 +316,7 @@ deleteCellH st cid = liftIO $
 runCellH :: ReactiveNotebook -> Int -> Handler RunResult
 runCellH rn cid = liftIO $ do
     rnRunCell rn cid
-    pure (RunResult cid Nothing Nothing "text/plain")
+    pure (RunResult cid [] Nothing)
 
 runAllH :: ReactiveNotebook -> Handler RunAllResult
 runAllH rn = liftIO $ rnRunAll rn >> pure (RunAllResult [])
@@ -444,7 +450,7 @@ setWidgetH st rn (WidgetUpdate cid name val) = liftIO $ do
     modifyMVar_ (stWidgetValues st) $ \wmap ->
         let cellMap = Map.findWithDefault Map.empty cid wmap
          in pure (Map.insert cid (Map.insert name val cellMap) wmap)
-    rnRunCell rn cid
+    rnWidgetCell rn cid
     pure NoContent
 
 -- ── Helpers ──────────────────────────────────────────────────────

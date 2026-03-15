@@ -7,22 +7,22 @@ We're gonna go over some common plots. We'll be using the granite library to cre
 
 import Granite.Svg
 import qualified Data.Text as T
-
-
 ```
-
 
 For bar charts we specify the bar values and the lengths. 
 
 ```haskell
 :set -XOverloadedStrings
 
+displayLatex "x ^ 2 + 5"
+
 displaySvg $ T.unpack (bars [("Q1",12),("Q2",18),("Q3",9),("Q4",15)] defPlot {plotTitle="Sales"})
-
-
 ```
 
-> <!-- sabela:mime image/svg+xml -->
+> <!-- sabela:mime text/plain -->
+> ---MIME:text/latex---
+> x ^ 2 + 5
+> ---MIME:image/svg+xml---
 > <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 396" width="790" height="396" font-family="system-ui, -apple-system, sans-serif">
 > <rect width="100%" height="100%" fill="white"/>
 > <text x="370" y="26" text-anchor="middle" fill="#222" font-size="14">Sales</text>
@@ -55,7 +55,6 @@ displaySvg $ T.unpack (bars [("Q1",12),("Q2",18),("Q3",9),("Q4",15)] defPlot {pl
 > <text x="701" y="109" text-anchor="start" fill="#555" font-size="11">Q4</text>
 > </svg>
 
-
 For stacked bar charts the API is similar but we have tuples of category and count.
 
 ```haskell
@@ -65,10 +64,11 @@ displaySvg $ T.unpack (stackedBars [ ("Q1", [("Hardware", 120), ("Software", 200
                                 , ("Q4", [("Hardware", 145), ("Software", 260), ("Services", 125)])
                                 ] defPlot {plotTitle="Quarterly Revenue Breakdown"})
 
-
+displayLatex "x ^ 2 + 5"
 ```
 
-> <!-- sabela:mime image/svg+xml -->
+> <!-- sabela:mime text/plain -->
+> ---MIME:image/svg+xml---
 > <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 396" width="790" height="396" font-family="system-ui, -apple-system, sans-serif">
 > <rect width="100%" height="100%" fill="white"/>
 > <text x="370" y="26" text-anchor="middle" fill="#222" font-size="14">Quarterly Revenue Breakdown</text>
@@ -106,14 +106,14 @@ displaySvg $ T.unpack (stackedBars [ ("Q1", [("Hardware", 120), ("Software", 200
 > <rect x="685" y="79" width="12" height="12" fill="#1abc9c"/>
 > <text x="701" y="89" text-anchor="start" fill="#555" font-size="11">Services</text>
 > </svg>
-
+> 
+> ---MIME:text/latex---
+> x ^ 2 + 5
 
 No one likes pie charts but we have them anyway.
 
 ```haskell
 displaySvg $ T.unpack (pie [("Alpha",0.35),("Beta",0.25),("Gamma",0.20),("Delta",0.20)] defPlot{widthChars=46,heightChars=18,legendPos=LegendRight,plotTitle="Share"})
-
-
 ```
 
 > <!-- sabela:mime image/svg+xml -->
@@ -143,8 +143,6 @@ displaySvg $ T.unpack $ boxPlot [ ("Class A", [78, 82, 85, 88, 90, 92, 85, 87, 8
                             , ("Class C", [88, 92, 95, 90, 93, 89, 91, 94, 96, 87, 90, 92])
                             , ("Class D", [65, 70, 92, 68, 75, 80, 73, 71, 69, 74, 77, 76])
                             ] defPlot {plotTitle="Test Score Distribution by Class"}
-
-
 ```
 
 > <!-- sabela:mime image/svg+xml -->
@@ -208,8 +206,6 @@ displaySvg $ T.unpack $ lineGraph [ ("Product A", [(1, 100), (2, 120), (3, 115),
                               , ("Product B", [(1, 80), (2, 85), (3, 95), (4, 92), (5, 110), (6, 125)])
                               , ("Product C", [(1, 60), (2, 62), (3, 70), (4, 85), (5, 82), (6, 90)])
                               ] defPlot {plotTitle="Monthly Sales Trends"}
-
-
 ```
 
 > <!-- sabela:mime image/svg+xml -->

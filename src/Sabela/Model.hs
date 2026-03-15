@@ -15,6 +15,15 @@ import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Sabela.Session (Session)
 
+data OutputItem = OutputItem
+    { oiMime :: Text
+    , oiOutput :: Text
+    }
+    deriving (Show, Eq, Generic)
+
+instance ToJSON OutputItem
+instance FromJSON OutputItem
+
 data AppState = AppState
     { stNotebook :: MVar Notebook
     , stSession :: MVar (Maybe Session)
@@ -46,9 +55,8 @@ data Cell = Cell
     { cellId :: Int
     , cellType :: CellType
     , cellSource :: Text
-    , cellOutput :: Maybe Text
+    , cellOutputs :: [OutputItem]
     , cellError :: Maybe Text
-    , cellMime :: Text
     , cellDirty :: Bool
     }
     deriving (Show, Eq, Generic)
@@ -63,7 +71,7 @@ instance FromJSON CellType
 
 data NotebookEvent
     = EvCellUpdating Int
-    | EvCellResult Int (Maybe Text) (Maybe Text) Text [CellError]
+    | EvCellResult Int [OutputItem] (Maybe Text) [CellError]
     | EvExecutionDone
     | EvSessionStatus SessionStatus
     deriving (Show, Eq)
@@ -87,13 +95,12 @@ instance Show SessionStatus where
 instance ToJSON NotebookEvent where
     toJSON (EvCellUpdating cid) =
         object ["type" .= ("cellUpdating" :: Text), "cellId" .= cid]
-    toJSON (EvCellResult cid out err mime errs) =
+    toJSON (EvCellResult cid outputs err errs) =
         object
             [ "type" .= ("cellResult" :: Text)
             , "cellId" .= cid
-            , "output" .= out
+            , "outputs" .= outputs
             , "error" .= err
-            , "mime" .= mime
             , "errors" .= errs
             ]
     toJSON EvExecutionDone =
