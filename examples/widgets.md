@@ -10,38 +10,47 @@ The typical pattern is:
 
 ```haskell
 mValue <- widgetGet "myWidget"
+
 let v = maybe defaultValue read mValue
+
 -- render the control with the current value so it stays in sync
 displaySlider "myWidget" lo hi v
+
 -- render output that depends on v
 displayHtml $ "<p>You chose: " ++ show v ++ "</p>"
 ```
-
 Passing `v` back to `displaySlider` keeps the slider handle at the right position after each re-render.
 
 ## widgetGet
 
-```
-widgetGet :: String -> IO (Maybe String)
+
+```haskell
+-- widgetGet :: String -> IO (Maybe String)
 ```
 
+
 Returns `Nothing` until the user has interacted with the named widget. Always provide a sensible default with `maybe`:
+
 
 ```haskell
 mX <- widgetGet "x"
 let x = maybe 0 read mX :: Int
 ```
 
+
 Widget values are stored per-cell, per-name. Two cells can use the same name without interfering.
 
 ## displaySlider
 
-```
-displaySlider :: String -> Int -> Int -> Int -> IO ()
---              name     min   max   current
+
+```haskell
+-- displaySlider :: String -> Int -> Int -> Int -> IO ()
+--                   name     min   max   current
 ```
 
+
 Renders a range slider. The cell re-runs on every change while the user drags (debounced to avoid flooding the server).
+
 
 ```haskell
 mTemp <- widgetGet "celsius"
@@ -57,14 +66,25 @@ displayHtml $ unlines
   ]
 ```
 
+> <!-- sabela:mime text/plain -->
+> ---MIME:text/html---
+> <input type='range' min='-40' max='120' value='-27' oninput="parent.postMessage({type:'widget',cellId:22,name:'celsius',value:this.value},'*')">
+> ---MIME:text/html---
+> <p style='font-size:1.4em;margin:4px 0'><b>-27 &#8451;</b></p>
+> <p style='color:#888;margin:4px 0'>-17 &#8457; &nbsp; 246 K</p>
+
+
 ## displaySelect
 
-```
-displaySelect :: String -> [String] -> String -> IO ()
---              name     options     current
+
+```haskell
+-- displaySelect :: String -> [String] -> String -> IO ()
+--                  name     options     current
 ```
 
+
 Renders a dropdown. The cell re-runs when the selection changes.
+
 
 ```haskell
 mShape <- widgetGet "shape"
@@ -79,14 +99,24 @@ displaySelect "shape" ["Circle", "Square", "Triangle"] shape
 displayHtml $ "<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>" ++ svg ++ "</svg>"
 ```
 
+> <!-- sabela:mime text/plain -->
+> ---MIME:text/html---
+> <select onchange="parent.postMessage({type:'widget',cellId:26,name:'shape',value:this.value},'*')"><option>Circle</option><option selected>Square</option><option>Triangle</option></select>
+> ---MIME:text/html---
+> <svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='10' width='100' height='100' rx='4' fill='#e74c3c'/></svg>
+
+
 ## displayButton
 
-```
-displayButton :: String -> String -> IO ()
---              label    name
+
+```haskell
+-- displayButton :: String -> String -> IO ()
+--                  label    name
 ```
 
+
 Renders a button. The cell re-runs each time the button is clicked. The value stored under `name` is always `"clicked"` — you can use `widgetGet` to detect whether the button has been clicked at least once.
+
 
 ```haskell
 mClicked <- widgetGet "go"
@@ -100,15 +130,23 @@ let result = case mClicked of
 displayHtml $ "<p>" ++ result ++ "</p>"
 ```
 
+> <!-- sabela:mime text/plain -->
+> ---MIME:text/html---
+> <button onclick="parent.postMessage({type:'widget',cellId:30,name:'go',value:'clicked'},'*')">Roll dice</button>
+> ---MIME:text/html---
+> <p>You rolled: 42</p>
+
+
 Buttons are most useful alongside a slider: the slider sets a parameter, the button triggers the (potentially slow) computation explicitly.
 
 ## Combining widgets
 
 Multiple widgets can appear in the same cell. Each has its own name and value.
 
+
 ```haskell
 mLimit <- widgetGet "limit"
-mClicked <- widgetGet "go"
+mClicked' <- widgetGet "go"
 
 let n = maybe 50 read mLimit :: Int
     sieve []     = []
@@ -116,6 +154,7 @@ let n = maybe 50 read mLimit :: Int
     ps = sieve [2..n]
 
 displaySlider "limit" 2 500 n
+
 displayButton "Compute primes" "go"
 
 displayHtml $ unlines
@@ -124,15 +163,28 @@ displayHtml $ unlines
   ]
 ```
 
+> <!-- sabela:mime text/plain -->
+> ---MIME:text/html---
+> <input type='range' min='2' max='500' value='410' oninput="parent.postMessage({type:'widget',cellId:32,name:'limit',value:this.value},'*')">
+> ---MIME:text/html---
+> <button onclick="parent.postMessage({type:'widget',cellId:32,name:'go',value:'clicked'},'*')">Compute primes</button>
+> ---MIME:text/html---
+> <p><b>80 primes &le; 410</b></p>
+> <p style='color:#888;word-break:break-all'>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97 101 103 107 109 113 127 131 137 139 149 151 157 163 167 173 179 181 191 193 197 199 211 223 227 229 233 239 241 251 257 263 269 271 277 281 283 293 307 311 313 317 331 337 347 349 353 359 367 373 379 383 389 397 401 409</p>
+
+
 ## Custom HTML widgets
 
 `displaySlider`, `displaySelect`, and `displayButton` are convenience wrappers around plain `displayHtml`. Any HTML element can act as a widget by posting a message to the parent frame:
 
-```javascript
-parent.postMessage({ type: 'widget', cellId: <id>, name: '<name>', value: <value> }, '*')
+
+```haskell
+-- parent.postMessage({ type: 'widget', cellId: <id>, name: '<name>', value: <value> }, '*')
 ```
 
+
 The cell ID is available in Haskell via `readIORef _sabelaCellIdRef`. Here is an example of a colour picker built from a plain `<input type="color">`:
+
 
 ```haskell
 cid <- readIORef _sabelaCellIdRef
@@ -146,6 +198,12 @@ displayHtml $ unlines
   , "<p>Chosen: <span style='color:" ++ colour ++ "'><b>" ++ colour ++ "</b></span></p>"
   ]
 ```
+
+> <!-- sabela:mime text/html -->
+> <input type='color' value='#21404f'
+>   oninput="parent.postMessage({type:'widget',cellId:36,name:'colour',value:this.value},'*')">
+> <p>Chosen: <span style='color:#21404f'><b>#21404f</b></span></p>
+
 
 The same technique works for `<input type="range">` (what `displaySlider` uses internally), checkboxes, text inputs, or any other HTML form control.
 
