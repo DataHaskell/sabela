@@ -1267,7 +1267,7 @@ let _activeTextInput = null;
 window.addEventListener('message', (e) => {
   const d = e.data;
   if (d && d.type === 'widget') {
-    if (d.sel !== undefined) _activeTextInput = {cellId: d.cellId, sel: d.sel};
+    if (d.sel !== undefined) _activeTextInput = {cellId: String(d.cellId), sel: d.sel};
     const key = d.cellId + ':' + d.name;
     clearTimeout(_widgetDebounceTimers.get(key));
     _widgetDebounceTimers.set(key, setTimeout(() => {
@@ -1277,7 +1277,7 @@ window.addEventListener('message', (e) => {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
       });
-    }, 150));
+    }, 300));
   }
 });
 
