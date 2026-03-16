@@ -671,6 +671,7 @@ function updateCellOutput(cellId, outputs, error) {
   for (let i = 0; i < items.length; i++) {
     let block = existingBlocks[i];
     if (!block) { block = document.createElement('div'); out.appendChild(block); }
+    block.dataset.cellId = cellId;
     renderMimeOutput(block, items[i].oiOutput, items[i].oiMime);
   }
   for (let i = items.length; i < existingBlocks.length; i++) {
@@ -709,6 +710,15 @@ function renderMimeOutput(container, content, mime) {
         iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
       };
       doc.write(iframeBase + content); doc.close();
+      const ati = _activeTextInput;
+      if (ati && ati.cellId === container.dataset.cellId) {
+        _activeTextInput = null;
+        setTimeout(() => {
+          const d = iframe.contentDocument || iframe.contentWindow?.document;
+          const inp = d && d.querySelector('input[type=text]');
+          if (inp) { inp.focus(); inp.setSelectionRange(ati.sel, ati.sel); }
+        }, 0);
+      }
     });
   } else if (mime === 'text/markdown') {
     container.innerHTML = '';
@@ -1253,9 +1263,11 @@ document.addEventListener('keydown', (e) => {
 
 // ── Widget postMessage bridge ─────────────────────────────────────
 const _widgetDebounceTimers = new Map();
+let _activeTextInput = null;
 window.addEventListener('message', (e) => {
   const d = e.data;
   if (d && d.type === 'widget') {
+    if (d.sel !== undefined) _activeTextInput = {cellId: d.cellId, sel: d.sel};
     const key = d.cellId + ':' + d.name;
     clearTimeout(_widgetDebounceTimers.get(key));
     _widgetDebounceTimers.set(key, setTimeout(() => {
