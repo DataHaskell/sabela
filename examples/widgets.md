@@ -9,7 +9,15 @@ Every widget has a **name** (a `String` key). When the user moves a slider or pi
 The typical pattern is:
 
 
+
 ```haskell
+-- cabal: build-depends: dataframe, text
+:set -XOverloadedStrings
+import qualified DataFrame as D
+import qualified Data.Text as T
+
+import DataFrame ((|>))
+
 sliderName = "myWidget"
 mValue <- widgetGet sliderName
 
@@ -24,17 +32,35 @@ displaySlider sliderName lo hi v
 
 -- render output that depends on v
 displayHtml $ "<p>You chose: " ++ show v ++ "</p>"
+
+
+D.empty |> D.insert "x" [1..100]
+        |> D.insert "y" [101..200]
+        |> D.take v
+        |> D.toMarkdownTable
+        |> T.unpack
+        |> displayMarkdown
 ```
 
 > <!-- sabela:mime text/plain -->
 > ---MIME:text/html---
-> <input type='range' min='1' max='20' value='11' oninput="parent.postMessage({type:'widget',cellId:25,name:'myWidget',value:this.value},'*')">
+> <input type='range' min='1' max='20' value='5' oninput="parent.postMessage({type:'widget',cellId:14,name:'myWidget',value:this.value},'*')">
 > ---MIME:text/html---
-> <p>You chose: 11</p>
+> <p>You chose: 5</p>
+> ---MIME:text/markdown---
+> | x<br>Integer | y<br>Integer |
+> | -------------|------------- |
+> | 1            | 101          |
+> | 2            | 102          |
+> | 3            | 103          |
+> | 4            | 104          |
+> | 5            | 105          |
+
 
 Passing `v` back to `displaySlider` keeps the slider handle at the right position after each re-render.
 
 ## widgetGet
+
 
 
 
@@ -44,7 +70,9 @@ Passing `v` back to `displaySlider` keeps the slider handle at the right positio
 
 
 
+
 Returns `Nothing` until the user has interacted with the named widget. Always provide a sensible default with `maybe`:
+
 
 
 
@@ -55,9 +83,11 @@ let x = maybe 0 read mX :: Int
 
 
 
+
 Widget values are stored per-cell, per-name. Two cells can use the same name without interfering.
 
 ## displaySlider
+
 
 
 
@@ -68,7 +98,9 @@ Widget values are stored per-cell, per-name. Two cells can use the same name wit
 
 
 
+
 Renders a range slider. The cell re-runs on every change while the user drags (debounced to avoid flooding the server).
+
 
 
 
@@ -88,14 +120,16 @@ displayHtml $ unlines
 
 > <!-- sabela:mime text/plain -->
 > ---MIME:text/html---
-> <input type='range' min='-40' max='120' value='20' oninput="parent.postMessage({type:'widget',cellId:9,name:'celsius',value:this.value},'*')">
+> <input type='range' min='-40' max='120' value='-18' oninput="parent.postMessage({type:'widget',cellId:22,name:'celsius',value:this.value},'*')">
 > ---MIME:text/html---
-> <p style='font-size:1.4em;margin:4px 0'><b>20 &#8451;</b></p>
-> <p style='color:#888;margin:4px 0'>68 &#8457; &nbsp; 293 K</p>
+> <p style='font-size:1.4em;margin:4px 0'><b>-18 &#8451;</b></p>
+> <p style='color:#888;margin:4px 0'>-1 &#8457; &nbsp; 255 K</p>
+
 
 
 
 ## displaySelect
+
 
 
 
@@ -106,7 +140,9 @@ displayHtml $ unlines
 
 
 
+
 Renders a dropdown. The cell re-runs when the selection changes.
+
 
 
 
@@ -125,13 +161,15 @@ displayHtml $ "<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>
 
 > <!-- sabela:mime text/plain -->
 > ---MIME:text/html---
-> <select onchange="parent.postMessage({type:'widget',cellId:13,name:'shape',value:this.value},'*')"><option selected>Circle</option><option>Square</option><option>Triangle</option></select>
+> <select onchange="parent.postMessage({type:'widget',cellId:26,name:'shape',value:this.value},'*')"><option selected>Circle</option><option>Square</option><option>Triangle</option></select>
 > ---MIME:text/html---
 > <svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'><circle cx='60' cy='60' r='50' fill='#3498db'/></svg>
 
 
 
+
 ## displayButton
+
 
 
 
@@ -142,7 +180,9 @@ displayHtml $ "<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>
 
 
 
+
 Renders a button. The cell re-runs each time the button is clicked. The value stored under `name` is always `"clicked"` — you can use `widgetGet` to detect whether the button has been clicked at least once.
+
 
 
 
@@ -160,9 +200,10 @@ displayHtml $ "<p>" ++ result ++ "</p>"
 
 > <!-- sabela:mime text/plain -->
 > ---MIME:text/html---
-> <button onclick="parent.postMessage({type:'widget',cellId:17,name:'go',value:'clicked'},'*')">Roll dice</button>
+> <button onclick="parent.postMessage({type:'widget',cellId:30,name:'go',value:'clicked'},'*')">Roll dice</button>
 > ---MIME:text/html---
 > <p>You rolled: 42</p>
+
 
 
 
@@ -171,6 +212,7 @@ Buttons are most useful alongside a slider: the slider sets a parameter, the but
 ## Combining widgets
 
 Multiple widgets can appear in the same cell. Each has its own name and value.
+
 
 
 
@@ -195,12 +237,13 @@ displayHtml $ unlines
 
 > <!-- sabela:mime text/plain -->
 > ---MIME:text/html---
-> <input type='range' min='2' max='500' value='50' oninput="parent.postMessage({type:'widget',cellId:19,name:'limit',value:this.value},'*')">
+> <input type='range' min='2' max='500' value='77' oninput="parent.postMessage({type:'widget',cellId:32,name:'limit',value:this.value},'*')">
 > ---MIME:text/html---
-> <button onclick="parent.postMessage({type:'widget',cellId:19,name:'go',value:'clicked'},'*')">Compute primes</button>
+> <button onclick="parent.postMessage({type:'widget',cellId:32,name:'go',value:'clicked'},'*')">Compute primes</button>
 > ---MIME:text/html---
-> <p><b>15 primes &le; 50</b></p>
-> <p style='color:#888;word-break:break-all'>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47</p>
+> <p><b>21 primes &le; 77</b></p>
+> <p style='color:#888;word-break:break-all'>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73</p>
+
 
 
 
@@ -210,13 +253,16 @@ displayHtml $ unlines
 
 
 
+
 ```haskell
 -- parent.postMessage({ type: 'widget', cellId: <id>, name: '<name>', value: <value> }, '*')
 ```
 
 
 
+
 The cell ID is available in Haskell via `readIORef _sabelaCellIdRef`. Here is an example of a colour picker built from a plain `<input type="color">`:
+
 
 
 
@@ -234,9 +280,10 @@ displayHtml $ unlines
 ```
 
 > <!-- sabela:mime text/html -->
-> <input type='color' value='#5b819a'
->   oninput="parent.postMessage({type:'widget',cellId:23,name:'colour',value:this.value},'*')">
-> <p>Chosen: <span style='color:#5b819a'><b>#5b819a</b></span></p>
+> <input type='color' value='#db3376'
+>   oninput="parent.postMessage({type:'widget',cellId:36,name:'colour',value:this.value},'*')">
+> <p>Chosen: <span style='color:#db3376'><b>#db3376</b></span></p>
+
 
 
 
