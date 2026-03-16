@@ -53,7 +53,7 @@ df |> D.summarize
 We can also get summaries of categorical columns.
 
 ```haskell
-df |> D.frequencies "ocean_proximity"
+df |> D.frequencies (F.col @Text "ocean_proximity")
    |> D.toMarkdownTable
    |> T.unpack
    |> displayMarkdown
