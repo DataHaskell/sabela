@@ -8,7 +8,7 @@ We'll be re-doing the example from chapter 2 of Hands-on machine learning with S
 The data is already in our root directory. We'll use the readCsv function to read the data into a dataframe.
 
 ```haskell
--- cabal: build-depends: dataframe-0.5.0.0, text
+-- cabal: build-depends: dataframe, text
 -- cabal: default-extensions: TemplateHaskell, TypeApplications, OverloadedStrings
 
 import qualified DataFrame as D
@@ -53,6 +53,8 @@ df |> D.summarize
 We can also get summaries of categorical columns.
 
 ```haskell
+import qualified DataFrame.Functions as F
+
 df |> D.frequencies (F.col @Text "ocean_proximity")
    |> D.toMarkdownTable
    |> T.unpack
