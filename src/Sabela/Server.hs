@@ -143,8 +143,8 @@ server st rn staticDir =
         :<|> Tagged (sseApp st)
         :<|> serveDirectoryWebApp staticDir
 
-initState :: FilePath -> Maybe FilePath -> Set Text -> IO AppState
-initState workDir mGlobalEnvFile globalDeps = do
+initState :: FilePath -> [FilePath] -> Set Text -> IO AppState
+initState workDir globalEnvFiles globalDeps = do
     nb <- newMVar (Notebook "Untitled.md" [])
     sess <- newMVar Nothing
     tmpBase <- getCanonicalTemporaryDirectory
@@ -171,7 +171,7 @@ initState workDir mGlobalEnvFile globalDeps = do
             , stBroadcast = bcast
             , stGeneration = gen
             , stDebounceRef = debounce
-            , stGlobalEnvFile = mGlobalEnvFile
+            , stGlobalEnvFiles = globalEnvFiles
             , stGlobalDeps = globalDeps
             , stWidgetValues = widgets
             }

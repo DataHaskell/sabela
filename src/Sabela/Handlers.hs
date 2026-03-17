@@ -9,12 +9,14 @@ import Control.Concurrent.STM (atomically, writeTChan)
 import Control.Exception (IOException, SomeException, catch, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
+import Data.List (sort)
 import qualified Data.Map.Strict as M
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Paths_sabela (getDataDir)
 import Sabela.Api (RunResult (..))
 import Sabela.Errors (parseErrors)
 import Sabela.Model (
@@ -27,7 +29,7 @@ import Sabela.Model (
     OutputItem (..),
     SessionStatus (..),
  )
-import Sabela.Output (displayPrelude, parseMimeOutputs)
+import Sabela.Output (parseMimeOutputs)
 import Sabela.Session (SessionConfig (..), closeSession, newSession, runBlock)
 import qualified Sabela.Topo as Topo
 import ScriptHs.Markdown (Segment (..), parseMarkdown)
@@ -68,6 +70,24 @@ initGlobalEnv globalMdPath = do
                 ( if envExists && not (null deps) then Just envPath else Nothing
                 , S.fromList deps
                 )
+
+initPreinstalledPackages :: FilePath -> [String] -> IO (Maybe FilePath, Set Text)
+initPreinstalledPackages _ [] = pure (Nothing, S.empty)
+initPreinstalledPackages sabelaDir pkgs = do
+    createDirectoryIfMissing True sabelaDir
+    let envPath = sabelaDir </> "preinstalled.ghc.environment"
+        hashPath = sabelaDir </> "preinstalled.hash"
+        hashKey = unlines (sort pkgs)
+        pkgsT = map T.pack pkgs
+    stored <-
+        (Just <$> readFile hashPath)
+            `catch` (\(_ :: IOException) -> pure Nothing)
+    when (Just hashKey /= stored) $ do
+        TIO.hPutStrLn stderr "[sabela] Installing preinstalled packages..."
+        resolveDeps envPath pkgsT
+        writeFile hashPath hashKey
+    envExists <- doesFileExist envPath
+    pure (if envExists then Just envPath else Nothing, S.fromList pkgsT)
 
 collectMetadataFromContent :: Text -> CabalMeta
 collectMetadataFromContent content =
@@ -115,8 +135,6 @@ handleWidgetCell st cid = do
 handleRunCell :: AppState -> Int -> IO ()
 handleRunCell st cid = do
     TIO.hPutStrLn stderr $ "[handler] handleRunCell: cell " <> T.pack (show cid)
-    -- Some commands remove prelude.
-    loadSabelaPrelude st
     gen <- bumpGeneration st
     void $ forkIO $ executeSingleCell st gen cid
 
@@ -255,7 +273,7 @@ installAndRestart st gen metas = do
 startSessionWith :: AppState -> [Text] -> [Text] -> IO ()
 startSessionWith st deps exts = do
     perNotebookEnv <- readIORef (stEnvFile st)
-    let envFiles = [p | Just p <- [stGlobalEnvFile st, perNotebookEnv]]
+    let envFiles = stGlobalEnvFiles st ++ maybe [] (: []) perNotebookEnv
         cfg =
             SessionConfig
                 { scDeps = deps
@@ -265,7 +283,8 @@ startSessionWith st deps exts = do
                 }
     TIO.hPutStrLn stderr "[handler] Injecting display prelude"
     sess <- newSession cfg
-    _ <- runBlock sess displayPrelude
+    prelude <- makeDisplayPrelude
+    _ <- runBlock sess prelude
     modifyMVar_ (stSession st) (\_ -> pure (Just sess))
     broadcast st (EvSessionStatus SReady)
 
@@ -273,8 +292,31 @@ loadSabelaPrelude :: AppState -> IO ()
 loadSabelaPrelude st = do
     mSess <- readMVar (stSession st)
     case mSess of
-        Just sess -> void (runBlock sess displayPrelude)
+        Just sess -> do
+            prelude <- makeDisplayPrelude
+            void (runBlock sess prelude)
         Nothing -> pure ()
+
+-- | Build the two-line GHCi script that loads and imports 'Sabela.Display'.
+makeDisplayPrelude :: IO Text
+makeDisplayPrelude = do
+    displayDir <- findDisplayDir
+    let displayFile = T.pack (displayDir </> "Sabela" </> "Display.hs")
+    pure $ ":load " <> displayFile <> "\nimport Sabela.Display\n"
+
+{- | Find the directory containing @Sabela/Display.hs@.
+Tries the Cabal data directory (works after @cabal install@),
+then @./display@ relative to the working directory (works with @cabal run@).
+-}
+findDisplayDir :: IO FilePath
+findDisplayDir = do
+    dataDir <- getDataDir
+    let candidates = [dataDir </> "display", "display"]
+        probe [] = return (dataDir </> "display")
+        probe (d : ds) = do
+            ok <- doesFileExist (d </> "Sabela" </> "Display.hs")
+            if ok then return d else probe ds
+    probe candidates
 
 isCurrentGen :: AppState -> Int -> IO Bool
 isCurrentGen st gen = (== gen) <$> readIORef (stGeneration st)
@@ -282,6 +324,7 @@ isCurrentGen st gen = (== gen) <$> readIORef (stGeneration st)
 runAndBroadcast :: AppState -> Int -> Cell -> IO ()
 runAndBroadcast st gen cell = do
     broadcast st (EvCellUpdating (cellId cell))
+    loadSabelaPrelude st
     (result, errs) <- execCell st cell
     still <- isCurrentGen st gen
     when still $ do

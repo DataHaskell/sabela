@@ -61,4 +61,9 @@ spec = describe "parseMimeOutputs" $ do
                     <> "---MIME:application/json---\n{}\n"
         let result = parseMimeOutputs raw
         map fst result
-            `shouldBe` ["text/html", "text/markdown", "image/svg+xml", "text/latex", "application/json"]
+            `shouldBe` [ "text/html"
+                       , "text/markdown"
+                       , "image/svg+xml"
+                       , "text/latex"
+                       , "application/json"
+                       ]

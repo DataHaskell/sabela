@@ -67,7 +67,7 @@ The server runs in a forked thread; this function returns once it is ready.
 -}
 withTestServer :: Int -> FilePath -> IO () -> IO ()
 withTestServer port workDir action = do
-    st <- initState workDir Nothing Set.empty
+    st <- initState workDir [] Set.empty
     rn <- setupReactive st
     _ <- forkIO $ run port (mkApp st rn "static")
     waitForServer port

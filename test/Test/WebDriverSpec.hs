@@ -157,7 +157,10 @@ spec = do
                             -- markdown block should also be present
                             waitUntil 15 $ do
                                 elems <- findElems (ByCSS ".cell[data-id='1'] .mime-markdown")
-                                Control.Monad.when (null elems) $ liftIO $ ioError $ userError "no markdown block found"
+                                Control.Monad.when (null elems) $
+                                    liftIO $
+                                        ioError $
+                                            userError "no markdown block found"
 
                     it "re-running an HTML cell reuses the existing iframe" $
                         withSession $ do

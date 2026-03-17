@@ -28,6 +28,5 @@ COPY --from=build /opt/build/static/ /opt/sabela/static/
 COPY ./examples /opt/sabela/examples/
 
 RUN cabal update
-RUN cabal install --lib dataframe text granite
 
 CMD ["/opt/bin/sabela", "3000", "static", "examples"]

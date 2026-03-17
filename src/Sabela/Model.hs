@@ -36,7 +36,7 @@ data AppState = AppState
     , stBroadcast :: TChan NotebookEvent
     , stGeneration :: IORef Int
     , stDebounceRef :: MVar (Maybe (Int, Set Int))
-    , stGlobalEnvFile :: Maybe FilePath
+    , stGlobalEnvFiles :: [FilePath]
     , stGlobalDeps :: Set Text
     , stWidgetValues :: MVar (Map Int (Map Text Text))
     -- ^ cellId → name → value; set by POST /api/widget

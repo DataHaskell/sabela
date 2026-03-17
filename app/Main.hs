@@ -1,9 +1,11 @@
 module Main (main) where
 
 import Control.Monad (unless)
+import Data.Maybe (catMaybes)
+import qualified Data.Set as S
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.Wai.Handler.Warp (run)
-import Sabela.Handlers (initGlobalEnv, setupReactive)
+import Sabela.Handlers (initGlobalEnv, initPreinstalledPackages, setupReactive)
 import Sabela.Server (initState, mkApp)
 import System.Directory (
     doesDirectoryExist,
@@ -11,9 +13,9 @@ import System.Directory (
     getCurrentDirectory,
     getHomeDirectory,
  )
-import System.Environment (getArgs, getProgName)
+import System.Environment (getArgs)
 import System.Exit (exitFailure)
-import System.FilePath ((</>))
+import System.FilePath (takeDirectory, (</>))
 
 main :: IO ()
 main = do
@@ -22,22 +24,14 @@ main = do
     let defaultGlobal = homeDir </> ".sabela" </> "global.md"
     args <- getArgs
     case args of
-        [] -> start 3000 "static" "." defaultGlobal
-        [port] -> start (read port) "static" "." defaultGlobal
-        [port, s] -> start (read port) s "." defaultGlobal
-        [port, s, w] -> start (read port) s w defaultGlobal
-        [port, s, w, g] -> start (read port) s w g
-        _ -> do
-            prog <- getProgName
-            putStrLn $ "Usage: " ++ prog ++ " [port] [static-dir] [work-dir] [global-file]"
-            putStrLn "  default port: 3000"
-            putStrLn "  default static-dir: static"
-            putStrLn "  default work-dir: . (current directory)"
-            putStrLn "  default global-file: ~/.sabela/global.md"
-            exitFailure
+        [] -> start 3000 "static" "." defaultGlobal []
+        [port] -> start (read port) "static" "." defaultGlobal []
+        [port, s] -> start (read port) s "." defaultGlobal []
+        [port, s, w] -> start (read port) s w defaultGlobal []
+        (port : s : w : g : pkgs) -> start (read port) s w g pkgs
 
-start :: Int -> FilePath -> FilePath -> FilePath -> IO ()
-start port staticDir workDir globalFile = do
+start :: Int -> FilePath -> FilePath -> FilePath -> [String] -> IO ()
+start port staticDir workDir globalFile pkgs = do
     cwd <- getCurrentDirectory
     putStrLn $ "Working directory: " ++ cwd
     putStrLn $ "File explorer root: " ++ workDir
@@ -58,7 +52,13 @@ start port staticDir workDir globalFile = do
             putStrLn $ "Serving static files from: " ++ staticDir
 
             (mGlobalEnvFile, globalDeps) <- initGlobalEnv globalFile
-            st <- initState workDir mGlobalEnvFile globalDeps
+            (mPreinstalledEnvFile, preinstalledDeps) <-
+                initPreinstalledPackages
+                    (takeDirectory globalFile)
+                    pkgs
+            let allEnvFiles = catMaybes [mGlobalEnvFile, mPreinstalledEnvFile]
+                allGlobalDeps = globalDeps `S.union` preinstalledDeps
+            st <- initState workDir allEnvFiles allGlobalDeps
             rn <- setupReactive st
 
             putStrLn $
