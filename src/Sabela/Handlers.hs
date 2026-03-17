@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Sabela.Handlers where
 
@@ -8,6 +9,8 @@ import Control.Concurrent.MVar (withMVar)
 import Control.Concurrent.STM (atomically, writeTChan)
 import Control.Exception (IOException, SomeException, catch, try)
 import Control.Monad (forM_, unless, void, when)
+import qualified Data.ByteString as BS
+import Data.FileEmbed (embedFile)
 import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
 import Data.List (sort)
 import qualified Data.Map.Strict as M
@@ -16,7 +19,6 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Paths_sabela (getDataDir)
 import Sabela.Api (RunResult (..))
 import Sabela.Errors (parseErrors)
 import Sabela.Model (
@@ -41,7 +43,11 @@ import ScriptHs.Parser (
  )
 import ScriptHs.Render (toGhciScript)
 import ScriptHs.Run (resolveDeps)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (
+    createDirectoryIfMissing,
+    doesFileExist,
+    getTemporaryDirectory,
+ )
 import System.FilePath (takeDirectory, (</>))
 import System.IO (stderr)
 
@@ -71,7 +77,8 @@ initGlobalEnv globalMdPath = do
                 , S.fromList deps
                 )
 
-initPreinstalledPackages :: FilePath -> [String] -> IO (Maybe FilePath, Set Text)
+initPreinstalledPackages ::
+    FilePath -> [String] -> IO (Maybe FilePath, Set Text)
 initPreinstalledPackages _ [] = pure (Nothing, S.empty)
 initPreinstalledPackages sabelaDir pkgs = do
     createDirectoryIfMissing True sabelaDir
@@ -273,7 +280,7 @@ installAndRestart st gen metas = do
 startSessionWith :: AppState -> [Text] -> [Text] -> IO ()
 startSessionWith st deps exts = do
     perNotebookEnv <- readIORef (stEnvFile st)
-    let envFiles = stGlobalEnvFiles st ++ maybe [] (: []) perNotebookEnv
+    let envFiles = stGlobalEnvFiles st ++ maybeToList perNotebookEnv
         cfg =
             SessionConfig
                 { scDeps = deps
@@ -297,6 +304,9 @@ loadSabelaPrelude st = do
             void (runBlock sess prelude)
         Nothing -> pure ()
 
+displayHsContent :: BS.ByteString
+displayHsContent = $(embedFile "display/Sabela/Display.hs")
+
 -- | Build the two-line GHCi script that loads and imports 'Sabela.Display'.
 makeDisplayPrelude :: IO Text
 makeDisplayPrelude = do
@@ -305,18 +315,19 @@ makeDisplayPrelude = do
     pure $ ":load " <> displayFile <> "\nimport Sabela.Display\n"
 
 {- | Find the directory containing @Sabela/Display.hs@.
-Tries the Cabal data directory (works after @cabal install@),
-then @./display@ relative to the working directory (works with @cabal run@).
+Writes the embedded @Display.hs@ to a temp directory so this always
+succeeds regardless of the working directory.
 -}
 findDisplayDir :: IO FilePath
 findDisplayDir = do
-    dataDir <- getDataDir
-    let candidates = [dataDir </> "display", "display"]
-        probe [] = return (dataDir </> "display")
-        probe (d : ds) = do
-            ok <- doesFileExist (d </> "Sabela" </> "Display.hs")
-            if ok then return d else probe ds
-    probe candidates
+    tmpDir <- getTemporaryDirectory
+    let displayDir = tmpDir </> "sabela-display"
+        displayFile = displayDir </> "Sabela" </> "Display.hs"
+    exists <- doesFileExist displayFile
+    unless exists $ do
+        createDirectoryIfMissing True (displayDir </> "Sabela")
+        BS.writeFile displayFile displayHsContent
+    return displayDir
 
 isCurrentGen :: AppState -> Int -> IO Bool
 isCurrentGen st gen = (== gen) <$> readIORef (stGeneration st)

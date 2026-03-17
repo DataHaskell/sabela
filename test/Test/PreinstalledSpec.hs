@@ -49,7 +49,6 @@ spec = describe "preinstalled packages" $ do
                             EvSessionStatus SReady -> pure () -- done
                             _ -> poll (remaining - 1)
         poll (300 :: Int) -- 300 × 100 ms = 30 s
-
         events <- readIORef eventsRef
 
         let statuses = [s | EvSessionStatus s <- events]

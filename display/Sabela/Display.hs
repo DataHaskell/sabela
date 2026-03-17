@@ -1,29 +1,29 @@
-module Sabela.Display
-    ( Behavior (..)
-    , display
-    , sample
-    , render
-    , displayMime_
-    , displayHtml
-    , displayMarkdown
-    , displaySvg
-    , displayLatex
-    , displayJson
-    , displayImage
-    , widgetGet
-    , widgetRead
-    , displaySlider
-    , displayButton
-    , displaySelect
-    , slider
-    , dropdown
-    , checkbox
-    , textInput
-    , button
-    , _sabelaWidgetRef
-    , _sabelaCellIdRef
-    , module Data.IORef
-    ) where
+module Sabela.Display (
+    Behavior (..),
+    display,
+    sample,
+    render,
+    displayMime_,
+    displayHtml,
+    displayMarkdown,
+    displaySvg,
+    displayLatex,
+    displayJson,
+    displayImage,
+    widgetGet,
+    widgetRead,
+    displaySlider,
+    displayButton,
+    displaySelect,
+    slider,
+    dropdown,
+    checkbox,
+    textInput,
+    button,
+    _sabelaWidgetRef,
+    _sabelaCellIdRef,
+    module Data.IORef,
+) where
 
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
@@ -111,7 +111,9 @@ displaySelect name opts val =
                 [ "<select onchange=\"parent.postMessage({type:'widget',cellId:" ++ cid
                 , ",name:'" ++ name ++ "',value:this.value},'*')\">"
                 , concatMap
-                    (\o -> "<option" ++ (if o == val then " selected" else "") ++ ">" ++ o ++ "</option>")
+                    ( \o ->
+                        "<option" ++ (if o == val then " selected" else "") ++ ">" ++ o ++ "</option>"
+                    )
                     opts
                 , "</select>"
                 ]
@@ -160,7 +162,9 @@ dropdown name opts def =
                             ++ name
                             ++ "',value:this.value},'*')\">"
                             ++ concatMap
-                                (\o -> "<option" ++ (if o == val then " selected" else "") ++ ">" ++ o ++ "</option>")
+                                ( \o ->
+                                    "<option" ++ (if o == val then " selected" else "") ++ ">" ++ o ++ "</option>"
+                                )
                                 opts
                             ++ "</select>"
         }
