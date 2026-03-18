@@ -11,9 +11,9 @@ if [[ "${1:-}" == "--fix" ]]; then
   FIX_MODE=true
 fi
 
-DIRS=("src" "app" "tests" "benchmark" "examples" "dataframe-hasktorch" "dataframe-persistent")
+DIRS=("src" "app" "test")
 
-echo "Running HLint on dataframe project..."
+echo "Running HLint on sabela project..."
 echo "Dirs: ${DIRS[*]}"
 
 is_haskell_file() {
