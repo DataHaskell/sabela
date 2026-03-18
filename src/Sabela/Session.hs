@@ -15,6 +15,8 @@ import Control.Concurrent.STM (
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.Maybe (fromMaybe)
+import System.Environment (lookupEnv)
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -71,8 +73,9 @@ newSession cfg = do
                 ++ envFlags
                 ++ extFlags
                 ++ optFlags
-        cp =
-            (proc "ghc" args)
+    ghcExe <- fromMaybe "ghc" <$> lookupEnv "GHC"
+    let cp =
+            (proc ghcExe args)
                 { std_in = CreatePipe
                 , std_out = CreatePipe
                 , std_err = CreatePipe

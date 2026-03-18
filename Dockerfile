@@ -17,6 +17,7 @@ FROM haskell:9.8.4-slim-bullseye
 RUN apt-get update && apt-get install -y \
   ca-certificates \
   libgmp10 \
+  tini \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/sabela
@@ -24,9 +25,15 @@ WORKDIR /opt/sabela
 COPY --from=build /opt/bin/sabela /opt/bin/sabela
 
 COPY --from=build /opt/build/static/ /opt/sabela/static/
+COPY --from=build /opt/build/display/ /opt/sabela/display/
 
 COPY ./examples /opt/sabela/examples/
 
 RUN cabal update
 
-CMD ["/opt/bin/sabela", "3000", "static", "examples"]
+RUN cabal install dataframe
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+CMD ["/opt/bin/sabela", "3000", "static", "examples", \
+     "/root/.sabela/global.md", "dataframe", "granite", "text"]

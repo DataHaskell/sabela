@@ -102,6 +102,7 @@ jobs:
           echo "ARG_TESTS=--enable-tests" >> "$GITHUB_ENV"
           echo "ARG_BENCH=--enable-benchmarks" >> "$GITHUB_ENV"
           echo "HEADHACKAGE=false" >> "$GITHUB_ENV"
+          echo "GHC=$HC" >> "$GITHUB_ENV"
           echo "ARG_COMPILER=--$HCKIND --with-compiler=$HC" >> "$GITHUB_ENV"
         env:
           HCKIND: ${{ matrix.compilerKind }}
