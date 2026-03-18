@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Sabela.Handlers where
 
@@ -9,11 +8,10 @@ import Control.Concurrent.MVar (withMVar)
 import Control.Concurrent.STM (atomically, writeTChan)
 import Control.Exception (IOException, SomeException, catch, try)
 import Control.Monad (forM_, unless, void, when)
-import qualified Data.ByteString as BS
-import Data.FileEmbed (embedFile)
 import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
 import Data.List (sort)
 import qualified Data.Map.Strict as M
+import Data.Maybe (maybeToList)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -31,7 +29,7 @@ import Sabela.Model (
     OutputItem (..),
     SessionStatus (..),
  )
-import Sabela.Output (parseMimeOutputs)
+import Sabela.Output (displayPrelude, parseMimeOutputs)
 import Sabela.Session (SessionConfig (..), closeSession, newSession, runBlock)
 import qualified Sabela.Topo as Topo
 import ScriptHs.Markdown (Segment (..), parseMarkdown)
@@ -46,7 +44,6 @@ import ScriptHs.Run (resolveDeps)
 import System.Directory (
     createDirectoryIfMissing,
     doesFileExist,
-    getTemporaryDirectory,
  )
 import System.FilePath (takeDirectory, (</>))
 import System.IO (stderr)
@@ -290,8 +287,7 @@ startSessionWith st deps exts = do
                 }
     TIO.hPutStrLn stderr "[handler] Injecting display prelude"
     sess <- newSession cfg
-    prelude <- makeDisplayPrelude
-    _ <- runBlock sess prelude
+    _ <- runBlock sess displayPrelude
     modifyMVar_ (stSession st) (\_ -> pure (Just sess))
     broadcast st (EvSessionStatus SReady)
 
@@ -299,35 +295,8 @@ loadSabelaPrelude :: AppState -> IO ()
 loadSabelaPrelude st = do
     mSess <- readMVar (stSession st)
     case mSess of
-        Just sess -> do
-            prelude <- makeDisplayPrelude
-            void (runBlock sess prelude)
+        Just sess -> void (runBlock sess displayPrelude)
         Nothing -> pure ()
-
-displayHsContent :: BS.ByteString
-displayHsContent = $(embedFile "display/Sabela/Display.hs")
-
--- | Build the two-line GHCi script that loads and imports 'Sabela.Display'.
-makeDisplayPrelude :: IO Text
-makeDisplayPrelude = do
-    displayDir <- findDisplayDir
-    let displayFile = T.pack (displayDir </> "Sabela" </> "Display.hs")
-    pure $ ":load " <> displayFile <> "\nimport Sabela.Display\n"
-
-{- | Find the directory containing @Sabela/Display.hs@.
-Writes the embedded @Display.hs@ to a temp directory so this always
-succeeds regardless of the working directory.
--}
-findDisplayDir :: IO FilePath
-findDisplayDir = do
-    tmpDir <- getTemporaryDirectory
-    let displayDir = tmpDir </> "sabela-display"
-        displayFile = displayDir </> "Sabela" </> "Display.hs"
-    exists <- doesFileExist displayFile
-    unless exists $ do
-        createDirectoryIfMissing True (displayDir </> "Sabela")
-        BS.writeFile displayFile displayHsContent
-    return displayDir
 
 isCurrentGen :: AppState -> Int -> IO Bool
 isCurrentGen st gen = (== gen) <$> readIORef (stGeneration st)
