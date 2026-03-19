@@ -15,8 +15,10 @@ import Control.Concurrent.STM (
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
+import System.Environment (lookupEnv)
 import System.IO (
     BufferMode (LineBuffering),
     Handle,
@@ -60,7 +62,11 @@ data SessionConfig = SessionConfig
 
 newSession :: SessionConfig -> IO Session
 newSession cfg = do
-    let args = ["repl", "exe:main", "--project-dir=" ++ scProjectDir cfg, "-v0"]
+    mGhc <- lookupEnv "GHC"
+    let compilerArgs = ["--with-compiler=" ++ ghc | ghc <- maybeToList mGhc]
+        args =
+            ["repl", "exe:main", "--project-dir=" ++ scProjectDir cfg, "-v0"]
+                ++ compilerArgs
         cp =
             (proc "cabal" args)
                 { std_in = CreatePipe
