@@ -370,9 +370,45 @@
     padding-top: 8px;
     white-space: pre-wrap;
   }
+
+  /* ── Build log modal ────────────────────────── */
+  .build-modal {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 700px; max-width: 90vw; max-height: 280px;
+    background: var(--bg-panel); border: 1px solid var(--border);
+    border-bottom: none; border-radius: 8px 8px 0 0;
+    display: flex; flex-direction: column; z-index: 200;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+  }
+  .build-modal-header {
+    display: flex; align-items: center; padding: 6px 12px;
+    border-bottom: 1px solid var(--border); color: var(--fg-dim); gap: 8px; flex-shrink: 0;
+  }
+  .build-modal-title { flex: 1; font-weight: 500; }
+  .build-modal-title.ok  { color: var(--green); }
+  .build-modal-title.err { color: var(--red); }
+  .build-modal-close {
+    background: none; border: none; color: var(--fg-dim); cursor: pointer;
+    font-size: 18px; line-height: 1; padding: 0 2px;
+  }
+  .build-modal-close:hover { color: var(--fg); }
+  .build-modal-body {
+    flex: 1; overflow-y: auto; padding: 8px 12px;
+    white-space: pre-wrap; line-height: 1.5; color: var(--fg-dim);
+  }
+  .build-log-error { color: var(--red); }
 </style>
 </head>
 <body>
+
+<div id="build-modal" class="build-modal" style="display:none" role="dialog" aria-label="Build log">
+  <div class="build-modal-header">
+    <span class="build-modal-title" id="build-modal-title">Building…</span>
+    <button class="build-modal-close" onclick="closeBuildModal()" aria-label="Close build log">×</button>
+  </div>
+  <div class="build-modal-body" id="build-log"></div>
+</div>
 
 <div class="toolbar">
   <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle file explorer (Ctrl+B)" aria-label="Toggle file explorer">☰</button>
@@ -476,6 +512,28 @@ function connectSSE() {
   };
 }
 
+function openBuildModal(title) {
+  const modal = document.getElementById('build-modal');
+  const titleEl = document.getElementById('build-modal-title');
+  titleEl.textContent = title;
+  titleEl.className = 'build-modal-title';
+  document.getElementById('build-log').innerHTML = '';
+  modal.style.display = 'flex';
+}
+function closeBuildModal() {
+  document.getElementById('build-modal').style.display = 'none';
+}
+function appendBuildLog(line) {
+  const log = document.getElementById('build-log');
+  const modal = document.getElementById('build-modal');
+  if (modal.style.display === 'none') modal.style.display = 'flex';
+  const el = document.createElement('div');
+  if (/error:/i.test(line)) el.className = 'build-log-error';
+  el.textContent = line;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
 function handleSSE(ev) {
   switch (ev.type) {
     case 'cellUpdating':
@@ -493,6 +551,20 @@ function handleSSE(ev) {
       break;
     case 'sessionStatus':
       setStatus(ev.message, 'running');
+      if (ev.message === 'starting session' || ev.message.startsWith('installing:')) {
+        openBuildModal('Building…');
+      } else if (ev.message === 'ready') {
+        const t = document.getElementById('build-modal-title');
+        t.textContent = 'Build succeeded'; t.className = 'build-modal-title ok';
+        setTimeout(closeBuildModal, 2000);
+        setStatus('Done', '');
+      } else if (ev.message === 'reset') {
+        const t = document.getElementById('build-modal-title');
+        t.textContent = 'Build failed'; t.className = 'build-modal-title err';
+      }
+      break;
+    case 'installLog':
+      appendBuildLog(ev.line);
       break;
   }
 }

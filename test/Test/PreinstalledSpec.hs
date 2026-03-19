@@ -22,7 +22,7 @@ spec :: Spec
 spec = describe "preinstalled packages" $ do
     it "installAndRestart skips SUpdateDeps for packages already in stGlobalDeps" $ do
         -- Build state with "containers" declared as a global (preinstalled) dep
-        st <- initState "." [] (Set.fromList ["containers"])
+        st <- initState "." (Set.fromList ["containers"])
         chan <- atomically $ dupTChan (stBroadcast st)
 
         -- gen=0 matches the freshly-initialised stGeneration IORef

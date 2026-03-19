@@ -29,14 +29,12 @@ data AppState = AppState
     , stSession :: MVar (Maybe Session)
     , stTmpDir :: FilePath
     , stWorkDir :: FilePath
-    , stEnvFile :: IORef (Maybe FilePath)
     , stNextId :: IORef Int
     , stInstalledDeps :: IORef (Set Text)
     , stInstalledExts :: IORef (Set Text)
     , stBroadcast :: TChan NotebookEvent
     , stGeneration :: IORef Int
     , stDebounceRef :: MVar (Maybe (Int, Set Int))
-    , stGlobalEnvFiles :: [FilePath]
     , stGlobalDeps :: Set Text
     , stWidgetValues :: MVar (Map Int (Map Text Text))
     -- ^ cellId → name → value; set by POST /api/widget
@@ -74,6 +72,7 @@ data NotebookEvent
     | EvCellResult Int [OutputItem] (Maybe Text) [CellError]
     | EvExecutionDone
     | EvSessionStatus SessionStatus
+    | EvInstallLog Text
     deriving (Show, Eq)
 
 data SessionStatus
@@ -107,6 +106,8 @@ instance ToJSON NotebookEvent where
         object ["type" .= ("executionDone" :: Text)]
     toJSON (EvSessionStatus msg) =
         object ["type" .= ("sessionStatus" :: Text), "message" .= show msg]
+    toJSON (EvInstallLog line) =
+        object ["type" .= ("installLog" :: Text), "line" .= line]
 
 data CellError = CellError
     { ceLine :: Maybe Int

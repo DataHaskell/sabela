@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Sabela.Server (
@@ -17,9 +18,11 @@ import Control.Concurrent.STM (
 import Control.Monad (forM, forever)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (encode)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char
+import Data.FileEmbed (embedFile, makeRelativeToProject)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf, sort)
 import qualified Data.Map.Strict as Map
@@ -29,7 +32,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Network.HTTP.Types (hContentType, status200)
-import Network.Wai (responseStream)
+import Network.Wai (responseLBS, responseStream)
 import Servant
 import System.Directory (
     canonicalizePath,
@@ -117,11 +120,22 @@ type FullAPI =
 fullProxy :: Proxy FullAPI
 fullProxy = Proxy
 
-mkApp :: AppState -> ReactiveNotebook -> FilePath -> Application
-mkApp st rn staticDir = serve fullProxy (server st rn staticDir)
+indexHtml :: BS.ByteString
+indexHtml = $(makeRelativeToProject "static/index.html" >>= embedFile)
 
-server :: AppState -> ReactiveNotebook -> FilePath -> Server FullAPI
-server st rn staticDir =
+staticApp :: Application
+staticApp _req resp =
+    resp $
+        responseLBS
+            status200
+            [(hContentType, "text/html; charset=utf-8")]
+            (LBS.fromStrict indexHtml)
+
+mkApp :: AppState -> ReactiveNotebook -> Application
+mkApp st rn = serve fullProxy (server st rn)
+
+server :: AppState -> ReactiveNotebook -> Server FullAPI
+server st rn =
     ( getNotebookH st
         :<|> loadNotebookH st rn
         :<|> saveNotebookH st
@@ -141,15 +155,14 @@ server st rn staticDir =
         :<|> setWidgetH st rn
     )
         :<|> Tagged (sseApp st)
-        :<|> serveDirectoryWebApp staticDir
+        :<|> Tagged staticApp
 
-initState :: FilePath -> [FilePath] -> Set Text -> IO AppState
-initState workDir globalEnvFiles globalDeps = do
+initState :: FilePath -> Set Text -> IO AppState
+initState workDir globalDeps = do
     nb <- newMVar (Notebook "Untitled.md" [])
     sess <- newMVar Nothing
     tmpBase <- getCanonicalTemporaryDirectory
     tmpDir <- createTempDirectory tmpBase "sabela-server"
-    envRef <- newIORef Nothing
     nextId <- newIORef 0
     instDeps <- newIORef Set.empty
     instExts <- newIORef Set.empty
@@ -164,14 +177,12 @@ initState workDir globalEnvFiles globalDeps = do
             , stSession = sess
             , stTmpDir = tmpDir
             , stWorkDir = absWork
-            , stEnvFile = envRef
             , stNextId = nextId
             , stInstalledDeps = instDeps
             , stInstalledExts = instExts
             , stBroadcast = bcast
             , stGeneration = gen
             , stDebounceRef = debounce
-            , stGlobalEnvFiles = globalEnvFiles
             , stGlobalDeps = globalDeps
             , stWidgetValues = widgets
             }

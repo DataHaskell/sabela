@@ -3,15 +3,13 @@
 
 module Sabela.Handlers where
 
-import Control.Concurrent (forkIO, modifyMVar_, readMVar)
+import Control.Concurrent (forkIO, modifyMVar_, readMVar, threadDelay)
 import Control.Concurrent.MVar (withMVar)
 import Control.Concurrent.STM (atomically, writeTChan)
-import Control.Exception (IOException, SomeException, catch, try)
+import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
-import Data.List (sort)
 import qualified Data.Map.Strict as M
-import Data.Maybe (maybeToList)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -30,7 +28,14 @@ import Sabela.Model (
     SessionStatus (..),
  )
 import Sabela.Output (displayPrelude, parseMimeOutputs)
-import Sabela.Session (SessionConfig (..), closeSession, newSession, runBlock)
+import Sabela.Session (
+    Session,
+    SessionConfig (..),
+    closeSession,
+    newSession,
+    readErrorBuffer,
+    runBlock,
+ )
 import qualified Sabela.Topo as Topo
 import ScriptHs.Markdown (Segment (..), parseMarkdown)
 import ScriptHs.Parser (
@@ -40,64 +45,47 @@ import ScriptHs.Parser (
     parseScript,
  )
 import ScriptHs.Render (toGhciScript)
-import ScriptHs.Run (resolveDeps)
+import ScriptHs.Run (renderCabalFile)
 import System.Directory (
     createDirectoryIfMissing,
     doesFileExist,
  )
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO (stderr)
 
-initGlobalEnv :: FilePath -> IO (Maybe FilePath, Set Text)
+initGlobalEnv :: FilePath -> IO (Set Text)
 initGlobalEnv globalMdPath = do
     exists <- doesFileExist globalMdPath
     if not exists
-        then pure (Nothing, S.empty)
+        then pure S.empty
         else do
-            let dir = takeDirectory globalMdPath
-                envPath = dir </> ".ghc.environment"
-                hashPath = dir </> "global.hash"
             currentContent <- TIO.readFile globalMdPath
-            storedContent <-
-                (Just <$> TIO.readFile hashPath)
-                    `catch` (\(_ :: IOException) -> pure Nothing)
             let meta = collectMetadataFromContent currentContent
-                deps = metaDeps meta
-            when (Just currentContent /= storedContent) $ do
-                createDirectoryIfMissing True dir
-                TIO.hPutStrLn stderr "[sabela] Installing global dependencies..."
-                unless (null deps) $ resolveDeps envPath deps
-                TIO.writeFile hashPath currentContent
-            envExists <- doesFileExist envPath
-            pure
-                ( if envExists && not (null deps) then Just envPath else Nothing
-                , S.fromList deps
-                )
+            pure (S.fromList (metaDeps meta))
 
-initPreinstalledPackages ::
-    FilePath -> [String] -> IO (Maybe FilePath, Set Text)
-initPreinstalledPackages _ [] = pure (Nothing, S.empty)
-initPreinstalledPackages sabelaDir pkgs = do
-    createDirectoryIfMissing True sabelaDir
-    let envPath = sabelaDir </> "preinstalled.ghc.environment"
-        hashPath = sabelaDir </> "preinstalled.hash"
-        hashKey = unlines (sort pkgs)
-        pkgsT = map T.pack pkgs
-    stored <-
-        (Just <$> readFile hashPath)
-            `catch` (\(_ :: IOException) -> pure Nothing)
-    when (Just hashKey /= stored) $ do
-        TIO.hPutStrLn stderr "[sabela] Installing preinstalled packages..."
-        resolveDeps envPath pkgsT
-        writeFile hashPath hashKey
-    envExists <- doesFileExist envPath
-    pure (if envExists then Just envPath else Nothing, S.fromList pkgsT)
+initPreinstalledPackages :: FilePath -> [String] -> IO (Set Text)
+initPreinstalledPackages _ [] = pure S.empty
+initPreinstalledPackages _ pkgs = pure (S.fromList (map T.pack pkgs))
 
 collectMetadataFromContent :: Text -> CabalMeta
 collectMetadataFromContent content =
     let segs = parseMarkdown content
         codeSrcs = [src | CodeBlock _ src _ <- segs]
      in mergeMetas (map (scriptMeta . parseScript) codeSrcs)
+
+setupReplProject :: FilePath -> CabalMeta -> IO ()
+setupReplProject dir meta = do
+    createDirectoryIfMissing True dir
+    cabalProjectExists <- doesFileExist (dir </> "cabal.project")
+    unless cabalProjectExists $ writeFile (dir </> "cabal.project") "packages: .\n"
+    mainHsExists <- doesFileExist (dir </> "Main.hs")
+    unless mainHsExists $
+        writeFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
+    writeFile (dir </> "sabela-repl.cabal") (renderCabalFile "sabela-repl" meta)
+
+mergedMeta :: AppState -> CabalMeta -> CabalMeta
+mergedMeta st meta =
+    meta{metaDeps = S.toList (S.fromList (metaDeps meta) <> stGlobalDeps st)}
 
 data ReactiveNotebook = ReactiveNotebook
     { rnCellEdit :: Int -> Text -> IO ()
@@ -241,8 +229,6 @@ ensureSessionAlive st gen metas = do
 
 installAndRestart :: AppState -> Int -> CabalMeta -> IO Bool
 installAndRestart st gen metas = do
-    -- If we restarted after some changes (not in the notebook generation)
-    -- we should see if there are new dependencies and reinstall them.
     stillInSameGeneration <- isCurrentGen st gen
     if not stillInSameGeneration
         then pure False
@@ -257,39 +243,42 @@ installAndRestart st gen metas = do
                 broadcast st $
                     EvSessionStatus $
                         if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
-                if S.null notebookDeps
-                    then do
-                        writeIORef (stEnvFile st) Nothing
-                        writeIORef (stInstalledDeps st) S.empty
-                    else do
-                        let envPath = stTmpDir st </> ".ghc.environment"
-                        TIO.hPutStrLn stderr $
-                            "[sabela] cabal install --lib " <> T.unwords (S.toList notebookDeps)
-                        resolveDeps envPath (S.toList notebookDeps)
-                        writeIORef (stEnvFile st) (Just envPath)
-                        writeIORef (stInstalledDeps st) notebookDeps
+                writeIORef (stInstalledDeps st) notebookDeps
             writeIORef (stInstalledExts st) (S.fromList (metaExts metas))
+            let projDir = stTmpDir st </> "repl-project"
+            setupReplProject projDir (mergedMeta st metas)
             broadcast st (EvSessionStatus SStarting)
             killSession st
-            startSessionWith st (metaDeps metas) (metaExts metas)
-            pure True
+            startSessionWith st projDir
 
-startSessionWith :: AppState -> [Text] -> [Text] -> IO ()
-startSessionWith st deps exts = do
-    perNotebookEnv <- readIORef (stEnvFile st)
-    let envFiles = stGlobalEnvFiles st ++ maybeToList perNotebookEnv
-        cfg =
-            SessionConfig
-                { scDeps = deps
-                , scExts = exts
-                , scGhcOptions = []
-                , scEnvFiles = envFiles
-                }
+startSessionWith :: AppState -> FilePath -> IO Bool
+startSessionWith st projDir = do
+    let cfg = SessionConfig{scProjectDir = projDir, scWorkDir = stWorkDir st}
     TIO.hPutStrLn stderr "[handler] Injecting display prelude"
-    sess <- newSession cfg
-    _ <- runBlock sess displayPrelude
-    modifyMVar_ (stSession st) (\_ -> pure (Just sess))
-    broadcast st (EvSessionStatus SReady)
+    sessResult <- try (newSession cfg) :: IO (Either SomeException Session)
+    case sessResult of
+        Left e -> do
+            TIO.hPutStrLn stderr $ "[handler] Session startup failed: " <> T.pack (show e)
+            broadcast st (EvSessionStatus SReset)
+            pure False
+        Right sess -> do
+            startupLog <- readErrorBuffer sess
+            mapM_ (broadcast st . EvInstallLog) (filter (not . T.null) (T.lines startupLog))
+            preludeResult <-
+                try (runBlock sess displayPrelude) :: IO (Either SomeException (Text, Text))
+            case preludeResult of
+                Left e -> do
+                    TIO.hPutStrLn stderr $ "[handler] Prelude injection failed: " <> T.pack (show e)
+                    threadDelay 100000
+                    errLog <- readErrorBuffer sess
+                    mapM_ (broadcast st . EvInstallLog) (filter (not . T.null) (T.lines errLog))
+                    void (try (closeSession sess) :: IO (Either SomeException ()))
+                    broadcast st (EvSessionStatus SReset)
+                    pure False
+                Right _ -> do
+                    modifyMVar_ (stSession st) (\_ -> pure (Just sess))
+                    broadcast st (EvSessionStatus SReady)
+                    pure True
 
 loadSabelaPrelude :: AppState -> IO ()
 loadSabelaPrelude st = do

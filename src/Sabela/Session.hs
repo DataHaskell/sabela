@@ -15,9 +15,6 @@ import Control.Concurrent.STM (
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
-import Data.Maybe (fromMaybe)
-import System.Environment (lookupEnv)
-
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.IO (
@@ -33,7 +30,7 @@ import System.IO (
     utf8,
  )
 import System.Process (
-    CreateProcess (std_err, std_in, std_out),
+    CreateProcess (cwd, std_err, std_in, std_out),
     ProcessHandle,
     StdStream (CreatePipe),
     createProcess,
@@ -56,29 +53,20 @@ data Session = Session
     }
 
 data SessionConfig = SessionConfig
-    { scDeps :: [Text]
-    , scExts :: [Text]
-    , scGhcOptions :: [Text]
-    , scEnvFiles :: [FilePath]
+    { scProjectDir :: FilePath
+    , scWorkDir :: FilePath
     }
     deriving (Show, Eq)
 
 newSession :: SessionConfig -> IO Session
 newSession cfg = do
-    let envFlags = map ("-package-env=" ++) (scEnvFiles cfg)
-        extFlags = map (("-X" ++) . T.unpack) (scExts cfg)
-        optFlags = map T.unpack (scGhcOptions cfg)
-        args =
-            ["--interactive", "-ignore-dot-ghci", "v0"]
-                ++ envFlags
-                ++ extFlags
-                ++ optFlags
-    ghcExe <- fromMaybe "ghc" <$> lookupEnv "GHC"
-    let cp =
-            (proc ghcExe args)
+    let args = ["repl", "exe:main", "--project-dir=" ++ scProjectDir cfg, "-v0"]
+        cp =
+            (proc "cabal" args)
                 { std_in = CreatePipe
                 , std_out = CreatePipe
                 , std_err = CreatePipe
+                , cwd = Just (scWorkDir cfg)
                 }
     (Just hIn, Just hOut, Just hErr, ph) <- createProcess cp
 
@@ -111,6 +99,7 @@ newSession cfg = do
                 }
 
     clearGhciPrompt sess
+    sendRaw sess (":cd " ++ scWorkDir cfg)
 
     mk <- getMarker sess
     placeMarker sess mk

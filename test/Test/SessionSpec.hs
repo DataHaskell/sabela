@@ -11,7 +11,10 @@ import Data.Function ((&))
 import Data.IORef (IORef, newIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Sabela.Handlers (setupReplProject)
+import ScriptHs.Parser (CabalMeta (..))
 import System.Directory (findExecutable)
+import System.IO.Temp (withSystemTempDirectory)
 import System.Timeout (timeout)
 import Test.Hspec (
     Spec,
@@ -65,13 +68,10 @@ dummySession ch errRef ctrRef cfg = do
             }
 
 defaultCfg :: SessionConfig
-defaultCfg =
-    SessionConfig
-        { scDeps = []
-        , scExts = []
-        , scGhcOptions = []
-        , scEnvFiles = []
-        }
+defaultCfg = SessionConfig{scProjectDir = ".", scWorkDir = "."}
+
+emptyMeta :: CabalMeta
+emptyMeta = CabalMeta{metaDeps = [], metaExts = [], metaGhcOptions = []}
 
 withTimeout :: Int -> IO a -> IO a
 withTimeout usec action = do
@@ -151,11 +151,13 @@ spec = do
 
     describe "integration: ghci-backed session" $ do
         it "newSession/runBlock returns stdout and empty stderr for a simple expression" $ do
-            ghc <- findExecutable "ghc"
-            case ghc of
-                Nothing -> pendingWith "ghc not found on PATH; skipping integration test"
-                Just _ -> do
-                    sess <- withTimeout 10_000_000 (newSession defaultCfg)
+            cabal <- findExecutable "cabal"
+            case cabal of
+                Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
+                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
+                    setupReplProject dir emptyMeta
+                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    sess <- withTimeout 60_000_000 (newSession cfg)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess "1 + 1")
                     withTimeout 10_000_000 (closeSession sess)
 
@@ -163,23 +165,28 @@ spec = do
                     T.strip err `shouldBe` ""
 
         it "captures errors into stderr" $ do
-            ghc <- findExecutable "ghc"
-            case ghc of
-                Nothing -> pendingWith "ghc not found on PATH; skipping integration test"
-                Just _ -> do
-                    sess <- withTimeout 10_000_000 (newSession defaultCfg)
+            cabal <- findExecutable "cabal"
+            case cabal of
+                Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
+                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
+                    setupReplProject dir emptyMeta
+                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    sess <- withTimeout 60_000_000 (newSession cfg)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess "let x = 1\nx + \"a\"")
                     withTimeout 10_000_000 (closeSession sess)
 
                     let combined = T.toLower (out <> "\n" <> err)
                     combined `shouldSatisfy` T.isInfixOf "error"
+
         it "resetSession yields a working new session" $ do
-            ghc <- findExecutable "ghc"
-            case ghc of
-                Nothing -> pendingWith "ghc not found on PATH; skipping integration test"
-                Just _ -> do
-                    sess1 <- withTimeout 10_000_000 (newSession defaultCfg)
-                    sess2 <- withTimeout 15_000_000 (resetSession sess1)
+            cabal <- findExecutable "cabal"
+            case cabal of
+                Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
+                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
+                    setupReplProject dir emptyMeta
+                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    sess1 <- withTimeout 60_000_000 (newSession cfg)
+                    sess2 <- withTimeout 60_000_000 (resetSession sess1)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess2 "2 + 3")
                     withTimeout 10_000_000 (closeSession sess2)
 

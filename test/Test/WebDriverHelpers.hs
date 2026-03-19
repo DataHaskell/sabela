@@ -21,6 +21,7 @@ module Test.WebDriverHelpers (
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (SomeException, try)
+import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -67,9 +68,9 @@ The server runs in a forked thread; this function returns once it is ready.
 -}
 withTestServer :: Int -> FilePath -> IO () -> IO ()
 withTestServer port workDir action = do
-    st <- initState workDir [] Set.empty
+    st <- initState workDir Set.empty
     rn <- setupReactive st
-    _ <- forkIO $ run port (mkApp st rn "static")
+    _ <- forkIO $ run port (mkApp st rn)
     waitForServer port
     action
 
@@ -99,7 +100,7 @@ startChromeDriver = do
     ph <- spawnProcess "chromedriver" ["--port=9515"]
     waitForChromeDriver
     -- Register cleanup to run at process exit (best-effort for tests)
-    _ <- forkIO $ waitForProcess ph >> return ()
+    _ <- forkIO $ void (waitForProcess ph)
     return ()
 
 -- | Poll until ChromeDriver port 9515 accepts connections.
