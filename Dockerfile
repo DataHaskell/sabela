@@ -35,5 +35,5 @@ RUN cabal install dataframe
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-CMD ["/opt/bin/sabela", "3000", "static", "examples", \
-     "/root/.sabela/global.md", "dataframe", "granite", "text"]
+CMD ["timeout", "900", "/opt/bin/sabela", "3000", "examples", \
+     "/root/.sabela/global.md", "granite", "text"]
