@@ -2,9 +2,9 @@ FROM haskell:9.8.4-slim-bullseye AS build
 RUN mkdir /opt/build
 WORKDIR /opt/build
 
-RUN cabal update
-
 COPY ./sabela.cabal /opt/build/
+
+RUN cabal update
 
 RUN cabal build --only-dependencies
 

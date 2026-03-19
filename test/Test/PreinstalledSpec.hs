@@ -16,11 +16,16 @@ import Sabela.Model (
  )
 import Sabela.Server (initState)
 import ScriptHs.Parser (CabalMeta (..))
-import Test.Hspec (Spec, describe, it, shouldSatisfy)
+import System.Directory (findExecutable)
+import Test.Hspec (Spec, describe, it, pendingWith, shouldSatisfy)
 
 spec :: Spec
 spec = describe "preinstalled packages" $ do
     it "installAndRestart skips SUpdateDeps for packages already in stGlobalDeps" $ do
+        cabal <- findExecutable "cabal"
+        case cabal of
+            Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
+            Just _ -> pure ()
         -- Build state with "containers" declared as a global (preinstalled) dep
         st <- initState "." (Set.fromList ["containers"])
         chan <- atomically $ dupTChan (stBroadcast st)
