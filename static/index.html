@@ -288,11 +288,18 @@
   }
 
   /* Table styling */
+  .cell-output.mime-markdown .table-wrapper {
+    overflow-x: auto;
+    margin: 0.75em 0;
+  }
+
   .cell-output.mime-markdown table {
     border-collapse: collapse;
     width: auto;
-    margin: 0.75em 0;
+    margin: 0;
     font-size: 13px;
+    white-space: normal;
+    word-break: normal;
   }
 
   .cell-output.mime-markdown th,
@@ -796,6 +803,12 @@ function renderMimeOutput(container, content, mime) {
     container.innerHTML = '';
     container.className = 'cell-output mime-markdown';
     container.innerHTML = marked.parse(content);
+    container.querySelectorAll('table').forEach(t => {
+      const w = document.createElement('div');
+      w.className = 'table-wrapper';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
   } else if (mime === 'image/svg+xml') {
     container.innerHTML = '';
     container.className = 'cell-output mime-svg';
