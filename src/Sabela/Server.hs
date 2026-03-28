@@ -82,6 +82,7 @@ type JsonAPI =
         :<|> "api" :> "run" :> Capture "id" Int :> Post '[JSON] RunResult
         :<|> "api" :> "run-all" :> Post '[JSON] RunAllResult
         :<|> "api" :> "reset" :> Post '[JSON] Notebook
+        :<|> "api" :> "clear" :> Capture "id" Int :> Post '[JSON] NoContent
         -- File explorer
         :<|> "api"
             :> "files"
@@ -145,6 +146,7 @@ server st rn =
         :<|> runCellH rn
         :<|> runAllH rn
         :<|> resetH rn st
+        :<|> clearCellH st
         :<|> listFilesH st
         :<|> readFileH st
         :<|> createFileH st
@@ -334,6 +336,21 @@ runAllH rn = liftIO $ rnRunAll rn >> pure (RunAllResult [])
 
 resetH :: ReactiveNotebook -> AppState -> Handler Notebook
 resetH rn st = liftIO $ rnReset rn >> readMVar (stNotebook st)
+
+clearCellH :: AppState -> Int -> Handler NoContent
+clearCellH st cid = liftIO $ do
+    modifyMVar_ (stNotebook st) $ \nb ->
+        pure nb{nbCells = map clr (nbCells nb)}
+    broadcast st (EvCellResult cid [] Nothing [])
+    pure NoContent
+  where
+    clr c
+        | cellId c == cid =
+            c
+                { cellOutputs = []
+                , cellError = Nothing
+                }
+        | otherwise = c
 
 -- ── File explorer ────────────────────────────────────────────────
 -- Normalize path for comparison (especially on Windows)

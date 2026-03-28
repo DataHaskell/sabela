@@ -65,7 +65,13 @@ newSession cfg = do
     mGhc <- lookupEnv "GHC"
     let compilerArgs = ["--with-compiler=" ++ ghc | ghc <- maybeToList mGhc]
         args =
-            ["repl", "exe:main", "--project-dir=" ++ scProjectDir cfg, "-v0"]
+            [ "repl"
+            , "exe:main"
+            , "--project-dir=" ++ scProjectDir cfg
+            , "-v0"
+            , "--repl-options=-fobject-code"
+            , "-O2"
+            ]
                 ++ compilerArgs
         cp =
             (proc "cabal" args)

@@ -219,6 +219,7 @@
   }
   .cell-actions button:hover { color: var(--fg); border-color: var(--fg-dim); }
   .cell-actions button.run-btn:hover { color: var(--green); border-color: var(--green); }
+  .cell-actions button.clear-btn:hover { color: var(--yellow); border-color: var(--yellow); }
   .cell-actions button.delete-btn:hover { color: var(--red); border-color: var(--red); }
 
   /* Prose */
@@ -1180,6 +1181,7 @@ function renderCodeCell(cell) {
   actions.innerHTML = `
     <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell" aria-label="Toggle cell visibility" aria-expanded="${collapsed ? 'false' : 'true'}">${collapsed ? '▸' : '▾'}</button>
     <button class="run-btn" onclick="runCell(${cell.cellId})" aria-label="Run cell">▶ run</button>
+    <button class="clear-btn" onclick="clearCellOutput(${cell.cellId})" aria-label="Clear output">⊘ clear</button>
     <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell">✕</button>`;
   div.appendChild(actions);
 
@@ -1310,6 +1312,10 @@ async function addCell(afterId, type) {
   await api('POST', 'cell', { icAfter: afterId, icType: type, icSource: type === 'CodeCell' ? '' : 'New text' });
   const nb = await api('GET', 'notebook');
   render(nb);
+}
+
+async function clearCellOutput(cellId) {
+  api('POST', `clear/${cellId}`).catch(console.error);
 }
 
 async function deleteCell(cellId) {
