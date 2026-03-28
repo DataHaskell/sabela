@@ -158,6 +158,7 @@ executeSingleCell st gen cid = do
     nb <- readMVar (stNotebook st)
     let metas = collectMetadata nb
         allCode = filter (\c -> cellType c == CodeCell) (nbCells nb)
+        (defMap, _) = Topo.buildDefMap allCode
         (topoResult, redefMap) = Topo.computeTopoOrder allCode
         skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
     ok <- ensureSessionAlive st gen metas
@@ -168,7 +169,10 @@ executeSingleCell st gen cid = do
                 when still $
                     if S.member cid skipIds
                         then do
-                            broadcastRedefinitionErrors st (M.filterWithKey (\k _ -> k == cid) redefMap)
+                            broadcastRedefinitionErrors
+                                st
+                                defMap
+                                (M.filterWithKey (\k _ -> k == cid) redefMap)
                             broadcastCycleErrors
                                 st
                                 (S.intersection (Topo.trCycleIds topoResult) (S.singleton cid))
@@ -186,8 +190,9 @@ executeFullRestart st gen = do
     killSession st
     ok <- installAndRestart st gen needed
     when ok $ do
-        let (topoResult, redefMap) = Topo.computeTopoOrder allCode
-        broadcastRedefinitionErrors st redefMap
+        let (defMap, _) = Topo.buildDefMap allCode
+            (topoResult, redefMap) = Topo.computeTopoOrder allCode
+        broadcastRedefinitionErrors st defMap redefMap
         broadcastCycleErrors st (Topo.trCycleIds topoResult)
         let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
             toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
@@ -380,6 +385,7 @@ executeAffected st gen editedCid = do
         globalDeps = stGlobalDeps st
         depsOk = neededD `S.isSubsetOf` (installed `S.union` globalDeps)
         extsOk = neededE == instExts
+        (defMap, _) = Topo.buildDefMap allCode
 
     case (mSess, depsOk && extsOk) of
         (Just _, True) -> do
@@ -410,7 +416,7 @@ executeAffected st gen editedCid = do
                             ++ show (take 10 (S.toList uses))
                             ++ (if S.size uses > 10 then "..." else "")
 
-            broadcastRedefinitionErrors st redefMap
+            broadcastRedefinitionErrors st defMap redefMap
             broadcastCycleErrors st (Topo.trCycleIds topoResult)
             let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
                 toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
@@ -422,7 +428,7 @@ executeAffected st gen editedCid = do
             ok <- installAndRestart st gen needed
             when ok $ do
                 let (topoResult, redefMap) = Topo.computeTopoOrder allCode
-                broadcastRedefinitionErrors st redefMap
+                broadcastRedefinitionErrors st defMap redefMap
                 broadcastCycleErrors st (Topo.trCycleIds topoResult)
                 let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
                     toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
@@ -434,7 +440,7 @@ executeAffected st gen editedCid = do
             ok <- installAndRestart st gen needed
             when ok $ do
                 let (topoResult, redefMap) = Topo.computeTopoOrder allCode
-                broadcastRedefinitionErrors st redefMap
+                broadcastRedefinitionErrors st defMap redefMap
                 broadcastCycleErrors st (Topo.trCycleIds topoResult)
                 let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
                     toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
@@ -445,15 +451,26 @@ broadcastCellError st cid msg = do
     let err = CellError{ceLine = Nothing, ceCol = Nothing, ceMessage = msg}
     broadcast st (EvCellResult cid [] (Just msg) [err])
 
-broadcastRedefinitionErrors :: AppState -> M.Map Int [Text] -> IO ()
-broadcastRedefinitionErrors st redefMap =
-    forM_ (M.toList redefMap) $ \(cid, names) ->
-        forM_ names $ \name ->
-            broadcastCellError st cid $
-                "Cell defines '"
+broadcastRedefinitionErrors ::
+    AppState -> M.Map Text Int -> M.Map Int [Text] -> IO ()
+broadcastRedefinitionErrors st defMap redefMap =
+    forM_ (M.toList redefMap) $ \(cid, names) -> do
+        let msgs =
+                [ "'"
                     <> name
-                    <> "', which is already defined by another cell."
-                    <> " Remove the duplicate definition to resolve this conflict."
+                    <> "' is already defined in cell "
+                    <> T.pack (show origCid)
+                    <> " (which takes precedence)"
+                | name <- names
+                , Just origCid <- [M.lookup name defMap]
+                ]
+            combined =
+                "Duplicate definition"
+                    <> (if length names > 1 then "s" else "")
+                    <> ": "
+                    <> T.intercalate "; " msgs
+                    <> ". Remove the duplicate to resolve this conflict."
+        broadcastCellError st cid combined
 
 broadcastCycleErrors :: AppState -> S.Set Int -> IO ()
 broadcastCycleErrors st cycleIds
