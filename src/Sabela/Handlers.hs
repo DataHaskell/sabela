@@ -1,14 +1,26 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Sabela.Handlers where
+module Sabela.Handlers (
+    -- * Reactive notebook interface
+    ReactiveNotebook (..),
+    setupReactive,
 
-import Control.Concurrent (forkIO, modifyMVar_, readMVar, threadDelay)
-import Control.Concurrent.MVar (withMVar)
-import Control.Concurrent.STM (atomically, writeTChan)
+    -- * Initialization
+    initGlobalEnv,
+    initPreinstalledPackages,
+
+    -- * Haskell session management (also used by tests)
+    installAndRestart,
+    setupReplProject,
+
+    -- * Re-exports from submodules
+    module Sabela.Handlers.Shared,
+) where
+
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void, when)
-import Data.IORef (atomicModifyIORef', readIORef, writeIORef)
 import qualified Data.Map.Strict as M
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -16,76 +28,80 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Sabela.Api (RunResult (..))
+import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
+import Sabela.Deps (collectMetadata, collectMetadataFromContent, mergedMeta)
 import Sabela.Errors (parseErrors)
+import Sabela.Handlers.Lean (executeLeanCells, killLeanSession)
+import Sabela.Handlers.Python (
+    executePythonCell,
+    executePythonCells,
+    killPythonSession,
+ )
+import Sabela.Handlers.Shared
 import Sabela.Model (
-    AppState (..),
     Cell (..),
     CellError (..),
     CellType (..),
-    Notebook (nbCells),
+    Notebook (..),
     NotebookEvent (..),
     OutputItem (..),
     SessionStatus (..),
+    cellLangOf,
  )
 import Sabela.Output (displayPrelude, parseMimeOutputs)
+import Sabela.Reactivity (
+    ExecutionPlan (..),
+    computeExecutionPlan,
+    computeFullExecutionPlan,
+    cycleErrorMsg,
+    haskellCodeCells,
+    redefinitionErrorMsg,
+ )
 import Sabela.Session (
     Session,
     SessionConfig (..),
     closeSession,
+    ghciBackend,
     newSession,
     readErrorBuffer,
     runBlock,
  )
-import qualified Sabela.Topo as Topo
-import ScriptHs.Markdown (Segment (..), parseMarkdown)
-import ScriptHs.Parser (
-    CabalMeta (..),
-    ScriptFile (..),
-    mergeMetas,
-    parseScript,
+import qualified Sabela.SessionTypes as ST
+import Sabela.State (App (..))
+import Sabela.State.BridgeStore (getBridgeValues, setBridgeValue)
+import Sabela.State.DependencyTracker (
+    getHaskellDeps,
+    getHaskellExts,
+    setHaskellDeps,
+    setHaskellExts,
  )
+import Sabela.State.Environment (Environment (..))
+import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
+import Sabela.State.SessionManager (
+    getHaskellSession,
+    modifyHaskellSession,
+    setHaskellSession,
+ )
+import Sabela.State.WidgetStore (getWidgetValues)
+import qualified Sabela.Topo as Topo
+import ScriptHs.Parser (CabalMeta (..), ScriptFile (..), parseScript)
 import ScriptHs.Render (toGhciScript)
 import ScriptHs.Run (renderCabalFile)
-import System.Directory (
-    createDirectoryIfMissing,
-    doesFileExist,
- )
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
-import System.IO (stderr)
 
 initGlobalEnv :: FilePath -> IO (Set Text)
-initGlobalEnv globalMdPath = do
-    exists <- doesFileExist globalMdPath
+initGlobalEnv path = do
+    exists <- doesFileExist path
     if not exists
         then pure S.empty
         else do
-            currentContent <- TIO.readFile globalMdPath
-            let meta = collectMetadataFromContent currentContent
-            pure (S.fromList (metaDeps meta))
+            content <- TIO.readFile path
+            pure (S.fromList (metaDeps (collectMetadataFromContent content)))
 
 initPreinstalledPackages :: FilePath -> [String] -> IO (Set Text)
 initPreinstalledPackages _ [] = pure S.empty
 initPreinstalledPackages _ pkgs = pure (S.fromList (map T.pack pkgs))
-
-collectMetadataFromContent :: Text -> CabalMeta
-collectMetadataFromContent content =
-    let segs = parseMarkdown content
-        codeSrcs = [src | CodeBlock _ src _ <- segs]
-     in mergeMetas (map (scriptMeta . parseScript) codeSrcs)
-
-setupReplProject :: FilePath -> CabalMeta -> IO ()
-setupReplProject dir meta = do
-    createDirectoryIfMissing True dir
-    cabalProjectExists <- doesFileExist (dir </> "cabal.project")
-    unless cabalProjectExists $ writeFile (dir </> "cabal.project") "packages: .\n"
-    mainHsExists <- doesFileExist (dir </> "Main.hs")
-    unless mainHsExists $
-        writeFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
-    writeFile (dir </> "sabela-repl.cabal") (renderCabalFile "sabela-repl" meta)
-
-mergedMeta :: AppState -> CabalMeta -> CabalMeta
-mergedMeta st meta =
-    meta{metaDeps = S.toList (S.fromList (metaDeps meta) <> stGlobalDeps st)}
 
 data ReactiveNotebook = ReactiveNotebook
     { rnCellEdit :: Int -> Text -> IO ()
@@ -95,415 +111,412 @@ data ReactiveNotebook = ReactiveNotebook
     , rnWidgetCell :: Int -> IO ()
     }
 
-setupReactive :: AppState -> IO ReactiveNotebook
-setupReactive st =
+setupReactive :: App -> IO ReactiveNotebook
+setupReactive app =
     pure $
         ReactiveNotebook
-            { rnCellEdit = handleCellEdit st
-            , rnRunCell = handleRunCell st
-            , rnRunAll = handleRunAll st
-            , rnReset = handleReset st
-            , rnWidgetCell = handleWidgetCell st
+            { rnCellEdit = handleCellEdit app
+            , rnRunCell = handleRunCell app
+            , rnRunAll = handleRunAll app
+            , rnReset = handleReset app
+            , rnWidgetCell = handleWidgetCell app
             }
 
-handleCellEdit :: AppState -> Int -> Text -> IO ()
-handleCellEdit st cid src = do
-    TIO.hPutStrLn stderr $ "[handler] handleCellEdit: cell " <> T.pack (show cid)
-    modifyMVar_ (stNotebook st) $ \nb ->
-        pure nb{nbCells = map upd (nbCells nb)}
-    gen <- bumpGeneration st
-    executeAffected st gen cid
+handleCellEdit :: App -> Int -> Text -> IO ()
+handleCellEdit app cid src = do
+    debugLog app $ "[handler] handleCellEdit: cell " <> T.pack (show cid)
+    modifyNotebook (appNotebook app) $ updateCellSource cid src
+    nb <- readNotebook (appNotebook app)
+    gen <- bumpGeneration app
+    dispatchByLang app gen cid (cellLangOf cid nb) (executeAffected app gen cid)
+
+updateCellSource :: Int -> Text -> Notebook -> Notebook
+updateCellSource cid src nb =
+    nb{nbCells = map upd (nbCells nb)}
   where
     upd c
         | cellId c == cid = c{cellSource = src, cellDirty = True}
         | otherwise = c
 
-handleWidgetCell :: AppState -> Int -> IO ()
-handleWidgetCell st cid = do
-    TIO.hPutStrLn stderr $ "[handler] handleWidgetCell: cell " <> T.pack (show cid)
-    gen <- bumpGeneration st
-    void $ forkIO $ executeAffected st gen cid
+handleWidgetCell :: App -> Int -> IO ()
+handleWidgetCell app cid = do
+    debugLog app $ "[handler] handleWidgetCell: cell " <> T.pack (show cid)
+    gen <- bumpGeneration app
+    void $ forkIO $ executeAffected app gen cid
 
-handleRunCell :: AppState -> Int -> IO ()
-handleRunCell st cid = do
-    TIO.hPutStrLn stderr $ "[handler] handleRunCell: cell " <> T.pack (show cid)
-    gen <- bumpGeneration st
-    void $ forkIO $ executeSingleCell st gen cid
+handleRunCell :: App -> Int -> IO ()
+handleRunCell app cid = do
+    debugLog app $ "[handler] handleRunCell: cell " <> T.pack (show cid)
+    nb <- readNotebook (appNotebook app)
+    gen <- bumpGeneration app
+    dispatchByLang app gen cid (cellLangOf cid nb) $
+        void $
+            forkIO $
+                executeSingleCell app gen cid
 
-handleRunAll :: AppState -> IO ()
-handleRunAll st = do
-    TIO.hPutStrLn stderr "[handler] handleRunAll: fullRestart"
-    gen <- bumpGeneration st
-    void $ forkIO $ executeFullRestart st gen
+dispatchByLang :: App -> Int -> Int -> ST.CellLang -> IO () -> IO ()
+dispatchByLang app gen cid lang haskellAction =
+    case lang of
+        ST.Lean4 -> void $ forkIO $ do
+            executeLeanCells app gen cid (rerunBridgeCells app gen)
+            whenCurrentGen app gen $ broadcast app EvExecutionDone
+        ST.Python -> void $ forkIO $ do
+            executePythonCell app gen cid
+            whenCurrentGen app gen $ broadcast app EvExecutionDone
+        ST.Haskell -> haskellAction
 
-handleReset :: AppState -> IO ()
-handleReset st = do
-    TIO.hPutStrLn stderr "[handler] handleReset"
-    void $ bumpGeneration st
-    killSession st
-    modifyMVar_ (stNotebook st) $ \nb ->
-        pure nb{nbCells = map clr (nbCells nb)}
-    broadcast st (EvSessionStatus SReset)
+rerunBridgeCells :: App -> Int -> IO ()
+rerunBridgeCells app gen = do
+    nb <- readNotebook (appNotebook app)
+    let hsCells = filter isBridgeDependent (nbCells nb)
+    unless (null hsCells) $ do
+        debugLog app $
+            "[handler] Bridge changed, re-running "
+                <> T.pack (show (length hsCells))
+                <> " Haskell cells"
+        loadSabelaPrelude app
+        runCellList app gen hsCells
+
+isBridgeDependent :: Cell -> Bool
+isBridgeDependent c =
+    cellType c == CodeCell
+        && cellLang c == ST.Haskell
+        && "_bridge_" `T.isInfixOf` cellSource c
+
+handleRunAll :: App -> IO ()
+handleRunAll app = do
+    debugLog app "[handler] handleRunAll: fullRestart"
+    gen <- bumpGeneration app
+    void $ forkIO $ executeFullRestart app gen
+
+handleReset :: App -> IO ()
+handleReset app = do
+    debugLog app "[handler] handleReset"
+    void $ bumpGeneration app
+    killAllSessions app
+    modifyNotebook (appNotebook app) clearAllOutputs
+    broadcast app (EvSessionStatus SReset)
+
+clearAllOutputs :: Notebook -> Notebook
+clearAllOutputs nb = nb{nbCells = map clr (nbCells nb)}
   where
-    clr c =
-        c
-            { cellOutputs = []
-            , cellError = Nothing
-            , cellDirty = False
-            }
+    clr c = c{cellOutputs = [], cellError = Nothing, cellDirty = False}
 
-executeSingleCell :: AppState -> Int -> Int -> IO ()
-executeSingleCell st gen cid = do
-    TIO.hPutStrLn stderr "[handler] executeSingleCell"
-    nb <- readMVar (stNotebook st)
-    let metas = collectMetadata nb
-        allCode = filter (\c -> cellType c == CodeCell) (nbCells nb)
-        codePosMap = M.fromList (zip (map cellId (nbCells nb)) [1 ..])
-        (defMap, _) = Topo.buildDefMap allCode
-        (topoResult, redefMap) = Topo.computeTopoOrder allCode
-        skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
-    ok <- ensureSessionAlive st gen metas
-    when ok $
-        case filter (\c -> cellId c == cid) allCode of
-            (cell : _) -> do
-                still <- isCurrentGen st gen
-                when still $
-                    if S.member cid skipIds
-                        then do
-                            broadcastRedefinitionErrors
-                                st
-                                defMap
-                                (M.filterWithKey (\k _ -> k == cid) redefMap)
-                                codePosMap
-                            broadcastCycleErrors
-                                st
-                                (S.intersection (Topo.trCycleIds topoResult) (S.singleton cid))
-                                codePosMap
-                        else runAndBroadcast st gen cell
-                still' <- isCurrentGen st gen
-                when still' $ broadcast st EvExecutionDone
-            [] -> broadcast st EvExecutionDone
+killAllSessions :: App -> IO ()
+killAllSessions app = do
+    killSession app
+    killLeanSession app
+    killPythonSession app
 
-executeFullRestart :: AppState -> Int -> IO ()
-executeFullRestart st gen = do
-    putStrLn "[handler] executeFullRestart: killing session, running all"
-    nb <- readMVar (stNotebook st)
-    let allCode = filter (\c -> cellType c == CodeCell) (nbCells nb)
-        needed = collectMetadata nb
-    killSession st
-    ok <- installAndRestart st gen needed
-    when ok $ do
-        let (defMap, _) = Topo.buildDefMap allCode
-            codePosMap = M.fromList (zip (map cellId (nbCells nb)) [1 ..])
-            (topoResult, redefMap) = Topo.computeTopoOrder allCode
-        broadcastRedefinitionErrors st defMap redefMap codePosMap
-        broadcastCycleErrors st (Topo.trCycleIds topoResult) codePosMap
-        let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
-            toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
-        runCellList st gen toRun
+executeSingleCell :: App -> Int -> Int -> IO ()
+executeSingleCell app gen cid = do
+    debugLog app "[handler] executeSingleCell"
+    nb <- readNotebook (appNotebook app)
+    let allCode = haskellCodeCells nb
+        plan = computeFullExecutionPlan allCode nb
+    ok <- ensureSessionAlive app gen (collectMetadata nb)
+    when ok $ executeSingleCellPlan app gen cid allCode plan
+    whenCurrentGen app gen $ broadcast app EvExecutionDone
 
-bumpGeneration :: AppState -> IO Int
-bumpGeneration st = atomicModifyIORef' (stGeneration st) (\g -> let g' = g + 1 in (g', g'))
-
-broadcast :: AppState -> NotebookEvent -> IO ()
-broadcast st ev = atomically $ writeTChan (stBroadcast st) ev
-
-killSession :: AppState -> IO ()
-killSession st =
-    modifyMVar_ (stSession st) $ \mSess -> do
-        case mSess of
-            Just s -> void (try (closeSession s) :: IO (Either SomeException ()))
-            Nothing -> pure ()
-        pure Nothing
-
-collectMetadata :: Notebook -> CabalMeta
-collectMetadata nb =
-    let
-        allCode = filter ((== CodeCell) . cellType) (nbCells nb)
-     in
-        mergeMetas ([(scriptMeta . parseScript) (cellSource c) | c <- allCode])
-
-ensureSessionAlive :: AppState -> Int -> CabalMeta -> IO Bool
-ensureSessionAlive st gen metas = do
-    installed <- readIORef (stInstalledDeps st)
-    instExts <- readIORef (stInstalledExts st)
-    mSess <- readMVar (stSession st)
-    let globalDeps = stGlobalDeps st
-        allMetaApplicable =
-            S.fromList (metaDeps metas) `S.isSubsetOf` (installed `S.union` globalDeps)
-                && S.fromList (metaExts metas) == instExts
-    case mSess of
-        Just _ | allMetaApplicable -> pure True
-        _ -> installAndRestart st gen metas
-
-installAndRestart :: AppState -> Int -> CabalMeta -> IO Bool
-installAndRestart st gen metas = do
-    stillInSameGeneration <- isCurrentGen st gen
-    if not stillInSameGeneration
-        then pure False
-        else do
-            installedDeps <- readIORef (stInstalledDeps st)
-            let globalDeps = stGlobalDeps st
-                requiredDeps = S.fromList (metaDeps metas)
-                notebookDeps = S.difference requiredDeps globalDeps
-                depsUpToDate = notebookDeps `S.isSubsetOf` installedDeps
-            unless depsUpToDate $ do
-                let newDeps = S.difference notebookDeps installedDeps
-                broadcast st $
-                    EvSessionStatus $
-                        if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
-                writeIORef (stInstalledDeps st) notebookDeps
-            writeIORef (stInstalledExts st) (S.fromList (metaExts metas))
-            let projDir = stTmpDir st </> "repl-project"
-            setupReplProject projDir (mergedMeta st metas)
-            broadcast st (EvSessionStatus SStarting)
-            killSession st
-            startSessionWith st projDir
-
-startSessionWith :: AppState -> FilePath -> IO Bool
-startSessionWith st projDir = do
-    let cfg = SessionConfig{scProjectDir = projDir, scWorkDir = stWorkDir st}
-    TIO.hPutStrLn stderr "[handler] Injecting display prelude"
-    sessResult <- try (newSession cfg) :: IO (Either SomeException Session)
-    case sessResult of
-        Left e -> do
-            TIO.hPutStrLn stderr $ "[handler] Session startup failed: " <> T.pack (show e)
-            broadcast st (EvSessionStatus SReset)
-            pure False
-        Right sess -> do
-            startupLog <- readErrorBuffer sess
-            mapM_ (broadcast st . EvInstallLog) (filter (not . T.null) (T.lines startupLog))
-            preludeResult <-
-                try (runBlock sess displayPrelude) :: IO (Either SomeException (Text, Text))
-            case preludeResult of
-                Left e -> do
-                    TIO.hPutStrLn stderr $ "[handler] Prelude injection failed: " <> T.pack (show e)
-                    threadDelay 100000
-                    errLog <- readErrorBuffer sess
-                    mapM_ (broadcast st . EvInstallLog) (filter (not . T.null) (T.lines errLog))
-                    void (try (closeSession sess) :: IO (Either SomeException ()))
-                    broadcast st (EvSessionStatus SReset)
-                    pure False
-                Right _ -> do
-                    modifyMVar_ (stSession st) (\_ -> pure (Just sess))
-                    broadcast st (EvSessionStatus SReady)
-                    pure True
-
-loadSabelaPrelude :: AppState -> IO ()
-loadSabelaPrelude st = do
-    mSess <- readMVar (stSession st)
-    case mSess of
-        Just sess -> void (runBlock sess displayPrelude)
+executeSingleCellPlan :: App -> Int -> Int -> [Cell] -> ExecutionPlan -> IO ()
+executeSingleCellPlan app gen cid allCode plan =
+    case find (\c -> cellId c == cid) allCode of
+        Just cell ->
+            whenCurrentGen app gen $
+                if cellInSkipSet cid plan
+                    then broadcastPlanErrors app plan (Just cid)
+                    else runAndBroadcast app gen cell
         Nothing -> pure ()
 
-isCurrentGen :: AppState -> Int -> IO Bool
-isCurrentGen st gen = (== gen) <$> readIORef (stGeneration st)
+cellInSkipSet :: Int -> ExecutionPlan -> Bool
+cellInSkipSet cid plan =
+    S.member cid (epCycleIds plan `S.union` M.keysSet (epRedefErrors plan))
 
-runAndBroadcast :: AppState -> Int -> Cell -> IO ()
-runAndBroadcast st gen cell = do
-    broadcast st (EvCellUpdating (cellId cell))
-    loadSabelaPrelude st
-    (result, errs) <- execCell st cell
-    still <- isCurrentGen st gen
-    when still $ do
-        modifyMVar_ (stNotebook st) $ \nb ->
-            pure nb{nbCells = map (applyResult result) (nbCells nb)}
-        broadcast
-            st
-            ( EvCellResult
-                (rrCellId result)
-                (rrOutputs result)
-                (rrError result)
-                errs
-            )
+executeFullRestart :: App -> Int -> IO ()
+executeFullRestart app gen = do
+    debugLog app "[handler] executeFullRestart: killing session, running all"
+    nb <- readNotebook (appNotebook app)
+    let allCode = haskellCodeCells nb
+    killAllSessions app
+    ok <- installAndRestart app gen (collectMetadata nb)
+    when ok $ executeFullPlan app gen allCode nb
+    executeNonHaskellCells app gen
 
-widgetPreamble :: Int -> M.Map Text Text -> Text
-widgetPreamble cid vals =
-    let pairs = show [(T.unpack k, T.unpack v) | (k, v) <- M.toList vals]
-     in T.unlines
-            [ "writeIORef _sabelaWidgetRef " <> T.pack pairs
-            , "writeIORef _sabelaCellIdRef " <> T.pack (show (show cid))
-            ]
+executeFullPlan :: App -> Int -> [Cell] -> Notebook -> IO ()
+executeFullPlan app gen allCode nb = do
+    let plan = computeFullExecutionPlan allCode nb
+    broadcastPlanErrors app plan Nothing
+    runCellList app gen (epCellsToRun plan)
 
-execCell :: AppState -> Cell -> IO (RunResult, [CellError])
-execCell st cell = do
-    mSess <- readMVar (stSession st)
+executeNonHaskellCells :: App -> Int -> IO ()
+executeNonHaskellCells app gen = do
+    whenCurrentGen app gen $
+        executeLeanCells app gen (-1) (rerunBridgeCells app gen)
+    whenCurrentGen app gen $ executePythonCells app gen
+    whenCurrentGen app gen $ broadcast app EvExecutionDone
+
+killSession :: App -> IO ()
+killSession app =
+    modifyHaskellSession (appSessions app) $ \mSess -> do
+        forM_ mSess $ \s ->
+            void (try (ST.sbClose s) :: IO (Either SomeException ()))
+        pure Nothing
+
+ensureSessionAlive :: App -> Int -> CabalMeta -> IO Bool
+ensureSessionAlive app gen metas = do
+    installed <- getHaskellDeps (appDeps app)
+    instExts <- getHaskellExts (appDeps app)
+    mSess <- getHaskellSession (appSessions app)
+    let metaMatch = depsMatch metas installed instExts (envGlobalDeps (appEnv app))
     case mSess of
-        Nothing ->
-            pure (RunResult (cellId cell) [] (Just "No GHCi session"), [])
-        Just sess -> do
-            cellWidgets <-
-                withMVar (stWidgetValues st) $
-                    pure . M.findWithDefault M.empty (cellId cell)
-            let preamble = widgetPreamble (cellId cell) cellWidgets
-                sf = scriptLines (parseScript (cellSource cell))
-                ghci = preamble <> toGhciScript sf
-            TIO.hPutStrLn stderr $
-                T.pack $
-                    "[handler] Cell " ++ show (cellId cell) ++ ":\n" ++ T.unpack ghci
-            (rawOut, rawErr) <- runBlock sess ghci
-            let items = parseMimeOutputs rawOut
-                outputs = [OutputItem m b | (m, b) <- items, not (T.null (T.strip b))]
-                errs = parseErrors rawErr
-            TIO.hPutStrLn stderr $
-                T.pack $
-                    "[handler] → outputs="
-                        ++ show (length outputs)
-                        ++ " errors="
-                        ++ show (length errs)
-            pure
-                ( RunResult
-                    { rrCellId = cellId cell
-                    , rrOutputs = outputs
-                    , rrError = if T.null rawErr then Nothing else Just rawErr
-                    }
-                , errs
-                )
+        Just _ | metaMatch -> pure True
+        _ -> installAndRestart app gen metas
 
-applyResult :: RunResult -> Cell -> Cell
-applyResult r c
-    | cellId c == rrCellId r =
-        c
-            { cellOutputs = rrOutputs r
-            , cellError = rrError r
-            , cellDirty = False
-            }
-    | otherwise = c
+depsMatch :: CabalMeta -> Set Text -> Set Text -> Set Text -> Bool
+depsMatch metas installed instExts globalDeps =
+    S.fromList (metaDeps metas) `S.isSubsetOf` (installed `S.union` globalDeps)
+        && S.fromList (metaExts metas) == instExts
 
-executeAffected :: AppState -> Int -> Int -> IO ()
-executeAffected st gen editedCid = do
-    TIO.hPutStrLn stderr $
+installAndRestart :: App -> Int -> CabalMeta -> IO Bool
+installAndRestart app gen metas = do
+    current <- isCurrentGen app gen
+    if not current
+        then pure False
+        else installDepsAndStartSession app gen metas
+
+installDepsAndStartSession :: App -> Int -> CabalMeta -> IO Bool
+installDepsAndStartSession app gen metas = do
+    broadcastDepsStatus app metas
+    setHaskellExts (appDeps app) (S.fromList (metaExts metas))
+    let projDir = envTmpDir (appEnv app) </> "repl-project"
+    setupReplProject projDir (mergedMeta (envGlobalDeps (appEnv app)) metas)
+    broadcast app (EvSessionStatus SStarting)
+    killSession app
+    startSessionWith app projDir
+
+broadcastDepsStatus :: App -> CabalMeta -> IO ()
+broadcastDepsStatus app metas = do
+    installedDeps <- getHaskellDeps (appDeps app)
+    let globalDeps = envGlobalDeps (appEnv app)
+        notebookDeps = S.difference (S.fromList (metaDeps metas)) globalDeps
+    unless (notebookDeps `S.isSubsetOf` installedDeps) $ do
+        let newDeps = S.difference notebookDeps installedDeps
+        broadcast app $
+            EvSessionStatus $
+                if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
+        setHaskellDeps (appDeps app) notebookDeps
+
+setupReplProject :: FilePath -> CabalMeta -> IO ()
+setupReplProject dir meta = do
+    createDirectoryIfMissing True dir
+    ensureFile (dir </> "cabal.project") "packages: .\n"
+    ensureFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
+    writeFile (dir </> "sabela-repl.cabal") (renderCabalFile "sabela-repl" meta)
+
+ensureFile :: FilePath -> String -> IO ()
+ensureFile path content = do
+    exists <- doesFileExist path
+    unless exists $ writeFile path content
+
+startSessionWith :: App -> FilePath -> IO Bool
+startSessionWith app projDir = do
+    debugLog app "[handler] Injecting display prelude"
+    let cfg = SessionConfig{scProjectDir = projDir, scWorkDir = envWorkDir (appEnv app)}
+    sessResult <- try (newSession cfg) :: IO (Either SomeException Session)
+    case sessResult of
+        Left e -> reportSessionFailure app "Session startup failed" e
+        Right sess -> do
+            broadcastInstallLog app sess
+            injectPrelude app sess
+
+reportSessionFailure :: App -> Text -> SomeException -> IO Bool
+reportSessionFailure app msg e = do
+    debugLog app $ "[handler] " <> msg <> ": " <> T.pack (show e)
+    broadcast app (EvSessionStatus SReset)
+    pure False
+
+broadcastInstallLog :: App -> Session -> IO ()
+broadcastInstallLog app sess = do
+    startupLog <- readErrorBuffer sess
+    mapM_
+        (broadcast app . EvInstallLog)
+        (filter (not . T.null) (T.lines startupLog))
+
+injectPrelude :: App -> Session -> IO Bool
+injectPrelude app sess = do
+    result <-
+        try (runBlock sess displayPrelude) :: IO (Either SomeException (Text, Text))
+    case result of
+        Left e -> do
+            reportSessionFailure app "Prelude injection failed" e
+            threadDelay 100000
+            broadcastInstallLog app sess
+            void (try (closeSession sess) :: IO (Either SomeException ()))
+            pure False
+        Right _ -> do
+            setHaskellSession (appSessions app) (Just (ghciBackend sess))
+            broadcast app (EvSessionStatus SReady)
+            pure True
+
+loadSabelaPrelude :: App -> IO ()
+loadSabelaPrelude app = do
+    mSess <- getHaskellSession (appSessions app)
+    forM_ mSess $ \backend -> void (ST.sbRunBlock backend displayPrelude)
+
+runAndBroadcast :: App -> Int -> Cell -> IO ()
+runAndBroadcast app gen cell = do
+    broadcast app (EvCellUpdating (cellId cell))
+    loadSabelaPrelude app
+    (result, errs) <- execCell app cell
+    whenCurrentGen app gen $
+        updateAndBroadcast
+            app
+            (\nb -> nb{nbCells = map (applyResult result) (nbCells nb)})
+            (EvCellResult (rrCellId result) (rrOutputs result) (rrError result) errs)
+
+execCell :: App -> Cell -> IO (RunResult, [CellError])
+execCell app cell = do
+    mSess <- getHaskellSession (appSessions app)
+    case mSess of
+        Nothing -> pure (RunResult (cellId cell) [] (Just "No GHCi session"), [])
+        Just backend -> execCellWith app cell backend
+
+execCellWith :: App -> Cell -> ST.SessionBackend -> IO (RunResult, [CellError])
+execCellWith app cell backend = do
+    ghci <- buildGhciScript app cell
+    debugLog app $
         T.pack $
-            "[handler] executeAffected: editedCid="
-                ++ show editedCid
-    nb <- readMVar (stNotebook st)
-    let allCode = filter (\c -> cellType c == CodeCell) (nbCells nb)
-        needed = collectMetadata nb
+            "[handler] Cell " ++ show (cellId cell) ++ ":\n" ++ T.unpack ghci
+    onLine <- mkStreamingCallback app (cellId cell)
+    (rawOut, rawErr) <- ST.sbRunBlockStreaming backend ghci onLine
+    storeBridgeExports app rawOut
+    parseCellResult (cellId cell) rawOut rawErr
 
-    installed <- readIORef (stInstalledDeps st)
-    instExts <- readIORef (stInstalledExts st)
-    mSess <- readMVar (stSession st)
+buildGhciScript :: App -> Cell -> IO Text
+buildGhciScript app cell = do
+    cellWidgets <- getWidgetValues (appWidgets app) (cellId cell)
+    bridgeVals <- getBridgeValues (appBridge app)
+    let preamble = widgetPreamble (cellId cell) cellWidgets <> bridgePreamble bridgeVals
+        sf = scriptLines (parseScript (cellSource cell))
+    pure (preamble <> toGhciScript sf)
 
-    let neededD = S.fromList (metaDeps needed)
-        neededE = S.fromList (metaExts needed)
-        globalDeps = stGlobalDeps st
-        depsOk = neededD `S.isSubsetOf` (installed `S.union` globalDeps)
-        extsOk = neededE == instExts
-        (defMap, _) = Topo.buildDefMap allCode
-        codePosMap = M.fromList (zip (map cellId (nbCells nb)) [1 ..])
+storeBridgeExports :: App -> Text -> IO ()
+storeBridgeExports app rawOut = do
+    let (exports, _) = partitionExports (parseMimeOutputs rawOut)
+    forM_ exports $ \(name, val) ->
+        setBridgeValue (appBridge app) name (T.strip val)
 
-    case (mSess, depsOk && extsOk) of
-        (Just _, True) -> do
-            let (topoResult, redefMap) = Topo.selectAffectedTopo editedCid allCode
-                allIds = map cellId allCode
-                runIds = map cellId (Topo.trOrdered topoResult)
+parseCellResult :: Int -> Text -> Text -> IO (RunResult, [CellError])
+parseCellResult cid rawOut rawErr = do
+    let (_, normalItems) = partitionExports (parseMimeOutputs rawOut)
+        outputs = [OutputItem m b | (m, b) <- normalItems, not (T.null (T.strip b))]
+        errs = parseErrors rawErr
+        actualErr = classifyError errs rawErr
+    pure (RunResult cid outputs actualErr, errs)
 
-            TIO.hPutStrLn stderr $ T.pack $ "[handler] All code cells: " ++ show allIds
-            TIO.hPutStrLn stderr $
-                T.pack $
-                    "[handler] WILL RUN (affected, topo order): " ++ show runIds
-            TIO.hPutStrLn stderr $
-                T.pack $
-                    "[handler] Cycle cells: " ++ show (S.toList (Topo.trCycleIds topoResult))
-            TIO.hPutStrLn stderr $
-                T.pack $
-                    "[handler] Redef cells: " ++ show (M.keys redefMap)
+classifyError :: [CellError] -> Text -> Maybe Text
+classifyError errs rawErr
+    | null errs && isTemplateHaskellOutput rawErr = Nothing
+    | T.null rawErr = Nothing
+    | otherwise = Just rawErr
 
-            forM_ allCode $ \c -> do
-                let (defs, uses) = Topo.cellNames (cellSource c)
-                TIO.hPutStrLn stderr $
-                    T.pack $
-                        "[handler]   cell "
-                            ++ show (cellId c)
-                            ++ " defines="
-                            ++ show (S.toList defs)
-                            ++ " uses="
-                            ++ show (take 10 (S.toList uses))
-                            ++ (if S.size uses > 10 then "..." else "")
+executeAffected :: App -> Int -> Int -> IO ()
+executeAffected app gen editedCid = do
+    debugLog app $
+        "[handler] executeAffected: editedCid=" <> T.pack (show editedCid)
+    nb <- readNotebook (appNotebook app)
+    sessionReady <- isSessionUpToDate app nb
+    if sessionReady
+        then executeIncrementalPlan app gen editedCid nb
+        else executeFullRestartPlan app gen nb
 
-            broadcastRedefinitionErrors st defMap redefMap codePosMap
-            broadcastCycleErrors st (Topo.trCycleIds topoResult) codePosMap
-            let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
-                toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
-            runCellList st gen toRun
+isSessionUpToDate :: App -> Notebook -> IO Bool
+isSessionUpToDate app nb = do
+    installed <- getHaskellDeps (appDeps app)
+    instExts <- getHaskellExts (appDeps app)
+    mSess <- getHaskellSession (appSessions app)
+    let needed = collectMetadata nb
+        match = depsMatch needed installed instExts (envGlobalDeps (appEnv app))
+    case mSess of
+        Just _ | match -> pure True
+        _ -> pure False
 
-        -- ── Deps changed → full restart ──
-        (_, False) -> do
-            putStrLn "[handler] Deps/exts changed → full restart"
-            ok <- installAndRestart st gen needed
-            when ok $ do
-                let (topoResult, redefMap) = Topo.computeTopoOrder allCode
-                broadcastRedefinitionErrors st defMap redefMap codePosMap
-                broadcastCycleErrors st (Topo.trCycleIds topoResult) codePosMap
-                let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
-                    toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
-                runCellList st gen toRun
+executeIncrementalPlan :: App -> Int -> Int -> Notebook -> IO ()
+executeIncrementalPlan app gen editedCid nb = do
+    let allCode = haskellCodeCells nb
+        plan = computeExecutionPlan editedCid allCode nb
+    logExecutionPlan app allCode plan
+    broadcastPlanErrors app plan Nothing
+    runCellList app gen (epCellsToRun plan)
+    whenCurrentGen app gen $ broadcast app EvExecutionDone
 
-        -- ── No session → create + run all ──
-        (Nothing, True) -> do
-            putStrLn "[handler] No session → starting fresh, running all"
-            ok <- installAndRestart st gen needed
-            when ok $ do
-                let (topoResult, redefMap) = Topo.computeTopoOrder allCode
-                broadcastRedefinitionErrors st defMap redefMap codePosMap
-                broadcastCycleErrors st (Topo.trCycleIds topoResult) codePosMap
-                let skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
-                    toRun = filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
-                runCellList st gen toRun
+executeFullRestartPlan :: App -> Int -> Notebook -> IO ()
+executeFullRestartPlan app gen nb = do
+    debugLog app "[handler] No session or deps changed -> full restart"
+    let allCode = haskellCodeCells nb
+    ok <- installAndRestart app gen (collectMetadata nb)
+    when ok $ executeFullPlan app gen allCode nb
+    whenCurrentGen app gen $ broadcast app EvExecutionDone
 
-broadcastCellError :: AppState -> Int -> Text -> IO ()
-broadcastCellError st cid msg = do
-    let err = CellError{ceLine = Nothing, ceCol = Nothing, ceMessage = msg}
-    modifyMVar_ (stNotebook st) $ \nb ->
-        pure nb{nbCells = map (clearCell cid msg) (nbCells nb)}
-    broadcast st (EvCellResult cid [] (Just msg) [err])
-  where
-    clearCell targetCid errMsg c
-        | cellId c == targetCid =
-            c{cellOutputs = [], cellError = Just errMsg, cellDirty = False}
-        | otherwise = c
+logExecutionPlan :: App -> [Cell] -> ExecutionPlan -> IO ()
+logExecutionPlan app allCode plan = do
+    debugLog app $
+        T.pack $
+            "[handler] All code cells: " ++ show (map cellId allCode)
+    debugLog app $
+        T.pack $
+            "[handler] WILL RUN: " ++ show (map cellId (epCellsToRun plan))
+    debugLog app $
+        T.pack $
+            "[handler] Cycle cells: " ++ show (S.toList (epCycleIds plan))
+    debugLog app $
+        T.pack $
+            "[handler] Redef cells: " ++ show (M.keys (epRedefErrors plan))
+    forM_ allCode $ \c -> logCellDeps app c
 
-broadcastRedefinitionErrors ::
-    AppState -> M.Map Text Int -> M.Map Int [Text] -> M.Map Int Int -> IO ()
-broadcastRedefinitionErrors st defMap redefMap codePosMap =
-    forM_ (M.toList redefMap) $ \(cid, names) -> do
-        let msgs =
-                [ "'"
-                    <> name
-                    <> "' is already defined in cell "
-                    <> T.pack (show (M.findWithDefault origCid origCid codePosMap))
-                    <> " (which takes precedence)"
-                | name <- names
-                , Just origCid <- [M.lookup name defMap]
-                ]
-            combined =
-                "Duplicate definition"
-                    <> (if length names > 1 then "s" else "")
-                    <> ": "
-                    <> T.intercalate "; " msgs
-                    <> ". Remove the duplicate to resolve this conflict."
-        broadcastCellError st cid combined
+logCellDeps :: App -> Cell -> IO ()
+logCellDeps app c = do
+    let (defs, uses) = Topo.cellNames (cellSource c)
+        usesPreview = take 10 (S.toList uses) ++ ["..." | S.size uses > 10]
+    debugLog app $
+        T.pack $
+            "[handler]   cell "
+                ++ show (cellId c)
+                ++ " defines="
+                ++ show (S.toList defs)
+                ++ " uses="
+                ++ show usesPreview
 
-broadcastCycleErrors :: AppState -> S.Set Int -> M.Map Int Int -> IO ()
-broadcastCycleErrors st cycleIds codePosMap
-    | S.null cycleIds = pure ()
-    | otherwise = do
-        let cids = S.toList cycleIds
-            cycleMsg =
-                T.intercalate
-                    ", "
-                    (map (\c -> T.pack (show (M.findWithDefault c c codePosMap))) cids)
-            msg =
-                "This cell is part of a circular dependency and cannot be executed."
-                    <> " Cells in the cycle: ["
-                    <> cycleMsg
-                    <> "]."
-        forM_ cids $ \cid -> broadcastCellError st cid msg
+broadcastPlanErrors :: App -> ExecutionPlan -> Maybe Int -> IO ()
+broadcastPlanErrors app plan filterCid = do
+    broadcastRedefErrors app plan filterCid
+    broadcastCycleErrors app plan filterCid
 
-runCellList :: AppState -> Int -> [Cell] -> IO ()
-runCellList st gen cells = do
-    forM_ cells $ \cell -> do
-        still <- isCurrentGen st gen
-        when still $ runAndBroadcast st gen cell
-    still <- isCurrentGen st gen
-    when still $ broadcast st EvExecutionDone
+broadcastRedefErrors :: App -> ExecutionPlan -> Maybe Int -> IO ()
+broadcastRedefErrors app plan filterCid = do
+    let redefMap = filterByCell filterCid (epRedefErrors plan)
+    forM_ (M.toList redefMap) $ \(cid, names) ->
+        broadcastCellError
+            app
+            cid
+            (redefinitionErrorMsg (epDefMap plan) (epCellPositions plan) cid names)
+
+broadcastCycleErrors :: App -> ExecutionPlan -> Maybe Int -> IO ()
+broadcastCycleErrors app plan filterCid = do
+    let cycleIds = filterCycleIds filterCid (epCycleIds plan)
+    unless (S.null cycleIds) $
+        let msg = cycleErrorMsg (epCellPositions plan) cycleIds
+         in forM_ (S.toList cycleIds) $ \cid -> broadcastCellError app cid msg
+
+filterByCell :: Maybe Int -> M.Map Int a -> M.Map Int a
+filterByCell Nothing m = m
+filterByCell (Just cid) m = M.filterWithKey (\k _ -> k == cid) m
+
+filterCycleIds :: Maybe Int -> S.Set Int -> S.Set Int
+filterCycleIds Nothing s = s
+filterCycleIds (Just cid) s = S.intersection s (S.singleton cid)
+
+runCellList :: App -> Int -> [Cell] -> IO ()
+runCellList app gen cells =
+    forM_ cells $ \cell ->
+        whenCurrentGen app gen $ runAndBroadcast app gen cell

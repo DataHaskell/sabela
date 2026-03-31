@@ -61,16 +61,16 @@ import Test.WebDriver.Commands.Wait (waitUntil)
 
 import qualified Data.Set as Set
 import Sabela.Handlers (setupReactive)
-import Sabela.Server (initState, mkApp)
+import Sabela.Server (mkApp, newApp)
 
 {- | Start the Sabela server in-process on the given port.
 The server runs in a forked thread; this function returns once it is ready.
 -}
 withTestServer :: Int -> FilePath -> IO () -> IO ()
 withTestServer port workDir action = do
-    st <- initState workDir Set.empty
-    rn <- setupReactive st
-    _ <- forkIO $ run port (mkApp st rn)
+    app <- newApp workDir Set.empty
+    rn <- setupReactive app
+    _ <- forkIO $ run port (mkApp app rn)
     waitForServer port
     action
 

@@ -2,18 +2,31 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Sabela.Model where
+module Sabela.Model (
+    -- * Output
+    OutputItem (..),
 
-import Control.Concurrent (MVar)
-import Control.Concurrent.STM (TChan)
+    -- * Notebook and cells
+    Notebook (..),
+    Cell (..),
+    CellType (..),
+    lookupCell,
+    cellLangOf,
+
+    -- * Events
+    NotebookEvent (..),
+    SessionStatus (..),
+
+    -- * Errors
+    CellError (..),
+) where
+
 import Data.Aeson (FromJSON, ToJSON (..), object, (.=))
-import Data.IORef (IORef)
-import Data.Map.Strict (Map)
-import Data.Set (Set)
+import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
-import Sabela.Session (Session)
+import Sabela.SessionTypes (CellLang (..))
 
 data OutputItem = OutputItem
     { oiMime :: Text
@@ -23,22 +36,6 @@ data OutputItem = OutputItem
 
 instance ToJSON OutputItem
 instance FromJSON OutputItem
-
-data AppState = AppState
-    { stNotebook :: MVar Notebook
-    , stSession :: MVar (Maybe Session)
-    , stTmpDir :: FilePath
-    , stWorkDir :: FilePath
-    , stNextId :: IORef Int
-    , stInstalledDeps :: IORef (Set Text)
-    , stInstalledExts :: IORef (Set Text)
-    , stBroadcast :: TChan NotebookEvent
-    , stGeneration :: IORef Int
-    , stDebounceRef :: MVar (Maybe (Int, Set Int))
-    , stGlobalDeps :: Set Text
-    , stWidgetValues :: MVar (Map Int (Map Text Text))
-    -- ^ cellId → name → value; set by POST /api/widget
-    }
 
 data Notebook = Notebook
     { nbTitle :: Text
@@ -52,6 +49,7 @@ instance FromJSON Notebook
 data Cell = Cell
     { cellId :: Int
     , cellType :: CellType
+    , cellLang :: CellLang
     , cellSource :: Text
     , cellOutputs :: [OutputItem]
     , cellError :: Maybe Text
@@ -69,6 +67,7 @@ instance FromJSON CellType
 
 data NotebookEvent
     = EvCellUpdating Int
+    | EvCellPartialOutput Int Text
     | EvCellResult Int [OutputItem] (Maybe Text) [CellError]
     | EvExecutionDone
     | EvSessionStatus SessionStatus
@@ -94,6 +93,9 @@ instance Show SessionStatus where
 instance ToJSON NotebookEvent where
     toJSON (EvCellUpdating cid) =
         object ["type" .= ("cellUpdating" :: Text), "cellId" .= cid]
+    toJSON (EvCellPartialOutput cid line) =
+        object
+            ["type" .= ("cellPartialOutput" :: Text), "cellId" .= cid, "line" .= line]
     toJSON (EvCellResult cid outputs err errs) =
         object
             [ "type" .= ("cellResult" :: Text)
@@ -119,3 +121,9 @@ data CellError = CellError
 
 instance ToJSON CellError
 instance FromJSON CellError
+
+lookupCell :: Int -> Notebook -> Maybe Cell
+lookupCell cid nb = find (\c -> cellId c == cid) (nbCells nb)
+
+cellLangOf :: Int -> Notebook -> CellLang
+cellLangOf cid nb = maybe Haskell cellLang (lookupCell cid nb)

@@ -58,6 +58,8 @@ displayPrelude =
         , "sample = bSample"
         , "render :: Behavior a -> IO ()"
         , "render = bRender"
+        , "exportBridge :: String -> String -> IO ()"
+        , "exportBridge name val = putStrLn (\"---MIME:EXPORT:\" ++ name ++ \"---\") >> putStrLn val >> putStrLn \"---MIME:text/plain---\""
         , "slider :: (Show a, Read a, Integral a) => String -> a -> a -> a -> Behavior a"
         , "slider name def lo hi = Behavior { bSample = widgetRead name def, bRender = widgetRead name def >>= \\val -> readIORef _sabelaCellIdRef >>= \\cid -> displayMime_ \"text/html\" $ \"<input type='range' min='\" ++ show lo ++ \"' max='\" ++ show hi ++ \"' value='\" ++ show val ++ \"' oninput=\\\"parent.postMessage({type:'widget',cellId:\" ++ cid ++ \",name:'\" ++ name ++ \"',value:this.value},'*')\\\">\""
             <> " }"

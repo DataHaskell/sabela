@@ -17,7 +17,11 @@ parseErrors stderr
          in case ls of
                 (hdr : _) -> case parseErrorHeader hdr of
                     Just (ln, col) -> [CellError (Just ln) col (T.strip block)]
-                    Nothing -> [CellError Nothing Nothing (T.strip block)]
+                    Nothing
+                        -- Only treat as error if it contains "error" or "Error"
+                        | "error" `T.isInfixOf` T.toLower (T.strip block) ->
+                            [CellError Nothing Nothing (T.strip block)]
+                        | otherwise -> []
                 _ -> []
 
     splitErrors t = filter (not . T.null . T.strip) $ splitOnHeaders (T.lines t) [] []

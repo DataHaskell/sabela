@@ -1,0 +1,9 @@
+dist-newstyle/
+.git/
+*.log
+test/
+.github/
+scripts/
+*.md
+!README.md
+!CHANGELOG.md

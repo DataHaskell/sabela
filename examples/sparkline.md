@@ -115,9 +115,9 @@ dashboard xs =
       , "mean@ : |" ++ bar 32 pos ++ "|"
       ]
 
-let xs = signal seed width amplitude
+let vals = signal seed width amplitude
 
-putStrLn (dashboard xs)
+putStrLn (dashboard vals)
 ```
 
 ---

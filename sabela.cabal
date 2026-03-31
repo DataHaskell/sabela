@@ -21,13 +21,31 @@ library
     autogen-modules:  Paths_sabela
     other-modules:    Paths_sabela
     exposed-modules:  Sabela.Session,
+                      Sabela.SessionTypes,
                       Sabela.Model,
                       Sabela.Api,
+                      Sabela.Bridge,
+                      Sabela.Deps,
+                      Sabela.Reactivity,
+                      Sabela.State,
+                      Sabela.State.BridgeStore,
+                      Sabela.State.DependencyTracker,
+                      Sabela.State.Environment,
+                      Sabela.State.EventBus,
+                      Sabela.State.NotebookStore,
+                      Sabela.State.SessionManager,
+                      Sabela.State.WidgetStore,
                       Sabela.Handlers,
+                      Sabela.Handlers.Shared,
+                      Sabela.Handlers.Lean,
+                      Sabela.Handlers.Python,
                       Sabela.Output,
                       Sabela.Errors,
                       Sabela.Server,
-                      Sabela.Topo
+                      Sabela.Topo,
+                      Sabela.LeanLsp,
+                      Sabela.LeanSession,
+                      Sabela.PythonSession
     build-depends:    base >= 4 && < 5,
                       aeson >= 0.11.0.0 && < 3,
                       bytestring >= 0.10 && < 0.13,
@@ -68,6 +86,7 @@ test-suite sabela-test
     other-modules:    Test.SessionSpec,
                       Test.TopoSpec,
                       Test.OutputSpec,
+                      Test.LeanExportSpec,
                       Test.PreinstalledSpec
     build-depends:
         base >= 4 && < 5,

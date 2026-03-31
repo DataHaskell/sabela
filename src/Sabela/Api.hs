@@ -6,8 +6,7 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Sabela.Model (CellType, OutputItem)
-
--- Request bodies.
+import Sabela.SessionTypes (CellLang)
 
 data WidgetUpdate = WidgetUpdate
     { wuCellId :: Int
@@ -29,6 +28,7 @@ instance FromJSON UpdateCell
 data InsertCell = InsertCell
     { icAfter :: Int
     , icType :: CellType
+    , icLang :: CellLang
     , icSource :: Text
     }
     deriving (Show, Eq, Generic)
@@ -88,8 +88,6 @@ newtype InfoRequest = InfoRequest
 
 instance ToJSON InfoRequest
 instance FromJSON InfoRequest
-
--- Response bodies.
 
 data RunResult = RunResult
     { rrCellId :: Int

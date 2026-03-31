@@ -4,17 +4,15 @@
 module Test.PreinstalledSpec (spec) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.STM (atomically, dupTChan, tryReadTChan)
+import Control.Concurrent.STM (atomically, tryReadTChan)
 import Control.Monad (void)
 import Data.IORef (modifyIORef, newIORef, readIORef)
 import qualified Data.Set as Set
 import Sabela.Handlers (installAndRestart)
-import Sabela.Model (
-    AppState (..),
-    NotebookEvent (..),
-    SessionStatus (..),
- )
-import Sabela.Server (initState)
+import Sabela.Model (NotebookEvent (..), SessionStatus (..))
+import Sabela.Server (newApp)
+import Sabela.State (App (..))
+import Sabela.State.EventBus (subscribeBroadcast)
 import ScriptHs.Parser (CabalMeta (..))
 import System.Directory (findExecutable)
 import Test.Hspec (Spec, describe, it, pendingWith, shouldSatisfy)
@@ -27,10 +25,10 @@ spec = describe "preinstalled packages" $ do
             Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
             Just _ -> pure ()
         -- Build state with "containers" declared as a global (preinstalled) dep
-        st <- initState "." (Set.fromList ["containers"])
-        chan <- atomically $ dupTChan (stBroadcast st)
+        app <- newApp "." (Set.fromList ["containers"])
+        chan <- subscribeBroadcast (appEvents app)
 
-        -- gen=0 matches the freshly-initialised stGeneration IORef
+        -- gen=0 matches the freshly-initialised generation IORef
         let meta =
                 CabalMeta
                     { metaDeps = ["containers"]
@@ -38,7 +36,7 @@ spec = describe "preinstalled packages" $ do
                     , metaGhcOptions = []
                     }
 
-        void $ forkIO $ void $ installAndRestart st 0 meta
+        void $ forkIO $ void $ installAndRestart app 0 meta
 
         -- Poll the broadcast channel for up to 30 s, stop when SReady arrives
         eventsRef <- newIORef ([] :: [NotebookEvent])

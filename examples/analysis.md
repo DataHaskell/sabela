@@ -109,9 +109,8 @@ $(F.declareColumns df)
 
 
 ```haskell
-priceBucket :: Double -> Text
 priceBucket p
-    | p > 500000 = ">500'000"
+    | p > 500000 = (">500'000" :: Text)
     | p > 450000 = ">450'000"
     | p > 400000 = ">400'000"
     | p > 300000 = ">300'000"

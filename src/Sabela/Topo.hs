@@ -24,7 +24,6 @@ data TopoResult = TopoResult
     -- ^ Cell IDs that are part of a circular dependency
     }
 
--- | Extract (definitions, uses) from cell source text.
 cellNames :: Text -> (S.Set Text, S.Set Text)
 cellNames src = (defs, uses)
   where
@@ -45,17 +44,20 @@ extractDefs line
     | Just rest <- stripKW "type" s = firstAnyIdent rest
     | Just rest <- stripKW "newtype" s = firstAnyIdent rest
     | Just rest <- stripKW "class" s = firstAnyIdent rest
-    | otherwise =
-        let toks = T.words s
-         in case toks of
-                (w : rest)
-                    | isLowerIdent w
-                    , any (\t -> t == "=" || t == "<-") (take 8 rest) ->
-                        [w]
-                _ -> []
+    | otherwise = extractValueBinding s
   where
     s = T.strip line
     isIndented = not (T.null line) && (T.head line == ' ' || T.head line == '\t')
+
+extractValueBinding :: Text -> [Text]
+extractValueBinding s =
+    let toks = T.words s
+     in case toks of
+            (w : rest)
+                | isLowerIdent w
+                , any (\t -> t == "=" || t == "<-") (take 8 rest) ->
+                    [w]
+            _ -> []
 
 stripKW :: Text -> Text -> Maybe Text
 stripKW kw t = case T.stripPrefix kw t of
@@ -87,7 +89,7 @@ extractTokens = filter isIdent . T.split (not . isIdentChar)
   where
     isIdent t = not (T.null t) && (isAlpha (T.head t) || T.head t == '_')
 
-{- | Build defMap (name → first cell ID) and redefMap (later cell ID → [redefined names]).
+{- | Build defMap (name -> first cell ID) and redefMap (later cell ID -> [redefined names]).
 First-wins: the first cell in notebook order to define a name is canonical.
 Later cells that try to define the same name are collected in redefMap.
 -}
@@ -108,7 +110,7 @@ buildDefMap = foldl step (M.empty, M.empty)
         | M.member name defMap = (defMap, name : redefs)
         | otherwise = (M.insert name cid defMap, redefs)
 
-{- | Build dependency graph: cell ID → set of cell IDs it depends on.
+{- | Build dependency graph: cell ID -> set of cell IDs it depends on.
 Based on defMap: a cell depends on the cell that canonically defines each name it uses.
 -}
 buildDepGraph :: M.Map Text Int -> [Cell] -> M.Map Int (S.Set Int)
@@ -121,22 +123,39 @@ buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
                 S.fromList
                     [depCid | name <- S.toList uses, Just depCid <- [M.lookup name defMap]]
 
+data TopoState = TopoState
+    { tsFilteredDeps :: M.Map Int (S.Set Int)
+    , tsRevDeps :: M.Map Int (S.Set Int)
+    , tsPositions :: M.Map Int Int
+    , tsCellById :: M.Map Int Cell
+    }
+
 {- | Kahn's topological sort.
 Only processes the provided cells; deps to cells outside this set are ignored
 (treated as already satisfied). Leftover cells with unresolved in-degree are cycles.
 -}
 topoSort :: [Cell] -> M.Map Int (S.Set Int) -> TopoResult
 topoSort cells deps =
-    let cids = S.fromList (map cellId cells)
+    let st = buildTopoState cells deps
+        inDegree =
+            M.fromList
+                [ (cellId c, S.size (M.findWithDefault S.empty (cellId c) (tsFilteredDeps st)))
+                | c <- cells
+                ]
+        initQueue = [cellId c | c <- cells, M.findWithDefault 0 (cellId c) inDegree == 0]
+        cids = S.fromList (map cellId cells)
+        (ordered, finalDeg) = runKahns st initQueue inDegree []
+        cycleIds = S.fromList [cid | cid <- S.toList cids, M.findWithDefault 0 cid finalDeg > 0]
+     in TopoResult{trOrdered = ordered, trCycleIds = cycleIds}
 
-        -- restrict deps to only within this cell set
+buildTopoState :: [Cell] -> M.Map Int (S.Set Int) -> TopoState
+buildTopoState cells deps =
+    let cids = S.fromList (map cellId cells)
         filteredDeps =
             M.fromList
                 [ (cellId c, S.intersection cids (M.findWithDefault S.empty (cellId c) deps))
                 | c <- cells
                 ]
-
-        -- reverse graph: dep → set of cells that depend on it
         revDeps =
             M.fromListWith
                 S.union
@@ -144,42 +163,30 @@ topoSort cells deps =
                 | (cid, depSet) <- M.toList filteredDeps
                 , dep <- S.toList depSet
                 ]
-
-        -- in-degree for each cell (number of dependencies within the set)
-        inDegree =
-            M.fromList
-                [ (cellId c, S.size (M.findWithDefault S.empty (cellId c) filteredDeps))
-                | c <- cells
-                ]
-
-        -- notebook position for stable tiebreaking
-        positions = M.fromList (zip (map cellId cells) [0 :: Int ..])
-
-        -- cell lookup by ID
-        cellById = M.fromList [(cellId c, c) | c <- cells]
-
-        go [] deg acc = (acc, deg)
-        go queue deg acc =
-            let cid = minimumByPos queue positions
-                queue' = filter (/= cid) queue
-                dependents = S.toList (M.findWithDefault S.empty cid revDeps)
-                (newlyUnblocked, deg') = foldl unblock ([], deg) dependents
-                queue'' = queue' ++ newlyUnblocked
-                cell = cellById M.! cid
-             in go queue'' deg' (acc ++ [cell])
-
-        unblock (unblocked, d) depCid =
-            let d' = M.adjust (subtract 1) depCid d
-                newDeg = M.findWithDefault 0 depCid d'
-             in if newDeg == 0 then (depCid : unblocked, d') else (unblocked, d')
-
-        initQueue = [cellId c | c <- cells, M.findWithDefault 0 (cellId c) inDegree == 0]
-        (ordered, finalDeg) = go initQueue inDegree []
-        cycleIds = S.fromList [cid | cid <- S.toList cids, M.findWithDefault 0 cid finalDeg > 0]
-     in TopoResult
-            { trOrdered = ordered
-            , trCycleIds = cycleIds
+     in TopoState
+            { tsFilteredDeps = filteredDeps
+            , tsRevDeps = revDeps
+            , tsPositions = M.fromList (zip (map cellId cells) [0 :: Int ..])
+            , tsCellById = M.fromList [(cellId c, c) | c <- cells]
             }
+
+runKahns ::
+    TopoState -> [Int] -> M.Map Int Int -> [Cell] -> ([Cell], M.Map Int Int)
+runKahns _ [] deg acc = (acc, deg)
+runKahns st queue deg acc =
+    let cid = minimumByPos queue (tsPositions st)
+        queue' = filter (/= cid) queue
+        dependents = S.toList (M.findWithDefault S.empty cid (tsRevDeps st))
+        (newlyUnblocked, deg') = foldl unblock ([], deg) dependents
+        queue'' = queue' ++ newlyUnblocked
+        cell = tsCellById st M.! cid
+     in runKahns st queue'' deg' (acc ++ [cell])
+
+unblock :: ([Int], M.Map Int Int) -> Int -> ([Int], M.Map Int Int)
+unblock (unblocked, d) depCid =
+    let d' = M.adjust (subtract 1) depCid d
+        newDeg = M.findWithDefault 0 depCid d'
+     in if newDeg == 0 then (depCid : unblocked, d') else (unblocked, d')
 
 minimumByPos :: [Int] -> M.Map Int Int -> Int
 minimumByPos xs positions =
@@ -205,25 +212,24 @@ selectAffectedTopo :: Int -> [Cell] -> (TopoResult, M.Map Int [Text])
 selectAffectedTopo editedCid cells =
     let (defMap, redefMap) = buildDefMap cells
         deps = buildDepGraph defMap cells
+        affected = computeAffectedSet editedCid deps
+        toSort =
+            filter
+                (\c -> S.member (cellId c) affected && not (M.member (cellId c) redefMap))
+                cells
+        result = topoSort toSort deps
+     in (result, redefMap)
 
-        -- reverse dep graph: cell → set of cells that depend on it
-        revDeps =
+computeAffectedSet :: Int -> M.Map Int (S.Set Int) -> S.Set Int
+computeAffectedSet editedCid deps =
+    let revDeps =
             M.fromListWith
                 S.union
                 [ (dep, S.singleton cid)
                 | (cid, depSet) <- M.toList deps
                 , dep <- S.toList depSet
                 ]
-
-        affected = bfsAffected (S.singleton editedCid) (S.singleton editedCid) revDeps
-
-        toSort =
-            filter
-                (\c -> S.member (cellId c) affected && not (M.member (cellId c) redefMap))
-                cells
-
-        result = topoSort toSort deps
-     in (result, redefMap)
+     in bfsAffected (S.singleton editedCid) (S.singleton editedCid) revDeps
 
 bfsAffected :: S.Set Int -> S.Set Int -> M.Map Int (S.Set Int) -> S.Set Int
 bfsAffected visited frontier revDeps

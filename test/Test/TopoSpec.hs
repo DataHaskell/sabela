@@ -7,6 +7,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Text (Text)
 import Sabela.Model (Cell (..), CellType (..))
+import Sabela.SessionTypes (CellLang (..))
 import Sabela.Topo
 import Test.Hspec
 
@@ -16,6 +17,7 @@ mkCell cid src =
     Cell
         { cellId = cid
         , cellType = CodeCell
+        , cellLang = Haskell
         , cellSource = src
         , cellOutputs = []
         , cellError = Nothing

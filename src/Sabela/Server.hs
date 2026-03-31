@@ -5,16 +5,12 @@
 
 module Sabela.Server (
     mkApp,
-    initState,
+    newApp,
 ) where
 
-import Control.Concurrent.MVar (modifyMVar, modifyMVar_, newMVar, readMVar)
-import Control.Concurrent.STM (
-    atomically,
-    dupTChan,
-    newBroadcastTChanIO,
-    readTChan,
- )
+import Control.Concurrent.MVar (modifyMVar)
+import Control.Concurrent.STM (TChan, atomically, readTChan)
+import Control.Exception (SomeException, try)
 import Control.Monad (forM, forever)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (encode)
@@ -23,23 +19,24 @@ import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char
 import Data.FileEmbed (embedFile, makeRelativeToProject)
-import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf, sort)
-import qualified Data.Map.Strict as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Network.HTTP.Types (hContentType, status200)
-import Network.Wai (responseLBS, responseStream)
+import Network.HTTP.Types (HeaderName, hContentType, status200)
+import Network.Wai (
+    RequestBodyLength (..),
+    requestBodyLength,
+    responseLBS,
+    responseStream,
+ )
 import Servant
 import System.Directory (
     canonicalizePath,
     createDirectoryIfMissing,
     doesDirectoryExist,
     listDirectory,
-    makeAbsolute,
  )
 import System.FilePath (
     makeRelative,
@@ -53,7 +50,18 @@ import Sabela.Api
 import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output (builtinExamples, parseMimeOutputs)
-import Sabela.Session (queryComplete, queryDoc, queryInfo, queryType)
+import qualified Sabela.SessionTypes as ST
+import Sabela.State (App (..), newApp)
+import Sabela.State.Environment (Environment (..))
+import Sabela.State.EventBus (subscribeBroadcast)
+import Sabela.State.NotebookStore (
+    NotebookStore (..),
+    freshCellId,
+    modifyNotebook,
+    readNotebook,
+ )
+import Sabela.State.SessionManager (getHaskellSession)
+import Sabela.State.WidgetStore (setWidget)
 import ScriptHs.Markdown (
     CodeOutput (..),
     MimeType (..),
@@ -61,9 +69,6 @@ import ScriptHs.Markdown (
     parseMarkdown,
     reassemble,
  )
-import System.IO.Temp (createTempDirectory, getCanonicalTemporaryDirectory)
-
--- ── API types ────────────────────────────────────────────────────
 
 type JsonAPI =
     "api" :> "notebook" :> Get '[JSON] Notebook
@@ -110,6 +115,13 @@ type JsonAPI =
             :> Post '[JSON] InfoResult
         -- Examples
         :<|> "api" :> "examples" :> Get '[JSON] [Example]
+        -- Cell language
+        :<|> "api"
+            :> "cell"
+            :> Capture "id" Int
+            :> "lang"
+            :> ReqBody '[JSON] ST.CellLang
+            :> Put '[JSON] Cell
         -- Widgets
         :<|> "api" :> "widget" :> ReqBody '[JSON] WidgetUpdate :> Post '[JSON] NoContent
 
@@ -132,113 +144,113 @@ staticApp _req resp =
             [(hContentType, "text/html; charset=utf-8")]
             (LBS.fromStrict indexHtml)
 
-mkApp :: AppState -> ReactiveNotebook -> Application
-mkApp st rn = serve fullProxy (server st rn)
+{- | Maximum request body size (10 MB). Requests exceeding this are rejected
+  with 413 Payload Too Large.
+-}
+maxBodySize :: Int
+maxBodySize = 10 * 1024 * 1024
 
-server :: AppState -> ReactiveNotebook -> Server FullAPI
-server st rn =
-    ( getNotebookH st
-        :<|> loadNotebookH st rn
-        :<|> saveNotebookH st
-        :<|> updateCellH st rn
-        :<|> insertCellH st
-        :<|> deleteCellH st
+mkApp :: App -> ReactiveNotebook -> Application
+mkApp app rn = limitRequestBody maxBodySize $ serve fullProxy (server app rn)
+
+server :: App -> ReactiveNotebook -> Server FullAPI
+server app rn =
+    ( getNotebookH app
+        :<|> loadNotebookH app rn
+        :<|> saveNotebookH app
+        :<|> updateCellH app rn
+        :<|> insertCellH app
+        :<|> deleteCellH app
         :<|> runCellH rn
         :<|> runAllH rn
-        :<|> resetH rn st
-        :<|> clearCellH st
-        :<|> listFilesH st
-        :<|> readFileH st
-        :<|> createFileH st
-        :<|> writeFileH st
-        :<|> completeH st
-        :<|> infoH st
+        :<|> resetH rn app
+        :<|> clearCellH app
+        :<|> listFilesH app
+        :<|> readFileH app
+        :<|> createFileH app
+        :<|> writeFileH app
+        :<|> completeH app
+        :<|> infoH app
         :<|> examplesH
-        :<|> setWidgetH st rn
+        :<|> setCellLangH app
+        :<|> setWidgetH app rn
     )
-        :<|> Tagged (sseApp st)
+        :<|> Tagged (sseApp app)
         :<|> Tagged staticApp
 
-initState :: FilePath -> Set Text -> IO AppState
-initState workDir globalDeps = do
-    nb <- newMVar (Notebook "Untitled.md" [])
-    sess <- newMVar Nothing
-    tmpBase <- getCanonicalTemporaryDirectory
-    tmpDir <- createTempDirectory tmpBase "sabela-server"
-    nextId <- newIORef 0
-    instDeps <- newIORef Set.empty
-    instExts <- newIORef Set.empty
-    bcast <- newBroadcastTChanIO
-    gen <- newIORef 0
-    debounce <- newMVar Nothing
-    absWork <- makeAbsolute workDir
-    widgets <- newMVar Map.empty
-    pure
-        AppState
-            { stNotebook = nb
-            , stSession = sess
-            , stTmpDir = tmpDir
-            , stWorkDir = absWork
-            , stNextId = nextId
-            , stInstalledDeps = instDeps
-            , stInstalledExts = instExts
-            , stBroadcast = bcast
-            , stGeneration = gen
-            , stDebounceRef = debounce
-            , stGlobalDeps = globalDeps
-            , stWidgetValues = widgets
-            }
+sseHeaders :: [(HeaderName, BS.ByteString)]
+sseHeaders =
+    [ (hContentType, "text/event-stream")
+    , ("Cache-Control", "no-cache")
+    , ("Connection", "keep-alive")
+    , ("Access-Control-Allow-Origin", "*")
+    ]
 
--- ── SSE ──────────────────────────────────────────────────────────
+streamEvents :: Builder.Builder -> (Builder.Builder -> IO ()) -> IO () -> IO ()
+streamEvents firstMsg write flush = do
+    write firstMsg
+    flush
 
-sseApp :: AppState -> Application
-sseApp st _req resp = do
-    chan <- atomically $ dupTChan (stBroadcast st)
-    resp $ responseStream status200 hdrs $ \write flush -> do
-        write (Builder.byteString ": connected\n\n")
-        flush
-        forever $ do
-            ev <- atomically $ readTChan chan
-            let json = LBS.toStrict (encode ev)
-            write (Builder.byteString $ "data: " <> json <> "\n\n")
-            flush
-  where
-    hdrs =
-        [ (hContentType, "text/event-stream")
-        , ("Cache-Control", "no-cache")
-        , ("Connection", "keep-alive")
-        , ("Access-Control-Allow-Origin", "*")
-        ]
+sseApp :: App -> Application
+sseApp app _req resp = do
+    chan <- subscribeBroadcast (appEvents app)
+    resp $ responseStream status200 sseHeaders $ \write flush -> do
+        streamEvents (Builder.byteString ": connected\n\n") write flush
+        _ <-
+            try (forever $ sendEvent chan write flush) ::
+                IO (Either SomeException ())
+        pure ()
 
--- ── Notebook CRUD ────────────────────────────────────────────────
+sendEvent :: TChan NotebookEvent -> (Builder.Builder -> IO ()) -> IO () -> IO ()
+sendEvent chan write flush = do
+    ev <- atomically $ readTChan chan
+    let json = LBS.toStrict (encode ev)
+    write (Builder.byteString $ "data: " <> json <> "\n\n")
+    flush
 
-getNotebookH :: AppState -> Handler Notebook
-getNotebookH st = liftIO $ readMVar (stNotebook st)
+getNotebookH :: App -> Handler Notebook
+getNotebookH app = liftIO $ readNotebook (appNotebook app)
 
-loadNotebookH :: AppState -> ReactiveNotebook -> LoadRequest -> Handler Notebook
-loadNotebookH st rn (LoadRequest path) = liftIO $ do
-    let absPath = if "/" `isPrefixOf` path then path else stWorkDir st </> path
+loadNotebookH :: App -> ReactiveNotebook -> LoadRequest -> Handler Notebook
+loadNotebookH app rn (LoadRequest path) = liftIO $ do
+    let absPath = resolveWorkPath (appEnv app) path
     raw <- TIO.readFile absPath
-    let segs = parseMarkdown raw
-    nid <- readIORef (stNextId st)
-    let (cells, nid') = foldl go ([], nid) segs
-        nb = Notebook (T.pack path) (reverse cells)
-    writeIORef (stNextId st) nid'
-    modifyMVar_ (stNotebook st) (\_ -> pure nb)
+    cells <- mapM (segmentToCell (appNotebook app)) (parseMarkdown raw)
+    let nb = Notebook (T.pack path) cells
+    modifyNotebook (appNotebook app) (const nb)
     rnRunAll rn
     pure nb
-  where
-    go (acc, n) (Prose t) = (Cell n ProseCell t [] Nothing False : acc, n + 1)
-    go (acc, n) (CodeBlock _ code Nothing) = (Cell n CodeCell code [] Nothing False : acc, n + 1)
-    go (acc, n) (CodeBlock _ code (Just (CodeOutput m o))) =
-        let items = case m of
-                MimePlain ->
-                    [ OutputItem mt b
-                    | (mt, b) <- parseMimeOutputs o
-                    , not (T.null (T.strip b))
-                    ]
-                _ -> [OutputItem (mimeIndicator m) o]
-         in (Cell n CodeCell code items Nothing False : acc, n + 1)
+
+resolveWorkPath :: Environment -> FilePath -> FilePath
+resolveWorkPath env path
+    | "/" `isPrefixOf` path = path
+    | otherwise = envWorkDir env </> path
+
+segmentToCell :: NotebookStore -> Segment -> IO Cell
+segmentToCell store (Prose t) = do
+    nid <- freshCellId store
+    pure (Cell nid ProseCell ST.Haskell t [] Nothing False)
+segmentToCell store (CodeBlock lang code Nothing) = do
+    nid <- freshCellId store
+    pure (Cell nid CodeCell (parseLang lang) code [] Nothing False)
+segmentToCell store (CodeBlock lang code (Just (CodeOutput m o))) = do
+    nid <- freshCellId store
+    let items = parseCodeOutputItems m o
+    pure (Cell nid CodeCell (parseLang lang) code items Nothing False)
+
+parseCodeOutputItems :: MimeType -> Text -> [OutputItem]
+parseCodeOutputItems MimePlain o =
+    [ OutputItem mt b
+    | (mt, b) <- parseMimeOutputs o
+    , not (T.null (T.strip b))
+    ]
+parseCodeOutputItems m o = [OutputItem (mimeIndicator m) o]
+
+parseLang :: Text -> ST.CellLang
+parseLang lang
+    | lang `elem` ["lean", "lean4"] = ST.Lean4
+    | lang `elem` ["python", "python3", "py"] = ST.Python
+    | otherwise = ST.Haskell
 
 mimeIndicator :: MimeType -> Text
 mimeIndicator m = case m of
@@ -260,58 +272,63 @@ textToMime m = case m of
     -- image isn't covered
     _ -> MimePlain
 
--- | Save notebook back to markdown file.
-saveNotebookH :: AppState -> SaveRequest -> Handler Notebook
-saveNotebookH st (SaveRequest mPath) = liftIO $ do
-    nb <- readMVar (stNotebook st)
-    let path = case mPath of
-            Just p -> p
-            Nothing -> T.unpack (nbTitle nb)
-        absPath = if "/" `isPrefixOf` path then path else stWorkDir st </> path
-        segs = map cellToSegment (nbCells nb)
-        md = reassemble segs
+saveNotebookH :: App -> SaveRequest -> Handler Notebook
+saveNotebookH app (SaveRequest mPath) = liftIO $ do
+    nb <- readNotebook (appNotebook app)
+    let path = fromMaybe (T.unpack (nbTitle nb)) mPath
+        absPath = resolveWorkPath (appEnv app) path
+        md = reassemble (map cellToSegment (nbCells nb))
     createDirectoryIfMissing True (takeDirectory absPath)
     TIO.writeFile absPath md
     let nb' = nb{nbTitle = T.pack path}
-    modifyMVar_ (stNotebook st) (\_ -> pure nb')
+    modifyNotebook (appNotebook app) (const nb')
     putStrLn $ "[sabela] Saved to: " ++ absPath
     pure nb'
-  where
-    cellToSegment c = case cellType c of
-        ProseCell -> Prose (cellSource c)
-        CodeCell -> case filter (not . T.null . T.strip . oiOutput) (cellOutputs c) of
-            [] -> CodeBlock "haskell" (cellSource c) Nothing
+
+cellToSegment :: Cell -> Segment
+cellToSegment c = case cellType c of
+    ProseCell -> Prose (cellSource c)
+    CodeCell -> codeToSegment c
+
+codeToSegment :: Cell -> Segment
+codeToSegment c =
+    let tag = langTag (cellLang c)
+     in case filter (not . T.null . T.strip . oiOutput) (cellOutputs c) of
+            [] -> CodeBlock tag (cellSource c) Nothing
             [OutputItem mime o] ->
-                CodeBlock
-                    "haskell"
-                    (cellSource c)
-                    (Just (CodeOutput (textToMime mime) o))
+                CodeBlock tag (cellSource c) (Just (CodeOutput (textToMime mime) o))
             items ->
-                let serialized =
-                        T.concat
-                            [ "---MIME:" <> mime <> "---\n" <> o
-                            | OutputItem mime o <- items
-                            ]
-                 in CodeBlock
-                        "haskell"
-                        (cellSource c)
-                        (Just (CodeOutput MimePlain serialized))
+                CodeBlock
+                    tag
+                    (cellSource c)
+                    (Just (CodeOutput MimePlain (serializeOutputs items)))
 
-updateCellH :: AppState -> ReactiveNotebook -> Int -> UpdateCell -> Handler Cell
-updateCellH st rn cid (UpdateCell src) = liftIO $ do
+langTag :: ST.CellLang -> Text
+langTag ST.Haskell = "haskell"
+langTag ST.Lean4 = "lean4"
+langTag ST.Python = "python"
+
+serializeOutputs :: [OutputItem] -> Text
+serializeOutputs items =
+    T.concat
+        [ "---MIME:" <> mime <> "---\n" <> o
+        | OutputItem mime o <- items
+        ]
+
+updateCellH :: App -> ReactiveNotebook -> Int -> UpdateCell -> Handler Cell
+updateCellH app rn cid (UpdateCell src) = liftIO $ do
     rnCellEdit rn cid src
-    nb <- readMVar (stNotebook st)
-    case filter (\c -> cellId c == cid) (nbCells nb) of
-        (c : _) -> pure c
-        [] -> pure (Cell cid CodeCell src [] Nothing True)
+    nb <- readNotebook (appNotebook app)
+    case lookupCell cid nb of
+        Just c -> pure c
+        Nothing -> pure (Cell cid CodeCell ST.Haskell src [] Nothing True)
 
-insertCellH :: AppState -> InsertCell -> Handler Cell
-insertCellH st (InsertCell afterId typ src) = liftIO $ do
-    nid <- readIORef (stNextId st)
-    writeIORef (stNextId st) (nid + 1)
-    let cell = Cell nid typ src [] Nothing True
-    modifyMVar_ (stNotebook st) $ \nb ->
-        pure nb{nbCells = ins afterId cell (nbCells nb)}
+insertCellH :: App -> InsertCell -> Handler Cell
+insertCellH app (InsertCell afterId typ lang src) = liftIO $ do
+    nid <- freshCellId (appNotebook app)
+    let cell = Cell nid typ lang src [] Nothing True
+    modifyNotebook (appNotebook app) $ \nb ->
+        nb{nbCells = ins afterId cell (nbCells nb)}
     pure cell
   where
     ins (-1) c cs = c : cs
@@ -320,9 +337,9 @@ insertCellH st (InsertCell afterId typ src) = liftIO $ do
         | cellId x == aid = x : c : xs
         | otherwise = x : ins aid c xs
 
-deleteCellH :: AppState -> Int -> Handler Notebook
-deleteCellH st cid = liftIO $
-    modifyMVar (stNotebook st) $ \nb -> do
+deleteCellH :: App -> Int -> Handler Notebook
+deleteCellH app cid = liftIO $
+    modifyMVar (nsNotebook (appNotebook app)) $ \nb -> do
         let nb' = nb{nbCells = filter (\c -> cellId c /= cid) (nbCells nb)}
         pure (nb', nb')
 
@@ -334,14 +351,14 @@ runCellH rn cid = liftIO $ do
 runAllH :: ReactiveNotebook -> Handler RunAllResult
 runAllH rn = liftIO $ rnRunAll rn >> pure (RunAllResult [])
 
-resetH :: ReactiveNotebook -> AppState -> Handler Notebook
-resetH rn st = liftIO $ rnReset rn >> readMVar (stNotebook st)
+resetH :: ReactiveNotebook -> App -> Handler Notebook
+resetH rn app = liftIO $ rnReset rn >> readNotebook (appNotebook app)
 
-clearCellH :: AppState -> Int -> Handler NoContent
-clearCellH st cid = liftIO $ do
-    modifyMVar_ (stNotebook st) $ \nb ->
-        pure nb{nbCells = map clr (nbCells nb)}
-    broadcast st (EvCellResult cid [] Nothing [])
+clearCellH :: App -> Int -> Handler NoContent
+clearCellH app cid = liftIO $ do
+    modifyNotebook (appNotebook app) $ \nb ->
+        nb{nbCells = map clr (nbCells nb)}
+    broadcast app (EvCellResult cid [] Nothing [])
     pure NoContent
   where
     clr c
@@ -352,143 +369,169 @@ clearCellH st cid = liftIO $ do
                 }
         | otherwise = c
 
--- ── File explorer ────────────────────────────────────────────────
--- Normalize path for comparison (especially on Windows)
 normForCmp :: FilePath -> FilePath
 normForCmp = map toLower . normalise
 
--- True if child is inside (or equal to) parent, by path components
 isWithinPath :: FilePath -> FilePath -> Bool
 isWithinPath parent child =
     let p = splitDirectories (normForCmp parent)
         c = splitDirectories (normForCmp child)
      in p == take (length p) c
 
-listFilesH :: AppState -> Maybe Text -> Handler [FileEntry]
-listFilesH st mPath = liftIO $ do
-    let relPath = maybe "." T.unpack mPath
-        requested = stWorkDir st </> relPath
-
-    rootCanon <- canonicalizePath (stWorkDir st)
+listFilesH :: App -> Maybe Text -> Handler [FileEntry]
+listFilesH app mPath = liftIO $ do
+    let workDir = envWorkDir (appEnv app)
+        requested = workDir </> maybe "." T.unpack mPath
+    rootCanon <- canonicalizePath workDir
     pathCanon <- canonicalizePath requested
-
     if not (isWithinPath rootCanon pathCanon)
         then pure []
         else do
             entries <- listDirectory pathCanon
-            fes <- forM (sort entries) $ \name -> do
-                let full = pathCanon </> name
-                isDir <- doesDirectoryExist full
-                pure
-                    FileEntry
-                        { feName = T.pack name
-                        , fePath = T.pack (makeRelative rootCanon full)
-                        , feIsDir = isDir
-                        }
+            fes <- forM (sort entries) (toFileEntry rootCanon pathCanon)
+            pure (sortDirsFirst fes)
 
-            let (dirs, files) =
-                    foldr
-                        (\e (ds, fs) -> if feIsDir e then (e : ds, fs) else (ds, e : fs))
-                        ([], [])
-                        fes
+toFileEntry :: FilePath -> FilePath -> String -> IO FileEntry
+toFileEntry rootCanon dirCanon name = do
+    let full = dirCanon </> name
+    isDir <- doesDirectoryExist full
+    pure
+        FileEntry
+            { feName = T.pack name
+            , fePath = T.pack (makeRelative rootCanon full)
+            , feIsDir = isDir
+            }
 
-            pure (dirs ++ files)
+sortDirsFirst :: [FileEntry] -> [FileEntry]
+sortDirsFirst fes =
+    let (dirs, files) =
+            foldr
+                (\e (ds, fs) -> if feIsDir e then (e : ds, fs) else (ds, e : fs))
+                ([], [])
+                fes
+     in dirs ++ files
 
-readFileH :: AppState -> Maybe Text -> Handler Text
-readFileH st mPath = liftIO $ do
-    let relPath = maybe "" T.unpack mPath
-        absPath = stWorkDir st </> relPath
+readFileH :: App -> Maybe Text -> Handler Text
+readFileH app mPath = liftIO $ do
+    let workDir = envWorkDir (appEnv app)
+        relPath = maybe "" T.unpack mPath
+        absPath = workDir </> relPath
     canon <- canonicalizePath absPath
-    if not (stWorkDir st `isPrefixOfPath` canon)
+    if not (workDir `isPrefixOfPath` canon)
         then pure "(access denied)"
         else TIO.readFile canon
 
--- | Create a new file or directory.
-createFileH :: AppState -> CreateFileRequest -> Handler FileEntry
-createFileH st (CreateFileRequest relPath content isDir) = liftIO $ do
-    let absPath = stWorkDir st </> T.unpack relPath
+createFileH :: App -> CreateFileRequest -> Handler FileEntry
+createFileH app (CreateFileRequest relPath content isDir) = liftIO $ do
+    let workDir = envWorkDir (appEnv app)
+        absPath = workDir </> T.unpack relPath
     canon <- canonicalizePath (takeDirectory absPath)
-    if not (stWorkDir st `isPrefixOfPath` canon)
+    if not (workDir `isPrefixOfPath` canon)
         then pure (FileEntry relPath relPath False)
         else do
-            if isDir
-                then createDirectoryIfMissing True absPath
-                else do
-                    createDirectoryIfMissing True (takeDirectory absPath)
-                    TIO.writeFile absPath content
-            putStrLn $ "[sabela] Created: " ++ absPath
-            pure
-                FileEntry
-                    { feName = T.pack (last (splitPath' (T.unpack relPath)))
-                    , fePath = relPath
-                    , feIsDir = isDir
-                    }
+            createFileOrDir absPath content isDir
+            pure (mkFileEntry relPath isDir)
+
+createFileOrDir :: FilePath -> Text -> Bool -> IO ()
+createFileOrDir absPath content isDir = do
+    if isDir
+        then createDirectoryIfMissing True absPath
+        else do
+            createDirectoryIfMissing True (takeDirectory absPath)
+            TIO.writeFile absPath content
+    putStrLn $ "[sabela] Created: " ++ absPath
+
+mkFileEntry :: Text -> Bool -> FileEntry
+mkFileEntry relPath isDir =
+    FileEntry
+        { feName = T.pack (last (splitPath' (T.unpack relPath)))
+        , fePath = relPath
+        , feIsDir = isDir
+        }
   where
     splitPath' p = case break (== '/') p of
         (a, []) -> [a]
         (a, _ : bs) -> a : splitPath' bs
 
--- | Write content to an existing file.
-writeFileH :: AppState -> WriteFileRequest -> Handler Text
-writeFileH st (WriteFileRequest relPath content) = liftIO $ do
-    let absPath = stWorkDir st </> T.unpack relPath
+writeFileH :: App -> WriteFileRequest -> Handler Text
+writeFileH app (WriteFileRequest relPath content) = liftIO $ do
+    let workDir = envWorkDir (appEnv app)
+        absPath = workDir </> T.unpack relPath
     canon <- canonicalizePath (takeDirectory absPath)
-    if not (stWorkDir st `isPrefixOfPath` canon)
+    if not (workDir `isPrefixOfPath` canon)
         then pure "access denied"
         else do TIO.writeFile absPath content; pure "ok"
 
--- ── IDE: Completion & Info ───────────────────────────────────────
-
-completeH :: AppState -> CompleteRequest -> Handler CompleteResult
-completeH st (CompleteRequest prefix) = liftIO $ do
-    mSess <- readMVar (stSession st)
+completeH :: App -> CompleteRequest -> Handler CompleteResult
+completeH app (CompleteRequest prefix) = liftIO $ do
+    mSess <- getHaskellSession (appSessions app)
     case mSess of
         Nothing -> pure (CompleteResult [])
-        Just sess -> do
-            cs <- queryComplete sess prefix
+        Just backend -> do
+            cs <- ST.sbQueryComplete backend prefix
             pure (CompleteResult cs)
 
-infoH :: AppState -> InfoRequest -> Handler InfoResult
-infoH st (InfoRequest name) = liftIO $ do
-    mSess <- readMVar (stSession st)
+infoH :: App -> InfoRequest -> Handler InfoResult
+infoH app (InfoRequest name) = liftIO $ do
+    mSess <- getHaskellSession (appSessions app)
     case mSess of
         Nothing -> pure (InfoResult "No GHCi session")
-        Just sess -> do
-            -- Try :info first, fall back to :type, then :doc
-            info <- queryInfo sess name
-            if T.null info || "not in scope" `T.isInfixOf` T.toLower info
-                then do
-                    ty <- queryType sess name
-                    pure (InfoResult ty)
-                else do
-                    doc <- queryDoc sess name
-                    if T.null doc || "not found" `T.isInfixOf` T.toLower doc
-                        then pure (InfoResult info)
-                        else pure (InfoResult (info <> "\n\n--- Documentation ---\n" <> doc))
+        Just backend -> do
+            info <- ST.sbQueryInfo backend name
+            queryWithFallback backend name info
 
--- ── Examples ─────────────────────────────────────────────────────
+queryWithFallback :: ST.SessionBackend -> Text -> Text -> IO InfoResult
+queryWithFallback backend name info
+    | T.null info || "not in scope" `T.isInfixOf` T.toLower info = do
+        ty <- ST.sbQueryType backend name
+        pure (InfoResult ty)
+    | otherwise = appendDoc backend name info
+
+appendDoc :: ST.SessionBackend -> Text -> Text -> IO InfoResult
+appendDoc backend name info = do
+    doc <- ST.sbQueryDoc backend name
+    if T.null doc || "not found" `T.isInfixOf` T.toLower doc
+        then pure (InfoResult info)
+        else pure (InfoResult (info <> "\n\n--- Documentation ---\n" <> doc))
 
 examplesH :: Handler [Example]
 examplesH = pure builtinExamples
 
--- ── Widgets ───────────────────────────────────────────────────────
+setCellLangH :: App -> Int -> ST.CellLang -> Handler Cell
+setCellLangH app cid lang = liftIO $ do
+    modifyNotebook (appNotebook app) $ \nb ->
+        nb{nbCells = map upd (nbCells nb)}
+    nb <- readNotebook (appNotebook app)
+    case lookupCell cid nb of
+        Just c -> pure c
+        Nothing -> pure (Cell cid CodeCell lang "" [] Nothing True)
+  where
+    upd c
+        | cellId c == cid = c{cellLang = lang, cellOutputs = [], cellError = Nothing}
+        | otherwise = c
 
-setWidgetH :: AppState -> ReactiveNotebook -> WidgetUpdate -> Handler NoContent
-setWidgetH st rn (WidgetUpdate cid name val) = liftIO $ do
-    modifyMVar_ (stWidgetValues st) $ \wmap ->
-        let cellMap = Map.findWithDefault Map.empty cid wmap
-         in pure (Map.insert cid (Map.insert name val cellMap) wmap)
+setWidgetH :: App -> ReactiveNotebook -> WidgetUpdate -> Handler NoContent
+setWidgetH app rn (WidgetUpdate cid name val) = liftIO $ do
+    setWidget (appWidgets app) cid name val
     rnWidgetCell rn cid
     pure NoContent
 
--- ── Helpers ──────────────────────────────────────────────────────
-
+{- | Check whether @path@ is within @prefix@ using path component comparison.
+  This avoids false positives like @/home/alice@ matching @/home/alice-secret@.
+-}
 isPrefixOfPath :: FilePath -> FilePath -> Bool
 isPrefixOfPath prefix path =
-    let p = addTrailingSlash prefix
-     in p == take (length p) path || prefix == path
+    let prefixParts = splitDirectories (normalise prefix)
+        pathParts = splitDirectories (normalise path)
+     in prefixParts `isPrefixOf` pathParts
+
+limitRequestBody :: Int -> Application -> Application
+limitRequestBody sizeLimit innerApp req sendResp = do
+    case requestBodyLength req of
+        KnownLength len
+            | fromIntegral len > sizeLimit ->
+                sendResp $
+                    responseLBS status413 [(hContentType, "text/plain")] "Request body too large"
+        _ -> innerApp req sendResp
   where
-    addTrailingSlash s
-        | null s = "/"
-        | last s == '/' = s
-        | otherwise = s ++ "/"
+    status413 = toEnum 413

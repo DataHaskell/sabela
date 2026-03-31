@@ -30,13 +30,22 @@ The system has three layers: a Haskell backend (Servant/Warp), a static frontend
 
 | Module | Role |
 |--------|------|
+| `Sabela.Model` | Core domain types: `Notebook`, `Cell`, `NotebookEvent`, `CellError` |
+| `Sabela.State` | Composed `App` record with focused subsystems (`Environment`, `EventBus`, `NotebookStore`, `SessionManager`, `DependencyTracker`, `WidgetStore`, `BridgeStore`) |
 | `Sabela.Session` | Spawns and manages a GHCi subprocess; uses marker-based output capture to separate cell results |
-| `Sabela.Model` | Core data types: `AppState`, `Notebook`, `Cell`, `NotebookEvent` |
+| `Sabela.LeanSession` | Lean 4 LSP client session management |
+| `Sabela.PythonSession` | Python REPL subprocess management |
+| `Sabela.SessionTypes` | `SessionBackend` record-of-functions interface shared by all language backends |
 | `Sabela.Handlers` | Cell execution, reactivity engine, dependency tracking, session lifecycle |
+| `Sabela.Reactivity` | Pure execution planning: `ExecutionPlan`, topological ordering, error message generation |
+| `Sabela.Deps` | Pure metadata collection and merging for cabal dependencies |
+| `Sabela.Bridge` | Pure preamble generation for cross-language bridge values and widgets |
+| `Sabela.Topo` | Dependency graph construction and topological sort |
 | `Sabela.Server` | Servant HTTP API, SSE event streaming, file explorer, IDE helpers |
 | `Sabela.Api` | Request/response DTOs |
 | `Sabela.Output` | MIME type parsing, rich output helpers (HTML, SVG, Markdown, LaTeX, JSON) |
 | `Sabela.Errors` | Parses GHCi stderr to extract structured error locations |
+| `Sabela.LeanLsp` | LSP wire protocol types and helpers for Lean integration |
 
 ### Key Data Flow
 
@@ -84,6 +93,6 @@ Notebooks are plain Markdown files. Code blocks become executable cells; prose b
 
 - Module namespace: `Sabela.*`
 - HTTP handler functions use `H` suffix (e.g., `runCellH`, `getNotebookH`)
-- State parameters named `st` (AppState) or `rn` (ReactiveNotebook)
+- State parameters named `app` (App) or `rn` (ReactiveNotebook)
 - All file paths are canonicalized and security-checked to be within the work directory
 - Formatter: fourmolu with 4-space indent, 80-column limit, leading commas (see `fourmolu.yaml`)

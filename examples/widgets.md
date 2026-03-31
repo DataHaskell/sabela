@@ -29,9 +29,7 @@ A range slider that re-runs the cell as the user drags (debounced to avoid flood
 
 ```haskell
 c <- display (slider "celsius" (20 :: Int) (-40) 120)
-
-let f = c * 9 `div` 5 + 32
-    k = c + 273
+let f = c * 9 `div` 5 + 32; k = c + 273
 
 displayHtml $ unlines
   [ "<p style='font-size:1.4em;margin:4px 0'><b>" ++ show c ++ " &#8451;</b></p>"
@@ -150,7 +148,7 @@ v <- display (slider "rows" (10 :: Int) 1 20)
 D.empty |> D.insert "x" [1..100]
         |> D.insert "y" [101..200]
         |> D.take v
-        |> D.toMarkdownTable
+        |> D.toMarkdown
         |> T.unpack
         |> displayMarkdown
 ```

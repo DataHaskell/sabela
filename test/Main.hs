@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Test.Hspec (hspec)
+import qualified Test.LeanExportSpec as LeanExportSpec
 import qualified Test.OutputSpec as OutputSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.SessionSpec as SessionSpec
@@ -11,4 +12,5 @@ main = hspec $ do
     SessionSpec.spec
     TopoSpec.spec
     OutputSpec.spec
+    LeanExportSpec.spec
     PreinstalledSpec.spec
