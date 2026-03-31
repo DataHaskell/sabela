@@ -177,7 +177,6 @@ sendDocAndGetDiags sess doc = do
 sendDocAndGetDiagsUnsafe :: LeanSession -> Text -> IO [Diagnostic]
 sendDocAndGetDiagsUnsafe sess doc = withMVar (lsLock sess) $ \_ -> do
     void $ tryTakeMVar (lsFileDone sess)
-    verBefore <- readIORef (lsDiagVersion sess)
     sendDocChange sess doc
     waitForFileDone (lsFileDone sess)
     waitForDiagStable (lsDiagVersion sess)
