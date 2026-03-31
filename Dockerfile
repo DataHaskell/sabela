@@ -19,14 +19,20 @@ RUN cabal install dataframe
 FROM debian:bullseye-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
   ca-certificates \
-  libgmp10 \
-  libtinfo5 \
+  curl \
   libffi-dev \
+  libffi7 \
+  libgmp-dev \
+  libgmp10 \
+  libncurses-dev \
+  libncurses5 \
+  libtinfo5 \
+  pkg-config \
   python3 \
   python3-pip \
   tini \
-  curl \
   && rm -rf /var/lib/apt/lists/*
 
 # Install GHC + cabal via GHCup (minimal footprint, no HLS/Stack)
@@ -41,8 +47,9 @@ RUN curl -sSf https://get-ghcup.haskell.org | \
     sh \
   && rm -rf /opt/.ghcup/cache /opt/.ghcup/tmp
 
-# Remove curl now that GHCup is installed
-RUN apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+# Remove build-only packages now that GHCup is installed
+RUN apt-get purge -y build-essential curl libgmp-dev libncurses-dev libffi-dev pkg-config \
+  && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Install Python ML packages (no cache, no .pyc)
 RUN pip3 install --no-cache-dir --no-compile numpy pandas scikit-learn polars \
