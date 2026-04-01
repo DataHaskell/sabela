@@ -80,22 +80,17 @@ except:
   kill $SSE_PID 2>/dev/null
   wait $SSE_PID 2>/dev/null
 
-  # Analyze results from events
+  # Analyze final notebook state (accounts for reruns overwriting earlier errors)
   CRASHED=$(grep -c '"crashed"' "$EVENTS_FILE" 2>/dev/null || echo 0)
   RESULT_COUNT=$(grep -c '"cellResult"' "$EVENTS_FILE" 2>/dev/null || echo 0)
 
-  # Extract cell errors from events
-  CELL_ERRORS=$(grep '"cellResult"' "$EVENTS_FILE" | sed 's/^data: //' | python3 -c "
+  CELL_ERRORS=$(curl -s --max-time 10 "$BASE/api/notebook" 2>/dev/null | python3 -c "
 import sys,json
+nb=json.load(sys.stdin)
 errors=[]
-for line in sys.stdin:
-    line=line.strip()
-    if not line: continue
-    try:
-        ev=json.loads(line)
-        if ev.get('error'):
-            errors.append(f'cell {ev[\"cellId\"]}: {ev[\"error\"][:120]}')
-    except: pass
+for c in nb['nbCells']:
+    if c['cellType']=='CodeCell' and c.get('cellError'):
+        errors.append(f'cell {c[\"cellId\"]}: {c[\"cellError\"][:120]}')
 for e in errors:
     print(e)
 " 2>/dev/null)
