@@ -1,19 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Sabela.Handlers.Shared
-    ( bumpGeneration
-    , isCurrentGen
-    , whenCurrentGen
-    , broadcast
-    , updateAndBroadcast
-    , broadcastCellError
-    , debugLog
-    , isMimeLine
-    , mkStreamingCallback
-    , partitionExports
-    , applyResult
-    , find
-    ) where
+module Sabela.Handlers.Shared (
+    bumpGeneration,
+    isCurrentGen,
+    whenCurrentGen,
+    broadcast,
+    updateAndBroadcast,
+    broadcastCellError,
+    debugLog,
+    isMimeLine,
+    mkStreamingCallback,
+    partitionExports,
+    applyResult,
+    find,
+) where
 
 import Control.Monad (unless)
 import Data.IORef (newIORef, readIORef, writeIORef)
@@ -21,12 +21,12 @@ import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.Api (RunResult (..))
-import Sabela.Model
-    ( Cell (..)
-    , CellError (..)
-    , Notebook (..)
-    , NotebookEvent (..)
-    )
+import Sabela.Model (
+    Cell (..),
+    CellError (..),
+    Notebook (..),
+    NotebookEvent (..),
+ )
 import Sabela.State (App (..))
 import qualified Sabela.State.EventBus as EB
 import Sabela.State.NotebookStore (modifyNotebookIO)

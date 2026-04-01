@@ -87,6 +87,7 @@ type JsonAPI =
         :<|> "api" :> "run" :> Capture "id" Int :> Post '[JSON] RunResult
         :<|> "api" :> "run-all" :> Post '[JSON] RunAllResult
         :<|> "api" :> "reset" :> Post '[JSON] Notebook
+        :<|> "api" :> "restart-kernel" :> Post '[JSON] NoContent
         :<|> "api" :> "clear" :> Capture "id" Int :> Post '[JSON] NoContent
         -- File explorer
         :<|> "api"
@@ -164,6 +165,7 @@ server app rn =
         :<|> runCellH rn
         :<|> runAllH rn
         :<|> resetH rn app
+        :<|> restartKernelH rn
         :<|> clearCellH app
         :<|> listFilesH app
         :<|> readFileH app
@@ -353,6 +355,9 @@ runAllH rn = liftIO $ rnRunAll rn >> pure (RunAllResult [])
 
 resetH :: ReactiveNotebook -> App -> Handler Notebook
 resetH rn app = liftIO $ rnReset rn >> readNotebook (appNotebook app)
+
+restartKernelH :: ReactiveNotebook -> Handler NoContent
+restartKernelH rn = liftIO $ rnRestartKernel rn >> pure NoContent
 
 clearCellH :: App -> Int -> Handler NoContent
 clearCellH app cid = liftIO $ do

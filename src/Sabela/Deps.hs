@@ -1,8 +1,8 @@
-module Sabela.Deps
-    ( collectMetadata
-    , collectMetadataFromContent
-    , mergedMeta
-    ) where
+module Sabela.Deps (
+    collectMetadata,
+    collectMetadataFromContent,
+    mergedMeta,
+) where
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -10,7 +10,12 @@ import Data.Text (Text)
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import qualified Sabela.SessionTypes as ST
 import ScriptHs.Markdown (Segment (..), parseMarkdown)
-import ScriptHs.Parser (CabalMeta (..), ScriptFile (..), mergeMetas, parseScript)
+import ScriptHs.Parser (
+    CabalMeta (..),
+    ScriptFile (..),
+    mergeMetas,
+    parseScript,
+ )
 
 collectMetadata :: Notebook -> CabalMeta
 collectMetadata nb =

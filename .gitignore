@@ -23,3 +23,4 @@ cabal.project.local~
 .ghc.environment.*
 .DS_Store
 .sabela_cell.py
+.venv/

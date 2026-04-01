@@ -1,13 +1,13 @@
-module Sabela.State.DependencyTracker
-    ( DependencyTracker (..)
-    , newDependencyTracker
-    , getHaskellDeps
-    , setHaskellDeps
-    , getHaskellExts
-    , setHaskellExts
-    , getLeanDeps
-    , setLeanDeps
-    ) where
+module Sabela.State.DependencyTracker (
+    DependencyTracker (..),
+    newDependencyTracker,
+    getHaskellDeps,
+    setHaskellDeps,
+    getHaskellExts,
+    setHaskellExts,
+    getLeanDeps,
+    setLeanDeps,
+) where
 
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Set (Set)

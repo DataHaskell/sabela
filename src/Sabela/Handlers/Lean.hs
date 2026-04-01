@@ -1,48 +1,53 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Sabela.Handlers.Lean
-    ( ensureLeanSessionAlive
-    , killLeanSession
-    , executeLeanCells
-    , collectLeanDeps
+module Sabela.Handlers.Lean (
+    ensureLeanSessionAlive,
+    killLeanSession,
+    executeLeanCells,
+    checkBridgeChanged,
+    collectLeanDeps,
 
-      -- * Lean document assembly
-    , CellLineMap (..)
-    , assembleLeanDocument
-    , groupDiagsByCell
-    , mapDiagToError
-    , parseLeanExports
-    ) where
+    -- * Lean document assembly
+    CellLineMap (..),
+    assembleLeanDocument,
+    groupDiagsByCell,
+    mapDiagToError,
+    parseLeanExports,
+) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.Either (fromRight)
-import Data.Maybe (mapMaybe)
 import qualified Data.Map.Strict as M
+import Data.Maybe (mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified System.IO
 import Sabela.Api (RunResult (..))
-import Sabela.LeanLsp (Diagnostic (..), DiagnosticSeverity (..), Position (..), Range (..))
-import Sabela.LeanSession
-    ( LeanSession
-    , closeLeanSession
-    , newLeanSession
-    , sendDocAndGetDiags
-    )
-import Sabela.Model
-    ( Cell (..)
-    , CellError (..)
-    , CellType (..)
-    , Notebook (..)
-    , NotebookEvent (..)
-    , OutputItem (..)
-    , SessionStatus (..)
-    )
+import Sabela.LeanLsp (
+    Diagnostic (..),
+    DiagnosticSeverity (..),
+    Position (..),
+    Range (..),
+ )
+import Sabela.LeanSession (
+    LeanSession,
+    closeLeanSession,
+    newLeanSession,
+    sendDocAndGetDiags,
+ )
+import Sabela.Model (
+    Cell (..),
+    CellError (..),
+    CellType (..),
+    Notebook (..),
+    NotebookEvent (..),
+    OutputItem (..),
+    SessionStatus (..),
+ )
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.BridgeStore (getBridgeValues, setBridgeValue)
@@ -52,6 +57,7 @@ import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getLeanSession, modifyLeanSession)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
+import qualified System.IO
 import qualified System.Process
 
 import Sabela.Handlers.Shared
@@ -73,7 +79,8 @@ ensureLeanSessionAlive app =
             (Just ls, False) -> pure (Just ls, True)
             _ -> startLeanSession app requiredDeps mSess
 
-startLeanSession :: App -> S.Set Text -> Maybe LeanSession -> IO (Maybe LeanSession, Bool)
+startLeanSession ::
+    App -> S.Set Text -> Maybe LeanSession -> IO (Maybe LeanSession, Bool)
 startLeanSession app deps mOldSess = do
     forM_ mOldSess $ \ls ->
         void (try (closeLeanSession ls) :: IO (Either SomeException ()))
@@ -89,9 +96,11 @@ broadcastLeanDeps app deps = do
         broadcast app (EvSessionStatus (SUpdateDeps (S.toList deps)))
     broadcast app (EvInstallLog "Building Lean project...")
 
-buildAndStartLean :: App -> FilePath -> S.Set Text -> IO (Maybe LeanSession, Bool)
+buildAndStartLean ::
+    App -> FilePath -> S.Set Text -> IO (Maybe LeanSession, Bool)
 buildAndStartLean app projDir deps = do
-    buildResult <- try (buildLeanProject app projDir) :: IO (Either SomeException ())
+    buildResult <-
+        try (buildLeanProject app projDir) :: IO (Either SomeException ())
     case buildResult of
         Left e -> leanFailure app "Lean build failed" e
         Right () -> initializeLeanSession app projDir deps
@@ -104,7 +113,8 @@ leanFailure app prefix e = do
     broadcast app (EvSessionStatus SReset)
     pure (Nothing, False)
 
-initializeLeanSession :: App -> FilePath -> S.Set Text -> IO (Maybe LeanSession, Bool)
+initializeLeanSession ::
+    App -> FilePath -> S.Set Text -> IO (Maybe LeanSession, Bool)
 initializeLeanSession app projDir deps = do
     broadcast app (EvSessionStatus SStarting)
     result <- try (newLeanSession projDir) :: IO (Either SomeException LeanSession)
@@ -117,11 +127,12 @@ initializeLeanSession app projDir deps = do
 
 buildLeanProject :: App -> FilePath -> IO ()
 buildLeanProject app dir = do
-    let cp = (System.Process.proc "lake" ["build"])
-            { System.Process.cwd = Just dir
-            , System.Process.std_out = System.Process.CreatePipe
-            , System.Process.std_err = System.Process.CreatePipe
-            }
+    let cp =
+            (System.Process.proc "lake" ["build"])
+                { System.Process.cwd = Just dir
+                , System.Process.std_out = System.Process.CreatePipe
+                , System.Process.std_err = System.Process.CreatePipe
+                }
     (_, mOut, mErr, ph) <- System.Process.createProcess cp
     forM_ mOut $ \h -> void $ forkIO $ broadcastProcessOutput app h
     forM_ mErr $ \h -> void $ forkIO $ broadcastProcessOutput app h
@@ -145,7 +156,7 @@ collectLeanDeps nb =
 isLeanCodeCell :: Cell -> Bool
 isLeanCodeCell c = cellType c == CodeCell && cellLang c == ST.Lean4
 
-data LakeDep = LakeDep { ldName :: Text, ldScope :: Text }
+data LakeDep = LakeDep {ldName :: Text, ldScope :: Text}
 
 parseLakeDeps :: Text -> [Text]
 parseLakeDeps src =
@@ -176,13 +187,22 @@ ensureLeanFile path content = do
 renderLakefile :: S.Set Text -> String
 renderLakefile deps =
     unlines $
-        ["name = \"scratch\"", "version = \"0.1.0\"", "", "[[lean_lib]]", "name = \"Scratch\""]
+        [ "name = \"scratch\""
+        , "version = \"0.1.0\""
+        , ""
+        , "[[lean_lib]]"
+        , "name = \"Scratch\""
+        ]
             ++ concatMap renderLakeDep (S.toList deps)
 
 renderLakeDep :: Text -> [String]
 renderLakeDep key = case T.splitOn "/" key of
     [scope, name] ->
-        ["", "[[require]]", "name = " ++ show (T.unpack name), "scope = " ++ show (T.unpack scope)]
+        [ ""
+        , "[[require]]"
+        , "name = " ++ show (T.unpack name)
+        , "scope = " ++ show (T.unpack scope)
+        ]
     _ -> []
 
 executeLeanCells :: App -> Int -> Int -> IO () -> IO ()
@@ -204,7 +224,10 @@ runLeanCells app gen leanCells affected onBridgeChanged = do
     ok <- ensureLeanSessionAlive app
     if not ok
         then forM_ affected $ \c ->
-            broadcastCellError app (cellId c) "Lean session not available. Is 'lake' installed and on PATH?"
+            broadcastCellError
+                app
+                (cellId c)
+                "Lean session not available. Is 'lake' installed and on PATH?"
         else runLeanDiagnostics app gen leanCells affected onBridgeChanged
 
 runLeanDiagnostics :: App -> Int -> [Cell] -> [Cell] -> IO () -> IO ()
@@ -217,13 +240,19 @@ runLeanDiagnostics app gen leanCells affected onBridgeChanged = do
             diags <- fetchDiagnostics ls bridgeVals leanCells
             let affectedIds = S.fromList (map cellId affected)
             whenCurrentGen app gen $ do
-                distributeLeanResults app (snd (assembleLeanDocument bridgeVals leanCells)) diags leanCells affectedIds
+                distributeLeanResults
+                    app
+                    (snd (assembleLeanDocument bridgeVals leanCells))
+                    diags
+                    leanCells
+                    affectedIds
                 checkBridgeChanged app bridgeVals onBridgeChanged
 
 fetchDiagnostics :: LeanSession -> M.Map Text Text -> [Cell] -> IO [Diagnostic]
 fetchDiagnostics ls bridgeVals leanCells = do
     let (doc, _) = assembleLeanDocument bridgeVals leanCells
-    diagResult <- try (sendDocAndGetDiags ls doc) :: IO (Either SomeException [Diagnostic])
+    diagResult <-
+        try (sendDocAndGetDiags ls doc) :: IO (Either SomeException [Diagnostic])
     pure $ fromRight [] diagResult
 
 checkBridgeChanged :: App -> M.Map Text Text -> IO () -> IO ()
@@ -231,19 +260,27 @@ checkBridgeChanged app oldBridge onBridgeChanged = do
     newBridge <- getBridgeValues (appBridge app)
     when (newBridge /= oldBridge) onBridgeChanged
 
-distributeLeanResults :: App -> [CellLineMap] -> [Diagnostic] -> [Cell] -> S.Set Int -> IO ()
+distributeLeanResults ::
+    App -> [CellLineMap] -> [Diagnostic] -> [Cell] -> S.Set Int -> IO ()
 distributeLeanResults app lineMap diags leanCells affectedIds = do
     let diagsByCell = groupDiagsByCell lineMap diags
     forM_ leanCells $ \c ->
         when (S.member (cellId c) affectedIds) $
-            processCellDiagnostics app lineMap c (M.findWithDefault [] (cellId c) diagsByCell)
+            processCellDiagnostics
+                app
+                lineMap
+                c
+                (M.findWithDefault [] (cellId c) diagsByCell)
 
 processCellDiagnostics :: App -> [CellLineMap] -> Cell -> [Diagnostic] -> IO ()
 processCellDiagnostics app lineMap c cellDiags = do
     let cid = cellId c
         (outputs, errText, cellErrors) = classifyLeanDiags lineMap c cellDiags
-    updateAndBroadcast app
-        (\nb' -> nb'{nbCells = map (applyResult (RunResult cid outputs errText)) (nbCells nb')})
+    updateAndBroadcast
+        app
+        ( \nb' ->
+            nb'{nbCells = map (applyResult (RunResult cid outputs errText)) (nbCells nb')}
+        )
         (EvCellResult cid outputs errText cellErrors)
     storeLeanExports app lineMap c cellDiags
 
@@ -254,26 +291,43 @@ storeLeanExports app lineMap c cellDiags = do
     forM_ (parseLeanExports (cellSource c) cellOffset infoDiags) $
         uncurry (setBridgeValue (appBridge app))
 
-classifyLeanDiags :: [CellLineMap] -> Cell -> [Diagnostic] -> ([OutputItem], Maybe Text, [CellError])
+classifyLeanDiags ::
+    [CellLineMap] -> Cell -> [Diagnostic] -> ([OutputItem], Maybe Text, [CellError])
 classifyLeanDiags lineMap c cellDiags =
-    let infos = [diagMessage d | d <- cellDiags, diagSeverity d `elem` [Just DsInformation, Just DsHint]]
-        errs = [diagMessage d | d <- cellDiags, diagSeverity d `elem` [Just DsError, Just DsWarning, Nothing]]
+    let infos =
+            [ diagMessage d
+            | d <- cellDiags
+            , diagSeverity d `elem` [Just DsInformation, Just DsHint]
+            ]
+        errs =
+            [ diagMessage d
+            | d <- cellDiags
+            , diagSeverity d `elem` [Just DsError, Just DsWarning, Nothing]
+            ]
         outputs = leanDiagOutputs infos errs (cellSource c)
         errText = if null errs then Nothing else Just (T.unlines errs)
-        cellErrors = [mapDiagToError lineMap (cellId c) d | d <- cellDiags, diagSeverity d `elem` [Just DsError, Just DsWarning, Nothing]]
+        cellErrors =
+            [ mapDiagToError lineMap (cellId c) d
+            | d <- cellDiags
+            , diagSeverity d `elem` [Just DsError, Just DsWarning, Nothing]
+            ]
      in (outputs, errText, cellErrors)
 
 leanDiagOutputs :: [Text] -> [Text] -> Text -> [OutputItem]
 leanDiagOutputs infos errs src
     | not (null infos) = [OutputItem "text/plain" (T.unlines infos)]
-    | null errs && isLeanDeclaration src = [OutputItem "text/html" (leanSuccessHtml src)]
+    | null errs && isLeanDeclaration src =
+        [OutputItem "text/html" (leanSuccessHtml src)]
     | otherwise = []
 
 leanSuccessHtml :: Text -> Text
 leanSuccessHtml src =
-    let isProof = any (`T.isPrefixOf` T.stripStart src) ["theorem ", "lemma ", "example "]
-            || ":= by" `T.isInfixOf` src
-     in "<span style=\"color:#a6e3a1\">&#10003; " <> (if isProof then "No goals" else "Defined") <> "</span>"
+    let isProof =
+            any (`T.isPrefixOf` T.stripStart src) ["theorem ", "lemma ", "example "]
+                || ":= by" `T.isInfixOf` src
+     in "<span style=\"color:#a6e3a1\">&#10003; "
+            <> (if isProof then "No goals" else "Defined")
+            <> "</span>"
 
 isLeanDeclaration :: Text -> Bool
 isLeanDeclaration src =
@@ -290,14 +344,29 @@ firstRealLine src =
 
 leanDeclKeywords :: [Text]
 leanDeclKeywords =
-    [ "theorem ", "lemma ", "example ", "def ", "instance ", "class "
-    , "structure ", "inductive ", "axiom ", "noncomputable ", "private "
-    , "protected ", "section", "namespace", "open ", "import "
+    [ "theorem "
+    , "lemma "
+    , "example "
+    , "def "
+    , "instance "
+    , "class "
+    , "structure "
+    , "inductive "
+    , "axiom "
+    , "noncomputable "
+    , "private "
+    , "protected "
+    , "section"
+    , "namespace"
+    , "open "
+    , "import "
     ]
 
 parseLeanExports :: Text -> Int -> [Diagnostic] -> [(Text, Text)]
 parseLeanExports src cellOffset diags =
-    mapMaybe (findDiagForExport cellOffset (length srcLines) diags annotations) annotations
+    mapMaybe
+        (findDiagForExport cellOffset (length srcLines) diags annotations)
+        annotations
   where
     srcLines = T.lines src
     annotations = extractExportAnnotations srcLines
@@ -310,13 +379,18 @@ extractExportAnnotations srcLines =
     , not (T.null (T.strip rest))
     ]
 
-findDiagForExport :: Int -> Int -> [Diagnostic] -> [(Text, Int)] -> (Text, Int) -> Maybe (Text, Text)
+findDiagForExport ::
+    Int -> Int -> [Diagnostic] -> [(Text, Int)] -> (Text, Int) -> Maybe (Text, Text)
 findDiagForExport cellOffset numLines diags allAnnotations (name, lineIdx) =
     let docLine = cellOffset + lineIdx
         nextLine = case dropWhile ((<= lineIdx) . snd) allAnnotations of
             ((_, nl) : _) -> cellOffset + nl
             [] -> cellOffset + numLines
-     in case [diagMessage d | d <- diags, let dl = posLine (rangeStart (diagRange d)), dl > docLine && dl < nextLine] of
+     in case [ diagMessage d
+             | d <- diags
+             , let dl = posLine (rangeStart (diagRange d))
+             , dl > docLine && dl < nextLine
+             ] of
             (msg : _) -> Just (name, msg)
             [] -> Nothing
 
@@ -346,7 +420,8 @@ leanBridgeBlock bridgeVals
     | otherwise =
         [ "def _bridge_" <> name <> " : String := " <> T.pack (show (T.unpack val))
         | (name, val) <- M.toList bridgeVals
-        ] ++ [""]
+        ]
+            ++ [""]
 
 isImportLine :: Text -> Bool
 isImportLine l = "import " `T.isPrefixOf` T.stripStart l
@@ -358,7 +433,11 @@ foldCellsWithLineMap cells startLine = go cells startLine [] []
     go (c : cs) curLine docAcc mapAcc =
         let srcLines = filter (not . isImportLine) (T.lines (cellSource c))
             n = length srcLines
-         in go cs (curLine + n) (reverse srcLines ++ docAcc) (CellLineMap (cellId c) curLine (curLine + n) : mapAcc)
+         in go
+                cs
+                (curLine + n)
+                (reverse srcLines ++ docAcc)
+                (CellLineMap (cellId c) curLine (curLine + n) : mapAcc)
 
 groupDiagsByCell :: [CellLineMap] -> [Diagnostic] -> M.Map Int [Diagnostic]
 groupDiagsByCell lineMap = foldr assignDiag M.empty
@@ -373,6 +452,11 @@ mapDiagToError :: [CellLineMap] -> Int -> Diagnostic -> CellError
 mapDiagToError lineMap cid d =
     let ln = posLine (rangeStart (diagRange d))
         col = posCharacter (rangeStart (diagRange d))
-        relLine = maybe (ln + 1) (\m -> ln - clmStartLine m + 1) $
-            find (\m -> clmCellId m == cid) lineMap
-     in CellError{ceLine = Just relLine, ceCol = Just (col + 1), ceMessage = diagMessage d}
+        relLine =
+            maybe (ln + 1) (\m -> ln - clmStartLine m + 1) $
+                find (\m -> clmCellId m == cid) lineMap
+     in CellError
+            { ceLine = Just relLine
+            , ceCol = Just (col + 1)
+            , ceMessage = diagMessage d
+            }

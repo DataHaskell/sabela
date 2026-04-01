@@ -76,6 +76,7 @@ data NotebookEvent
 
 data SessionStatus
     = SReset
+    | SCrashed
     | SUpdateDeps [Text]
     | SDepsUpToDate
     | SStarting
@@ -86,6 +87,7 @@ instance Show SessionStatus where
     show :: SessionStatus -> String
     show SReady = "ready"
     show SReset = "reset"
+    show SCrashed = "crashed"
     show (SUpdateDeps deps) = T.unpack ("installing: " <> T.intercalate ", " deps)
     show SStarting = "starting session"
     show SDepsUpToDate = "dependencies up to date"

@@ -1,13 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Sabela.State.NotebookStore
-    ( NotebookStore (..)
-    , newNotebookStore
-    , readNotebook
-    , modifyNotebook
-    , modifyNotebookIO
-    , freshCellId
-    ) where
+module Sabela.State.NotebookStore (
+    NotebookStore (..),
+    newNotebookStore,
+    readNotebook,
+    modifyNotebook,
+    modifyNotebookIO,
+    freshCellId,
+) where
 
 import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, readMVar)
 import Data.IORef (IORef, atomicModifyIORef', newIORef)

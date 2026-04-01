@@ -1,17 +1,18 @@
-module Sabela.State
-    ( App (..)
-    , newApp
+module Sabela.State (
+    App (..),
+    newApp,
 
     -- * Re-exports for convenience
-    , module Sabela.State.Environment
-    , module Sabela.State.EventBus
-    , module Sabela.State.NotebookStore
-    , module Sabela.State.SessionManager
-    , module Sabela.State.DependencyTracker
-    , module Sabela.State.WidgetStore
-    , module Sabela.State.BridgeStore
-    ) where
+    module Sabela.State.Environment,
+    module Sabela.State.EventBus,
+    module Sabela.State.NotebookStore,
+    module Sabela.State.SessionManager,
+    module Sabela.State.DependencyTracker,
+    module Sabela.State.WidgetStore,
+    module Sabela.State.BridgeStore,
+) where
 
+import Data.Maybe (isJust)
 import Data.Set (Set)
 import Data.Text (Text)
 import Sabela.State.BridgeStore
@@ -21,7 +22,6 @@ import Sabela.State.EventBus
 import Sabela.State.NotebookStore
 import Sabela.State.SessionManager
 import Sabela.State.WidgetStore
-import Data.Maybe (isJust)
 import System.Directory (canonicalizePath)
 import System.Environment (lookupEnv)
 import System.IO.Temp (createTempDirectory, getCanonicalTemporaryDirectory)

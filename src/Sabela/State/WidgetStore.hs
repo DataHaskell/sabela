@@ -1,9 +1,9 @@
-module Sabela.State.WidgetStore
-    ( WidgetStore (..)
-    , newWidgetStore
-    , getWidgetValues
-    , setWidget
-    ) where
+module Sabela.State.WidgetStore (
+    WidgetStore (..),
+    newWidgetStore,
+    getWidgetValues,
+    setWidget,
+) where
 
 import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, withMVar)
 import qualified Data.Map.Strict as M

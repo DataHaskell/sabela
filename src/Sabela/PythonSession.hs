@@ -24,6 +24,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Sabela.SessionTypes as ST
+import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 import System.IO (
     BufferMode (LineBuffering),
@@ -37,7 +38,6 @@ import System.IO (
     hSetEncoding,
     utf8,
  )
-import System.Timeout (timeout)
 import System.Process (
     CreateProcess (cwd, std_err, std_in, std_out),
     ProcessHandle,
@@ -47,6 +47,7 @@ import System.Process (
     terminateProcess,
     waitForProcess,
  )
+import System.Timeout (timeout)
 
 newtype Marker = Marker Text
 
@@ -71,15 +72,28 @@ newPythonSession workDir = do
 
 createPythonProcess :: FilePath -> IO (Handle, Handle, Handle, ProcessHandle)
 createPythonProcess workDir = do
-    let cp = (proc "python3" ["-u", "-i"])
-            { std_in = CreatePipe, std_out = CreatePipe
-            , std_err = CreatePipe, cwd = Just workDir
-            }
+    python <- findPython workDir
+    let cp =
+            (proc python ["-u", "-i"])
+                { std_in = CreatePipe
+                , std_out = CreatePipe
+                , std_err = CreatePipe
+                , cwd = Just workDir
+                }
     (Just hIn, Just hOut, Just hErr, ph) <- createProcess cp
-    mapM_ (\h -> hSetBuffering h LineBuffering >> hSetEncoding h utf8) [hIn, hOut, hErr]
+    mapM_
+        (\h -> hSetBuffering h LineBuffering >> hSetEncoding h utf8)
+        [hIn, hOut, hErr]
     pure (hIn, hOut, hErr, ph)
 
-buildPythonState :: FilePath -> Handle -> Handle -> Handle -> ProcessHandle -> IO PythonSession
+findPython :: FilePath -> IO FilePath
+findPython workDir = do
+    let venvPython = workDir </> ".venv" </> "bin" </> "python3"
+    hasVenv <- doesFileExist venvPython
+    pure $ if hasVenv then venvPython else "python3"
+
+buildPythonState ::
+    FilePath -> Handle -> Handle -> Handle -> ProcessHandle -> IO PythonSession
 buildPythonState workDir hIn hOut hErr ph = do
     lock <- newMVar ()
     lineCh <- newTBQueueIO 256
@@ -87,11 +101,18 @@ buildPythonState workDir hIn hOut hErr ph = do
     counter <- newIORef 0
     _ <- forkIO $ readLoop hOut lineCh
     _ <- forkIO $ errLoop hErr errBuf
-    pure PythonSession
-        { pyLock = lock, pyStdin = hIn, pyStdout = hOut, pyStderr = hErr
-        , pyProc = ph, pyLines = lineCh, pyErrBuf = errBuf
-        , pyCounter = counter, pyWorkDir = workDir
-        }
+    pure
+        PythonSession
+            { pyLock = lock
+            , pyStdin = hIn
+            , pyStdout = hOut
+            , pyStderr = hErr
+            , pyProc = ph
+            , pyLines = lineCh
+            , pyErrBuf = errBuf
+            , pyCounter = counter
+            , pyWorkDir = workDir
+            }
 
 initializePython :: PythonSession -> IO ()
 initializePython sess = do
@@ -138,15 +159,17 @@ runBlockStreaming sess block onLine = withMVar (pyLock sess) $ \_ -> do
     mk <- getMarker sess
     execViaFile sess block
     placeMarker sess mk
-    mResult <- timeout executionTimeoutUs $
-        drainUntilMarkerStreaming (pyLines sess) mk onLine
+    mResult <-
+        timeout executionTimeoutUs $
+            drainUntilMarkerStreaming (pyLines sess) mk onLine
     collectPythonResult sess mResult
 
 execViaFile :: PythonSession -> Text -> IO ()
 execViaFile sess block = do
     let tmpPath = pyWorkDir sess </> ".sabela_cell.py"
     TIO.writeFile tmpPath block
-    sendRaw sess $ "exec(open(" ++ show tmpPath ++ ", encoding='utf-8').read(), globals())"
+    sendRaw sess $
+        "exec(open(" ++ show tmpPath ++ ", encoding='utf-8').read(), globals())"
 
 collectPythonResult :: PythonSession -> Maybe Text -> IO (Text, Text)
 collectPythonResult sess (Just outLines) = do
@@ -201,7 +224,8 @@ drainUntilMarker :: PythonSession -> Marker -> IO Text
 drainUntilMarker PythonSession{pyLines} (Marker mk) =
     drainUntilMarkerStreaming pyLines (Marker mk) (\_ -> pure ())
 
-drainUntilMarkerStreaming :: TBQueue Text -> Marker -> (Text -> IO ()) -> IO Text
+drainUntilMarkerStreaming ::
+    TBQueue Text -> Marker -> (Text -> IO ()) -> IO Text
 drainUntilMarkerStreaming queue (Marker mk) onLine =
     fmap (T.strip . T.unlines) (go [])
   where

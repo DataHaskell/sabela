@@ -38,6 +38,7 @@ import System.Process (
     ProcessHandle,
     StdStream (CreatePipe),
     createProcess,
+    getProcessExitCode,
     proc,
     terminateProcess,
     waitForProcess,
@@ -164,14 +165,25 @@ executionTimeoutUs = 120 * 1000000
 
 runBlockStreaming :: Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
 runBlockStreaming sess block onLine = withMVar (sessLock sess) $ \_ -> do
+    checkProcessAlive sess
     resetErrorBuffer sess
     mk <- getMarker sess
-    mapM_ (sendRaw sess . T.unpack) (T.lines block)
-    placeMarker sess mk
     mResult <-
-        timeout executionTimeoutUs $
+        timeout executionTimeoutUs $ do
+            mapM_ (sendRaw sess . T.unpack) (T.lines block)
+            placeMarker sess mk
             drainUntilMarkerStreaming (sessLines sess) mk onLine
     collectResult sess mResult
+
+checkProcessAlive :: Session -> IO ()
+checkProcessAlive sess = do
+    mExit <- getProcessExitCode (sessProc sess)
+    case mExit of
+        Nothing -> pure ()
+        Just code ->
+            ioError $
+                userError $
+                    "GHCi process exited with " ++ show code
 
 collectResult :: Session -> Maybe Text -> IO (Text, Text)
 collectResult sess (Just outLines) = do
@@ -246,7 +258,7 @@ readLoop h ch = do
                 (processHandle h (const (atomically $ writeTBQueue ch eofText)) writeOutput)
             ) ::
             IO (Either SomeException ())
-    pure ()
+    atomically $ writeTBQueue ch eofText
   where
     writeOutput :: Handle -> IO ()
     writeOutput h' = hGetLine h' >>= atomically . writeTBQueue ch . T.pack

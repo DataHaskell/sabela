@@ -31,7 +31,11 @@ import Sabela.Api (RunResult (..))
 import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
 import Sabela.Deps (collectMetadata, collectMetadataFromContent, mergedMeta)
 import Sabela.Errors (parseErrors)
-import Sabela.Handlers.Lean (executeLeanCells, killLeanSession)
+import Sabela.Handlers.Lean (
+    checkBridgeChanged,
+    executeLeanCells,
+    killLeanSession,
+ )
 import Sabela.Handlers.Python (
     executePythonCell,
     executePythonCells,
@@ -108,6 +112,7 @@ data ReactiveNotebook = ReactiveNotebook
     , rnRunCell :: Int -> IO ()
     , rnRunAll :: IO ()
     , rnReset :: IO ()
+    , rnRestartKernel :: IO ()
     , rnWidgetCell :: Int -> IO ()
     }
 
@@ -119,6 +124,7 @@ setupReactive app =
             , rnRunCell = handleRunCell app
             , rnRunAll = handleRunAll app
             , rnReset = handleReset app
+            , rnRestartKernel = handleRestartKernel app
             , rnWidgetCell = handleWidgetCell app
             }
 
@@ -197,6 +203,14 @@ handleReset app = do
     modifyNotebook (appNotebook app) clearAllOutputs
     broadcast app (EvSessionStatus SReset)
 
+handleRestartKernel :: App -> IO ()
+handleRestartKernel app = do
+    debugLog app "[handler] handleRestartKernel"
+    gen <- bumpGeneration app
+    killAllSessions app
+    broadcast app (EvSessionStatus SReset)
+    void $ forkIO $ executeFullRestart app gen
+
 clearAllOutputs :: Notebook -> Notebook
 clearAllOutputs nb = nb{nbCells = map clr (nbCells nb)}
   where
@@ -250,9 +264,15 @@ executeFullPlan app gen allCode nb = do
 
 executeNonHaskellCells :: App -> Int -> IO ()
 executeNonHaskellCells app gen = do
-    whenCurrentGen app gen $
+    debugLog app "[handler] executeNonHaskellCells: starting"
+    whenCurrentGen app gen $ do
+        debugLog app "[handler] executeNonHaskellCells: running Lean cells"
         executeLeanCells app gen (-1) (rerunBridgeCells app gen)
-    whenCurrentGen app gen $ executePythonCells app gen
+    whenCurrentGen app gen $ do
+        debugLog app "[handler] executeNonHaskellCells: running Python cells"
+        oldBridge <- getBridgeValues (appBridge app)
+        executePythonCells app gen
+        checkBridgeChanged app oldBridge (rerunBridgeCells app gen)
     whenCurrentGen app gen $ broadcast app EvExecutionDone
 
 killSession :: App -> IO ()
@@ -285,7 +305,7 @@ installAndRestart app gen metas = do
         else installDepsAndStartSession app gen metas
 
 installDepsAndStartSession :: App -> Int -> CabalMeta -> IO Bool
-installDepsAndStartSession app gen metas = do
+installDepsAndStartSession app _gen metas = do
     broadcastDepsStatus app metas
     setHaskellExts (appDeps app) (S.fromList (metaExts metas))
     let projDir = envTmpDir (appEnv app) </> "repl-project"
@@ -348,7 +368,7 @@ injectPrelude app sess = do
         try (runBlock sess displayPrelude) :: IO (Either SomeException (Text, Text))
     case result of
         Left e -> do
-            reportSessionFailure app "Prelude injection failed" e
+            _ <- reportSessionFailure app "Prelude injection failed" e
             threadDelay 100000
             broadcastInstallLog app sess
             void (try (closeSession sess) :: IO (Either SomeException ()))
@@ -361,7 +381,12 @@ injectPrelude app sess = do
 loadSabelaPrelude :: App -> IO ()
 loadSabelaPrelude app = do
     mSess <- getHaskellSession (appSessions app)
-    forM_ mSess $ \backend -> void (ST.sbRunBlock backend displayPrelude)
+    forM_ mSess $ \backend -> do
+        result <- try (ST.sbRunBlock backend displayPrelude)
+        case result of
+            Left (e :: SomeException) ->
+                handleKernelCrash app ("Kernel crashed during prelude: " <> T.pack (show e))
+            Right _ -> pure ()
 
 runAndBroadcast :: App -> Int -> Cell -> IO ()
 runAndBroadcast app gen cell = do
@@ -388,9 +413,27 @@ execCellWith app cell backend = do
         T.pack $
             "[handler] Cell " ++ show (cellId cell) ++ ":\n" ++ T.unpack ghci
     onLine <- mkStreamingCallback app (cellId cell)
-    (rawOut, rawErr) <- ST.sbRunBlockStreaming backend ghci onLine
-    storeBridgeExports app rawOut
-    parseCellResult (cellId cell) rawOut rawErr
+    result <- try (ST.sbRunBlockStreaming backend ghci onLine)
+    case result of
+        Left (e :: SomeException) -> do
+            handleKernelCrash app ("Kernel crashed: " <> T.pack (show e))
+            pure
+                (RunResult (cellId cell) [] (Just ("Kernel crashed: " <> T.pack (show e))), [])
+        Right (rawOut, rawErr) -> do
+            storeBridgeExports app rawOut
+            (rr, errs) <- parseCellResult (cellId cell) rawOut rawErr
+            when (isReplCrash rawErr) $
+                handleKernelCrash app rawErr
+            pure (rr, errs)
+
+handleKernelCrash :: App -> Text -> IO ()
+handleKernelCrash app msg = do
+    debugLog app $ "[handler] Kernel crash detected: " <> msg
+    setHaskellSession (appSessions app) Nothing
+    broadcast app (EvSessionStatus SCrashed)
+
+isReplCrash :: Text -> Bool
+isReplCrash err = "repl failed" `T.isInfixOf` err
 
 buildGhciScript :: App -> Cell -> IO Text
 buildGhciScript app cell = do

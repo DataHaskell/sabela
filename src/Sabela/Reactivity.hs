@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Sabela.Reactivity
-    ( ExecutionPlan (..)
-    , computeExecutionPlan
-    , computeFullExecutionPlan
-    , haskellCodeCells
-    , cellPositionMap
-    , redefinitionErrorMsg
-    , cycleErrorMsg
-    ) where
+module Sabela.Reactivity (
+    ExecutionPlan (..),
+    computeExecutionPlan,
+    computeFullExecutionPlan,
+    haskellCodeCells,
+    cellPositionMap,
+    redefinitionErrorMsg,
+    cycleErrorMsg,
+) where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -71,16 +71,16 @@ cellPositionMap :: Notebook -> M.Map Int Int
 cellPositionMap nb =
     M.fromList (zip (map cellId (nbCells nb)) [1 ..])
 
-redefinitionErrorMsg
-    :: M.Map Text Int
-    -- ^ defMap: name → first-defining cell ID
-    -> M.Map Int Int
-    -- ^ posMap: cell ID → 1-based position
-    -> Int
-    -- ^ cell ID with the redefinition
-    -> [Text]
-    -- ^ names that are redefined
-    -> Text
+redefinitionErrorMsg ::
+    -- | defMap: name → first-defining cell ID
+    M.Map Text Int ->
+    -- | posMap: cell ID → 1-based position
+    M.Map Int Int ->
+    -- | cell ID with the redefinition
+    Int ->
+    -- | names that are redefined
+    [Text] ->
+    Text
 redefinitionErrorMsg defMap posMap _cid names =
     let msgs =
             [ "'"

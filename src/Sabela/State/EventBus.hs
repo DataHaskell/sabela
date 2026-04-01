@@ -1,15 +1,21 @@
-module Sabela.State.EventBus
-    ( EventBus (..)
-    , newEventBus
-    , broadcast
-    , bumpGeneration
-    , isCurrentGen
-    , whenCurrentGen
-    , subscribeBroadcast
-    , debugLog
-    ) where
+module Sabela.State.EventBus (
+    EventBus (..),
+    newEventBus,
+    broadcast,
+    bumpGeneration,
+    isCurrentGen,
+    whenCurrentGen,
+    subscribeBroadcast,
+    debugLog,
+) where
 
-import Control.Concurrent.STM (TChan, atomically, dupTChan, newBroadcastTChanIO, writeTChan)
+import Control.Concurrent.STM (
+    TChan,
+    atomically,
+    dupTChan,
+    newBroadcastTChanIO,
+    writeTChan,
+ )
 import Control.Monad (when)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.Text (Text)

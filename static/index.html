@@ -431,6 +431,7 @@
   <button class="primary" onclick="runAll()" title="Ctrl+Shift+Enter" aria-label="Run all cells">▶ run all</button>
   <button onclick="saveNotebook()" title="Ctrl+S" aria-label="Save notebook">💾 save</button>
   <button onclick="resetNotebook()" aria-label="Reset notebook">reset</button>
+  <button onclick="restartKernel()" aria-label="Restart kernel">restart kernel</button>
   <span class="sep"></span>
   <button onclick="togglePanel('examples')" title="Examples" aria-label="Examples panel">📚</button>
   <button onclick="togglePanel('info')" title="Haddock / Info (Ctrl+I)" aria-label="Info / Haddock panel">🔍</button>
@@ -626,10 +627,14 @@ function handleSSE(ev) {
       if (ev.message === 'starting session' || ev.message.startsWith('installing:')) {
         openBuildModal('Building…');
       } else if (ev.message === 'ready') {
+        hideCrashBanner();
         const t = document.getElementById('build-modal-title');
         t.textContent = 'Build succeeded'; t.className = 'build-modal-title ok';
         setTimeout(closeBuildModal, 2000);
         setStatus('Done', '');
+      } else if (ev.message === 'crashed') {
+        setStatus('Kernel crashed', 'error');
+        showCrashBanner();
       } else if (ev.message === 'reset') {
         const t = document.getElementById('build-modal-title');
         t.textContent = 'Build failed'; t.className = 'build-modal-title err';
@@ -1399,6 +1404,30 @@ async function runAll() {
 }
 
 async function resetNotebook() { api('POST', 'reset').then(render).catch(console.error); }
+
+async function restartKernel() {
+  hideCrashBanner();
+  setStatus('Restarting kernel...', 'running');
+  await api('POST', 'restart-kernel').catch(console.error);
+}
+
+function showCrashBanner() {
+  let banner = document.getElementById('crash-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'crash-banner';
+    banner.style.cssText = 'background:#b91c1c;color:#fff;padding:8px 16px;text-align:center;cursor:pointer;font-weight:600;';
+    banner.textContent = 'Kernel crashed — click to restart';
+    banner.onclick = restartKernel;
+    document.body.prepend(banner);
+  }
+  banner.style.display = 'block';
+}
+
+function hideCrashBanner() {
+  const banner = document.getElementById('crash-banner');
+  if (banner) banner.style.display = 'none';
+}
 
 async function addCell(afterId, type, lang) {
   const l = lang || 'Haskell';

@@ -93,10 +93,13 @@ newLeanSession projDir = do
 
 createLakeProcess :: FilePath -> IO (Handle, Handle, Handle, ProcessHandle)
 createLakeProcess projDir = do
-    let cp = (proc "lake" ["serve", "--"])
-            { std_in = CreatePipe, std_out = CreatePipe
-            , std_err = CreatePipe, cwd = Just projDir
-            }
+    let cp =
+            (proc "lake" ["serve", "--"])
+                { std_in = CreatePipe
+                , std_out = CreatePipe
+                , std_err = CreatePipe
+                , cwd = Just projDir
+                }
     (Just hIn, Just hOut, Just hErr, ph) <- createProcess cp
     mapM_ (`hSetBinaryMode` True) [hIn, hOut]
     hSetBuffering hIn NoBuffering
@@ -104,7 +107,8 @@ createLakeProcess projDir = do
     hSetBuffering hErr LineBuffering
     pure (hIn, hOut, hErr, ph)
 
-buildLeanState :: FilePath -> Handle -> Handle -> Handle -> ProcessHandle -> IO LeanSession
+buildLeanState ::
+    FilePath -> Handle -> Handle -> Handle -> ProcessHandle -> IO LeanSession
 buildLeanState projDir hIn hOut hErr ph = do
     lock <- newMVar ()
     docVer <- newIORef 0
@@ -115,13 +119,23 @@ buildLeanState projDir hIn hOut hErr ph = do
     diagVer <- newIORef 0
     let docUri = "file://" <> T.pack projDir <> "/Scratch.lean"
     tid <- forkIO $ readerLoop hOut diags pending fileDone diagVer
-    pure LeanSession
-        { lsProcess = ph, lsStdin = hIn, lsStdout = hOut, lsStderr = hErr
-        , lsLock = lock, lsDocVersion = docVer, lsDiagnostics = diags
-        , lsRequestId = reqIdRef, lsPendingReqs = pending
-        , lsProjectDir = projDir, lsDocUri = docUri
-        , lsReaderThread = tid, lsFileDone = fileDone, lsDiagVersion = diagVer
-        }
+    pure
+        LeanSession
+            { lsProcess = ph
+            , lsStdin = hIn
+            , lsStdout = hOut
+            , lsStderr = hErr
+            , lsLock = lock
+            , lsDocVersion = docVer
+            , lsDiagnostics = diags
+            , lsRequestId = reqIdRef
+            , lsPendingReqs = pending
+            , lsProjectDir = projDir
+            , lsDocUri = docUri
+            , lsReaderThread = tid
+            , lsFileDone = fileDone
+            , lsDiagVersion = diagVer
+            }
 
 performLspHandshake :: LeanSession -> IO ()
 performLspHandshake sess = do
@@ -132,10 +146,13 @@ performLspHandshake sess = do
 closeLeanSession :: LeanSession -> IO ()
 closeLeanSession sess = do
     _ <- try (killThread (lsReaderThread sess)) :: IO (Either SomeException ())
-    _ <- try (sendLspMessage (lsStdin sess) (makeNotification mExit (object []))) :: IO (Either SomeException ())
+    _ <-
+        try (sendLspMessage (lsStdin sess) (makeNotification mExit (object []))) ::
+            IO (Either SomeException ())
     _ <- try (hClose (lsStdin sess)) :: IO (Either SomeException ())
     _ <- try (terminateProcess (lsProcess sess)) :: IO (Either SomeException ())
-    void (try (waitForProcess (lsProcess sess)) :: IO (Either SomeException ExitCode))
+    void
+        (try (waitForProcess (lsProcess sess)) :: IO (Either SomeException ExitCode))
 
 leanBackend :: LeanSession -> ST.SessionBackend
 leanBackend sess =
@@ -169,7 +186,9 @@ isErrorSeverity s = s `elem` [Just DsError, Just DsWarning, Nothing]
 
 sendDocAndGetDiags :: LeanSession -> Text -> IO [Diagnostic]
 sendDocAndGetDiags sess doc = do
-    result <- try (sendDocAndGetDiagsUnsafe sess doc) :: IO (Either SomeException [Diagnostic])
+    result <-
+        try (sendDocAndGetDiagsUnsafe sess doc) ::
+            IO (Either SomeException [Diagnostic])
     case result of
         Left _ -> pure []
         Right ds -> pure ds
@@ -181,7 +200,8 @@ sendDocAndGetDiagsUnsafe sess doc = withMVar (lsLock sess) $ \_ -> do
     waitForFileDone (lsFileDone sess)
     waitForDiagStable (lsDiagVersion sess)
     diags <- readMVar (lsDiagnostics sess)
-    hPutStrLn stderr $ "[lean-lsp] collected " ++ show (length diags) ++ " diagnostics"
+    hPutStrLn stderr $
+        "[lean-lsp] collected " ++ show (length diags) ++ " diagnostics"
     pure diags
 
 sendDocChange :: LeanSession -> Text -> IO ()
@@ -216,7 +236,12 @@ waitForFileDone doneVar = go (300 :: Int) -- 300 * 100ms = 30s max
                 go (n - 1)
 
 readerLoop ::
-    Handle -> MVar [Diagnostic] -> IORef (Map Int (MVar Value)) -> MVar () -> IORef Int -> IO ()
+    Handle ->
+    MVar [Diagnostic] ->
+    IORef (Map Int (MVar Value)) ->
+    MVar () ->
+    IORef Int ->
+    IO ()
 readerLoop h diagsMVar pendingRef fileDoneMVar diagVerRef = do
     _ <- try loop :: IO (Either SomeException ())
     pure ()

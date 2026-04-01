@@ -1,6 +1,6 @@
-module Sabela.State.Environment
-    ( Environment (..)
-    ) where
+module Sabela.State.Environment (
+    Environment (..),
+) where
 
 import Data.Set (Set)
 import Data.Text (Text)
