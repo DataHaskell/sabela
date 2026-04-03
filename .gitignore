@@ -25,3 +25,12 @@ cabal.project.local~
 .sabela_cell.py
 .venv/
 .env
+
+# Infra files with secrets/environment-specific IDs
+infra/.env
+infra/hub-task-definition.json
+infra/task-definition.json
+infra/builder-task-definition.json
+
+# Hub build artifacts
+sabela-hub/dist-newstyle/
