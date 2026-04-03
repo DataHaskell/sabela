@@ -1397,8 +1397,9 @@ async function runCell(cellId) {
 }
 
 async function runAll() {
+  // Save all editor content without triggering execution
   for (const [id, cm] of Object.entries(editors))
-    await api('PUT', `cell/${parseInt(id)}`, { ucSource: cm.getValue() }).catch(()=>{});
+    await api('PUT', `cell/${parseInt(id)}/source`, { ucSource: cm.getValue() }).catch(()=>{});
   api('POST', 'run-all').catch(console.error);
   setStatus('Running all cells...', 'running');
 }

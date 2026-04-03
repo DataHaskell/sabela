@@ -13,7 +13,8 @@ COPY . /opt/build
 
 RUN mkdir -p /opt/bin \
   && cabal build exe:sabela \
-  && cp "$(cabal list-bin sabela)" /opt/bin/sabela
+  && cp "$(cabal list-bin sabela)" /opt/bin/sabela \
+  && strip /opt/bin/sabela
 
 # Pre-install dataframe package in build stage so we can copy the store
 RUN cabal install dataframe
@@ -24,26 +25,10 @@ FROM haskell:9.12.2-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 \
   python3-venv \
-  tini \
+  curl \
   && rm -rf /var/lib/apt/lists/*
 
-
-# Install Python ML packages in a venv (no cache, no .pyc)
-ENV VIRTUAL_ENV="/opt/venv"
-RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:${PATH}"
-RUN pip install --no-cache-dir --no-compile numpy pandas scikit-learn matplotlib \
-  && find $VIRTUAL_ENV -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
-
-# Install elan (Lean 4 toolchain manager)
-ENV ELAN_HOME="/root/.elan"
-ENV PATH="${ELAN_HOME}/bin:${PATH}"
-RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
-     | sh -s -- -y --default-toolchain leanprover/lean4:v4.29.0
-
-# Verify installations
-RUN python3 --version && lean --version && lake --version
-
+# ---------- Assemble final image ----------
 WORKDIR /opt/sabela
 
 # Copy compiled binary
@@ -61,6 +46,27 @@ COPY ./examples /opt/sabela/examples/
 
 ENV CABAL_DIR="/root/.cabal"
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+# Entrypoint script prepends EFS tool paths to PATH at runtime
+# (avoids hardcoding PATH in task definition, which broke GHC discovery)
+COPY <<'SCRIPT' /opt/bin/start.sh
+#!/bin/sh
+# Add EFS-mounted tools to PATH if they exist
+[ -d "/mnt/sabela/python/venv/bin" ] && export PATH="/mnt/sabela/python/venv/bin:$PATH"
+[ -d "/mnt/sabela/lean/.elan/bin" ] && export PATH="/mnt/sabela/lean/.elan/bin:$PATH"
 
+# If a user work directory is specified (3rd arg = sabela's 2nd arg), set it up
+WORKDIR="${3:-.}"
+if echo "$WORKDIR" | grep -q "^/mnt/sabela/users/"; then
+  mkdir -p "$WORKDIR"
+  # Copy examples into user dir if not already there
+  if [ ! -d "$WORKDIR/examples" ]; then
+    cp -r /opt/sabela/examples "$WORKDIR/examples"
+  fi
+fi
+
+exec "$@"
+SCRIPT
+RUN chmod +x /opt/bin/start.sh
+
+ENTRYPOINT ["/opt/bin/start.sh"]
 CMD ["/opt/bin/sabela", "3000", "."]

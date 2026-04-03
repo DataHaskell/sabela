@@ -13,6 +13,8 @@ module Sabela.Handlers (
     -- * Haskell session management (also used by tests)
     installAndRestart,
     setupReplProject,
+    updateCellSource,
+    killAllSessions,
 
     -- * Re-exports from submodules
     module Sabela.Handlers.Shared,
@@ -33,6 +35,7 @@ import Sabela.Deps (collectMetadata, collectMetadataFromContent, mergedMeta)
 import Sabela.Errors (parseErrors)
 import Sabela.Handlers.Lean (
     checkBridgeChanged,
+    ensureLeanSessionAlive,
     executeLeanCells,
     killLeanSession,
  )
@@ -199,7 +202,7 @@ handleReset :: App -> IO ()
 handleReset app = do
     debugLog app "[handler] handleReset"
     void $ bumpGeneration app
-    killAllSessions app
+    void $ forkIO $ killAllSessions app
     modifyNotebook (appNotebook app) clearAllOutputs
     broadcast app (EvSessionStatus SReset)
 
@@ -207,7 +210,6 @@ handleRestartKernel :: App -> IO ()
 handleRestartKernel app = do
     debugLog app "[handler] handleRestartKernel"
     gen <- bumpGeneration app
-    killAllSessions app
     broadcast app (EvSessionStatus SReset)
     void $ forkIO $ executeFullRestart app gen
 
@@ -249,12 +251,20 @@ cellInSkipSet cid plan =
 executeFullRestart :: App -> Int -> IO ()
 executeFullRestart app gen = do
     debugLog app "[handler] executeFullRestart: killing session, running all"
-    nb <- readNotebook (appNotebook app)
-    let allCode = haskellCodeCells nb
-    killAllSessions app
-    ok <- installAndRestart app gen (collectMetadata nb)
-    when ok $ executeFullPlan app gen allCode nb
-    executeNonHaskellCells app gen
+    whenCurrentGen app gen $ do
+        nb <- readNotebook (appNotebook app)
+        let allCode = haskellCodeCells nb
+            hasLean = any (\c -> cellType c == CodeCell && cellLang c == ST.Lean4) (nbCells nb)
+        killAllSessions app
+        when hasLean $
+            whenCurrentGen app gen $
+                void $
+                    ensureLeanSessionAlive app
+        whenCurrentGen app gen $ do
+            ok <- installAndRestart app gen (collectMetadata nb)
+            when ok $ executeFullPlan app gen allCode nb
+        whenCurrentGen app gen $
+            executeNonHaskellCells app gen
 
 executeFullPlan :: App -> Int -> [Cell] -> Notebook -> IO ()
 executeFullPlan app gen allCode nb = do

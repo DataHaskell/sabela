@@ -96,7 +96,8 @@ ghciArgs cfg =
     , "exe:main"
     , "--project-dir=" ++ scProjectDir cfg
     , "-v0"
-    , "--repl-options=-fobject-code"
+    , "--repl-options=-fobject-code -O2"
+    , "--ghc-options=+RTS -N -A512m -n4m -H1G -RTS"
     , "-O2"
     ]
 

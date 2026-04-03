@@ -1,0 +1,16 @@
+FROM haskell:9.12.2-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  python3 \
+  python3-venv \
+  curl \
+  && rm -rf /var/lib/apt/lists/*
+
+# Copy the REPL source so it's available at runtime
+COPY ./repl /opt/repl
+
+# Copy the build script
+COPY ./infra/build-efs.sh /opt/build-efs.sh
+RUN chmod +x /opt/build-efs.sh
+
+CMD ["/opt/build-efs.sh"]

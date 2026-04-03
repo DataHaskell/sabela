@@ -5,6 +5,8 @@ Python cells can render matplotlib plots inline using base64-encoded PNG.
 ## Setup
 
 ```python
+# pip: matplotlib
+# pip: numpy
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt

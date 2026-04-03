@@ -8,10 +8,11 @@ module Sabela.Server (
     newApp,
 ) where
 
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (modifyMVar)
 import Control.Concurrent.STM (TChan, atomically, readTChan)
 import Control.Exception (SomeException, try)
-import Control.Monad (forM, forever)
+import Control.Monad (forM, forever, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (encode)
 import qualified Data.ByteString as BS
@@ -77,6 +78,12 @@ type JsonAPI =
         :<|> "api"
             :> "cell"
             :> Capture "id" Int
+            :> ReqBody '[JSON] UpdateCell
+            :> Put '[JSON] Cell
+        :<|> "api"
+            :> "cell"
+            :> Capture "id" Int
+            :> "source"
             :> ReqBody '[JSON] UpdateCell
             :> Put '[JSON] Cell
         :<|> "api" :> "cell" :> ReqBody '[JSON] InsertCell :> Post '[JSON] Cell
@@ -160,6 +167,7 @@ server app rn =
         :<|> loadNotebookH app rn
         :<|> saveNotebookH app
         :<|> updateCellH app rn
+        :<|> saveCellSourceH app
         :<|> insertCellH app
         :<|> deleteCellH app
         :<|> runCellH rn
@@ -214,13 +222,15 @@ getNotebookH :: App -> Handler Notebook
 getNotebookH app = liftIO $ readNotebook (appNotebook app)
 
 loadNotebookH :: App -> ReactiveNotebook -> LoadRequest -> Handler Notebook
-loadNotebookH app rn (LoadRequest path) = liftIO $ do
+loadNotebookH app _rn (LoadRequest path) = liftIO $ do
     let absPath = resolveWorkPath (appEnv app) path
     raw <- TIO.readFile absPath
     cells <- mapM (segmentToCell (appNotebook app)) (parseMarkdown raw)
     let nb = Notebook (T.pack path) cells
+    -- Cancel any in-flight execution and kill sessions
+    void $ bumpGeneration app
+    void $ forkIO $ killAllSessions app
     modifyNotebook (appNotebook app) (const nb)
-    rnRunAll rn
     pure nb
 
 resolveWorkPath :: Environment -> FilePath -> FilePath
@@ -320,6 +330,17 @@ serializeOutputs items =
 updateCellH :: App -> ReactiveNotebook -> Int -> UpdateCell -> Handler Cell
 updateCellH app rn cid (UpdateCell src) = liftIO $ do
     rnCellEdit rn cid src
+    nb <- readNotebook (appNotebook app)
+    case lookupCell cid nb of
+        Just c -> pure c
+        Nothing -> pure (Cell cid CodeCell ST.Haskell src [] Nothing True)
+
+{- | Save cell source without triggering reactive execution.
+Used by runAll to sync editor content before running.
+-}
+saveCellSourceH :: App -> Int -> UpdateCell -> Handler Cell
+saveCellSourceH app cid (UpdateCell src) = liftIO $ do
+    modifyNotebook (appNotebook app) $ updateCellSource cid src
     nb <- readNotebook (appNotebook app)
     case lookupCell cid nb of
         Just c -> pure c

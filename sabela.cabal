@@ -43,8 +43,7 @@ library
                       Sabela.Errors,
                       Sabela.Server,
                       Sabela.Topo,
-                      Sabela.LeanLsp,
-                      Sabela.LeanSession,
+                      Sabela.LeanRepl,
                       Sabela.PythonSession
     build-depends:    base >= 4 && < 5,
                       aeson >= 0.11.0.0 && < 3,
@@ -87,7 +86,8 @@ test-suite sabela-test
                       Test.TopoSpec,
                       Test.OutputSpec,
                       Test.LeanExportSpec,
-                      Test.PreinstalledSpec
+                      Test.PreinstalledSpec,
+                      Test.GenerationSpec
     build-depends:
         base >= 4 && < 5,
         containers >= 0.6.7 && < 0.9,

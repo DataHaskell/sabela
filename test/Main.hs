@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified Test.GenerationSpec as GenerationSpec
 import Test.Hspec (hspec)
 import qualified Test.LeanExportSpec as LeanExportSpec
 import qualified Test.OutputSpec as OutputSpec
@@ -14,3 +15,4 @@ main = hspec $ do
     OutputSpec.spec
     LeanExportSpec.spec
     PreinstalledSpec.spec
+    GenerationSpec.spec

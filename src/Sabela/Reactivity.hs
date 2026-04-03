@@ -10,6 +10,7 @@ module Sabela.Reactivity (
     cycleErrorMsg,
 ) where
 
+import Data.Containers.ListUtils (nubOrdOn)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -54,7 +55,8 @@ computeFullExecutionPlan allCode nb =
         (topoResult, redefMap) = Topo.computeTopoOrder allCode
         skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
         toRun =
-            filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
+            nubOrdOn cellId $
+                filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
      in ExecutionPlan
             { epCellsToRun = toRun
             , epCycleIds = Topo.trCycleIds topoResult

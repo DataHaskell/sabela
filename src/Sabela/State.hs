@@ -22,8 +22,13 @@ import Sabela.State.EventBus
 import Sabela.State.NotebookStore
 import Sabela.State.SessionManager
 import Sabela.State.WidgetStore
-import System.Directory (canonicalizePath)
+import System.Directory (
+    canonicalizePath,
+    createDirectoryIfMissing,
+    getHomeDirectory,
+ )
 import System.Environment (lookupEnv)
+import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory, getCanonicalTemporaryDirectory)
 
 data App = App
@@ -42,12 +47,18 @@ newApp workDir globalDeps = do
     tmpBase <- getCanonicalTemporaryDirectory
     tmpDir <- createTempDirectory tmpBase "sabela-server"
     debug <- isJust <$> lookupEnv "SABELA_DEBUG"
+    replBin <- lookupEnv "SABELA_LEAN_REPL"
+    leanBase <- lookupEnv "SABELA_LEAN_BASE"
+    leanCache <- resolveLeanCache
     let env =
             Environment
                 { envWorkDir = absWork
                 , envTmpDir = tmpDir
                 , envGlobalDeps = globalDeps
                 , envDebugLog = debug
+                , envLeanReplBin = replBin
+                , envLeanBase = leanBase
+                , envLeanCache = leanCache
                 }
     App env
         <$> newNotebookStore
@@ -56,3 +67,17 @@ newApp workDir globalDeps = do
         <*> newDependencyTracker
         <*> newWidgetStore
         <*> newBridgeStore
+
+{- | Resolve the persistent Lean cache directory.
+Priority: SABELA_LEAN_CACHE env var > ~/.sabela/lean-cache/
+-}
+resolveLeanCache :: IO FilePath
+resolveLeanCache = do
+    mEnv <- lookupEnv "SABELA_LEAN_CACHE"
+    cacheDir <- case mEnv of
+        Just p -> pure p
+        Nothing -> do
+            home <- getHomeDirectory
+            pure (home </> ".sabela" </> "lean-cache")
+    createDirectoryIfMissing True cacheDir
+    pure cacheDir

@@ -18,13 +18,13 @@ import Control.Concurrent.MVar (
     newMVar,
     readMVar,
  )
-import Sabela.LeanSession (LeanSession)
+import Sabela.LeanRepl (LeanSession)
 import Sabela.SessionTypes (SessionBackend)
 
 data SessionManager = SessionManager
     { smHaskell :: MVar (Maybe SessionBackend)
     , smLean :: MVar (Maybe LeanSession)
-    -- ^ Unwrapped: executeLeanCells needs direct LSP access.
+    -- ^ Unwrapped: executeLeanCells needs direct REPL access for env chaining.
     , smPython :: MVar (Maybe SessionBackend)
     }
 

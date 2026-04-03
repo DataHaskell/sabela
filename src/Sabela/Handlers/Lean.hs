@@ -8,18 +8,15 @@ module Sabela.Handlers.Lean (
     checkBridgeChanged,
     collectLeanDeps,
 
-    -- * Lean document assembly
-    CellLineMap (..),
-    assembleLeanDocument,
-    groupDiagsByCell,
-    mapDiagToError,
+    -- * Lean REPL helpers (exported for tests)
     parseLeanExports,
+    classifyReplMessages,
+    replMsgToError,
 ) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void, when)
-import Data.Either (fromRight)
 import qualified Data.Map.Strict as M
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as S
@@ -27,17 +24,14 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Sabela.Api (RunResult (..))
-import Sabela.LeanLsp (
-    Diagnostic (..),
-    DiagnosticSeverity (..),
-    Position (..),
-    Range (..),
- )
-import Sabela.LeanSession (
-    LeanSession,
+import Sabela.LeanRepl (
+    LeanSession (..),
+    ReplMessage (..),
+    ReplPos (..),
+    ReplResponse (..),
     closeLeanSession,
     newLeanSession,
-    sendDocAndGetDiags,
+    sendCommand,
  )
 import Sabela.Model (
     Cell (..),
@@ -55,7 +49,13 @@ import Sabela.State.DependencyTracker (getLeanDeps, setLeanDeps)
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getLeanSession, modifyLeanSession)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (
+    createDirectoryIfMissing,
+    doesDirectoryExist,
+    doesFileExist,
+    findExecutable,
+ )
+import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import qualified System.IO
 import qualified System.Process
@@ -84,8 +84,9 @@ startLeanSession ::
 startLeanSession app deps mOldSess = do
     forM_ mOldSess $ \ls ->
         void (try (closeLeanSession ls) :: IO (Either SomeException ()))
-    let projDir = envTmpDir (appEnv app) </> "lean-project"
+    let projDir = envLeanCache (appEnv app) </> leanProjectName deps
     createDirectoryIfMissing True projDir
+    seedFromBase (envLeanBase (appEnv app)) projDir
     writeLeanProject projDir deps
     broadcastLeanDeps app deps
     buildAndStartLean app projDir deps
@@ -117,13 +118,66 @@ initializeLeanSession ::
     App -> FilePath -> S.Set Text -> IO (Maybe LeanSession, Bool)
 initializeLeanSession app projDir deps = do
     broadcast app (EvSessionStatus SStarting)
-    result <- try (newLeanSession projDir) :: IO (Either SomeException LeanSession)
-    case result of
-        Left e -> leanFailure app "Lean session failed" e
-        Right ls -> do
-            setLeanDeps (appDeps app) deps
-            broadcast app (EvSessionStatus SReady)
-            pure (Just ls, True)
+    replBin <- resolveLeanReplBin (appEnv app)
+    case replBin of
+        Nothing -> do
+            broadcast app (EvInstallLog "Lean REPL binary not found. Set SABELA_LEAN_REPL.")
+            broadcast app (EvSessionStatus SReset)
+            pure (Nothing, False)
+        Just bin -> do
+            result <-
+                try (newLeanSession projDir bin) :: IO (Either SomeException LeanSession)
+            case result of
+                Left e -> leanFailure app "Lean session failed" e
+                Right ls -> do
+                    setLeanDeps (appDeps app) deps
+                    broadcast app (EvSessionStatus SReady)
+                    pure (Just ls, True)
+
+{- | Resolve the Lean REPL binary path.
+Priority: SABELA_LEAN_REPL env var > envLeanReplBin config
+        > repl/ submodule (auto-build if needed) > PATH lookup.
+-}
+resolveLeanReplBin :: Environment -> IO (Maybe FilePath)
+resolveLeanReplBin env = do
+    mEnvVar <- lookupEnv "SABELA_LEAN_REPL"
+    case mEnvVar of
+        Just p -> pure (Just p)
+        Nothing -> case envLeanReplBin env of
+            Just p -> pure (Just p)
+            Nothing -> do
+                let replBin = envWorkDir env </> "repl" </> ".lake" </> "build" </> "bin" </> "repl"
+                    replDir = envWorkDir env </> "repl"
+                binExists <- doesFileExist replBin
+                if binExists
+                    then pure (Just replBin)
+                    else do
+                        dirExists <- doesDirectoryExist replDir
+                        if dirExists
+                            then buildReplBinary replDir replBin
+                            else findExecutable "repl"
+
+-- | Build the REPL binary from source in the given directory.
+buildReplBinary :: FilePath -> FilePath -> IO (Maybe FilePath)
+buildReplBinary replDir binPath = do
+    System.IO.hPutStrLn System.IO.stderr $
+        "[sabela] Building Lean REPL in " ++ replDir ++ " ..."
+    let cp =
+            (System.Process.proc "lake" ["build"])
+                { System.Process.cwd = Just replDir
+                , System.Process.std_out = System.Process.Inherit
+                , System.Process.std_err = System.Process.Inherit
+                }
+    (_, _, _, ph) <- System.Process.createProcess cp
+    _ <- System.Process.waitForProcess ph
+    built <- doesFileExist binPath
+    if built
+        then do
+            System.IO.hPutStrLn System.IO.stderr "[sabela] Lean REPL built successfully."
+            pure (Just binPath)
+        else do
+            System.IO.hPutStrLn System.IO.stderr "[sabela] Lean REPL build failed."
+            pure Nothing
 
 buildLeanProject :: App -> FilePath -> IO ()
 buildLeanProject app dir = do
@@ -177,7 +231,6 @@ writeLeanProject :: FilePath -> S.Set Text -> IO ()
 writeLeanProject dir deps = do
     writeFile (dir </> "lakefile.toml") (renderLakefile deps)
     ensureLeanFile (dir </> "lean-toolchain") "leanprover/lean4:v4.29.0\n"
-    ensureLeanFile (dir </> "Scratch.lean") ""
 
 ensureLeanFile :: FilePath -> String -> IO ()
 ensureLeanFile path content = do
@@ -205,6 +258,10 @@ renderLakeDep key = case T.splitOn "/" key of
         ]
     _ -> []
 
+-- --------------------------------------------------------------------------
+-- Execution
+-- --------------------------------------------------------------------------
+
 executeLeanCells :: App -> Int -> Int -> IO () -> IO ()
 executeLeanCells app gen editedCid onBridgeChanged = do
     nb <- readNotebook (appNotebook app)
@@ -220,7 +277,6 @@ selectAffectedLeanCells editedCid leanCells
 
 runLeanCells :: App -> Int -> [Cell] -> [Cell] -> IO () -> IO ()
 runLeanCells app gen leanCells affected onBridgeChanged = do
-    forM_ affected $ \c -> broadcast app (EvCellUpdating (cellId c))
     ok <- ensureLeanSessionAlive app
     if not ok
         then forM_ affected $ \c ->
@@ -228,90 +284,150 @@ runLeanCells app gen leanCells affected onBridgeChanged = do
                 app
                 (cellId c)
                 "Lean session not available. Is 'lake' installed and on PATH?"
-        else runLeanDiagnostics app gen leanCells affected onBridgeChanged
+        else runLeanRepl app gen leanCells affected onBridgeChanged
 
-runLeanDiagnostics :: App -> Int -> [Cell] -> [Cell] -> IO () -> IO ()
-runLeanDiagnostics app gen leanCells affected onBridgeChanged = do
+runLeanRepl :: App -> Int -> [Cell] -> [Cell] -> IO () -> IO ()
+runLeanRepl app gen leanCells affected onBridgeChanged = do
     mLean <- getLeanSession (appSessions app)
     case mLean of
         Nothing -> pure ()
         Just ls -> do
-            bridgeVals <- getBridgeValues (appBridge app)
-            diags <- fetchDiagnostics ls bridgeVals leanCells
-            let affectedIds = S.fromList (map cellId affected)
-            whenCurrentGen app gen $ do
-                distributeLeanResults
-                    app
-                    (snd (assembleLeanDocument bridgeVals leanCells))
-                    diags
-                    leanCells
-                    affectedIds
-                checkBridgeChanged app bridgeVals onBridgeChanged
+            -- Kill and restart the REPL for a fresh environment.
+            -- This ensures we start from a clean state each time.
+            closeLeanSession ls
+            replBin <- resolveLeanReplBin (appEnv app)
+            case replBin of
+                Nothing -> pure ()
+                Just bin -> do
+                    newLs <- newLeanSession (lsProjectDir ls) bin
+                    -- Store the new session
+                    void $ modifyLeanSession (appSessions app) $ \_ ->
+                        pure (Just newLs, ())
+                    bridgeVals <- getBridgeValues (appBridge app)
+                    execResult <-
+                        try (executeAllCells app newLs bridgeVals leanCells affected) ::
+                            IO (Either SomeException ())
+                    case execResult of
+                        Left e -> do
+                            debugLog app $ "[lean-repl] execution error: " <> T.pack (show e)
+                            let affectedIds = S.fromList (map cellId affected)
+                            forM_ leanCells $ \c ->
+                                when (S.member (cellId c) affectedIds) $
+                                    broadcastCellError
+                                        app
+                                        (cellId c)
+                                        ("Lean REPL error: " <> T.pack (show e))
+                        Right () -> pure ()
+                    whenCurrentGen app gen $
+                        checkBridgeChanged app bridgeVals onBridgeChanged
 
-fetchDiagnostics :: LeanSession -> M.Map Text Text -> [Cell] -> IO [Diagnostic]
-fetchDiagnostics ls bridgeVals leanCells = do
-    let (doc, _) = assembleLeanDocument bridgeVals leanCells
-    diagResult <-
-        try (sendDocAndGetDiags ls doc) :: IO (Either SomeException [Diagnostic])
-    pure $ fromRight [] diagResult
+executeAllCells ::
+    App -> LeanSession -> M.Map Text Text -> [Cell] -> [Cell] -> IO ()
+executeAllCells app ls bridgeVals leanCells affected = do
+    let affectedIds = S.fromList (map cellId affected)
+        allImports = collectLeanImports leanCells
+        bridgeDefs = leanBridgeDefs bridgeVals
+
+    -- Phase 1: Send imports (no env → fresh environment)
+    mEnv0 <-
+        if null allImports
+            then pure Nothing
+            else do
+                broadcast app (EvInstallLog "Lean: loading imports...")
+                let importCmd = T.unlines allImports
+                resp <- sendCommand ls importCmd Nothing
+                pure (Just (rrEnv resp))
+
+    -- Phase 2: Send bridge definitions
+    unless (null bridgeDefs) $
+        broadcast app (EvInstallLog "Lean: loading bridge definitions...")
+    envAfterBridge <- sendDefs ls bridgeDefs mEnv0
+
+    -- Phase 3: Execute each cell
+    broadcast app (EvInstallLog "Lean: type-checking cells...")
+    _ <- executeCellsSequentially app ls leanCells affectedIds envAfterBridge
+    pure ()
+
+-- | Send a list of definitions one by one, chaining env numbers.
+sendDefs :: LeanSession -> [Text] -> Maybe Int -> IO (Maybe Int)
+sendDefs _ [] env = pure env
+sendDefs ls (d : ds) mEnv = do
+    resp <- sendCommand ls d mEnv
+    sendDefs ls ds (Just (rrEnv resp))
+
+{- | Execute cells sequentially, chaining env numbers.
+Returns the final env number.
+-}
+executeCellsSequentially ::
+    App -> LeanSession -> [Cell] -> S.Set Int -> Maybe Int -> IO (Maybe Int)
+executeCellsSequentially _ _ [] _ env = pure env
+executeCellsSequentially app ls (c : cs) affectedIds mEnv = do
+    let cid = cellId c
+        src = cellSource c
+        strippedLines = filter (not . isImportLine) (T.lines src)
+        strippedSrc = T.unlines strippedLines
+    when (S.member cid affectedIds) $
+        broadcast app (EvCellUpdating cid)
+    if T.null (T.strip strippedSrc)
+        then do
+            -- Empty cell after stripping imports — broadcast success
+            when (S.member cid affectedIds) $
+                updateAndBroadcast
+                    app
+                    (\nb -> nb{nbCells = map (applyResult (RunResult cid [] Nothing)) (nbCells nb)})
+                    (EvCellResult cid [] Nothing [])
+            executeCellsSequentially app ls cs affectedIds mEnv
+        else do
+            resp <- sendCommand ls strippedSrc mEnv
+            let newEnv = Just (rrEnv resp)
+            when (S.member cid affectedIds) $ do
+                let (outputs, errText, cellErrors) = classifyReplMessages (rrMessages resp) src
+                updateAndBroadcast
+                    app
+                    ( \nb -> nb{nbCells = map (applyResult (RunResult cid outputs errText)) (nbCells nb)}
+                    )
+                    (EvCellResult cid outputs errText cellErrors)
+                storeLeanExports app c (rrMessages resp)
+            executeCellsSequentially app ls cs affectedIds newEnv
 
 checkBridgeChanged :: App -> M.Map Text Text -> IO () -> IO ()
 checkBridgeChanged app oldBridge onBridgeChanged = do
     newBridge <- getBridgeValues (appBridge app)
     when (newBridge /= oldBridge) onBridgeChanged
 
-distributeLeanResults ::
-    App -> [CellLineMap] -> [Diagnostic] -> [Cell] -> S.Set Int -> IO ()
-distributeLeanResults app lineMap diags leanCells affectedIds = do
-    let diagsByCell = groupDiagsByCell lineMap diags
-    forM_ leanCells $ \c ->
-        when (S.member (cellId c) affectedIds) $
-            processCellDiagnostics
-                app
-                lineMap
-                c
-                (M.findWithDefault [] (cellId c) diagsByCell)
+-- --------------------------------------------------------------------------
+-- Output classification
+-- --------------------------------------------------------------------------
 
-processCellDiagnostics :: App -> [CellLineMap] -> Cell -> [Diagnostic] -> IO ()
-processCellDiagnostics app lineMap c cellDiags = do
-    let cid = cellId c
-        (outputs, errText, cellErrors) = classifyLeanDiags lineMap c cellDiags
-    updateAndBroadcast
-        app
-        ( \nb' ->
-            nb'{nbCells = map (applyResult (RunResult cid outputs errText)) (nbCells nb')}
-        )
-        (EvCellResult cid outputs errText cellErrors)
-    storeLeanExports app lineMap c cellDiags
-
-storeLeanExports :: App -> [CellLineMap] -> Cell -> [Diagnostic] -> IO ()
-storeLeanExports app lineMap c cellDiags = do
-    let infoDiags = [d | d <- cellDiags, diagSeverity d `elem` [Just DsInformation, Just DsHint]]
-        cellOffset = maybe 0 clmStartLine (find (\m -> clmCellId m == cellId c) lineMap)
-    forM_ (parseLeanExports (cellSource c) cellOffset infoDiags) $
-        uncurry (setBridgeValue (appBridge app))
-
-classifyLeanDiags ::
-    [CellLineMap] -> Cell -> [Diagnostic] -> ([OutputItem], Maybe Text, [CellError])
-classifyLeanDiags lineMap c cellDiags =
+classifyReplMessages ::
+    [ReplMessage] -> Text -> ([OutputItem], Maybe Text, [CellError])
+classifyReplMessages msgs src =
     let infos =
-            [ diagMessage d
-            | d <- cellDiags
-            , diagSeverity d `elem` [Just DsInformation, Just DsHint]
+            [ rmData m
+            | m <- msgs
+            , rmSeverity m `elem` ["information", "info"]
             ]
         errs =
-            [ diagMessage d
-            | d <- cellDiags
-            , diagSeverity d `elem` [Just DsError, Just DsWarning, Nothing]
+            [ rmData m
+            | m <- msgs
+            , rmSeverity m `elem` ["error", "warning"]
             ]
-        outputs = leanDiagOutputs infos errs (cellSource c)
+        outputs = leanDiagOutputs infos errs src
         errText = if null errs then Nothing else Just (T.unlines errs)
         cellErrors =
-            [ mapDiagToError lineMap (cellId c) d
-            | d <- cellDiags
-            , diagSeverity d `elem` [Just DsError, Just DsWarning, Nothing]
+            [ replMsgToError m
+            | m <- msgs
+            , rmSeverity m `elem` ["error", "warning"]
             ]
      in (outputs, errText, cellErrors)
+
+replMsgToError :: ReplMessage -> CellError
+replMsgToError msg =
+    CellError
+        { ceLine = Just (rpLine (rmPos msg))
+        , ceCol = Just (rpColumn (rmPos msg))
+        , ceMessage = rmData msg
+        }
 
 leanDiagOutputs :: [Text] -> [Text] -> Text -> [OutputItem]
 leanDiagOutputs infos errs src
@@ -362,10 +478,24 @@ leanDeclKeywords =
     , "import "
     ]
 
-parseLeanExports :: Text -> Int -> [Diagnostic] -> [(Text, Text)]
-parseLeanExports src cellOffset diags =
+-- --------------------------------------------------------------------------
+-- Exports (bridge)
+-- --------------------------------------------------------------------------
+
+storeLeanExports :: App -> Cell -> [ReplMessage] -> IO ()
+storeLeanExports app c msgs = do
+    let infoMsgs =
+            [ m
+            | m <- msgs
+            , rmSeverity m `elem` ["information", "info"]
+            ]
+    forM_ (parseLeanExports (cellSource c) infoMsgs) $
+        uncurry (setBridgeValue (appBridge app))
+
+parseLeanExports :: Text -> [ReplMessage] -> [(Text, Text)]
+parseLeanExports src msgs =
     mapMaybe
-        (findDiagForExport cellOffset (length srcLines) diags annotations)
+        (findMsgForExport (length srcLines) msgs annotations)
         annotations
   where
     srcLines = T.lines src
@@ -379,84 +509,77 @@ extractExportAnnotations srcLines =
     , not (T.null (T.strip rest))
     ]
 
-findDiagForExport ::
-    Int -> Int -> [Diagnostic] -> [(Text, Int)] -> (Text, Int) -> Maybe (Text, Text)
-findDiagForExport cellOffset numLines diags allAnnotations (name, lineIdx) =
-    let docLine = cellOffset + lineIdx
-        nextLine = case dropWhile ((<= lineIdx) . snd) allAnnotations of
-            ((_, nl) : _) -> cellOffset + nl
-            [] -> cellOffset + numLines
-     in case [ diagMessage d
-             | d <- diags
-             , let dl = posLine (rangeStart (diagRange d))
-             , dl > docLine && dl < nextLine
+findMsgForExport ::
+    Int -> [ReplMessage] -> [(Text, Int)] -> (Text, Int) -> Maybe (Text, Text)
+findMsgForExport numLines msgs allAnnotations (name, lineIdx) =
+    let nextLine = case dropWhile ((<= lineIdx) . snd) allAnnotations of
+            ((_, nl) : _) -> nl
+            [] -> numLines
+     in case [ rmData m
+             | m <- msgs
+             , let ml = rpLine (rmPos m)
+             , -- REPL positions are 1-based, annotations are 0-based
+             ml > lineIdx + 1 && ml <= nextLine + 1
              ] of
             (msg : _) -> Just (name, msg)
             [] -> Nothing
 
-data CellLineMap = CellLineMap
-    { clmCellId :: Int
-    , clmStartLine :: Int
-    , clmEndLine :: Int
-    }
-    deriving (Show, Eq)
+-- --------------------------------------------------------------------------
+-- Base project seeding
+-- --------------------------------------------------------------------------
 
-assembleLeanDocument :: M.Map Text Text -> [Cell] -> (Text, [CellLineMap])
-assembleLeanDocument bridgeVals cells =
-    let importBlock = collectLeanImports cells
-        bridgeBlock = leanBridgeBlock bridgeVals
-        headerLines = length importBlock + length bridgeBlock
-        (bodyLines, lineMap) = foldCellsWithLineMap cells headerLines
-     in (T.unlines (importBlock ++ bridgeBlock ++ reverse bodyLines), reverse lineMap)
+{- | Copy the .lake directory from a pre-built base project into a new
+project directory, so that @lake build@ can reuse cached packages
+(e.g. Mathlib) instead of cloning them from scratch.
+-}
+seedFromBase :: Maybe FilePath -> FilePath -> IO ()
+seedFromBase Nothing _ = pure ()
+seedFromBase (Just baseDir) projDir = do
+    let targetLake = projDir </> ".lake"
+    alreadySeeded <- doesDirectoryExist targetLake
+    unless alreadySeeded $ do
+        let baseLake = baseDir </> ".lake"
+        hasBase <- doesDirectoryExist baseLake
+        when hasBase $ do
+            let cp =
+                    (System.Process.proc "cp" ["-a", baseLake, targetLake])
+                        { System.Process.std_out = System.Process.CreatePipe
+                        , System.Process.std_err = System.Process.CreatePipe
+                        }
+            (_, _, _, ph) <- System.Process.createProcess cp
+            _ <- System.Process.waitForProcess ph
+            pure ()
+
+-- --------------------------------------------------------------------------
+-- Project directory naming
+-- --------------------------------------------------------------------------
+
+{- | Generate a stable project directory name based on the dependency set.
+Each unique set of deps gets its own cached directory so that switching
+between notebooks with different deps doesn't blow away the Lake cache.
+-}
+leanProjectName :: S.Set Text -> FilePath
+leanProjectName deps
+    | S.null deps = "lean-project"
+    | otherwise = "lean-project-" ++ show (hashDeps deps)
+  where
+    hashDeps :: S.Set Text -> Int
+    hashDeps = S.foldl' (\acc d -> acc * 31 + T.foldl' (\a c -> a * 37 + fromEnum c) 0 d) 0
+
+-- --------------------------------------------------------------------------
+-- Helpers
+-- --------------------------------------------------------------------------
 
 collectLeanImports :: [Cell] -> [Text]
 collectLeanImports cells =
     let imports = concatMap (filter isImportLine . T.lines . cellSource) cells
-     in if null imports then [] else imports ++ [""]
-
-leanBridgeBlock :: M.Map Text Text -> [Text]
-leanBridgeBlock bridgeVals
-    | M.null bridgeVals = []
-    | otherwise =
-        [ "def _bridge_" <> name <> " : String := " <> T.pack (show (T.unpack val))
-        | (name, val) <- M.toList bridgeVals
-        ]
-            ++ [""]
+     in imports
 
 isImportLine :: Text -> Bool
 isImportLine l = "import " `T.isPrefixOf` T.stripStart l
 
-foldCellsWithLineMap :: [Cell] -> Int -> ([Text], [CellLineMap])
-foldCellsWithLineMap cells startLine = go cells startLine [] []
-  where
-    go [] _ docAcc mapAcc = (docAcc, mapAcc)
-    go (c : cs) curLine docAcc mapAcc =
-        let srcLines = filter (not . isImportLine) (T.lines (cellSource c))
-            n = length srcLines
-         in go
-                cs
-                (curLine + n)
-                (reverse srcLines ++ docAcc)
-                (CellLineMap (cellId c) curLine (curLine + n) : mapAcc)
-
-groupDiagsByCell :: [CellLineMap] -> [Diagnostic] -> M.Map Int [Diagnostic]
-groupDiagsByCell lineMap = foldr assignDiag M.empty
-  where
-    assignDiag d acc =
-        let ln = posLine (rangeStart (diagRange d))
-         in case find (\m -> ln >= clmStartLine m && ln < clmEndLine m) lineMap of
-                Just m -> M.insertWith (++) (clmCellId m) [d] acc
-                Nothing -> acc
-
-mapDiagToError :: [CellLineMap] -> Int -> Diagnostic -> CellError
-mapDiagToError lineMap cid d =
-    let ln = posLine (rangeStart (diagRange d))
-        col = posCharacter (rangeStart (diagRange d))
-        relLine =
-            maybe (ln + 1) (\m -> ln - clmStartLine m + 1) $
-                find (\m -> clmCellId m == cid) lineMap
-     in CellError
-            { ceLine = Just relLine
-            , ceCol = Just (col + 1)
-            , ceMessage = diagMessage d
-            }
+leanBridgeDefs :: M.Map Text Text -> [Text]
+leanBridgeDefs bridgeVals =
+    [ "def _bridge_" <> name <> " : String := " <> T.pack (show (T.unpack val))
+    | (name, val) <- M.toList bridgeVals
+    ]

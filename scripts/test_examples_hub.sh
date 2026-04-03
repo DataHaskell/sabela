@@ -1,10 +1,12 @@
 #!/bin/bash
-# Test all example notebooks via curl against a running Sabela container
-# Usage: ./test_examples.sh [port] [timeout_per_notebook]
+# Test all example notebooks via the hub proxy
+# Usage: ./test_examples_hub.sh <hub_ip> <api_key> [timeout_per_notebook]
 
-PORT=${1:-3003}
-TIMEOUT=${2:-300}
-BASE="http://localhost:$PORT"
+HUB_IP=${1:?Usage: $0 <hub_ip> <api_key> [timeout]}
+API_KEY=${2:?Usage: $0 <hub_ip> <api_key> [timeout]}
+TIMEOUT=${3:-300}
+BASE="http://$HUB_IP:8080"
+AUTH="Authorization: Bearer $API_KEY"
 PASS=0
 FAIL=0
 ERRORS=""
@@ -24,10 +26,14 @@ examples=(
   "examples/widgets.md"
 )
 
+echo "Testing ${#examples[@]} notebooks against $BASE"
+echo ""
+
 for nb in "${examples[@]}"; do
+  echo "[$nb]"
 
   # Load notebook
-  LOAD=$(curl -s --max-time 15 "$BASE/api/load" \
+  LOAD=$(curl -s --max-time 30 -H "$AUTH" "$BASE/api/load" \
     -H 'Content-Type: application/json' \
     -d "{\"lrPath\":\"$nb\"}" 2>&1)
 
@@ -48,13 +54,13 @@ print(len(code))
 
   # Poll notebook state until all cells are no longer dirty, or timeout
   ELAPSED=0
-  INTERVAL=5
+  INTERVAL=10
   ALL_DONE=false
   while [ $ELAPSED -lt $TIMEOUT ]; do
     sleep $INTERVAL
     ELAPSED=$((ELAPSED + INTERVAL))
 
-    STATUS=$(curl -s --max-time 10 "$BASE/api/notebook" 2>&1 | python3 -c "
+    STATUS=$(curl -s --max-time 15 -H "$AUTH" "$BASE/api/notebook" 2>&1 | python3 -c "
 import sys,json
 try:
     nb=json.load(sys.stdin)
@@ -78,7 +84,7 @@ except:
   done
 
   # Get final results
-  RESULT=$(curl -s --max-time 10 "$BASE/api/notebook" 2>&1 | python3 -c "
+  RESULT=$(curl -s --max-time 15 -H "$AUTH" "$BASE/api/notebook" 2>&1 | python3 -c "
 import sys,json
 nb=json.load(sys.stdin)
 code=[c for c in nb['nbCells'] if c['cellType']=='CodeCell']

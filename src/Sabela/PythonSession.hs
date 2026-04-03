@@ -63,16 +63,17 @@ data PythonSession = PythonSession
     , pyWorkDir :: FilePath
     }
 
-newPythonSession :: FilePath -> IO PythonSession
-newPythonSession workDir = do
-    (hIn, hOut, hErr, ph) <- createPythonProcess workDir
+newPythonSession :: Maybe FilePath -> FilePath -> IO PythonSession
+newPythonSession mVenvDir workDir = do
+    (hIn, hOut, hErr, ph) <- createPythonProcess mVenvDir workDir
     sess <- buildPythonState workDir hIn hOut hErr ph
     initializePython sess
     pure sess
 
-createPythonProcess :: FilePath -> IO (Handle, Handle, Handle, ProcessHandle)
-createPythonProcess workDir = do
-    python <- findPython workDir
+createPythonProcess ::
+    Maybe FilePath -> FilePath -> IO (Handle, Handle, Handle, ProcessHandle)
+createPythonProcess mVenvDir workDir = do
+    python <- findPython mVenvDir workDir
     let cp =
             (proc python ["-u", "-i"])
                 { std_in = CreatePipe
@@ -86,8 +87,9 @@ createPythonProcess workDir = do
         [hIn, hOut, hErr]
     pure (hIn, hOut, hErr, ph)
 
-findPython :: FilePath -> IO FilePath
-findPython workDir = do
+findPython :: Maybe FilePath -> FilePath -> IO FilePath
+findPython (Just venvDir) _ = pure (venvDir </> "bin" </> "python3")
+findPython Nothing workDir = do
     let venvPython = workDir </> ".venv" </> "bin" </> "python3"
     hasVenv <- doesFileExist venvPython
     pure $ if hasVenv then venvPython else "python3"
@@ -140,7 +142,7 @@ pythonBackend sess =
         , ST.sbClose = closePythonSession sess
         , ST.sbReset = do
             closePythonSession sess
-            pythonBackend <$> newPythonSession (pyWorkDir sess)
+            pythonBackend <$> newPythonSession Nothing (pyWorkDir sess)
         , ST.sbQueryComplete = \_ -> pure []
         , ST.sbQueryType = \_ -> pure ""
         , ST.sbQueryInfo = \_ -> pure ""

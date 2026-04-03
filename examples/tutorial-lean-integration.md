@@ -57,13 +57,13 @@ Lean's real power is theorem proving. A theorem is a type whose inhabitants are 
 theorem one_plus_one : 1 + 1 = 2 := rfl
 
 -- Proof by simplification
-theorem add_zero (n : Nat) : n + 0 = n := by simp
+theorem my_add_zero (n : Nat) : n + 0 = n := by simp
 
 -- Proof by induction
-theorem add_comm (m n : Nat) : m + n = n + m := by
+theorem my_add_comm (m n : Nat) : m + n = n + m := by
   induction m with
   | zero => simp
-  | succ m ih => simp [Nat.succ_add, ih]
+  | succ m ih => omega
 ```
 
 When a proof succeeds, Sabela shows a green checkmark with "No goals". When it fails, you see the remaining proof state.
@@ -84,12 +84,12 @@ def double (n : Nat) := n * 2
 Lean's standard library is available. Imports from any cell are automatically hoisted to the top of the document.
 
 ```lean4
-import Lean.Data.HashMap
+import Std.Data.HashMap
 
 -- This works because the import is hoisted
-def myMap := Lean.HashMap.empty.insert "key" 42
+def myMap : Std.HashMap String Nat := Std.HashMap.ofList [("key", 42)]
 
-#eval myMap.find? "key"
+#eval myMap.get? "key"
 ```
 
 ## Using Mathlib
@@ -138,15 +138,15 @@ putStrLn $ "Fibonacci(15) from Lean: " ++ _bridge_lean_result
 
 ## Reactivity
 
-When you edit a Lean cell, only that cell and all cells below it are re-checked (Lean elaborates top-to-bottom). Cells above the edit point are cached by the LSP server, so edits at the bottom of a notebook are fast.
+When you edit a Lean cell, that cell and all cells below it are re-executed. Cells are evaluated sequentially from top to bottom, with each cell's environment building on the previous one.
 
 ## Cell execution model
 
-Unlike Haskell cells which run individually, all Lean cells are assembled into a single `.lean` file and sent to the Lean language server. This means:
+Lean cells are executed one at a time through a JSON REPL, with each cell's definitions chained into the next cell's environment. This means:
 
 - Definitions naturally flow downward
 - Errors in one cell may affect cells below it
-- The LSP provides incremental checking — only changed regions are re-elaborated
+- Each cell gets individual feedback (output or errors)
 
 ## Tips
 
