@@ -20,4 +20,8 @@ data Environment = Environment
     -- ^ Path to a pre-built Lean project with Mathlib. Resolved from SABELA_LEAN_BASE.
     , envLeanCache :: FilePath
     -- ^ Persistent cache directory for Lean projects (~/.sabela/lean-cache/).
+    , envAnthropicKey :: Maybe Text
+    -- ^ Anthropic API key. From ANTHROPIC_API_KEY env var.
+    , envAnthropicModel :: Text
+    -- ^ Claude model to use. From ANTHROPIC_MODEL env var (default: claude-sonnet-4-20250514).
     }

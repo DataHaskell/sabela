@@ -34,16 +34,17 @@
     --panel-w: 320px;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
   body {
     font-family: 'Source Serif 4', Georgia, serif;
     background: var(--bg); color: var(--fg);
-    line-height: 1.7; min-height: 100vh;
+    line-height: 1.7;
     display: flex; flex-direction: column;
   }
 
   /* ── Toolbar ───────────────────────────────── */
   .toolbar {
-    position: sticky; top: 0; z-index: 100;
+    flex-shrink: 0; z-index: 100;
     display: flex; align-items: center; gap: 8px;
     padding: 8px 16px;
     background: var(--bg-panel); border-bottom: 1px solid var(--border);
@@ -148,6 +149,71 @@
   .panel-tab:hover { color: var(--fg); }
   .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .panel-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+  /* Chat panel */
+  .chat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .chat-context { font-size: 10px; color: var(--fg-dim); }
+  .chat-new-btn {
+    font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+    background: var(--bg-cell); color: var(--fg-dim); border: 1px solid var(--border);
+  }
+  .chat-new-btn:hover { color: var(--fg); border-color: var(--fg-dim); }
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .chat-msg { padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; }
+  .chat-msg.user { background: var(--bg-cell); align-self: flex-end; max-width: 90%; }
+  .chat-msg.assistant { background: var(--bg-output); align-self: flex-start; max-width: 95%; }
+  .chat-msg pre { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; padding: 8px; overflow-x: auto; margin: 6px 0; }
+  .chat-msg code { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .chat-msg p { margin: 4px 0; }
+  .chat-tool-indicator {
+    font-size: 10px; color: var(--fg-dim); padding: 4px 8px;
+    background: var(--bg-cell); border-radius: 4px; align-self: flex-start;
+  }
+  .chat-tool-indicator.active::after { content: '...'; animation: dots 1.5s infinite; }
+  @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
+  .chat-edit-proposal {
+    background: var(--bg-cell); border: 1px dashed var(--mauve); border-radius: 6px;
+    padding: 10px; align-self: flex-start; max-width: 95%;
+  }
+  .chat-edit-proposal pre { margin: 4px 0; font-size: 11px; }
+  .chat-edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .chat-edit-actions button {
+    font-size: 10px; padding: 3px 10px; border-radius: 3px; cursor: pointer; border: 1px solid var(--border);
+  }
+  .chat-edit-actions .accept { background: var(--green); color: var(--bg); border-color: var(--green); }
+  .chat-edit-actions .revert { background: transparent; color: var(--red); border-color: var(--red); }
+  .chat-scratchpad {
+    background: var(--bg-cell); border-left: 3px solid var(--mauve); border-radius: 4px;
+    padding: 8px 10px; align-self: flex-start; max-width: 95%; font-size: 11px;
+  }
+  .chat-scratchpad pre { margin: 4px 0; }
+  .chat-scratchpad .sp-label { font-size: 9px; color: var(--mauve); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .chat-input-area {
+    padding: 12px; border-top: 1px solid var(--border); flex-shrink: 0;
+    background: var(--bg-sidebar);
+  }
+  #chat-input {
+    width: 100%; resize: none; border: 2px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--fg); padding: 10px 12px; font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px; min-height: 48px; max-height: 140px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  }
+  #chat-input::placeholder { color: var(--fg-dim); }
+  #chat-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(137,180,250,0.2); }
+  .chat-input-actions { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+  .chat-input-actions button {
+    font-size: 11px; padding: 6px 16px; border-radius: 6px; cursor: pointer;
+    border: none; background: var(--accent); color: var(--bg); font-weight: 500;
+  }
+  .chat-input-actions button:hover { opacity: 0.85; }
+  #chat-cancel { background: transparent; color: var(--red); border: 1px solid var(--red); }
+  .cell.ai-proposed { border-color: var(--mauve); border-style: dashed; }
+  .chat-error { color: var(--red); font-size: 11px; padding: 6px 10px; background: var(--bg-cell); border-radius: 4px; }
 
   /* Info panel */
   .info-content { white-space: pre-wrap; line-height: 1.6; color: var(--fg); }
@@ -386,6 +452,46 @@
     white-space: pre-wrap;
   }
 
+  /* ── File context menu ──────────────────────── */
+  .ctx-menu {
+    position: fixed; z-index: 400; background: var(--bg-panel); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 0; min-width: 160px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  }
+  .ctx-menu-item {
+    padding: 6px 14px; cursor: pointer; color: var(--fg); display: flex; align-items: center; gap: 8px;
+  }
+  .ctx-menu-item:hover { background: var(--bg-cell); }
+  .ctx-menu-item.danger { color: var(--red); }
+  .ctx-menu-item.danger:hover { background: rgba(243,139,168,0.1); }
+  .ctx-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ── Connect to AI modal ────────────────────── */
+  .ai-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ai-modal {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px; width: 400px; max-width: 90vw;
+    font-family: 'IBM Plex Mono', monospace; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .ai-modal h2 { font-size: 16px; margin-bottom: 8px; color: var(--fg); }
+  .ai-modal p { font-size: 12px; color: var(--fg-dim); margin-bottom: 16px; line-height: 1.5; }
+  .ai-modal input[type="password"] {
+    width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-cell); color: var(--fg); font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px; margin-bottom: 12px;
+  }
+  .ai-modal input:focus { outline: none; border-color: var(--accent); }
+  .ai-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .ai-modal-actions button {
+    padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid var(--border);
+  }
+  .ai-modal-actions .primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .ai-modal-actions .secondary { background: transparent; color: var(--fg-dim); }
+  .ai-modal .error { color: var(--red); font-size: 11px; margin-top: 8px; display: none; }
+
   /* ── Build log modal ────────────────────────── */
   .build-modal {
     position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
@@ -417,6 +523,19 @@
 </head>
 <body>
 
+<div id="ai-modal-overlay" class="ai-modal-overlay" style="display:none" onclick="if(event.target===this)closeAIModal()">
+  <div class="ai-modal" role="dialog" aria-label="Connect to AI">
+    <h2>Connect to AI</h2>
+    <p>Enter your Anthropic API key to enable the AI assistant. Your key is stored in your workspace and never sent anywhere except Anthropic's API.</p>
+    <input type="password" id="ai-modal-key" placeholder="sk-ant-..." autocomplete="off">
+    <div class="ai-modal-actions">
+      <button class="secondary" onclick="closeAIModal()">Cancel</button>
+      <button class="primary" onclick="submitAIModal()">Connect</button>
+    </div>
+    <div class="error" id="ai-modal-error"></div>
+  </div>
+</div>
+
 <div id="build-modal" class="build-modal" style="display:none" role="dialog" aria-label="Build log">
   <div class="build-modal-header">
     <span class="build-modal-title" id="build-modal-title">Building…</span>
@@ -435,6 +554,7 @@
   <span class="sep"></span>
   <button onclick="togglePanel('examples')" title="Examples" aria-label="Examples panel">📚</button>
   <button onclick="togglePanel('info')" title="Haddock / Info (Ctrl+I)" aria-label="Info / Haddock panel">🔍</button>
+  <button onclick="togglePanel('chat')" title="AI Chat" aria-label="AI Chat panel">AI</button>
   <span class="sep"></span>
   <span class="save-indicator" id="save-indicator">saved ✓</span>
   <span class="sse-dot" id="sse-dot"></span>
@@ -464,6 +584,7 @@
     <div class="panel-tabs" role="tablist" aria-label="Panel tabs">
       <button class="panel-tab active" role="tab" data-tab="info" onclick="switchTab('info')" aria-selected="true" aria-controls="panel-info">🔍 Info</button>
       <button class="panel-tab" role="tab" data-tab="examples" onclick="switchTab('examples')" aria-selected="false" aria-controls="panel-examples">📚 Examples</button>
+      <button class="panel-tab" role="tab" data-tab="chat" onclick="switchTab('chat')" aria-selected="false" aria-controls="panel-chat">Chat</button>
     </div>
     <div class="panel-content" id="panel-info" role="tabpanel" aria-labelledby="tab-info" style="display:block">
       <div class="info-search">
@@ -475,6 +596,22 @@
       </div>
     </div>
     <div class="panel-content" id="panel-examples" role="tabpanel" aria-labelledby="tab-examples" style="display:none"></div>
+    <div class="panel-content" id="panel-chat" role="tabpanel" aria-labelledby="tab-chat" style="display:none;flex-direction:column;padding:0">
+      <div class="chat-header">
+        <span class="chat-context" id="chat-context"></span>
+        <button class="chat-new-btn" onclick="newChatConversation()" title="New conversation">New</button>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-msg assistant" style="color:var(--fg-dim);font-size:11px">Ask me about your notebook — I can read cells, suggest edits, run code, and experiment in a scratchpad.</div>
+      </div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" placeholder="Message AI..." rows="3"></textarea>
+        <div class="chat-input-actions">
+          <button id="chat-send" onclick="sendChatMessage()">Send</button>
+          <button id="chat-cancel" onclick="cancelChat()" style="display:none">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -642,6 +779,29 @@ function handleSSE(ev) {
       break;
     case 'installLog':
       appendBuildLog(ev.line);
+      break;
+    // Chat events
+    case 'chatTextDelta':
+      appendChatTextDelta(ev.text);
+      break;
+    case 'chatToolCall':
+      showChatToolCall(ev.toolCallId, ev.tool, ev.input);
+      break;
+    case 'chatToolResult':
+      showChatToolResult(ev.toolCallId, ev.result);
+      break;
+    case 'chatEditProposed':
+      showChatEditProposal(ev.editId, ev.cellId, ev.oldSource, ev.newSource);
+      break;
+    case 'chatDone':
+      finishChatTurn();
+      break;
+    case 'chatCancelled':
+      finishChatTurn('Cancelled');
+      break;
+    case 'chatError':
+      showChatError(ev.message);
+      finishChatTurn();
       break;
   }
 }
@@ -818,16 +978,14 @@ function updateCellOutput(cellId, outputs, error) {
     return;
   }
 
+  // Clear previous content (including old errors) before rendering new output
+  out.innerHTML = '';
   const items = mergeOutputs(outputs).filter(i => i.oiOutput && i.oiOutput.trim());
-  const existingBlocks = Array.from(out.querySelectorAll(':scope > div:not(.output-error-trail)'));
   for (let i = 0; i < items.length; i++) {
-    let block = existingBlocks[i];
-    if (!block) { block = document.createElement('div'); out.appendChild(block); }
+    const block = document.createElement('div');
     block.dataset.cellId = cellId;
+    out.appendChild(block);
     renderMimeOutput(block, items[i].oiOutput, items[i].oiMime);
-  }
-  for (let i = items.length; i < existingBlocks.length; i++) {
-    existingBlocks[i].remove();
   }
   let errDiv = out.querySelector('.output-error-trail');
   if (error && error.trim()) {
@@ -967,6 +1125,9 @@ async function loadFileTree(path, container, depth) {
       if (entry.feName.startsWith('.')) continue;
       const row = document.createElement('div');
       row.className = 'file-entry';
+      row.dataset.path = entry.fePath;
+      row.dataset.name = entry.feName;
+      row.dataset.isDir = entry.feIsDir ? '1' : '';
       if (notebook && notebook.nbTitle === entry.fePath) row.classList.add('active');
 
       const indent = document.createElement('span');
@@ -1106,6 +1267,118 @@ async function createNewItem(type, name) {
 
 function refreshFiles() { loadFileTree('.', document.getElementById('file-tree'), 0); }
 
+// ── File context menu ───────────────────────────────────────────
+let activeCtxMenu = null;
+
+function showFileContextMenu(e) {
+  e.preventDefault();
+  closeCtxMenu();
+  const row = e.target.closest('.file-entry');
+  if (!row) return;
+  const path = row.dataset.path;
+  const name = row.dataset.name;
+  const isDir = row.dataset.isDir === '1';
+
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+
+  if (!isDir) {
+    addCtxItem(menu, 'Open', () => openFile({feName: name, fePath: path, feIsDir: false}));
+  }
+  addCtxItem(menu, 'Rename', () => promptRenameFile(path, name));
+  if (!isDir) {
+    addCtxItem(menu, 'Duplicate', () => duplicateFile(path, name));
+  }
+  addCtxSep(menu);
+  if (isDir) {
+    addCtxItem(menu, 'New file here', () => promptNewFileIn(path));
+    addCtxItem(menu, 'New folder here', () => promptNewFolderIn(path));
+    addCtxSep(menu);
+  }
+  addCtxItem(menu, 'Delete', () => confirmDeleteFile(path, name, isDir), true);
+
+  // Position
+  menu.style.left = Math.min(e.clientX, window.innerWidth - 180) + 'px';
+  menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
+  document.body.appendChild(menu);
+  activeCtxMenu = menu;
+}
+
+function addCtxItem(menu, label, action, danger) {
+  const item = document.createElement('div');
+  item.className = 'ctx-menu-item' + (danger ? ' danger' : '');
+  item.textContent = label;
+  item.onclick = () => { closeCtxMenu(); action(); };
+  menu.appendChild(item);
+}
+
+function addCtxSep(menu) {
+  const sep = document.createElement('div');
+  sep.className = 'ctx-menu-sep';
+  menu.appendChild(sep);
+}
+
+function closeCtxMenu() {
+  if (activeCtxMenu) { activeCtxMenu.remove(); activeCtxMenu = null; }
+}
+
+document.addEventListener('click', closeCtxMenu);
+document.addEventListener('contextmenu', (e) => {
+  if (!e.target.closest('.file-tree')) closeCtxMenu();
+});
+
+// Attach context menu to file tree
+document.getElementById('file-tree').addEventListener('contextmenu', showFileContextMenu);
+
+async function confirmDeleteFile(path, name, isDir) {
+  if (!confirm(`Delete "${name}"${isDir ? ' and all its contents' : ''}?`)) return;
+  try {
+    await api('POST', 'file/delete', {dfPath: path});
+    refreshFiles();
+    setStatus('Deleted ' + name, '');
+  } catch (e) { setStatus('Delete failed: ' + e.message, 'error'); }
+}
+
+function promptRenameFile(oldPath, oldName) {
+  const newName = prompt('Rename to:', oldName);
+  if (!newName || newName === oldName) return;
+  const dir = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/') + 1) : '';
+  renameFile(oldPath, dir + newName);
+}
+
+async function renameFile(oldPath, newPath) {
+  try {
+    await api('POST', 'file/rename', {rfOldPath: oldPath, rfNewPath: newPath});
+    refreshFiles();
+    setStatus('Renamed', '');
+  } catch (e) { setStatus('Rename failed: ' + e.message, 'error'); }
+}
+
+async function duplicateFile(path, name) {
+  const ext = name.includes('.') ? '.' + name.split('.').pop() : '';
+  const base = name.includes('.') ? name.substring(0, name.lastIndexOf('.')) : name;
+  const newName = base + '-copy' + ext;
+  const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/') + 1) : '';
+  try {
+    const content = await api('GET', 'file?path=' + encodeURIComponent(path));
+    await api('POST', 'file/create', {cfPath: dir + newName, cfContent: content, cfIsDir: false});
+    refreshFiles();
+    setStatus('Duplicated as ' + newName, '');
+  } catch (e) { setStatus('Duplicate failed: ' + e.message, 'error'); }
+}
+
+function promptNewFileIn(dirPath) {
+  const name = prompt('New file name:');
+  if (!name) return;
+  createNewItem('file', dirPath + '/' + name);
+}
+
+function promptNewFolderIn(dirPath) {
+  const name = prompt('New folder name:');
+  if (!name) return;
+  createNewItem('folder', dirPath + '/' + name);
+}
+
 // ── Save notebook ────────────────────────────────────────────────
 async function saveNotebook() {
   if (!notebook) return;
@@ -1144,6 +1417,21 @@ function switchTab(tab) {
   });
   document.getElementById('panel-info').style.display = tab === 'info' ? 'block' : 'none';
   document.getElementById('panel-examples').style.display = tab === 'examples' ? 'block' : 'none';
+  document.getElementById('panel-chat').style.display = tab === 'chat' ? 'flex' : 'none';
+  // Widen panel for chat
+  const panel = document.getElementById('right-panel');
+  if (tab === 'chat') {
+    panel.style.width = '480px';
+    panel.style.minWidth = '480px';
+  } else {
+    panel.style.width = '';
+    panel.style.minWidth = '';
+  }
+  if (tab === 'chat') {
+    updateChatContext().then(() => {
+      if (!aiConfigured) openAIModal();
+    });
+  }
 }
 
 // ── Examples ─────────────────────────────────────────────────────
@@ -1267,7 +1555,7 @@ function renderCodeCell(cell, cellNum) {
   const gutter = document.createElement('div');
   gutter.className = 'cell-gutter';
   const langLabel = cell.cellLang === 'Lean4' ? 'lean' : 'hs';
-  gutter.innerHTML = `<span class="cell-number">${cellNum}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Lean4"${cell.cellLang === 'Lean4' ? ' selected' : ''}>lean</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>`;
+  gutter.innerHTML = `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Lean4"${cell.cellLang === 'Lean4' ? ' selected' : ''}>lean</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>`;
   div.appendChild(gutter);
 
   const collapsed = collapsedCells.has(cell.cellId);
@@ -1498,6 +1786,231 @@ window.addEventListener('message', (e) => {
         body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
       });
     }, 300));
+  }
+});
+
+// ── Chat (AI Assistant) ──────────────────────────────────────────
+let chatStreaming = false;
+let currentAssistantBubble = null;
+
+let aiConfigured = false;
+
+async function updateChatContext() {
+  const el = document.getElementById('chat-context');
+  if (!el) return;
+  // Check if AI is configured
+  try {
+    const resp = await fetch('/api/config/ai');
+    const cfg = await resp.json();
+    aiConfigured = cfg.configured;
+  } catch (e) { aiConfigured = false; }
+  if (!notebook) return;
+  const codeCells = notebook.nbCells.filter(c => c.cellType === 'CodeCell').length;
+  el.textContent = `${notebook.nbTitle} — ${codeCells} code cells`;
+}
+
+function openAIModal() {
+  const overlay = document.getElementById('ai-modal-overlay');
+  overlay.style.display = 'flex';
+  const input = document.getElementById('ai-modal-key');
+  input.value = '';
+  const err = document.getElementById('ai-modal-error');
+  err.style.display = 'none';
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeAIModal() {
+  document.getElementById('ai-modal-overlay').style.display = 'none';
+}
+
+async function submitAIModal() {
+  const input = document.getElementById('ai-modal-key');
+  const errEl = document.getElementById('ai-modal-error');
+  const key = input.value.trim();
+  if (!key) { errEl.textContent = 'Please enter a key'; errEl.style.display = 'block'; return; }
+  try {
+    const resp = await fetch('/api/config/ai', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({apiKey: key})
+    });
+    const result = await resp.json();
+    if (result.configured) {
+      aiConfigured = true;
+      closeAIModal();
+      updateChatContext();
+    } else {
+      errEl.textContent = result.error || 'Failed to configure';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = 'Connection failed';
+    errEl.style.display = 'block';
+  }
+}
+
+// Enter to submit in the modal
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('ai-modal-overlay').style.display === 'flex') {
+    e.preventDefault();
+    submitAIModal();
+  }
+  if (e.key === 'Escape' && document.getElementById('ai-modal-overlay').style.display === 'flex') {
+    closeAIModal();
+  }
+});
+
+async function sendChatMessage() {
+  if (!aiConfigured) { openAIModal(); return; }
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text || chatStreaming) return;
+  input.value = '';
+  // Show user message
+  const container = document.getElementById('chat-messages');
+  const userDiv = document.createElement('div');
+  userDiv.className = 'chat-msg user';
+  userDiv.textContent = text;
+  container.appendChild(userDiv);
+  container.scrollTop = container.scrollHeight;
+  // Start streaming
+  chatStreaming = true;
+  currentAssistantBubble = null;
+  document.getElementById('chat-send').style.display = 'none';
+  document.getElementById('chat-cancel').style.display = 'inline-block';
+  // Send to backend
+  try {
+    await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({crMessage: text})
+    });
+  } catch (e) {
+    showChatError('Failed to send message: ' + e.message);
+    finishChatTurn();
+  }
+}
+
+function appendChatTextDelta(text) {
+  const container = document.getElementById('chat-messages');
+  if (!currentAssistantBubble) {
+    currentAssistantBubble = document.createElement('div');
+    currentAssistantBubble.className = 'chat-msg assistant';
+    currentAssistantBubble._rawText = '';
+    container.appendChild(currentAssistantBubble);
+  }
+  currentAssistantBubble._rawText += text;
+  // Render markdown
+  if (typeof marked !== 'undefined') {
+    currentAssistantBubble.innerHTML = marked.parse(currentAssistantBubble._rawText);
+  } else {
+    currentAssistantBubble.textContent = currentAssistantBubble._rawText;
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+function showChatToolCall(toolCallId, toolName, input) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-tool-indicator active';
+  div.id = 'tool-' + toolCallId;
+  const label = toolName.replace(/_/g, ' ');
+  div.textContent = label;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  // Start new assistant bubble for text after tools
+  currentAssistantBubble = null;
+}
+
+function showChatToolResult(toolCallId, result) {
+  const el = document.getElementById('tool-' + toolCallId);
+  if (el) {
+    el.classList.remove('active');
+    el.textContent = el.textContent.replace('...', '') + ' done';
+  }
+}
+
+function showChatEditProposal(editId, cellId, oldSource, newSource) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-edit-proposal';
+  div.innerHTML = `
+    <div style="font-size:10px;color:var(--fg-dim);margin-bottom:6px">Proposed edit for cell ${cellId}</div>
+    <pre style="color:var(--red);font-size:11px">${escapeHtml(oldSource.substring(0, 500))}</pre>
+    <pre style="color:var(--green);font-size:11px">${escapeHtml(newSource.substring(0, 500))}</pre>
+    <div class="chat-edit-actions">
+      <button class="accept" onclick="acceptEdit(${editId}, ${cellId})">Accept</button>
+      <button class="revert" onclick="revertEdit(${editId}, ${cellId})">Revert</button>
+    </div>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  // Mark cell as proposed
+  const cellEl = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (cellEl) cellEl.classList.add('ai-proposed');
+  currentAssistantBubble = null;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function acceptEdit(editId, cellId) {
+  try {
+    await fetch(`/api/chat/edit/${editId}/accept`, {method: 'POST'});
+    // Clear the editor draft so render() picks up the server's new source
+    if (editors[cellId]) {
+      delete editors[cellId];
+    }
+    const nb = await api('GET', 'notebook');
+    render(nb);
+  } catch (e) { showChatError('Accept failed: ' + e.message); }
+}
+
+async function revertEdit(editId, cellId) {
+  try {
+    await fetch(`/api/chat/edit/${editId}/revert`, {method: 'POST'});
+    const cellEl = document.querySelector(`.cell[data-id="${cellId}"]`);
+    if (cellEl) cellEl.classList.remove('ai-proposed');
+  } catch (e) { showChatError('Revert failed: ' + e.message); }
+}
+
+function showChatError(message) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-error';
+  div.textContent = message;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function finishChatTurn(label) {
+  chatStreaming = false;
+  currentAssistantBubble = null;
+  document.getElementById('chat-send').style.display = 'inline-block';
+  document.getElementById('chat-cancel').style.display = 'none';
+}
+
+async function cancelChat() {
+  try { await fetch('/api/chat/cancel', {method: 'POST'}); } catch (e) {}
+}
+
+async function newChatConversation() {
+  try { await fetch('/api/chat/clear', {method: 'POST'}); } catch (e) {}
+  document.getElementById('chat-messages').innerHTML = '';
+  document.querySelectorAll('.cell.ai-proposed').forEach(el => el.classList.remove('ai-proposed'));
+}
+
+// Chat input keyboard handling
+document.addEventListener('DOMContentLoaded', () => {
+  const chatInput = document.getElementById('chat-input');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
   }
 });
 

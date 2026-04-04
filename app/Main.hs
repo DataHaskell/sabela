@@ -5,6 +5,7 @@ import Control.Monad (when)
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
+import Network.HTTP.Client.TLS (newTlsManager)
 import Network.Wai.Handler.Warp (run)
 import Sabela.Handlers (initGlobalEnv, initPreinstalledPackages, setupReactive)
 import Sabela.Server (mkApp, newApp)
@@ -41,7 +42,8 @@ start port workDir globalFile pkgs = do
     globalDeps <- initGlobalEnv globalFile
     preinstalledDeps <- initPreinstalledPackages (takeDirectory globalFile) pkgs
     let allGlobalDeps = globalDeps `S.union` preinstalledDeps
-    app <- newApp workDir allGlobalDeps
+    httpMgr <- newTlsManager
+    app <- newApp workDir allGlobalDeps (Just httpMgr)
     rn <- setupReactive app
     putStrLn $ "sabela running on http://localhost:" ++ show port ++ "/index.html"
     run port (mkApp app rn) `finally` cleanupTmpDir app

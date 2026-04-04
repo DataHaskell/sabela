@@ -73,6 +73,23 @@ data WriteFileRequest = WriteFileRequest
 instance ToJSON WriteFileRequest
 instance FromJSON WriteFileRequest
 
+newtype DeleteFileRequest = DeleteFileRequest
+    { dfPath :: Text
+    }
+    deriving (Show, Generic, Eq)
+
+instance ToJSON DeleteFileRequest
+instance FromJSON DeleteFileRequest
+
+data RenameFileRequest = RenameFileRequest
+    { rfOldPath :: Text
+    , rfNewPath :: Text
+    }
+    deriving (Show, Generic, Eq)
+
+instance ToJSON RenameFileRequest
+instance FromJSON RenameFileRequest
+
 newtype CompleteRequest = CompleteRequest
     { crPrefix :: Text
     }
@@ -143,3 +160,11 @@ data Example = Example
 
 instance ToJSON Example
 instance FromJSON Example
+
+newtype ChatRequest = ChatRequest
+    { crMessage :: Text
+    }
+    deriving (Show, Generic, Eq)
+
+instance ToJSON ChatRequest
+instance FromJSON ChatRequest

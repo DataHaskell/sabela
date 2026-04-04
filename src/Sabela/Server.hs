@@ -14,14 +14,16 @@ import Control.Concurrent.STM (TChan, atomically, readTChan)
 import Control.Exception (SomeException, try)
 import Control.Monad (forM, forever, void)
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (encode)
+import Data.Aeson (Value (..), encode, object, (.=))
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char
 import Data.FileEmbed (embedFile, makeRelativeToProject)
 import Data.List (isPrefixOf, sort)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -38,6 +40,9 @@ import System.Directory (
     createDirectoryIfMissing,
     doesDirectoryExist,
     listDirectory,
+    removeDirectoryRecursive,
+    removeFile,
+    renamePath,
  )
 import System.FilePath (
     makeRelative,
@@ -47,12 +52,19 @@ import System.FilePath (
     (</>),
  )
 
+import Sabela.AI.Capabilities (acceptEdit, revertEdit)
+import Sabela.AI.Orchestrator (
+    handleCancelTurn,
+    handleChatMessage,
+    handleClearChat,
+ )
+import Sabela.AI.Types (EditId (..))
 import Sabela.Api
 import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output (builtinExamples, parseMimeOutputs)
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), newApp)
+import Sabela.State (App (..), configureAI, getAIStore, newApp)
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.EventBus (subscribeBroadcast)
 import Sabela.State.NotebookStore (
@@ -112,6 +124,16 @@ type JsonAPI =
             :> "write"
             :> ReqBody '[JSON] WriteFileRequest
             :> Post '[JSON] Text
+        :<|> "api"
+            :> "file"
+            :> "delete"
+            :> ReqBody '[JSON] DeleteFileRequest
+            :> Post '[JSON] NoContent
+        :<|> "api"
+            :> "file"
+            :> "rename"
+            :> ReqBody '[JSON] RenameFileRequest
+            :> Post '[JSON] NoContent
         -- IDE
         :<|> "api"
             :> "complete"
@@ -132,6 +154,25 @@ type JsonAPI =
             :> Put '[JSON] Cell
         -- Widgets
         :<|> "api" :> "widget" :> ReqBody '[JSON] WidgetUpdate :> Post '[JSON] NoContent
+        -- AI config
+        :<|> "api" :> "config" :> "ai" :> Get '[JSON] Value
+        :<|> "api" :> "config" :> "ai" :> ReqBody '[JSON] Value :> Post '[JSON] Value
+        -- Chat (AI assistant)
+        :<|> "api" :> "chat" :> ReqBody '[JSON] ChatRequest :> Post '[JSON] NoContent
+        :<|> "api" :> "chat" :> "cancel" :> Post '[JSON] NoContent
+        :<|> "api" :> "chat" :> "clear" :> Post '[JSON] NoContent
+        :<|> "api"
+            :> "chat"
+            :> "edit"
+            :> Capture "editId" Int
+            :> "accept"
+            :> Post '[JSON] (Maybe Cell)
+        :<|> "api"
+            :> "chat"
+            :> "edit"
+            :> Capture "editId" Int
+            :> "revert"
+            :> Post '[JSON] NoContent
 
 type FullAPI =
     JsonAPI
@@ -179,11 +220,20 @@ server app rn =
         :<|> readFileH app
         :<|> createFileH app
         :<|> writeFileH app
+        :<|> deleteFileH app
+        :<|> renameFileH app
         :<|> completeH app
         :<|> infoH app
         :<|> examplesH
         :<|> setCellLangH app
         :<|> setWidgetH app rn
+        :<|> getAIConfigH app
+        :<|> setAIConfigH app
+        :<|> chatMessageH app rn
+        :<|> chatCancelH app
+        :<|> chatClearH app
+        :<|> chatAcceptEditH app
+        :<|> chatRevertEditH app
     )
         :<|> Tagged (sseApp app)
         :<|> Tagged staticApp
@@ -488,6 +538,34 @@ writeFileH app (WriteFileRequest relPath content) = liftIO $ do
         then pure "access denied"
         else do TIO.writeFile absPath content; pure "ok"
 
+deleteFileH :: App -> DeleteFileRequest -> Handler NoContent
+deleteFileH app (DeleteFileRequest relPath) = liftIO $ do
+    let workDir = envWorkDir (appEnv app)
+        absPath = workDir </> T.unpack relPath
+    canon <- canonicalizePath absPath
+    if not (workDir `isPrefixOfPath` canon) || canon == workDir
+        then pure NoContent
+        else do
+            isDir <- doesDirectoryExist canon
+            if isDir
+                then removeDirectoryRecursive canon
+                else removeFile canon
+            pure NoContent
+
+renameFileH :: App -> RenameFileRequest -> Handler NoContent
+renameFileH app (RenameFileRequest oldRelPath newRelPath) = liftIO $ do
+    let workDir = envWorkDir (appEnv app)
+        oldAbs = workDir </> T.unpack oldRelPath
+        newAbs = workDir </> T.unpack newRelPath
+    oldCanon <- canonicalizePath oldAbs
+    -- For new path, canonicalize the parent (the file doesn't exist yet)
+    let newParent = takeDirectory newAbs
+    newParentCanon <- canonicalizePath newParent
+    if not (workDir `isPrefixOfPath` oldCanon)
+        || not (workDir `isPrefixOfPath` newParentCanon)
+        then pure NoContent
+        else do renamePath oldAbs newAbs; pure NoContent
+
 completeH :: App -> CompleteRequest -> Handler CompleteResult
 completeH app (CompleteRequest prefix) = liftIO $ do
     mSess <- getHaskellSession (appSessions app)
@@ -561,3 +639,66 @@ limitRequestBody sizeLimit innerApp req sendResp = do
         _ -> innerApp req sendResp
   where
     status413 = toEnum 413
+
+------------------------------------------------------------------------
+-- AI Config handlers
+------------------------------------------------------------------------
+
+getAIConfigH :: App -> Handler Value
+getAIConfigH app = liftIO $ do
+    mStore <- getAIStore app
+    pure $ object ["configured" .= isJust mStore]
+
+setAIConfigH :: App -> Value -> Handler Value
+setAIConfigH app (Object o) = liftIO $ do
+    case KM.lookup (Key.fromText "apiKey") o of
+        Just (String key) | not (T.null key) -> do
+            result <- configureAI app key
+            case result of
+                Right () -> pure $ object ["configured" .= True]
+                Left err -> pure $ object ["error" .= err]
+        _ -> pure $ object ["error" .= ("apiKey is required" :: Text)]
+setAIConfigH _ _ = pure $ object ["error" .= ("Invalid request body" :: Text)]
+
+------------------------------------------------------------------------
+-- Chat (AI assistant) handlers
+------------------------------------------------------------------------
+
+chatMessageH :: App -> ReactiveNotebook -> ChatRequest -> Handler NoContent
+chatMessageH app rn (ChatRequest msg) = liftIO $ do
+    mStore <- getAIStore app
+    case mStore of
+        Nothing ->
+            broadcast
+                app
+                (EvChatError 0 "AI not configured. Open the Chat panel to set your API key.")
+        Just store ->
+            handleChatMessage app store rn msg
+    pure NoContent
+
+chatCancelH :: App -> Handler NoContent
+chatCancelH app = liftIO $ do
+    mStore <- getAIStore app
+    Data.Foldable.for_ mStore (handleCancelTurn app)
+    pure NoContent
+
+chatClearH :: App -> Handler NoContent
+chatClearH app = liftIO $ do
+    mStore <- getAIStore app
+    Data.Foldable.for_ mStore (handleClearChat app)
+    pure NoContent
+
+chatAcceptEditH :: App -> Int -> Handler (Maybe Cell)
+chatAcceptEditH app editIdInt = liftIO $ do
+    mStore <- getAIStore app
+    case mStore of
+        Nothing -> pure Nothing
+        Just store -> acceptEdit app store (EditId editIdInt)
+
+chatRevertEditH :: App -> Int -> Handler NoContent
+chatRevertEditH app editIdInt = liftIO $ do
+    mStore <- getAIStore app
+    case mStore of
+        Nothing -> pure ()
+        Just store -> revertEdit store (EditId editIdInt)
+    pure NoContent

@@ -77,7 +77,23 @@ ensureLeanSessionAlive app =
         installed <- getLeanDeps (appDeps app)
         case (mSess, requiredDeps /= installed) of
             (Just ls, False) -> pure (Just ls, True)
+            (Nothing, False)
+                | not (S.null installed) ->
+                    -- Session dead but deps already built — just restart REPL
+                    restartLeanRepl app installed
             _ -> startLeanSession app requiredDeps mSess
+
+{- | Restart just the REPL without rebuilding. Used when deps haven't changed
+but the session was killed (e.g., by Run All or notebook load).
+Falls back to full rebuild if the project dir doesn't exist.
+-}
+restartLeanRepl :: App -> S.Set Text -> IO (Maybe LeanSession, Bool)
+restartLeanRepl app deps = do
+    let projDir = envLeanCache (appEnv app) </> leanProjectName deps
+    hasProject <- doesDirectoryExist (projDir </> ".lake")
+    if hasProject
+        then initializeLeanSession app projDir deps
+        else startLeanSession app deps Nothing
 
 startLeanSession ::
     App -> S.Set Text -> Maybe LeanSession -> IO (Maybe LeanSession, Bool)

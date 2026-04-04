@@ -20,7 +20,13 @@ library
     import:           warnings
     autogen-modules:  Paths_sabela
     other-modules:    Paths_sabela
-    exposed-modules:  Sabela.Session,
+    exposed-modules:  Sabela.Anthropic,
+                      Sabela.Anthropic.Types,
+                      Sabela.AI.Types,
+                      Sabela.AI.Store,
+                      Sabela.AI.Capabilities,
+                      Sabela.AI.Orchestrator,
+                      Sabela.Session,
                       Sabela.SessionTypes,
                       Sabela.Model,
                       Sabela.Api,
@@ -52,13 +58,17 @@ library
                       directory >= 1.3 && < 1.4,
                       file-embed >= 0.0.11 && < 0.1,
                       filepath >= 1.4 && < 1.6,
+                      http-client >= 0.7 && < 0.10,
+                      http-client-tls >= 0.3 && < 0.4,
                       http-types >= 0.12 && < 0.13,
                       process >= 1.6 && < 1.8,
+                      regex-tdfa >= 1.3 && < 1.4,
                       scripths ^>= 0.3,
                       servant-server ^>= 0.20,
                       stm >= 2.4 && < 3,
                       temporary >= 1.3 && < 1.4,
                       text >= 1.2 && < 3,
+                      time >= 1.9 && < 2,
                       wai >= 3.2 && < 3.3
     hs-source-dirs:   src
     default-language: Haskell2010
@@ -69,6 +79,7 @@ executable sabela
                  containers >= 0.6.7 && < 0.9,
                  directory >= 1.3 && < 1.4,
                  filepath >= 1.4 && < 1.6,
+                 http-client-tls >= 0.3 && < 0.4,
                  warp >= 3.3  && < 3.5,
                  sabela
   hs-source-dirs:     app

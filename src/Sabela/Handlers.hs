@@ -29,6 +29,9 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Sabela.AI.Store as AI
+import qualified Sabela.AI.Types as AI
+import qualified Sabela.Anthropic.Types as AI (cancel)
 import Sabela.Api (RunResult (..))
 import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
 import Sabela.Deps (collectMetadata, collectMetadataFromContent, mergedMeta)
@@ -74,7 +77,7 @@ import Sabela.Session (
     runBlock,
  )
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..))
+import Sabela.State (App (..), getAIStore)
 import Sabela.State.BridgeStore (getBridgeValues, setBridgeValue)
 import Sabela.State.DependencyTracker (
     getHaskellDeps,
@@ -85,6 +88,7 @@ import Sabela.State.DependencyTracker (
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import Sabela.State.SessionManager (
+    forceResetAllSessions,
     getHaskellSession,
     modifyHaskellSession,
     setHaskellSession,
@@ -203,6 +207,7 @@ handleReset app = do
     debugLog app "[handler] handleReset"
     void $ bumpGeneration app
     void $ forkIO $ killAllSessions app
+    cleanupAI app True
     modifyNotebook (appNotebook app) clearAllOutputs
     broadcast app (EvSessionStatus SReset)
 
@@ -210,8 +215,27 @@ handleRestartKernel :: App -> IO ()
 handleRestartKernel app = do
     debugLog app "[handler] handleRestartKernel"
     gen <- bumpGeneration app
+    cleanupAI app False
     broadcast app (EvSessionStatus SReset)
     void $ forkIO $ executeFullRestart app gen
+
+{- | Cleanup AI state on reset/restart.
+fullReset clears conversation and reverts edits; partial only kills scratchpad.
+-}
+cleanupAI :: App -> Bool -> IO ()
+cleanupAI app fullReset = do
+    mStore <- getAIStore app
+    case mStore of
+        Nothing -> pure ()
+        Just store -> do
+            mTurn <- AI.getCurrentTurn store
+            case mTurn of
+                Just turn -> AI.cancel (AI.turnCancel turn)
+                Nothing -> pure ()
+            AI.clearScratchpad store
+            when fullReset $ do
+                AI.clearConversation store
+                AI.revertAllPendingEdits store
 
 clearAllOutputs :: Notebook -> Notebook
 clearAllOutputs nb = nb{nbCells = map clr (nbCells nb)}
@@ -219,10 +243,8 @@ clearAllOutputs nb = nb{nbCells = map clr (nbCells nb)}
     clr c = c{cellOutputs = [], cellError = Nothing, cellDirty = False}
 
 killAllSessions :: App -> IO ()
-killAllSessions app = do
-    killSession app
-    killLeanSession app
-    killPythonSession app
+killAllSessions app =
+    forceResetAllSessions (appSessions app)
 
 executeSingleCell :: App -> Int -> Int -> IO ()
 executeSingleCell app gen cid = do

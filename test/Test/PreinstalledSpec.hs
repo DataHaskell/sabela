@@ -25,7 +25,7 @@ spec = describe "preinstalled packages" $ do
             Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
             Just _ -> pure ()
         -- Build state with "containers" declared as a global (preinstalled) dep
-        app <- newApp "." (Set.fromList ["containers"])
+        app <- newApp "." (Set.fromList ["containers"]) Nothing
         chan <- subscribeBroadcast (appEvents app)
 
         -- gen=0 matches the freshly-initialised generation IORef

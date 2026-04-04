@@ -25,6 +25,7 @@ cabal.project.local~
 .sabela_cell.py
 .venv/
 .env
+.sabela/
 
 # Infra files with secrets/environment-specific IDs
 infra/.env

@@ -21,7 +21,7 @@ module Sabela.Model (
     CellError (..),
 ) where
 
-import Data.Aeson (FromJSON, ToJSON (..), object, (.=))
+import Data.Aeson (FromJSON, ToJSON (..), Value, object, (.=))
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -72,7 +72,21 @@ data NotebookEvent
     | EvExecutionDone
     | EvSessionStatus SessionStatus
     | EvInstallLog Text
-    deriving (Show, Eq)
+    | -- | turnId, text token
+      EvChatTextDelta Int Text
+    | -- | turnId, toolCallId, toolName, input
+      EvChatToolCall Int Text Text Value
+    | -- | turnId, toolCallId, result
+      EvChatToolResult Int Text Value
+    | -- | turnId, editId, cellId, oldSource, newSource
+      EvChatEditProposed Int Int Int Text Text
+    | -- | turnId
+      EvChatDone Int
+    | -- | turnId
+      EvChatCancelled Int
+    | -- | turnId, error message
+      EvChatError Int Text
+    deriving (Show)
 
 data SessionStatus
     = SReset
@@ -112,6 +126,46 @@ instance ToJSON NotebookEvent where
         object ["type" .= ("sessionStatus" :: Text), "message" .= show msg]
     toJSON (EvInstallLog line) =
         object ["type" .= ("installLog" :: Text), "line" .= line]
+    toJSON (EvChatTextDelta tid text) =
+        object
+            [ "type" .= ("chatTextDelta" :: Text)
+            , "turnId" .= tid
+            , "text" .= text
+            ]
+    toJSON (EvChatToolCall tid tcId toolName input) =
+        object
+            [ "type" .= ("chatToolCall" :: Text)
+            , "turnId" .= tid
+            , "toolCallId" .= tcId
+            , "tool" .= toolName
+            , "input" .= input
+            ]
+    toJSON (EvChatToolResult tid tcId result) =
+        object
+            [ "type" .= ("chatToolResult" :: Text)
+            , "turnId" .= tid
+            , "toolCallId" .= tcId
+            , "result" .= result
+            ]
+    toJSON (EvChatEditProposed tid eid cid oldSrc newSrc) =
+        object
+            [ "type" .= ("chatEditProposed" :: Text)
+            , "turnId" .= tid
+            , "editId" .= eid
+            , "cellId" .= cid
+            , "oldSource" .= oldSrc
+            , "newSource" .= newSrc
+            ]
+    toJSON (EvChatDone tid) =
+        object ["type" .= ("chatDone" :: Text), "turnId" .= tid]
+    toJSON (EvChatCancelled tid) =
+        object ["type" .= ("chatCancelled" :: Text), "turnId" .= tid]
+    toJSON (EvChatError tid msg) =
+        object
+            [ "type" .= ("chatError" :: Text)
+            , "turnId" .= tid
+            , "message" .= msg
+            ]
 
 data CellError = CellError
     { ceLine :: Maybe Int
