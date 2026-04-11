@@ -316,8 +316,6 @@
   .cell.code .cell-gutter .cell-number { color: var(--fg-dim); font-size: 10px; min-width: 14px; text-align: right; }
   .cell.code .cell-gutter .lang-tag { background: var(--accent-dim); color: var(--fg-dim); padding: 1px 4px; border-radius: 2px; letter-spacing: 0.5px; text-transform: uppercase; font-family: 'IBM Plex Mono', monospace; font-size: 10px; border: none; cursor: pointer; appearance: none; -webkit-appearance: none; }
   .cell.code .cell-gutter .lang-tag:hover { color: var(--fg); background: var(--border); }
-  .cell.code.lean .cell-gutter .lang-tag { background: var(--mauve); color: var(--bg); }
-  .cell.code.lean .cell-gutter .lang-tag:hover { background: var(--mauve); opacity: 0.85; }
   .cell.code.python .cell-gutter .lang-tag { background: var(--yellow); color: var(--bg); }
   .cell.code.python .cell-gutter .lang-tag:hover { background: var(--yellow); opacity: 0.85; }
   .cell.code .CodeMirror { height: auto; font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; line-height: 1.55; background: transparent; padding: 4px 0; }
@@ -551,6 +549,7 @@
   <button onclick="saveNotebook()" title="Ctrl+S" aria-label="Save notebook">💾 save</button>
   <button onclick="resetNotebook()" aria-label="Reset notebook">reset</button>
   <button onclick="restartKernel()" aria-label="Restart kernel">restart kernel</button>
+  <button onclick="window.open('/dashboard','_blank')" title="View as dashboard" aria-label="View as dashboard">dashboard</button>
   <span class="sep"></span>
   <button onclick="togglePanel('examples')" title="Examples" aria-label="Examples panel">📚</button>
   <button onclick="togglePanel('info')" title="Haddock / Info (Ctrl+I)" aria-label="Info / Haddock panel">🔍</button>
@@ -618,58 +617,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/haskell/haskell.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
-<script>
-// Simple Lean 4 mode for CodeMirror 5
-CodeMirror.defineMode("lean4", function() {
-  var keywords = new Set([
-    "theorem","lemma","def","example","instance","class","structure",
-    "inductive","where","let","in","if","then","else","do","return",
-    "match","with","fun","by","have","show","suffices","calc",
-    "import","open","namespace","section","end","variable","universe",
-    "axiom","noncomputable","private","protected","mutual","partial",
-    "set_option","attribute","deriving","extends","abbrev","opaque",
-    "macro","syntax","elab","notation"
-  ]);
-  var tactics = new Set([
-    "simp","omega","rfl","exact","apply","intro","intros","cases",
-    "induction","constructor","rw","ring","norm_num","linarith",
-    "decide","native_decide","contradiction","trivial","assumption",
-    "simp_all","split","first","repeat","try","sorry","done","rename_i"
-  ]);
-  var builtins = new Set([
-    "Nat","Int","Bool","String","Float","List","Array","Option",
-    "Prop","Type","Sort","True","False","true","false","none","some"
-  ]);
-  return {
-    startState: function() { return { inString: false, inBlockComment: 0 }; },
-    token: function(stream, state) {
-      if (state.inBlockComment > 0) {
-        if (stream.match("/-")) { state.inBlockComment++; return "comment"; }
-        if (stream.match("-/")) { state.inBlockComment--; return "comment"; }
-        stream.next(); return "comment";
-      }
-      if (stream.match("/-")) { state.inBlockComment = 1; return "comment"; }
-      if (stream.match(/--.*$/)) return "comment";
-      if (stream.match(/#eval\b|#check\b|#print\b|#guard\b/)) return "builtin";
-      if (stream.match(/"(?:[^"\\]|\\.)*"/)) return "string";
-      if (stream.match(/'(?:[^'\\]|\\.)'/)) return "string";
-      if (stream.match(/\d+\.?\d*/)) return "number";
-      if (stream.match(/[a-zA-Z_]\w*'*/)) {
-        var w = stream.current();
-        if (keywords.has(w)) return "keyword";
-        if (tactics.has(w)) return "builtin";
-        if (builtins.has(w)) return "type";
-        if (w[0] === w[0].toUpperCase() && w[0] !== '_') return "type";
-        return "variable";
-      }
-      if (stream.match(/[→←↔∀∃λ≤≥≠∧∨¬⊢⊣⟨⟩⟪⟫∘·×⬝▸◂⊕⊗≈∼]/)) return "operator";
-      if (stream.match(/:=|::|<\||\.\.|\|>/)) return "operator";
-      stream.next();
-      return null;
-    }
-  };
-});
-</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1547,15 +1494,13 @@ function render(nb) {
 function renderCodeCell(cell, cellNum) {
   const div = document.createElement('div');
   div.className = 'cell code'; div.dataset.id = cell.cellId;
-  if (cell.cellLang === 'Lean4') div.classList.add('lean');
   if (cell.cellLang === 'Python') div.classList.add('python');
   if (cell.cellDirty) div.classList.add('dirty');
   if (cell.cellError) div.classList.add('has-error');
 
   const gutter = document.createElement('div');
   gutter.className = 'cell-gutter';
-  const langLabel = cell.cellLang === 'Lean4' ? 'lean' : 'hs';
-  gutter.innerHTML = `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Lean4"${cell.cellLang === 'Lean4' ? ' selected' : ''}>lean</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>`;
+  gutter.innerHTML = `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>`;
   div.appendChild(gutter);
 
   const collapsed = collapsedCells.has(cell.cellId);
@@ -1585,7 +1530,7 @@ function renderCodeCell(cell, cellNum) {
   requestAnimationFrame(() => {
     if (editors[cell.cellId]) return;
     const cm = CodeMirror(editorDiv, {
-      value: cell.cellSource, mode: cell.cellLang === 'Python' ? 'python' : cell.cellLang === 'Lean4' ? 'lean4' : 'haskell', theme: 'nord',
+      value: cell.cellSource, mode: cell.cellLang === 'Python' ? 'python' : 'haskell', theme: 'nord',
       lineNumbers: false, viewportMargin: Infinity, indentUnit: 2,
       tabSize: 2, lineWrapping: true,
       gutters: ['error-gutter'],

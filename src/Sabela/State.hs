@@ -26,7 +26,6 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 import Network.HTTP.Client (Manager)
 import Sabela.AI.Store (AIStore, newAIStore)
 import Sabela.Anthropic.Types (AnthropicConfig (..))
@@ -41,7 +40,6 @@ import System.Directory (
     canonicalizePath,
     createDirectoryIfMissing,
     doesFileExist,
-    getHomeDirectory,
  )
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
@@ -97,9 +95,6 @@ newApp workDir globalDeps mHttpMgr = do
     tmpBase <- getCanonicalTemporaryDirectory
     tmpDir <- createTempDirectory tmpBase "sabela-server"
     debug <- isJust <$> lookupEnv "SABELA_DEBUG"
-    replBin <- lookupEnv "SABELA_LEAN_REPL"
-    leanBase <- lookupEnv "SABELA_LEAN_BASE"
-    leanCache <- resolveLeanCache
     mApiKey <- resolveApiKey absWork
     apiModel <-
         fromMaybe "claude-sonnet-4-20250514"
@@ -110,9 +105,6 @@ newApp workDir globalDeps mHttpMgr = do
                 , envTmpDir = tmpDir
                 , envGlobalDeps = globalDeps
                 , envDebugLog = debug
-                , envLeanReplBin = replBin
-                , envLeanBase = leanBase
-                , envLeanCache = leanCache
                 , envAnthropicKey = T.pack <$> mApiKey
                 , envAnthropicModel = T.pack apiModel
                 }
@@ -161,16 +153,3 @@ readKeyFromConfig workDir = do
                         _ -> pure Nothing
                 Right _ -> pure Nothing
 
-{- | Resolve the persistent Lean cache directory.
-Priority: SABELA_LEAN_CACHE env var > ~/.sabela/lean-cache/
--}
-resolveLeanCache :: IO FilePath
-resolveLeanCache = do
-    mEnv <- lookupEnv "SABELA_LEAN_CACHE"
-    cacheDir <- case mEnv of
-        Just p -> pure p
-        Nothing -> do
-            home <- getHomeDirectory
-            pure (home </> ".sabela" </> "lean-cache")
-    createDirectoryIfMissing True cacheDir
-    pure cacheDir

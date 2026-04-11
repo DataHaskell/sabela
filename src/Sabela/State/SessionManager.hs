@@ -4,8 +4,6 @@ module Sabela.State.SessionManager (
     getHaskellSession,
     setHaskellSession,
     modifyHaskellSession,
-    getLeanSession,
-    modifyLeanSession,
     getPythonSession,
     setPythonSession,
     modifyPythonSession,
@@ -22,14 +20,11 @@ import Control.Concurrent.MVar (
     tryTakeMVar,
  )
 import Control.Exception (SomeException, try)
-import Control.Monad (forM_, void)
-import Sabela.LeanRepl (LeanSession, closeLeanSession)
+import Control.Monad (void)
 import qualified Sabela.SessionTypes as ST
 
 data SessionManager = SessionManager
     { smHaskell :: MVar (Maybe ST.SessionBackend)
-    , smLean :: MVar (Maybe LeanSession)
-    -- ^ Unwrapped: executeLeanCells needs direct REPL access for env chaining.
     , smPython :: MVar (Maybe ST.SessionBackend)
     }
 
@@ -37,7 +32,6 @@ newSessionManager :: IO SessionManager
 newSessionManager =
     SessionManager
         <$> newMVar Nothing
-        <*> newMVar Nothing
         <*> newMVar Nothing
 
 getHaskellSession :: SessionManager -> IO (Maybe ST.SessionBackend)
@@ -51,13 +45,6 @@ modifyHaskellSession ::
     (Maybe ST.SessionBackend -> IO (Maybe ST.SessionBackend)) ->
     IO ()
 modifyHaskellSession sm = modifyMVar_ (smHaskell sm)
-
-getLeanSession :: SessionManager -> IO (Maybe LeanSession)
-getLeanSession = readMVar . smLean
-
-modifyLeanSession ::
-    SessionManager -> (Maybe LeanSession -> IO (Maybe LeanSession, a)) -> IO a
-modifyLeanSession sm = modifyMVar (smLean sm)
 
 getPythonSession :: SessionManager -> IO (Maybe ST.SessionBackend)
 getPythonSession = readMVar . smPython
@@ -80,7 +67,6 @@ forceResetAllSessions sm = do
     forceResetMVar
         (smHaskell sm)
         (\s -> void (try (ST.sbClose s) :: IO (Either SomeException ())))
-    forceResetMVarLean (smLean sm)
     forceResetMVar
         (smPython sm)
         (\s -> void (try (ST.sbClose s) :: IO (Either SomeException ())))
@@ -94,13 +80,3 @@ forceResetMVar mv close = do
             putMVar mv Nothing
         Just Nothing -> putMVar mv Nothing
         Nothing -> pure () -- MVar is held by another thread; that thread will clean up
-
-forceResetMVarLean :: MVar (Maybe LeanSession) -> IO ()
-forceResetMVarLean mv = do
-    taken <- tryTakeMVar mv
-    case taken of
-        Just (Just ls) -> do
-            _ <- try (closeLeanSession ls) :: IO (Either SomeException ())
-            putMVar mv Nothing
-        Just Nothing -> putMVar mv Nothing
-        Nothing -> pure ()

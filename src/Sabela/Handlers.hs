@@ -36,16 +36,9 @@ import Sabela.Api (RunResult (..))
 import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
 import Sabela.Deps (collectMetadata, collectMetadataFromContent, mergedMeta)
 import Sabela.Errors (parseErrors)
-import Sabela.Handlers.Lean (
-    checkBridgeChanged,
-    ensureLeanSessionAlive,
-    executeLeanCells,
-    killLeanSession,
- )
 import Sabela.Handlers.Python (
     executePythonCell,
     executePythonCells,
-    killPythonSession,
  )
 import Sabela.Handlers.Shared
 import Sabela.Model (
@@ -168,13 +161,10 @@ handleRunCell app cid = do
                 executeSingleCell app gen cid
 
 dispatchByLang :: App -> Int -> Int -> ST.CellLang -> IO () -> IO ()
-dispatchByLang app gen cid lang haskellAction =
+dispatchByLang app gen _cid lang haskellAction =
     case lang of
-        ST.Lean4 -> void $ forkIO $ do
-            executeLeanCells app gen cid (rerunBridgeCells app gen)
-            whenCurrentGen app gen $ broadcast app EvExecutionDone
         ST.Python -> void $ forkIO $ do
-            executePythonCell app gen cid
+            executePythonCell app gen _cid
             whenCurrentGen app gen $ broadcast app EvExecutionDone
         ST.Haskell -> haskellAction
 
@@ -276,12 +266,7 @@ executeFullRestart app gen = do
     whenCurrentGen app gen $ do
         nb <- readNotebook (appNotebook app)
         let allCode = haskellCodeCells nb
-            hasLean = any (\c -> cellType c == CodeCell && cellLang c == ST.Lean4) (nbCells nb)
         killAllSessions app
-        when hasLean $
-            whenCurrentGen app gen $
-                void $
-                    ensureLeanSessionAlive app
         whenCurrentGen app gen $ do
             ok <- installAndRestart app gen (collectMetadata nb)
             when ok $ executeFullPlan app gen allCode nb
@@ -298,13 +283,11 @@ executeNonHaskellCells :: App -> Int -> IO ()
 executeNonHaskellCells app gen = do
     debugLog app "[handler] executeNonHaskellCells: starting"
     whenCurrentGen app gen $ do
-        debugLog app "[handler] executeNonHaskellCells: running Lean cells"
-        executeLeanCells app gen (-1) (rerunBridgeCells app gen)
-    whenCurrentGen app gen $ do
         debugLog app "[handler] executeNonHaskellCells: running Python cells"
         oldBridge <- getBridgeValues (appBridge app)
         executePythonCells app gen
-        checkBridgeChanged app oldBridge (rerunBridgeCells app gen)
+        newBridge <- getBridgeValues (appBridge app)
+        when (oldBridge /= newBridge) $ rerunBridgeCells app gen
     whenCurrentGen app gen $ broadcast app EvExecutionDone
 
 killSession :: App -> IO ()

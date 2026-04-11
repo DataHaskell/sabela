@@ -5,8 +5,6 @@ module Sabela.State.DependencyTracker (
     setHaskellDeps,
     getHaskellExts,
     setHaskellExts,
-    getLeanDeps,
-    setLeanDeps,
     getPythonDeps,
     setPythonDeps,
 ) where
@@ -19,7 +17,6 @@ import Data.Text (Text)
 data DependencyTracker = DependencyTracker
     { dtHaskellDeps :: IORef (Set Text)
     , dtHaskellExts :: IORef (Set Text)
-    , dtLeanDeps :: IORef (Set Text)
     , dtPythonDeps :: IORef (Set Text)
     }
 
@@ -27,7 +24,6 @@ newDependencyTracker :: IO DependencyTracker
 newDependencyTracker =
     DependencyTracker
         <$> newIORef S.empty
-        <*> newIORef S.empty
         <*> newIORef S.empty
         <*> newIORef S.empty
 
@@ -42,12 +38,6 @@ getHaskellExts = readIORef . dtHaskellExts
 
 setHaskellExts :: DependencyTracker -> Set Text -> IO ()
 setHaskellExts dt = writeIORef (dtHaskellExts dt)
-
-getLeanDeps :: DependencyTracker -> IO (Set Text)
-getLeanDeps = readIORef . dtLeanDeps
-
-setLeanDeps :: DependencyTracker -> Set Text -> IO ()
-setLeanDeps dt = writeIORef (dtLeanDeps dt)
 
 getPythonDeps :: DependencyTracker -> IO (Set Text)
 getPythonDeps = readIORef . dtPythonDeps

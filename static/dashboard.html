@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sabela Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap');
+
+  :root {
+    --bg: #ffffff;
+    --bg-muted: #f0f2f6;
+    --bg-card: #ffffff;
+    --fg: #31333F;
+    --fg-dim: #808495;
+    --fg-heading: #0e1117;
+    --accent: #ff4b4b;
+    --accent-hover: #ff2b2b;
+    --border: #e6e9ef;
+    --border-light: #f0f2f6;
+    --main-max-w: 720px;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow-x: hidden; }
+  body {
+    font-family: 'Source Sans 3', 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.6;
+    font-size: 16px;
+  }
+
+  /* ── Header ────────────────────────────────── */
+  .dashboard-header {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 24px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .dashboard-header h1 {
+    font-size: 20px; font-weight: 700; color: var(--fg-heading);
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .header-actions { display: flex; gap: 8px; }
+  .header-actions a, .header-actions button {
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    padding: 6px 16px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--fg); cursor: pointer;
+    text-decoration: none; transition: all 0.15s;
+  }
+  .header-actions a:hover, .header-actions button:hover {
+    border-color: var(--accent); color: var(--accent);
+  }
+
+  /* ── Main content ──────────────────────────── */
+  .dashboard-main {
+    padding: 32px 24px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .dashboard-content {
+    width: 100%; max-width: var(--main-max-w);
+  }
+
+  /* ── Sections (prose cells) ────────────────── */
+  .dash-section {
+    margin-bottom: 24px;
+  }
+  .dash-section h1 { font-size: 28px; font-weight: 700; color: var(--fg-heading); margin-bottom: 8px; }
+  .dash-section h2 { font-size: 22px; font-weight: 600; color: var(--fg-heading); margin-bottom: 6px; }
+  .dash-section h3 { font-size: 18px; font-weight: 600; color: var(--fg-heading); margin-bottom: 4px; }
+  .dash-section p { margin-bottom: 12px; }
+  .dash-section ul, .dash-section ol { margin: 0 0 12px 24px; }
+  .dash-section a { color: var(--accent); }
+  .dash-section code {
+    font-family: 'Source Code Pro', monospace; font-size: 14px;
+    background: var(--bg-muted); padding: 2px 6px; border-radius: 4px;
+  }
+  .dash-section pre {
+    font-family: 'Source Code Pro', monospace; font-size: 14px;
+    background: var(--bg-muted); padding: 12px 16px; border-radius: var(--radius);
+    overflow-x: auto; margin-bottom: 12px;
+  }
+  .dash-section table { border-collapse: collapse; width: 100%; margin-bottom: 12px; }
+  .dash-section th, .dash-section td {
+    border: 1px solid var(--border); padding: 8px 12px; text-align: left; font-size: 14px;
+  }
+  .dash-section th { background: var(--bg-muted); font-weight: 600; }
+  .dash-section blockquote {
+    border-left: 3px solid var(--accent); padding: 8px 16px;
+    color: var(--fg-dim); margin-bottom: 12px;
+  }
+
+  /* ── Output cards ──────────────────────────── */
+  .dash-output {
+    margin-bottom: 24px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .dash-output iframe {
+    width: 100%; border: none; display: block;
+    min-height: 60px;
+  }
+  .dash-output .mime-svg { padding: 8px; }
+  .dash-output .mime-svg svg { max-width: 100%; height: auto; }
+  .dash-output .mime-image img { max-width: 100%; display: block; }
+  .dash-output .mime-json {
+    font-family: 'Source Code Pro', monospace; font-size: 13px;
+    background: var(--bg-muted); padding: 12px 16px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .dash-output .mime-markdown { padding: 16px; }
+  .dash-output .mime-latex { padding: 16px; text-align: center; }
+  .dash-output .mime-plain {
+    font-family: 'Source Code Pro', monospace; font-size: 14px;
+    padding: 12px 16px; white-space: pre-wrap;
+  }
+
+  /* ── Inline widgets ────────────────────────── */
+  .dash-widget {
+    margin-bottom: 8px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-muted);
+  }
+  .dash-widget iframe {
+    width: 100%; border: none; display: block;
+    height: 36px;
+  }
+  .dash-widget .static-widget {
+    font-size: 14px; padding: 6px 12px;
+  }
+  .dash-widget .static-widget input[disabled],
+  .dash-widget .static-widget select[disabled] {
+    opacity: 0.7; cursor: default;
+  }
+
+  /* ── Error display ─────────────────────────── */
+  .dash-error {
+    margin-bottom: 24px; padding: 12px 16px;
+    border: 1px solid #fecaca; border-radius: var(--radius);
+    background: #fef2f2; color: #991b1b;
+    font-family: 'Source Code Pro', monospace; font-size: 13px;
+    white-space: pre-wrap;
+  }
+
+  /* ── Status indicator ──────────────────────── */
+  .dash-status {
+    position: fixed; bottom: 16px; right: 16px;
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 600;
+    background: var(--bg-muted); border: 1px solid var(--border);
+    color: var(--fg-dim); display: none;
+  }
+  .dash-status.visible { display: block; }
+  .dash-status.running { color: var(--accent); border-color: var(--accent); }
+
+  /* ── Responsive ────────────────────────────── */
+  @media (max-width: 768px) {
+    .dashboard-main { padding: 16px; }
+    .dashboard-content { max-width: 100%; }
+  }
+</style>
+<script>/*__SABELA_INJECT__*/</script>
+</head>
+<body>
+
+<div class="dashboard-header">
+  <h1 id="dashboard-title">Dashboard</h1>
+  <div class="header-actions" id="header-actions">
+    <a href="/" id="edit-link">Edit Notebook</a>
+    <button onclick="exportDashboard()" id="export-btn">Export HTML</button>
+  </div>
+</div>
+
+<main class="dashboard-main">
+  <div class="dashboard-content" id="main-content"></div>
+</main>
+
+<div class="dash-status" id="status-indicator"></div>
+
+<script>
+const isStatic = !!window.__SABELA_STATIC__;
+let notebookData = null;
+
+// ── Initialization ───────────────────────────────────────────────
+async function init() {
+  if (isStatic) {
+    notebookData = window.__SABELA_STATIC__;
+    document.getElementById('edit-link').style.display = 'none';
+    document.getElementById('export-btn').style.display = 'none';
+  } else {
+    const resp = await fetch('/api/notebook');
+    notebookData = await resp.json();
+  }
+  renderDashboard(notebookData);
+  if (!isStatic) connectSSE();
+}
+
+// ── Render dashboard ─────────────────────────────────────────────
+function renderDashboard(nb) {
+  document.getElementById('dashboard-title').textContent = formatTitle(nb.nbTitle);
+  document.title = formatTitle(nb.nbTitle) + ' — Sabela Dashboard';
+
+  const main = document.getElementById('main-content');
+  main.innerHTML = '';
+
+  const cells = nb.nbCells || [];
+  for (const cell of cells) {
+    renderCellOutputs(main, cell, null);
+  }
+}
+
+// ── Render a single cell's outputs into the container ────────────
+function renderCellOutputs(container, cell, insertBefore) {
+  if (cell.cellType === 'ProseCell') {
+    const section = document.createElement('div');
+    section.className = 'dash-section';
+    section.dataset.cellId = cell.cellId;
+    section.innerHTML = marked.parse(cell.cellSource || '');
+    section.querySelectorAll('table').forEach(t => {
+      const w = document.createElement('div');
+      w.style.overflowX = 'auto';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
+    container.insertBefore(section, insertBefore);
+    return;
+  }
+
+  // CodeCell — render all outputs inline in order
+  const outputs = cell.cellOutputs || [];
+  const merged = mergeHtmlOutputs(outputs);
+  for (const o of merged) {
+    if (!o.oiOutput || !o.oiOutput.trim()) continue;
+    const isWidget = classifyOutput(o) === 'widget';
+    const card = document.createElement('div');
+    card.className = isWidget ? 'dash-widget' : 'dash-output';
+    card.dataset.cellId = cell.cellId;
+
+    if (isWidget) {
+      renderWidgetOutput(card, o, cell.cellId);
+    } else {
+      renderOutput(card, o.oiOutput, o.oiMime);
+    }
+    container.insertBefore(card, insertBefore);
+  }
+
+  // Show errors
+  if (cell.cellError && cell.cellError.trim()) {
+    const errEl = document.createElement('div');
+    errEl.className = 'dash-error';
+    errEl.dataset.cellId = cell.cellId;
+    errEl.textContent = cell.cellError;
+    container.insertBefore(errEl, insertBefore);
+  }
+}
+
+// ── Output classification ────────────────────────────────────────
+function classifyOutput(item) {
+  if (item.oiMime === 'text/html' && item.oiOutput && item.oiOutput.includes('parent.postMessage')) {
+    return 'widget';
+  }
+  return 'content';
+}
+
+// ── Merge consecutive HTML outputs (non-widget only) ─────────────
+function mergeHtmlOutputs(outputs) {
+  const merged = [];
+  for (const o of outputs) {
+    const isWidget = classifyOutput(o) === 'widget';
+    const last = merged[merged.length - 1];
+    if (!isWidget && o.oiMime === 'text/html' && last &&
+        last.oiMime === 'text/html' && classifyOutput(last) !== 'widget') {
+      last.oiOutput += '\n' + o.oiOutput;
+    } else {
+      merged.push({oiMime: o.oiMime, oiOutput: o.oiOutput});
+    }
+  }
+  return merged;
+}
+
+// ── Render a content output ──────────────────────────────────────
+function renderOutput(container, content, mime) {
+  if (mime === 'text/html') {
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    iframe.style.visibility = 'hidden';
+    container.appendChild(iframe);
+    requestAnimationFrame(() => {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+      const base = '<style>body{background:#ffffff;color:#31333F;font-family:"Source Sans 3",sans-serif;font-size:15px;margin:0;padding:12px 16px}img{max-width:100%}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e6e9ef;padding:8px 12px;text-align:left}th{background:#f0f2f6}input,select,button{font-family:inherit;font-size:14px}</style>';
+      doc.open();
+      iframe.onload = () => {
+        iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
+        iframe.style.visibility = '';
+      };
+      doc.write(base + content);
+      doc.close();
+    });
+  } else if (mime === 'text/markdown') {
+    const div = document.createElement('div');
+    div.className = 'mime-markdown';
+    div.innerHTML = marked.parse(content);
+    div.querySelectorAll('table').forEach(t => {
+      const w = document.createElement('div');
+      w.style.overflowX = 'auto';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
+    container.appendChild(div);
+  } else if (mime === 'image/svg+xml') {
+    const div = document.createElement('div');
+    div.className = 'mime-svg';
+    div.innerHTML = content;
+    container.appendChild(div);
+  } else if (mime.startsWith('image/') && mime.includes('base64')) {
+    const div = document.createElement('div');
+    div.className = 'mime-image';
+    const mimeClean = mime.replace(';base64', '');
+    div.innerHTML = '<img src="data:' + mimeClean + ';base64,' + content.trim() + '" />';
+    container.appendChild(div);
+  } else if (mime === 'application/json') {
+    const div = document.createElement('div');
+    div.className = 'mime-json';
+    try { div.textContent = JSON.stringify(JSON.parse(content), null, 2); }
+    catch { div.textContent = content; }
+    container.appendChild(div);
+  } else if (mime === 'text/latex') {
+    const div = document.createElement('div');
+    div.className = 'mime-latex';
+    try { katex.render(content, div, { displayMode: true, throwOnError: false }); }
+    catch { div.textContent = content; }
+    container.appendChild(div);
+  } else {
+    const div = document.createElement('div');
+    div.className = 'mime-plain';
+    div.textContent = content;
+    container.appendChild(div);
+  }
+}
+
+// ── Render widget inline ─────────────────────────────────────────
+function renderWidgetOutput(container, output, cellId) {
+  if (isStatic) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'static-widget';
+    let cleaned = output.oiOutput
+      .replace(/\s*on\w+="[^"]*"/g, '')
+      .replace(/<(input|select|button)/gi, '<$1 disabled');
+    wrapper.innerHTML = cleaned;
+    container.appendChild(wrapper);
+    return;
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  iframe.style.visibility = 'hidden';
+  container.appendChild(iframe);
+
+  requestAnimationFrame(() => {
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+    const style = '<style>body{background:transparent;color:#31333F;font-family:"Source Sans 3",sans-serif;font-size:14px;margin:0;padding:6px 12px;line-height:1.2}input,select{font-family:inherit;font-size:14px;accent-color:#ff4b4b;vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:#ff4b4b;vertical-align:middle}label{font-weight:600;font-size:13px;color:#808495;display:inline-block;margin-right:8px;vertical-align:middle}</style>';
+    doc.open();
+    iframe.onload = () => {
+      iframe.style.height = Math.max(32, doc.body.scrollHeight) + 'px';
+      iframe.style.visibility = '';
+    };
+    doc.write(style + output.oiOutput);
+    doc.close();
+  });
+}
+
+// ── SSE (live mode only) ─────────────────────────────────────────
+function connectSSE() {
+  const evtSource = new EventSource('/api/events');
+  evtSource.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    switch (ev.type) {
+      case 'cellUpdating':
+        showStatus('Running...', true);
+        break;
+      case 'cellResult':
+        updateDashboardCell(ev.cellId, ev.outputs || [], ev.error);
+        break;
+      case 'executionDone':
+        hideStatus();
+        break;
+      case 'sessionStatus':
+        if (ev.message === 'ready') hideStatus();
+        else showStatus(ev.message, true);
+        break;
+    }
+  };
+  evtSource.onerror = () => {
+    showStatus('Disconnected', false);
+  };
+}
+
+// ── Update a cell in the dashboard ───────────────────────────────
+function updateDashboardCell(cellId, outputs, error) {
+  if (!notebookData) return;
+  const cell = (notebookData.nbCells || []).find(c => c.cellId === cellId);
+  if (!cell) return;
+
+  cell.cellOutputs = outputs;
+  cell.cellError = error || null;
+
+  // Remove only this cell's existing DOM nodes
+  const main = document.getElementById('main-content');
+  main.querySelectorAll(`[data-cell-id="${cellId}"]`).forEach(el => el.remove());
+
+  // Find the next cell's first DOM node to insert before
+  const cells = notebookData.nbCells;
+  const cellIndex = cells.indexOf(cell);
+  let insertBefore = null;
+  for (let j = cellIndex + 1; j < cells.length; j++) {
+    const nextNode = main.querySelector(`[data-cell-id="${cells[j].cellId}"]`);
+    if (nextNode) { insertBefore = nextNode; break; }
+  }
+
+  // Re-render just this cell
+  renderCellOutputs(main, cell, insertBefore);
+}
+
+// ── Widget postMessage bridge (live mode) ────────────────────────
+const _widgetTimers = new Map();
+window.addEventListener('message', (e) => {
+  if (isStatic) return;
+  const d = e.data;
+  if (d && d.type === 'widget') {
+    const key = d.cellId + ':' + d.name;
+    clearTimeout(_widgetTimers.get(key));
+    _widgetTimers.set(key, setTimeout(() => {
+      _widgetTimers.delete(key);
+      fetch('/api/widget', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
+      });
+    }, 300));
+  }
+});
+
+// ── Status indicator ─────────────────────────────────────────────
+function showStatus(msg, running) {
+  const el = document.getElementById('status-indicator');
+  el.textContent = msg;
+  el.className = 'dash-status visible' + (running ? ' running' : '');
+}
+function hideStatus() {
+  document.getElementById('status-indicator').className = 'dash-status';
+}
+
+// ── Export button (live mode) ────────────────────────────────────
+function exportDashboard() {
+  window.open('/api/export/dashboard', '_blank');
+}
+
+// ── Title formatting ─────────────────────────────────────────────
+function formatTitle(path) {
+  if (!path) return 'Dashboard';
+  const name = path.split('/').pop().replace(/\.[^/.]+$/, '');
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// ── Go ───────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

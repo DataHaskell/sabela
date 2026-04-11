@@ -12,6 +12,7 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (modifyMVar)
 import Control.Concurrent.STM (TChan, atomically, readTChan)
 import Control.Exception (SomeException, try)
+import Data.Foldable (for_)
 import Control.Monad (forM, forever, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (Value (..), encode, object, (.=))
@@ -26,6 +27,7 @@ import Data.List (isPrefixOf, sort)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
 import Network.HTTP.Types (HeaderName, hContentType, status200)
 import Network.Wai (
@@ -53,6 +55,7 @@ import System.FilePath (
  )
 
 import Sabela.AI.Capabilities (acceptEdit, revertEdit)
+import Sabela.Dashboard (renderStaticDashboard)
 import Sabela.AI.Orchestrator (
     handleCancelTurn,
     handleChatMessage,
@@ -177,6 +180,8 @@ type JsonAPI =
 type FullAPI =
     JsonAPI
         :<|> "api" :> "events" :> Raw
+        :<|> "api" :> "export" :> "dashboard" :> Raw
+        :<|> "dashboard" :> Raw
         :<|> Raw
 
 fullProxy :: Proxy FullAPI
@@ -185,6 +190,9 @@ fullProxy = Proxy
 indexHtml :: BS.ByteString
 indexHtml = $(makeRelativeToProject "static/index.html" >>= embedFile)
 
+dashboardHtml :: BS.ByteString
+dashboardHtml = $(makeRelativeToProject "static/dashboard.html" >>= embedFile)
+
 staticApp :: Application
 staticApp _req resp =
     resp $
@@ -192,6 +200,37 @@ staticApp _req resp =
             status200
             [(hContentType, "text/html; charset=utf-8")]
             (LBS.fromStrict indexHtml)
+
+dashboardApp :: Application
+dashboardApp _req resp =
+    resp $
+        responseLBS
+            status200
+            [(hContentType, "text/html; charset=utf-8")]
+            (LBS.fromStrict dashboardHtml)
+
+exportDashboardApp :: App -> Application
+exportDashboardApp app _req resp = do
+    nb <- readNotebook (appNotebook app)
+    let body = renderStaticDashboard dashboardHtml nb
+        title = nbTitle nb
+        filename = T.takeWhileEnd (/= '/') (T.dropWhileEnd (== '/') title)
+        htmlName =
+            if T.null filename
+                then "dashboard.html"
+                else T.replace ".md" ".html" filename
+    resp $
+        responseLBS
+            status200
+            [ (hContentType, "text/html; charset=utf-8")
+            ,
+                ( "Content-Disposition"
+                , "attachment; filename=\""
+                    <> TE.encodeUtf8 htmlName
+                    <> "\""
+                )
+            ]
+            body
 
 {- | Maximum request body size (10 MB). Requests exceeding this are rejected
   with 413 Payload Too Large.
@@ -236,6 +275,8 @@ server app rn =
         :<|> chatRevertEditH app
     )
         :<|> Tagged (sseApp app)
+        :<|> Tagged (exportDashboardApp app)
+        :<|> Tagged dashboardApp
         :<|> Tagged staticApp
 
 sseHeaders :: [(HeaderName, BS.ByteString)]
@@ -310,7 +351,6 @@ parseCodeOutputItems m o = [OutputItem (mimeIndicator m) o]
 
 parseLang :: Text -> ST.CellLang
 parseLang lang
-    | lang `elem` ["lean", "lean4"] = ST.Lean4
     | lang `elem` ["python", "python3", "py"] = ST.Python
     | otherwise = ST.Haskell
 
@@ -367,7 +407,6 @@ codeToSegment c =
 
 langTag :: ST.CellLang -> Text
 langTag ST.Haskell = "haskell"
-langTag ST.Lean4 = "lean4"
 langTag ST.Python = "python"
 
 serializeOutputs :: [OutputItem] -> Text
@@ -679,13 +718,13 @@ chatMessageH app rn (ChatRequest msg) = liftIO $ do
 chatCancelH :: App -> Handler NoContent
 chatCancelH app = liftIO $ do
     mStore <- getAIStore app
-    Data.Foldable.for_ mStore (handleCancelTurn app)
+    for_ mStore (handleCancelTurn app)
     pure NoContent
 
 chatClearH :: App -> Handler NoContent
 chatClearH app = liftIO $ do
     mStore <- getAIStore app
-    Data.Foldable.for_ mStore (handleClearChat app)
+    for_ mStore (handleClearChat app)
     pure NoContent
 
 chatAcceptEditH :: App -> Int -> Handler (Maybe Cell)

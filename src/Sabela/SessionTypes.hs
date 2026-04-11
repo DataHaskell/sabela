@@ -16,16 +16,16 @@ data SessionBackend = SessionBackend
     , sbReset :: IO SessionBackend
     -- ^ Kill and restart the backend, returning a fresh handle.
     , sbQueryComplete :: Text -> IO [Text]
-    -- ^ Completion query (GHCi :complete; empty for Lean).
+    -- ^ Completion query (GHCi :complete).
     , sbQueryType :: Text -> IO Text
-    -- ^ Type query (GHCi :type; empty for Lean).
+    -- ^ Type query (GHCi :type).
     , sbQueryInfo :: Text -> IO Text
-    -- ^ Info query (GHCi :info; empty for Lean).
+    -- ^ Info query (GHCi :info).
     , sbQueryDoc :: Text -> IO Text
-    -- ^ Doc query (GHCi :doc; empty for Lean).
+    -- ^ Doc query (GHCi :doc).
     }
 
-data CellLang = Haskell | Lean4 | Python
+data CellLang = Haskell | Python
     deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON CellLang

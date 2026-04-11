@@ -52,7 +52,6 @@ COPY <<'SCRIPT' /opt/bin/start.sh
 #!/bin/sh
 # Add EFS-mounted tools to PATH if they exist
 [ -d "/mnt/sabela/python/venv/bin" ] && export PATH="/mnt/sabela/python/venv/bin:$PATH"
-[ -d "/mnt/sabela/lean/.elan/bin" ] && export PATH="/mnt/sabela/lean/.elan/bin:$PATH"
 
 # If a user work directory is specified (3rd arg = sabela's 2nd arg), set it up
 WORKDIR="${3:-.}"
@@ -61,21 +60,6 @@ if echo "$WORKDIR" | grep -q "^/mnt/sabela/users/"; then
   # Copy examples into user dir if not already there
   if [ ! -d "$WORKDIR/examples" ]; then
     cp -r /opt/sabela/examples "$WORKDIR/examples"
-  fi
-  # Persist Lean build cache on EFS (survives task restarts)
-  export SABELA_LEAN_CACHE="$WORKDIR/.lean-cache"
-  mkdir -p "$SABELA_LEAN_CACHE"
-  # Pre-seed Mathlib into lean cache in background (10GB copy, don't block startup)
-  # Dir name matches leanProjectName hash for {"leanprover-community/mathlib"}
-  LEAN_BASE="/mnt/sabela/lean/lean-base"
-  if [ -d "$LEAN_BASE/.lake" ]; then
-    MATHLIB_DIR="$SABELA_LEAN_CACHE/lean-project--3894678950464047508"
-    if [ ! -d "$MATHLIB_DIR/.lake" ]; then
-      (mkdir -p "$MATHLIB_DIR" && \
-       cp -a "$LEAN_BASE/.lake" "$MATHLIB_DIR/.lake" && \
-       cp -a "$LEAN_BASE/lakefile.toml" "$MATHLIB_DIR/lakefile.toml" 2>/dev/null; \
-       cp -a "$LEAN_BASE/lean-toolchain" "$MATHLIB_DIR/lean-toolchain" 2>/dev/null) &
-    fi
   fi
 fi
 

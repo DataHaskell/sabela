@@ -14,12 +14,6 @@ data Environment = Environment
     -- ^ Dependencies from global.md / preinstalled packages (immutable).
     , envDebugLog :: Bool
     -- ^ Whether to emit verbose debug logging to stderr.
-    , envLeanReplBin :: Maybe FilePath
-    -- ^ Path to the Lean REPL binary. Resolved from SABELA_LEAN_REPL env var.
-    , envLeanBase :: Maybe FilePath
-    -- ^ Path to a pre-built Lean project with Mathlib. Resolved from SABELA_LEAN_BASE.
-    , envLeanCache :: FilePath
-    -- ^ Persistent cache directory for Lean projects (~/.sabela/lean-cache/).
     , envAnthropicKey :: Maybe Text
     -- ^ Anthropic API key. From ANTHROPIC_API_KEY env var.
     , envAnthropicModel :: Text

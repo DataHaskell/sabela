@@ -20,15 +20,13 @@ import Control.Exception (SomeException, try)
 import Data.Aeson (
     ToJSON (..),
     Value (..),
-    encode,
     object,
     (.=),
  )
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.IORef (atomicModifyIORef')
-import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.IO.Temp (createTempDirectory)
@@ -144,7 +142,7 @@ chatTools =
                     , "language"
                         .= object
                             [ "type" .= ("string" :: Text)
-                            , "enum" .= (["Haskell", "Lean4", "Python"] :: [Text])
+                            , "enum" .= (["Haskell", "Python"] :: [Text])
                             ]
                     , "source"
                         .= object
@@ -273,7 +271,7 @@ execListCells app = do
             , "type" .= cellType c
             , "lang" .= cellLang c
             , "firstLine" .= T.take 80 (head' (T.lines (cellSource c)))
-            , "hasError" .= (Data.Maybe.isJust (cellError c))
+            , "hasError" .= isJust (cellError c)
             , "dirty" .= cellDirty c
             ]
     head' [] = ""
@@ -398,7 +396,6 @@ execInsertCell app input = do
             _ -> CodeCell
         lang = case fieldText "language" input of
             "Python" -> Python
-            "Lean4" -> Lean4
             _ -> Haskell
     nid <- freshCellId (appNotebook app)
     let cell = Cell nid cellTp lang src [] Nothing True
@@ -503,8 +500,6 @@ ensureScratchpad app store lang = do
                     let venvDir = envTmpDir (appEnv app) ++ "/python-venv"
                     sess <- newPythonSession (Just venvDir) spDir
                     pure (pythonBackend sess)
-                Lean4 ->
-                    error "Scratchpad not supported for Lean4"
             let sp = ScratchpadSession backend spDir lang
             setScratchpad store (Just sp)
             pure backend
