@@ -12,7 +12,6 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (modifyMVar)
 import Control.Concurrent.STM (TChan, atomically, readTChan)
 import Control.Exception (SomeException, try)
-import Data.Foldable (for_)
 import Control.Monad (forM, forever, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (Value (..), encode, object, (.=))
@@ -23,6 +22,7 @@ import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char
 import Data.FileEmbed (embedFile, makeRelativeToProject)
+import Data.Foldable (for_)
 import Data.List (isPrefixOf, sort)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
@@ -55,7 +55,6 @@ import System.FilePath (
  )
 
 import Sabela.AI.Capabilities (acceptEdit, revertEdit)
-import Sabela.Dashboard (renderStaticDashboard)
 import Sabela.AI.Orchestrator (
     handleCancelTurn,
     handleChatMessage,
@@ -63,6 +62,7 @@ import Sabela.AI.Orchestrator (
  )
 import Sabela.AI.Types (EditId (..))
 import Sabela.Api
+import Sabela.Dashboard (renderStaticDashboard)
 import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output (builtinExamples, parseMimeOutputs)
@@ -181,6 +181,7 @@ type FullAPI =
     JsonAPI
         :<|> "api" :> "events" :> Raw
         :<|> "api" :> "export" :> "dashboard" :> Raw
+        :<|> "api" :> "export" :> "markdown" :> Raw
         :<|> "dashboard" :> Raw
         :<|> Raw
 
@@ -232,6 +233,29 @@ exportDashboardApp app _req resp = do
             ]
             body
 
+exportMarkdownApp :: App -> Application
+exportMarkdownApp app _req resp = do
+    nb <- readNotebook (appNotebook app)
+    let md = reassemble (map cellToSegment (nbCells nb))
+        title = nbTitle nb
+        filename = T.takeWhileEnd (/= '/') (T.dropWhileEnd (== '/') title)
+        mdName =
+            if T.null filename
+                then "notebook.md"
+                else filename
+    resp $
+        responseLBS
+            status200
+            [ (hContentType, "text/markdown; charset=utf-8")
+            ,
+                ( "Content-Disposition"
+                , "attachment; filename=\""
+                    <> TE.encodeUtf8 mdName
+                    <> "\""
+                )
+            ]
+            (LBS.fromStrict (TE.encodeUtf8 md))
+
 {- | Maximum request body size (10 MB). Requests exceeding this are rejected
   with 413 Payload Too Large.
 -}
@@ -276,6 +300,7 @@ server app rn =
     )
         :<|> Tagged (sseApp app)
         :<|> Tagged (exportDashboardApp app)
+        :<|> Tagged (exportMarkdownApp app)
         :<|> Tagged dashboardApp
         :<|> Tagged staticApp
 

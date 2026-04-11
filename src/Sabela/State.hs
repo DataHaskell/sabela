@@ -152,4 +152,3 @@ readKeyFromConfig workDir = do
                         Just (String key) -> pure (Just (T.unpack key))
                         _ -> pure Nothing
                 Right _ -> pure Nothing
-

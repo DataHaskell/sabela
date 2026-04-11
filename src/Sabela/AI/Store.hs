@@ -1,5 +1,3 @@
-
-
 module Sabela.AI.Store (
     AIStore (..),
     newAIStore,

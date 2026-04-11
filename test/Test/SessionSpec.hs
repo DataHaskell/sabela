@@ -54,6 +54,7 @@ dummySession ::
     IO Session
 dummySession ch errRef ctrRef cfg = do
     lock <- newMVar ()
+    cbRef <- newIORef (\_ -> pure ())
     pure
         Session
             { sessLock = lock
@@ -65,6 +66,7 @@ dummySession ch errRef ctrRef cfg = do
             , sessErrBuf = errRef
             , sessCounter = ctrRef
             , sessConfig = cfg
+            , sessErrCallback = cbRef
             }
 
 defaultCfg :: SessionConfig

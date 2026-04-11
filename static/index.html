@@ -60,6 +60,23 @@
   .toolbar .primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
   .toolbar .primary:hover { opacity: 0.9; }
   .toolbar .sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+  .toolbar-dropdown { position: relative; }
+  .toolbar-dropdown > button::after { content: ' ▾'; font-size: 9px; opacity: 0.6; }
+  .toolbar-dropdown-menu {
+    display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 300;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 0; min-width: 180px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  }
+  .toolbar-dropdown.open > .toolbar-dropdown-menu { display: block; }
+  .toolbar-dropdown-menu .dd-item {
+    padding: 6px 14px; cursor: pointer; color: var(--fg); white-space: nowrap;
+  }
+  .toolbar-dropdown-menu .dd-item:hover { background: var(--bg-cell); }
+  .toolbar-dropdown-menu .dd-item .dd-hint {
+    float: right; font-size: 10px; color: var(--fg-dim); margin-left: 16px;
+  }
+  .toolbar-dropdown-menu .dd-sep { height: 1px; background: var(--border); margin: 4px 0; }
   .status { font-size: 11px; white-space: nowrap; }
   .status.running { color: var(--yellow); }
   .status.error { color: var(--red); }
@@ -546,10 +563,22 @@
   <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle file explorer (Ctrl+B)" aria-label="Toggle file explorer">☰</button>
   <span class="toolbar-title" id="toolbar-title">λ sabela</span>
   <button class="primary" onclick="runAll()" title="Ctrl+Shift+Enter" aria-label="Run all cells">▶ run all</button>
-  <button onclick="saveNotebook()" title="Ctrl+S" aria-label="Save notebook">💾 save</button>
-  <button onclick="resetNotebook()" aria-label="Reset notebook">reset</button>
-  <button onclick="restartKernel()" aria-label="Restart kernel">restart kernel</button>
-  <button onclick="window.open('/dashboard','_blank')" title="View as dashboard" aria-label="View as dashboard">dashboard</button>
+  <div class="toolbar-dropdown">
+    <button onclick="toggleDropdown(this)" aria-label="File menu">file</button>
+    <div class="toolbar-dropdown-menu">
+      <div class="dd-item" onclick="closeDropdowns(); saveNotebook()">Save<span class="dd-hint">Ctrl+S</span></div>
+      <div class="dd-item" onclick="closeDropdowns(); downloadMarkdown()">Download .md</div>
+      <div class="dd-sep"></div>
+      <div class="dd-item" onclick="closeDropdowns(); window.open('/dashboard','_blank')">View as dashboard</div>
+    </div>
+  </div>
+  <div class="toolbar-dropdown">
+    <button onclick="toggleDropdown(this)" aria-label="Kernel menu">kernel</button>
+    <div class="toolbar-dropdown-menu">
+      <div class="dd-item" onclick="closeDropdowns(); resetNotebook()">Reset notebook</div>
+      <div class="dd-item" onclick="closeDropdowns(); restartKernel()">Restart kernel</div>
+    </div>
+  </div>
   <span class="sep"></span>
   <button onclick="togglePanel('examples')" title="Examples" aria-label="Examples panel">📚</button>
   <button onclick="togglePanel('info')" title="Haddock / Info (Ctrl+I)" aria-label="Info / Haddock panel">🔍</button>
@@ -629,6 +658,8 @@ let notebook = null;
 let evtSource = null;
 let activeTab = 'info';
 let examples = [];
+let unsavedChanges = false;
+const AUTOSAVE_INTERVAL_MS = 30000;
 
 // ── API helpers ──────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -652,6 +683,22 @@ function flashSaved() {
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 2000);
 }
+
+// ── Toolbar dropdowns ────────────────────────────────────────────
+function toggleDropdown(btn) {
+  const dd = btn.parentElement;
+  const wasOpen = dd.classList.contains('open');
+  closeDropdowns();
+  if (!wasOpen) dd.classList.add('open');
+}
+
+function closeDropdowns() {
+  document.querySelectorAll('.toolbar-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.toolbar-dropdown')) closeDropdowns();
+});
 
 // ── SSE ──────────────────────────────────────────────────────────
 function connectSSE() {
@@ -1232,6 +1279,9 @@ function showFileContextMenu(e) {
   if (!isDir) {
     addCtxItem(menu, 'Open', () => openFile({feName: name, fePath: path, feIsDir: false}));
   }
+  if (!isDir && name.endsWith('.md') && notebook && notebook.nbTitle === path) {
+    addCtxItem(menu, 'Download .md', () => downloadMarkdown());
+  }
   addCtxItem(menu, 'Rename', () => promptRenameFile(path, name));
   if (!isDir) {
     addCtxItem(menu, 'Duplicate', () => duplicateFile(path, name));
@@ -1337,10 +1387,19 @@ async function saveNotebook() {
   try {
     const nb = await api('POST', 'save', { srPath: null });
     notebook = nb;
+    unsavedChanges = false;
     document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
     flashSaved();
   } catch (e) { setStatus('Save failed: ' + e.message, 'error'); }
 }
+
+function downloadMarkdown() {
+  window.location.href = '/api/export/markdown';
+}
+
+setInterval(() => {
+  if (unsavedChanges) saveNotebook();
+}, AUTOSAVE_INTERVAL_MS);
 
 // ── Right panel ──────────────────────────────────────────────────
 function togglePanel(tab) {
@@ -1566,6 +1625,7 @@ function renderCodeCell(cell, cellNum) {
         'Cmd-S': () => saveNotebook(),
       }
     });
+    cm.on('change', () => { unsavedChanges = true; });
     editors[cell.cellId] = cm;
   });
   return div;

@@ -14,7 +14,13 @@ import Control.Concurrent.STM (
  )
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.IORef (
+    IORef,
+    atomicModifyIORef',
+    atomicWriteIORef,
+    newIORef,
+    readIORef,
+ )
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -57,6 +63,7 @@ data Session = Session
     , sessErrBuf :: IORef [Text]
     , sessCounter :: IORef Int
     , sessConfig :: SessionConfig
+    , sessErrCallback :: IORef (Text -> IO ())
     }
 
 data SessionConfig = SessionConfig
@@ -66,9 +73,12 @@ data SessionConfig = SessionConfig
     deriving (Show, Eq)
 
 newSession :: SessionConfig -> IO Session
-newSession cfg = do
+newSession cfg = newSessionStreaming cfg (\_ -> pure ())
+
+newSessionStreaming :: SessionConfig -> (Text -> IO ()) -> IO Session
+newSessionStreaming cfg onStderrLine = do
     (hIn, hOut, hErr, ph) <- createGhciProcess cfg
-    sess <- buildSessionState cfg hIn hOut hErr ph
+    sess <- buildSessionState cfg hIn hOut hErr ph onStderrLine
     initializeGhci sess
     pure sess
 
@@ -95,21 +105,28 @@ ghciArgs cfg =
     [ "repl"
     , "exe:main"
     , "--project-dir=" ++ scProjectDir cfg
-    , "-v0"
+    , "-v1"
     , "--repl-options=-fobject-code -O2"
     , "--ghc-options=+RTS -N -A512m -n4m -H1G -RTS"
     , "-O2"
     ]
 
 buildSessionState ::
-    SessionConfig -> Handle -> Handle -> Handle -> ProcessHandle -> IO Session
-buildSessionState cfg hIn hOut hErr ph = do
+    SessionConfig ->
+    Handle ->
+    Handle ->
+    Handle ->
+    ProcessHandle ->
+    (Text -> IO ()) ->
+    IO Session
+buildSessionState cfg hIn hOut hErr ph onStderrLine = do
     lock <- newMVar ()
     lineCh <- newTBQueueIO 256
     errBuf <- newIORef []
     counter <- newIORef 0
+    cbRef <- newIORef onStderrLine
     _ <- forkIO $ readLoop hOut lineCh
-    _ <- forkIO $ errLoop hErr errBuf
+    _ <- forkIO $ errLoop hErr errBuf cbRef
     pure
         Session
             { sessLock = lock
@@ -121,6 +138,7 @@ buildSessionState cfg hIn hOut hErr ph = do
             , sessErrBuf = errBuf
             , sessCounter = counter
             , sessConfig = cfg
+            , sessErrCallback = cbRef
             }
 
 initializeGhci :: Session -> IO ()
@@ -267,8 +285,8 @@ readLoop h ch = do
 maxErrLines :: Int
 maxErrLines = 500
 
-errLoop :: Handle -> IORef [Text] -> IO ()
-errLoop h ref = do
+errLoop :: Handle -> IORef [Text] -> IORef (Text -> IO ()) -> IO ()
+errLoop h ref cbRef = do
     _ <-
         try (forever (processHandle h (const (pure ())) writeErr)) ::
             IO (Either SomeException ())
@@ -277,7 +295,10 @@ errLoop h ref = do
     writeErr :: Handle -> IO ()
     writeErr h' = do
         line <- hGetLine h'
-        atomicModifyIORef' ref (\ls -> (take maxErrLines (T.pack line : ls), ()))
+        let t = T.pack line
+        atomicModifyIORef' ref (\ls -> (take maxErrLines (t : ls), ()))
+        cb <- readIORef cbRef
+        cb t
 
 processHandle :: Handle -> (Handle -> IO ()) -> (Handle -> IO ()) -> IO ()
 processHandle h eofHandler contHandler = do
@@ -315,6 +336,9 @@ resetErrorBuffer sess = atomicModifyIORef' (sessErrBuf sess) (const ([], ()))
 
 readErrorBuffer :: Session -> IO Text
 readErrorBuffer sess = fmap (T.strip . T.unlines . reverse) (readIORef (sessErrBuf sess))
+
+clearErrCallback :: Session -> IO ()
+clearErrCallback sess = atomicWriteIORef (sessErrCallback sess) (\_ -> pure ())
 
 eofText :: Text
 eofText = "---EOF---"

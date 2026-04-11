@@ -63,9 +63,10 @@ import Sabela.Reactivity (
 import Sabela.Session (
     Session,
     SessionConfig (..),
+    clearErrCallback,
     closeSession,
     ghciBackend,
-    newSession,
+    newSessionStreaming,
     readErrorBuffer,
     runBlock,
  )
@@ -357,11 +358,13 @@ startSessionWith :: App -> FilePath -> IO Bool
 startSessionWith app projDir = do
     debugLog app "[handler] Injecting display prelude"
     let cfg = SessionConfig{scProjectDir = projDir, scWorkDir = envWorkDir (appEnv app)}
-    sessResult <- try (newSession cfg) :: IO (Either SomeException Session)
+        onLine t = unless (T.null t) $ broadcast app (EvInstallLog t)
+    sessResult <-
+        try (newSessionStreaming cfg onLine) :: IO (Either SomeException Session)
     case sessResult of
         Left e -> reportSessionFailure app "Session startup failed" e
         Right sess -> do
-            broadcastInstallLog app sess
+            clearErrCallback sess
             injectPrelude app sess
 
 reportSessionFailure :: App -> Text -> SomeException -> IO Bool

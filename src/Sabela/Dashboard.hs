@@ -13,13 +13,14 @@ import qualified Data.Text.Encoding as TE
 import Data.Aeson (encode)
 import Sabela.Model (Notebook)
 
--- | Render a standalone dashboard HTML by injecting notebook JSON
--- into the dashboard template. The template contains a placeholder
--- @/*__SABELA_INJECT__*\/@ which is replaced with a JSON assignment.
---
--- The JSON is embedded as a base64-encoded string to avoid any issues
--- with @\<\/script\>@ sequences in the notebook content breaking the
--- enclosing script tag.
+{- | Render a standalone dashboard HTML by injecting notebook JSON
+into the dashboard template. The template contains a placeholder
+@/*__SABELA_INJECT__*\/@ which is replaced with a JSON assignment.
+
+The JSON is embedded as a base64-encoded string to avoid any issues
+with @\<\/script\>@ sequences in the notebook content breaking the
+enclosing script tag.
+-}
 renderStaticDashboard :: BS.ByteString -> Notebook -> LBS.ByteString
 renderStaticDashboard template nb =
     LBS.fromStrict . TE.encodeUtf8 $ T.replace placeholder injection tmpl
