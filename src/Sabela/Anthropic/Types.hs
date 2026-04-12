@@ -45,6 +45,7 @@ import Data.Aeson (
  )
 import qualified Data.Aeson.Types as Aeson
 import Data.IORef (IORef, atomicWriteIORef, newIORef, readIORef)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
@@ -181,7 +182,7 @@ instance FromJSON ContentBlock where
             "tool_result" ->
                 ToolResultBlock
                     <$> o .: "tool_use_id"
-                    <*> fmap (maybe False id) (o .:? "is_error")
+                    <*> fmap (fromMaybe False) (o .:? "is_error")
                     <*> o .: "content"
             other -> fail $ "Unknown content block type: " ++ T.unpack other
 
