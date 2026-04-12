@@ -1,4 +1,4 @@
-FROM haskell:9.12.2-slim-bookworm AS build
+FROM haskell:9.12.2-bookworm AS build
 ENV CABAL_DIR="/root/.cabal"
 RUN mkdir /opt/build
 WORKDIR /opt/build
