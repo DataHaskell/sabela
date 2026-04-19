@@ -76,10 +76,10 @@ newSession :: SessionConfig -> IO Session
 newSession cfg = newSessionStreaming cfg (\_ -> pure ())
 
 newSessionStreaming :: SessionConfig -> (Text -> IO ()) -> IO Session
-newSessionStreaming cfg onStderrLine = do
+newSessionStreaming cfg onStartupLine = do
     (hIn, hOut, hErr, ph) <- createGhciProcess cfg
-    sess <- buildSessionState cfg hIn hOut hErr ph onStderrLine
-    initializeGhci sess
+    sess <- buildSessionState cfg hIn hOut hErr ph onStartupLine
+    initializeGhci sess onStartupLine
     pure sess
 
 createGhciProcess :: SessionConfig -> IO (Handle, Handle, Handle, ProcessHandle)
@@ -141,13 +141,13 @@ buildSessionState cfg hIn hOut hErr ph onStderrLine = do
             , sessErrCallback = cbRef
             }
 
-initializeGhci :: Session -> IO ()
-initializeGhci sess = do
+initializeGhci :: Session -> (Text -> IO ()) -> IO ()
+initializeGhci sess onLine = do
     clearGhciPrompt sess
     sendRaw sess (":cd " ++ scWorkDir (sessConfig sess))
     mk <- getMarker sess
     placeMarker sess mk
-    _ <- drainUntilMarker sess mk
+    _ <- drainUntilMarkerStreaming (sessLines sess) mk onLine
     pure ()
 
 resetSession :: Session -> IO Session
