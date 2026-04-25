@@ -6,6 +6,10 @@
 module Sabela.Server (
     mkApp,
     newApp,
+
+    -- * Exposed for testing
+    checkBearer,
+    isAiApi,
 ) where
 
 import Control.Concurrent (forkIO)
@@ -24,15 +28,24 @@ import Data.Char
 import Data.FileEmbed (embedFile, makeRelativeToProject)
 import Data.Foldable (for_)
 import Data.List (isPrefixOf, sort)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
-import Network.HTTP.Types (HeaderName, hContentType, status200)
+import Network.HTTP.Types (
+    HeaderName,
+    hAuthorization,
+    hContentType,
+    status200,
+    status401,
+ )
 import Network.Wai (
+    Middleware,
     RequestBodyLength (..),
+    pathInfo,
     requestBodyLength,
+    requestHeaders,
     responseLBS,
     responseStream,
  )
@@ -54,20 +67,37 @@ import System.FilePath (
     (</>),
  )
 
-import Sabela.AI.Capabilities (acceptEdit, revertEdit)
+import Sabela.AI.Capabilities (acceptEdit, chatTools, executeTool, revertEdit)
+import Sabela.AI.Doc (defaultDocOpts, renderNotebookDoc)
 import Sabela.AI.Orchestrator (
     handleCancelTurn,
     handleChatMessage,
     handleClearChat,
  )
+import Sabela.AI.Store (getAIConfig)
+import qualified Sabela.AI.Store as AIStore
 import Sabela.AI.Types (EditId (..))
+import Sabela.Anthropic.Types (
+    AnthropicConfig (..),
+    ToolDef,
+    newCancelToken,
+ )
 import Sabela.Api
 import Sabela.Dashboard (renderStaticDashboard)
 import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output (builtinExamples, parseMimeOutputs)
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), configureAI, getAIStore, newApp)
+import Sabela.State (
+    AIConfigUpdate (..),
+    App (..),
+    broadcastNotebook,
+    getAIStore,
+    newApp,
+    resolveCliHandleStore,
+    setAIStore,
+    updateAIConfig,
+ )
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.EventBus (subscribeBroadcast)
 import Sabela.State.NotebookStore (
@@ -93,12 +123,14 @@ type JsonAPI =
         :<|> "api"
             :> "cell"
             :> Capture "id" Int
+            :> Header "X-Sabela-Session" Text
             :> ReqBody '[JSON] UpdateCell
             :> Put '[JSON] Cell
         :<|> "api"
             :> "cell"
             :> Capture "id" Int
             :> "source"
+            :> Header "X-Sabela-Session" Text
             :> ReqBody '[JSON] UpdateCell
             :> Put '[JSON] Cell
         :<|> "api" :> "cell" :> ReqBody '[JSON] InsertCell :> Post '[JSON] Cell
@@ -176,6 +208,16 @@ type JsonAPI =
             :> Capture "editId" Int
             :> "revert"
             :> Post '[JSON] NoContent
+        -- AI REST bridge for external CLI clients (e.g., Siza skill).
+        :<|> "api" :> "ai" :> "health" :> Get '[JSON] Value
+        :<|> "api" :> "ai" :> "tools" :> Get '[JSON] [ToolDef]
+        :<|> "api" :> "ai" :> "notebook" :> Get '[JSON] Value
+        :<|> "api"
+            :> "ai"
+            :> "tool"
+            :> Header "X-Sabela-Session" Text
+            :> ReqBody '[JSON] Value
+            :> Post '[JSON] Value
 
 type FullAPI =
     JsonAPI
@@ -263,7 +305,41 @@ maxBodySize :: Int
 maxBodySize = 10 * 1024 * 1024
 
 mkApp :: App -> ReactiveNotebook -> Application
-mkApp app rn = limitRequestBody maxBodySize $ serve fullProxy (server app rn)
+mkApp app rn =
+    aiAuthMiddleware (appAiToken app) $
+        limitRequestBody maxBodySize $
+            serve fullProxy (server app rn)
+
+{- | Gate the @/api/ai/*@ subtree behind bearer auth whenever
+@SABELA_AI_TOKEN@ is configured. When unset, all requests pass through
+unchanged (matches the local/zero-friction posture described in the plan).
+-}
+aiAuthMiddleware :: Maybe Text -> Middleware
+aiAuthMiddleware Nothing baseApp req sendResp = baseApp req sendResp
+aiAuthMiddleware (Just tok) baseApp req sendResp
+    | isAiApi (pathInfo req) =
+        if checkBearer tok (requestHeaders req)
+            then baseApp req sendResp
+            else sendResp unauthorized
+    | otherwise = baseApp req sendResp
+  where
+    unauthorized =
+        responseLBS
+            status401
+            [(hContentType, "application/json")]
+            (encode (object ["error" .= ("Missing or invalid bearer token" :: Text)]))
+
+isAiApi :: [Text] -> Bool
+isAiApi ("api" : "ai" : _) = True
+isAiApi _ = False
+
+{- | Pure auth check so it can be unit-tested directly. Compares constant-ish
+bytes; not timing-safe, but the token is a local secret, not a password.
+-}
+checkBearer :: Text -> [(HeaderName, BS.ByteString)] -> Bool
+checkBearer tok hdrs = case lookup hAuthorization hdrs of
+    Just v -> v == "Bearer " <> TE.encodeUtf8 tok
+    Nothing -> False
 
 server :: App -> ReactiveNotebook -> Server FullAPI
 server app rn =
@@ -295,8 +371,12 @@ server app rn =
         :<|> chatMessageH app rn
         :<|> chatCancelH app
         :<|> chatClearH app
-        :<|> chatAcceptEditH app
+        :<|> chatAcceptEditH app rn
         :<|> chatRevertEditH app
+        :<|> aiHealthH app
+        :<|> aiToolsH
+        :<|> aiNotebookH app
+        :<|> aiToolH app rn
     )
         :<|> Tagged (sseApp app)
         :<|> Tagged (exportDashboardApp app)
@@ -347,6 +427,7 @@ loadNotebookH app _rn (LoadRequest path) = liftIO $ do
     void $ bumpGeneration app
     void $ forkIO $ killAllSessions app
     modifyNotebook (appNotebook app) (const nb)
+    broadcastNotebook app
     pure nb
 
 resolveWorkPath :: Environment -> FilePath -> FilePath
@@ -441,10 +522,15 @@ serializeOutputs items =
         | OutputItem mime o <- items
         ]
 
-updateCellH :: App -> ReactiveNotebook -> Int -> UpdateCell -> Handler Cell
-updateCellH app rn cid (UpdateCell src) = liftIO $ do
+updateCellH ::
+    App -> ReactiveNotebook -> Int -> Maybe Text -> UpdateCell -> Handler Cell
+updateCellH app rn cid mSession (UpdateCell src) = liftIO $ do
     rnCellEdit rn cid src
     nb <- readNotebook (appNotebook app)
+    -- External callers (siza, curl) mark themselves with X-Sabela-Session
+    -- so the browser refreshes its editor. Browser keystrokes omit the
+    -- header and thus don't echo back as SSE noise.
+    for_ mSession (const (broadcastNotebook app))
     case lookupCell cid nb of
         Just c -> pure c
         Nothing -> pure (Cell cid CodeCell ST.Haskell src [] Nothing True)
@@ -452,10 +538,11 @@ updateCellH app rn cid (UpdateCell src) = liftIO $ do
 {- | Save cell source without triggering reactive execution.
 Used by runAll to sync editor content before running.
 -}
-saveCellSourceH :: App -> Int -> UpdateCell -> Handler Cell
-saveCellSourceH app cid (UpdateCell src) = liftIO $ do
+saveCellSourceH :: App -> Int -> Maybe Text -> UpdateCell -> Handler Cell
+saveCellSourceH app cid mSession (UpdateCell src) = liftIO $ do
     modifyNotebook (appNotebook app) $ updateCellSource cid src
     nb <- readNotebook (appNotebook app)
+    for_ mSession (const (broadcastNotebook app))
     case lookupCell cid nb of
         Just c -> pure c
         Nothing -> pure (Cell cid CodeCell ST.Haskell src [] Nothing True)
@@ -466,6 +553,7 @@ insertCellH app (InsertCell afterId typ lang src) = liftIO $ do
     let cell = Cell nid typ lang src [] Nothing True
     modifyNotebook (appNotebook app) $ \nb ->
         nb{nbCells = ins afterId cell (nbCells nb)}
+    broadcastNotebook app
     pure cell
   where
     ins (-1) c cs = c : cs
@@ -475,10 +563,12 @@ insertCellH app (InsertCell afterId typ lang src) = liftIO $ do
         | otherwise = x : ins aid c xs
 
 deleteCellH :: App -> Int -> Handler Notebook
-deleteCellH app cid = liftIO $
-    modifyMVar (nsNotebook (appNotebook app)) $ \nb -> do
-        let nb' = nb{nbCells = filter (\c -> cellId c /= cid) (nbCells nb)}
-        pure (nb', nb')
+deleteCellH app cid = liftIO $ do
+    nb' <- modifyMVar (nsNotebook (appNotebook app)) $ \nb -> do
+        let nb'' = nb{nbCells = filter (\c -> cellId c /= cid) (nbCells nb)}
+        pure (nb'', nb'')
+    broadcastNotebook app
+    pure nb'
 
 runCellH :: ReactiveNotebook -> Int -> Handler RunResult
 runCellH rn cid = liftIO $ do
@@ -669,6 +759,7 @@ setCellLangH :: App -> Int -> ST.CellLang -> Handler Cell
 setCellLangH app cid lang = liftIO $ do
     modifyNotebook (appNotebook app) $ \nb ->
         nb{nbCells = map upd (nbCells nb)}
+    broadcastNotebook app
     nb <- readNotebook (appNotebook app)
     case lookupCell cid nb of
         Just c -> pure c
@@ -711,17 +802,72 @@ limitRequestBody sizeLimit innerApp req sendResp = do
 getAIConfigH :: App -> Handler Value
 getAIConfigH app = liftIO $ do
     mStore <- getAIStore app
-    pure $ object ["configured" .= isJust mStore]
+    case mStore of
+        Nothing ->
+            pure $
+                object
+                    [ "configured" .= False
+                    , "model" .= (Nothing :: Maybe Text)
+                    , "models" .= knownModels
+                    ]
+        Just store -> do
+            cfg <- getAIConfig store
+            pure $
+                object
+                    [ "configured" .= True
+                    , "model" .= acModel cfg
+                    , "models" .= knownModels
+                    ]
+
+-- | Suggested model IDs shown in the picker. Custom values are also accepted.
+knownModels :: [Value]
+knownModels =
+    [ modelEntry
+        "claude-haiku-4-5-20251001"
+        "Haiku 4.5"
+        "Fast + cheap; best for high-frequency iteration"
+    , modelEntry
+        "claude-sonnet-4-6"
+        "Sonnet 4.6"
+        "Recommended balance of speed and capability"
+    , modelEntry
+        "claude-opus-4-7"
+        "Opus 4.7"
+        "Most capable; slower; use for hard reasoning"
+    , modelEntry "claude-sonnet-4-20250514" "Sonnet 4 (legacy)" "Original default"
+    ]
+  where
+    modelEntry :: Text -> Text -> Text -> Value
+    modelEntry mid label desc =
+        object ["id" .= mid, "label" .= label, "description" .= desc]
 
 setAIConfigH :: App -> Value -> Handler Value
 setAIConfigH app (Object o) = liftIO $ do
-    case KM.lookup (Key.fromText "apiKey") o of
-        Just (String key) | not (T.null key) -> do
-            result <- configureAI app key
+    let mKey = case KM.lookup (Key.fromText "apiKey") o of
+            Just (String s) | not (T.null s) -> Just s
+            _ -> Nothing
+        mModel = case KM.lookup (Key.fromText "model") o of
+            Just (String s) | not (T.null s) -> Just s
+            _ -> Nothing
+    if isNothing mKey && isNothing mModel
+        then pure $ object ["error" .= ("apiKey or model is required" :: Text)]
+        else do
+            result <-
+                updateAIConfig
+                    app
+                    AIConfigUpdate{aicuApiKey = mKey, aicuModel = mModel}
             case result of
-                Right () -> pure $ object ["configured" .= True]
+                Right () -> do
+                    mStore <- getAIStore app
+                    currentModel <- case mStore of
+                        Just store -> Just . acModel <$> getAIConfig store
+                        Nothing -> pure Nothing
+                    pure $
+                        object
+                            [ "configured" .= True
+                            , "model" .= currentModel
+                            ]
                 Left err -> pure $ object ["error" .= err]
-        _ -> pure $ object ["error" .= ("apiKey is required" :: Text)]
 setAIConfigH _ _ = pure $ object ["error" .= ("Invalid request body" :: Text)]
 
 ------------------------------------------------------------------------
@@ -752,17 +898,108 @@ chatClearH app = liftIO $ do
     for_ mStore (handleClearChat app)
     pure NoContent
 
-chatAcceptEditH :: App -> Int -> Handler (Maybe Cell)
-chatAcceptEditH app editIdInt = liftIO $ do
+chatAcceptEditH :: App -> ReactiveNotebook -> Int -> Handler (Maybe Cell)
+chatAcceptEditH app rn editIdInt = liftIO $ do
     mStore <- getAIStore app
     case mStore of
         Nothing -> pure Nothing
-        Just store -> acceptEdit app store (EditId editIdInt)
+        Just store -> acceptEdit app store rn (EditId editIdInt)
 
 chatRevertEditH :: App -> Int -> Handler NoContent
 chatRevertEditH app editIdInt = liftIO $ do
     mStore <- getAIStore app
     case mStore of
         Nothing -> pure ()
-        Just store -> revertEdit store (EditId editIdInt)
+        Just store -> revertEdit app store (EditId editIdInt)
     pure NoContent
+
+------------------------------------------------------------------------
+-- AI REST bridge (for external CLI skills — e.g. Siza)
+------------------------------------------------------------------------
+
+aiHealthH :: App -> Handler Value
+aiHealthH app =
+    pure $
+        object
+            [ "ok" .= True
+            , "workDir" .= envWorkDir (appEnv app)
+            , "authRequired" .= isJust (appAiToken app)
+            ]
+
+aiToolsH :: Handler [ToolDef]
+aiToolsH = pure chatTools
+
+aiNotebookH :: App -> Handler Value
+aiNotebookH app = liftIO $ do
+    nb <- readNotebook (appNotebook app)
+    pure (renderNotebookDoc defaultDocOpts nb)
+
+{- | Invoke a single AI tool from an external CLI client. Body: @{ name, input }@.
+An optional @X-Sabela-Session@ header isolates @explore_result@ handles
+between concurrent clients while they still see the same notebook.
+-}
+aiToolH ::
+    App ->
+    ReactiveNotebook ->
+    Maybe Text ->
+    Value ->
+    Handler Value
+aiToolH app rn mSession body = liftIO $ do
+    let name = fromMaybe "" (stringField "name" body)
+        input = fromMaybe (object []) (valueField "input" body)
+    mStore <- ensureAIStoreForTools app
+    case mStore of
+        Nothing ->
+            pure $
+                object
+                    [ "isError" .= True
+                    , "result"
+                        .= object
+                            [ "error"
+                                .= ( "Cannot execute tools: no HTTP manager available. Start sabela normally via cabal run." ::
+                                        Text
+                                   )
+                            ]
+                    ]
+        Just store -> do
+            storeForCall <- case mSession of
+                Nothing -> pure store
+                Just sid -> do
+                    hs <- resolveCliHandleStore app sid
+                    pure store{AIStore.aiHandles = hs}
+            cancelTok <- newCancelToken
+            (result, isError) <- executeTool app storeForCall rn cancelTok name input
+            pure $ object ["isError" .= isError, "result" .= result]
+
+{- | Ensure an AIStore exists. The browser path requires a real API key for
+Anthropic access, but the REST bridge only uses the store as a plumbing
+object — handles, scratchpad, pending edits. If no store exists yet, we
+build one with a placeholder config so read-only/tool-only flows work even
+before the user configures a key.
+-}
+ensureAIStoreForTools :: App -> IO (Maybe AIStore.AIStore)
+ensureAIStoreForTools app = do
+    mStore <- getAIStore app
+    case mStore of
+        Just s -> pure (Just s)
+        Nothing -> case appHttpMgr app of
+            Nothing -> pure Nothing
+            Just mgr -> do
+                let cfg =
+                        AnthropicConfig
+                            { acApiKey = ""
+                            , acModel = "placeholder"
+                            , acBaseUrl = "https://api.anthropic.com"
+                            }
+                store <- AIStore.newAIStore cfg mgr
+                setAIStore app (Just store)
+                pure (Just store)
+
+stringField :: Text -> Value -> Maybe Text
+stringField k v = case valueField k v of
+    Just (String s) -> Just s
+    _ -> Nothing
+
+valueField :: Text -> Value -> Maybe Value
+valueField k (Object o) = KM.lookup (Key.fromText k) o
+valueField _ _ = Nothing

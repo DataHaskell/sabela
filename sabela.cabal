@@ -11,7 +11,7 @@ maintainer:         mschavinda@gmail.com
 category:           Development
 build-type:         Simple
 extra-doc-files:    CHANGELOG.md, README.md
-extra-source-files: static/index.html, static/dashboard.html
+extra-source-files: static/index.html, static/dashboard.html, data/api-reference.txt
 
 common warnings
     ghc-options: -Wall
@@ -25,7 +25,10 @@ library
                       Sabela.AI.Types,
                       Sabela.AI.Store,
                       Sabela.AI.Capabilities,
+                      Sabela.AI.Doc,
+                      Sabela.AI.Handles,
                       Sabela.AI.Orchestrator,
+                      Sabela.AI.ReferenceCard,
                       Sabela.Session,
                       Sabela.SessionTypes,
                       Sabela.Model,
@@ -57,6 +60,7 @@ library
                       directory >= 1.3 && < 1.4,
                       file-embed >= 0.0.11 && < 0.1,
                       filepath >= 1.4 && < 1.6,
+                      hashable >= 1.3 && < 1.6,
                       http-client >= 0.7 && < 0.10,
                       http-types >= 0.12 && < 0.13,
                       process >= 1.6 && < 1.8,
@@ -73,10 +77,14 @@ library
 executable sabela
   main-is: Main.hs
   build-depends: base >= 4 && < 5,
+                 aeson >= 0.11.0.0 && < 3,
+                 bytestring >= 0.10 && < 0.13,
                  containers >= 0.6.7 && < 0.9,
                  directory >= 1.3 && < 1.4,
                  filepath >= 1.4 && < 1.6,
                  http-client-tls >= 0.3 && < 0.4,
+                 text >= 1.2 && < 3,
+                 unix >= 2.7 && < 2.9,
                  warp >= 3.3  && < 3.5,
                  sabela
   hs-source-dirs:     app
@@ -94,9 +102,21 @@ test-suite sabela-test
                       Test.TopoSpec,
                       Test.OutputSpec,
                       Test.PreinstalledSpec,
-                      Test.GenerationSpec
+                      Test.GenerationSpec,
+                      Test.AiDocSpec,
+                      Test.AiHandlesSpec,
+                      Test.AiHistorySpec,
+                      Test.AiRestSpec,
+                      Test.CacheControlSpec,
+                      Test.CompactResultSpec,
+                      Test.CycleMsgSpec,
+                      Test.ScratchpadRenderSpec,
+                      Test.ToolParseSpec,
+                      Test.UsageEventSpec,
+                      Test.UsageMergeSpec
     build-depends:
         base >= 4 && < 5,
+        aeson >= 0.11.0.0 && < 3,
         containers >= 0.6.7 && < 0.9,
         hspec >= 2 && < 3,
         directory >= 1.3.0.0 && < 2,

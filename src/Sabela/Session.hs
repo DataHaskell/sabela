@@ -244,6 +244,12 @@ queryType sess name = runQueryCommand sess (QueryType name)
 queryInfo :: Session -> Text -> IO Text
 queryInfo sess name = runQueryCommand sess (QueryInfo name)
 
+queryKind :: Session -> Text -> IO Text
+queryKind sess name = runQueryCommand sess (QueryKind name)
+
+queryBrowse :: Session -> Text -> IO Text
+queryBrowse sess mname = runQueryCommand sess (QueryBrowse mname)
+
 queryDoc :: Session -> Text -> IO Text
 queryDoc sess name = runQueryCommand sess (QueryDoc name)
 
@@ -260,12 +266,16 @@ runQueryCommand sess cmd = withMVar (sessLock sess) $ \_ -> do
 data QueryCommand
     = QueryType Text
     | QueryInfo Text
+    | QueryKind Text
+    | QueryBrowse Text
     | QueryDoc Text
     | QueryComplete Text
 
 toText :: QueryCommand -> Text
 toText (QueryType t) = ":type " <> t
 toText (QueryInfo t) = ":info " <> t
+toText (QueryKind t) = ":kind " <> t
+toText (QueryBrowse t) = ":browse " <> t
 toText (QueryDoc t) = ":doc " <> t
 toText (QueryComplete t) = ":complete repl " <> t
 
@@ -353,5 +363,7 @@ ghciBackend sess =
         , ST.sbQueryComplete = queryComplete sess
         , ST.sbQueryType = queryType sess
         , ST.sbQueryInfo = queryInfo sess
+        , ST.sbQueryKind = queryKind sess
+        , ST.sbQueryBrowse = queryBrowse sess
         , ST.sbQueryDoc = queryDoc sess
         }

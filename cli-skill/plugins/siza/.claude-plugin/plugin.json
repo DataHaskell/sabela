@@ -1,0 +1,5 @@
+{
+  "name": "siza",
+  "description": "Sabela notebook pairing skill — list, read, run, edit cells in a running Sabela via REST.",
+  "version": "0.1.0"
+}

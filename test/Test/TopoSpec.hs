@@ -68,15 +68,14 @@ spec = describe "Sabela.Topo" $ do
                 [] -> expectationFailure "trOrdered should not be empty"
             trCycleIds result `shouldBe` S.empty
 
-        it "puts the later redefining cell in redefMap, not in trOrdered" $ do
+        it "runs both cells when they redefine the same name (last-wins)" $ do
             let cells = [mkCell 1 "let x = 1", mkCell 2 "let x = 2"]
                 (result, redefMap) = computeTopoOrder cells
-            -- cell 2 should be in redefMap (it redefines x)
-            M.member 2 redefMap `shouldBe` True
-            -- cell 2 should NOT appear in trOrdered
-            map cellId (trOrdered result) `shouldNotContain` [2]
-            -- cell 1 (canonical definer) should appear in trOrdered
+            -- No redef errors under last-wins; both cells run, cell 2's
+            -- binding shadows cell 1's in the live session.
+            redefMap `shouldBe` M.empty
             map cellId (trOrdered result) `shouldContain` [1]
+            map cellId (trOrdered result) `shouldContain` [2]
 
         it "detects a simple two-cell cycle" $ do
             let cells =
@@ -289,8 +288,8 @@ spec = describe "Sabela.Topo" $ do
             -- x' and x are separate
             S.member "x" defs `shouldBe` False
 
-    describe "computeTopoOrder — redefinition semantics" $ do
-        it "puts redefining cell in redefMap while downstream uses canonical def" $ do
+    describe "computeTopoOrder — redefinition semantics (last-wins)" $ do
+        it "three-cell chain where a later cell redefines a name used upstream" $ do
             let cells =
                     [ mkCell 1 "let x = 1"
                     , mkCell 2 "let y = x + 1"
@@ -298,29 +297,117 @@ spec = describe "Sabela.Topo" $ do
                     ]
                 (result, redefMap) = computeTopoOrder cells
                 orderedIds = map cellId (trOrdered result)
-            M.member 3 redefMap `shouldBe` True
+            redefMap `shouldBe` M.empty
+            -- All three cells run; cell 3 is the canonical owner of `x`, so
+            -- cell 2 (which uses x) depends on cell 3 and follows it.
             orderedIds `shouldContain` [1]
             orderedIds `shouldContain` [2]
-            orderedIds `shouldNotContain` [3]
+            orderedIds `shouldContain` [3]
 
-        it "puts all later redefinitions in redefMap for three-way redef" $ do
+        it "three-way redef: all three cells run, no errors" $ do
             let cells =
                     [ mkCell 1 "let x = 1"
                     , mkCell 2 "let x = 2"
                     , mkCell 3 "let x = 3"
                     ]
                 (result, redefMap) = computeTopoOrder cells
-            M.member 2 redefMap `shouldBe` True
-            M.member 3 redefMap `shouldBe` True
-            map cellId (trOrdered result) `shouldBe` [1]
+            redefMap `shouldBe` M.empty
+            map cellId (trOrdered result) `shouldContain` [1]
+            map cellId (trOrdered result) `shouldContain` [2]
+            map cellId (trOrdered result) `shouldContain` [3]
 
-        it "marks cell as redef even if it also defines unique names" $ do
+        it "redef-and-new-def cell is canonical owner of both" $ do
             let cells =
                     [ mkCell 1 "let x = 1"
                     , mkCell 2 "let x = 2\nlet y = 1"
                     ]
                 (_, redefMap) = computeTopoOrder cells
-            M.member 2 redefMap `shouldBe` True
+            redefMap `shouldBe` M.empty
+
+    describe "cellNames — literals and comments are not scanned" $ do
+        it "does NOT pick up identifiers inside string literals" $ do
+            let (_, uses) = cellNames "putStrLn \"foo bar baz\""
+            S.member "foo" uses `shouldBe` False
+            S.member "bar" uses `shouldBe` False
+            S.member "baz" uses `shouldBe` False
+            -- real use of putStrLn IS picked up
+            S.member "putStrLn" uses `shouldBe` True
+
+        it "does NOT pick up identifiers inside line comments" $ do
+            let (defs, uses) = cellNames "y = 1 -- secretName is mentioned here"
+            S.member "secretName" uses `shouldBe` False
+            S.member "y" defs `shouldBe` True
+            S.member "secretName" defs `shouldBe` False
+
+        it "does NOT pick up identifiers inside block comments" $ do
+            let (_, uses) =
+                    cellNames "x = 1 {- old note about hiddenName -} + 2"
+            S.member "hiddenName" uses `shouldBe` False
+
+        it "still picks up real identifiers adjacent to literals" $ do
+            let (_, uses) =
+                    cellNames "main = putStrLn message >> print result"
+            S.member "putStrLn" uses `shouldBe` True
+            S.member "message" uses `shouldBe` True
+            S.member "print" uses `shouldBe` True
+            S.member "result" uses `shouldBe` True
+
+        it "handles multi-line string literals without corrupting later defs" $ do
+            let src =
+                    "template :: String\n"
+                        <> "template = \"defA uses defB\"\n"
+                        <> "realDef = 42"
+                (defs, uses) = cellNames src
+            S.member "template" defs `shouldBe` True
+            S.member "realDef" defs `shouldBe` True
+            -- The 'defA' and 'defB' tokens inside the string must not
+            -- become uses of real identifiers.
+            S.member "defA" uses `shouldBe` False
+            S.member "defB" uses `shouldBe` False
+
+    describe "cellNames — function parameters are scope-local" $ do
+        it "does NOT treat the inline param of `f x = ...` as a free use" $ do
+            let (_, uses) = cellNames "isPrime x = x * 2"
+            S.member "x" uses `shouldBe` False
+
+        it "two cells each binding `x` do not form a cycle" $ do
+            let cells =
+                    [ mkCell 1 "isPrime x = x * 2"
+                    , mkCell 2 "f x = x + 1"
+                    ]
+                (result, _) = computeTopoOrder cells
+            trCycleIds result `shouldBe` S.empty
+
+        it "params are stripped across indented continuation lines" $ do
+            let src =
+                    "isPrime n\n"
+                        <> "  | n < 2 = False\n"
+                        <> "  | n == 2 = True\n"
+                        <> "  | otherwise = all (\\d -> n `mod` d /= 0) [2..n-1]"
+                (defs, uses) = cellNames src
+            S.member "isPrime" defs `shouldBe` True
+            -- n is the function parameter; it should not be recorded as a
+            -- top-level use of something defined elsewhere.
+            S.member "n" uses `shouldBe` False
+            -- Real uses (from the body) are preserved.
+            S.member "all" uses `shouldBe` True
+
+        it "a FREE mention of `x` outside any binding is still a use" $ do
+            -- 'double x = ...' binds x locally. 'main = print (double x)'
+            -- uses x at the top level — it must remain in uses.
+            let src =
+                    "double x = x * 2\n"
+                        <> "main = print (double x)"
+                (defs, uses) = cellNames src
+            S.member "double" defs `shouldBe` True
+            S.member "main" defs `shouldBe` True
+            S.member "x" uses `shouldBe` True
+
+        it "multiple params on one line are all treated as local" $ do
+            let (_, uses) = cellNames "combine a b c = a + b * c"
+            S.member "a" uses `shouldBe` False
+            S.member "b" uses `shouldBe` False
+            S.member "c" uses `shouldBe` False
 
     describe "computeTopoOrder — cycle edge cases" $ do
         it "detects a three-cell cycle" $ do

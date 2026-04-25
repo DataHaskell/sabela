@@ -21,6 +21,10 @@ data SessionBackend = SessionBackend
     -- ^ Type query (GHCi :type).
     , sbQueryInfo :: Text -> IO Text
     -- ^ Info query (GHCi :info).
+    , sbQueryKind :: Text -> IO Text
+    -- ^ Kind query (GHCi :kind).
+    , sbQueryBrowse :: Text -> IO Text
+    -- ^ List a module's exports (GHCi :browse).
     , sbQueryDoc :: Text -> IO Text
     -- ^ Doc query (GHCi :doc).
     }

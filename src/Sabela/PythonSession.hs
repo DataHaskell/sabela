@@ -146,6 +146,8 @@ pythonBackend sess =
         , ST.sbQueryComplete = \_ -> pure []
         , ST.sbQueryType = \_ -> pure ""
         , ST.sbQueryInfo = \_ -> pure ""
+        , ST.sbQueryKind = \_ -> pure ""
+        , ST.sbQueryBrowse = \_ -> pure ""
         , ST.sbQueryDoc = \_ -> pure ""
         }
 

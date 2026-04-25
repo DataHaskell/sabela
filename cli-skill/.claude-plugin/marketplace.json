@@ -1,0 +1,14 @@
+{
+  "name": "sabela-tools",
+  "owner": {
+    "name": "Michael Chavinda",
+    "email": "mschavinda@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "siza",
+      "source": "./plugins/siza",
+      "description": "Pair with a running Sabela notebook from Claude Code. List cells, run them, propose edits, drill into large outputs."
+    }
+  ]
+}

@@ -20,27 +20,27 @@ spec :: Spec
 spec = describe "Generation counter" $ do
     describe "bumpGeneration" $ do
         it "increments the generation counter" $ do
-            app <- newApp "." Set.empty Nothing
+            app <- newApp "." Set.empty Nothing Nothing
             gen1 <- bumpGeneration app
             gen2 <- bumpGeneration app
             gen2 `shouldBe` gen1 + 1
 
         it "makes old generations stale" $ do
-            app <- newApp "." Set.empty Nothing
+            app <- newApp "." Set.empty Nothing Nothing
             gen1 <- bumpGeneration app
             _ <- bumpGeneration app
             stale <- isCurrentGen app gen1
             stale `shouldBe` False
 
         it "current generation is valid" $ do
-            app <- newApp "." Set.empty Nothing
+            app <- newApp "." Set.empty Nothing Nothing
             gen <- bumpGeneration app
             current <- isCurrentGen app gen
             current `shouldBe` True
 
     describe "notebook load cancellation" $ do
         it "bumpGeneration invalidates previous generation" $ do
-            app <- newApp "." Set.empty Nothing
+            app <- newApp "." Set.empty Nothing Nothing
             gen1 <- bumpGeneration app
             -- Simulate loading a new notebook (bumps generation)
             gen2 <- bumpGeneration app
@@ -52,6 +52,6 @@ spec = describe "Generation counter" $ do
             current `shouldBe` True
 
         it "killAllSessions does not crash on fresh app" $ do
-            app <- newApp "." Set.empty Nothing
+            app <- newApp "." Set.empty Nothing Nothing
             -- Should not throw even with no sessions
             killAllSessions app

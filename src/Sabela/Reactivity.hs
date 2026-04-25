@@ -99,14 +99,64 @@ redefinitionErrorMsg defMap posMap _cid names =
             <> T.intercalate "; " msgs
             <> ". Remove the duplicate to resolve this conflict."
 
-cycleErrorMsg :: M.Map Int Int -> S.Set Int -> Text
-cycleErrorMsg posMap cycleIds =
+{- | Human-readable explanation of a detected cycle. The message names both the
+cells involved (by 1-based position) AND the specific variables that create
+the mutual references, so the agent can jump straight to the offending
+identifiers instead of inspecting every line.
+
+If @cells@ / @defMap@ are passed, the variable list is included; otherwise
+the fallback message only lists cell positions. The positional fallback is
+kept for any older call sites that haven't been updated yet.
+-}
+cycleErrorMsg ::
+    M.Map Int Int ->
+    S.Set Int ->
+    [Cell] ->
+    M.Map Text Int ->
+    Text
+cycleErrorMsg posMap cycleIds cells defMap =
     let cids = S.toList cycleIds
-        cycleMsg =
-            T.intercalate
-                ", "
-                (map (\c -> T.pack (show (M.findWithDefault c c posMap))) cids)
-     in "This cell is part of a circular dependency and cannot be executed."
-            <> " Cells in the cycle: ["
-            <> cycleMsg
+        positions =
+            map (\c -> T.pack (show (M.findWithDefault c c posMap))) cids
+        cycleList = T.intercalate ", " positions
+        vars = cycleVariables cycleIds cells defMap
+        varLine =
+            if null vars
+                then ""
+                else
+                    " Variables forming the cycle: {"
+                        <> T.intercalate ", " vars
+                        <> "}."
+     in "This cell is part of a circular dependency and cannot execute. "
+            <> "Cells in the cycle (by position): ["
+            <> cycleList
             <> "]."
+            <> varLine
+            <> " To resolve: (1) rename one of those variables in the cell that"
+            <> " introduces the loop, (2) delete one of the mutually-referencing"
+            <> " cells, or (3) merge the definitions into a single cell."
+            <> " Tokens inside string literals / comments are NOT counted, so"
+            <> " this is a real reference loop in the code."
+
+{- | Identify the set of variable names that connect cells in a cycle. A name
+@x@ is "cycle-forming" if it is defined in one cycle cell and used by another
+cycle cell. Order in output is lexicographic for determinism.
+-}
+cycleVariables :: S.Set Int -> [Cell] -> M.Map Text Int -> [Text]
+cycleVariables cycleIds cells defMap =
+    let cellById = M.fromList [(cellId c, c) | c <- cells]
+        cycleCells = [c | cid <- S.toList cycleIds, Just c <- [M.lookup cid cellById]]
+        nameCreatesCycleEdge name =
+            case M.lookup name defMap of
+                Nothing -> False
+                Just definerCid -> S.member definerCid cycleIds
+        namesForCell c =
+            let (_, uses) = Topo.cellNames (cellSource c)
+             in S.filter
+                    ( \n ->
+                        nameCreatesCycleEdge n
+                            && M.lookup n defMap /= Just (cellId c)
+                    )
+                    uses
+        allVars = S.unions (map namesForCell cycleCells)
+     in S.toAscList allVars

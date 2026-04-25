@@ -10,8 +10,8 @@ echo "=== Authenticating with ECR ==="
 aws ecr get-login-password --region "$AWS_REGION" | \
   docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-echo "=== Building Sabela image ==="
-docker build --platform linux/amd64 -t datahaskell/sabela .
+# echo "=== Building Sabela image ==="
+# docker build --platform linux/amd64 -t datahaskell/sabela .
 
 echo "=== Pushing to ECR ==="
 docker tag datahaskell/sabela:latest "$ECR_SABELA:latest"

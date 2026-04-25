@@ -6,6 +6,10 @@ module Sabela.State (
     getAIStore,
     setAIStore,
     configureAI,
+    updateAIConfig,
+    AIConfigUpdate (..),
+    broadcastNotebook,
+    resolveCliHandleStore,
 
     -- * Re-exports for convenience
     module Sabela.State.Environment,
@@ -17,18 +21,34 @@ module Sabela.State (
     module Sabela.State.BridgeStore,
 ) where
 
-import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, readMVar)
+import Control.Applicative ((<|>))
+import Control.Concurrent.MVar (
+    MVar,
+    modifyMVar,
+    modifyMVar_,
+    newMVar,
+    readMVar,
+ )
 import Data.Aeson (Value (..), eitherDecodeStrict, encode, object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
+import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.HTTP.Client (Manager)
-import Sabela.AI.Store (AIStore, newAIStore)
+import Sabela.AI.Handles (HandleStore, newHandleStore)
+import Sabela.AI.Store (
+    AIStore,
+    getAIConfig,
+    newAIStore,
+    setAIFullConfig,
+    setAIModel,
+ )
 import Sabela.Anthropic.Types (AnthropicConfig (..))
+import Sabela.Model (NotebookEvent (..))
 import Sabela.State.BridgeStore
 import Sabela.State.DependencyTracker
 import Sabela.State.Environment
@@ -55,6 +75,14 @@ data App = App
     , appBridge :: BridgeStore
     , appAI :: MVar (Maybe AIStore)
     , appHttpMgr :: Maybe Manager
+    , appAiToken :: Maybe Text
+    {- ^ If set, `/api/ai/*` requires `Authorization: Bearer <token>`.
+    Comes from the @SABELA_AI_TOKEN@ env var at startup.
+    -}
+    , appCliSessions :: MVar (M.Map Text HandleStore)
+    {- ^ Per-session handle stores for external CLI clients, keyed by
+    the @X-Sabela-Session@ header. Created lazily on first request.
+    -}
     }
 
 -- | Read the current AI store (if configured).
@@ -65,41 +93,96 @@ getAIStore = readMVar . appAI
 setAIStore :: App -> Maybe AIStore -> IO ()
 setAIStore app val = modifyMVar_ (appAI app) (const (pure val))
 
-{- | Configure AI with an API key at runtime.
+data AIConfigUpdate = AIConfigUpdate
+    { aicuApiKey :: Maybe Text
+    , aicuModel :: Maybe Text
+    }
+
+{- | Configure AI with an API key at runtime (legacy single-field path).
 Writes the key to <workdir>/.sabela/config.json and initializes the AIStore.
 -}
 configureAI :: App -> Text -> IO (Either Text ())
-configureAI app apiKey = case appHttpMgr app of
+configureAI app apiKey =
+    updateAIConfig app AIConfigUpdate{aicuApiKey = Just apiKey, aicuModel = Nothing}
+
+{- | Apply partial updates to the AI config. If the store is not yet initialized
+and no API key is supplied, returns an error. The API key and model are both
+persisted to <workdir>/.sabela/config.json so changes survive server restarts.
+-}
+updateAIConfig :: App -> AIConfigUpdate -> IO (Either Text ())
+updateAIConfig app upd = case appHttpMgr app of
     Nothing -> pure (Left "No HTTP manager available")
     Just mgr -> do
-        let model = envAnthropicModel (appEnv app)
-            cfg =
-                AnthropicConfig
-                    { acApiKey = apiKey
-                    , acModel = model
-                    , acBaseUrl = T.pack "https://api.anthropic.com"
-                    }
-        store <- newAIStore cfg mgr
-        setAIStore app (Just store)
-        -- Persist to config file
-        let configDir = envWorkDir (appEnv app) </> ".sabela"
-            configFile = configDir </> "config.json"
-            json = encode (object ["anthropicKey" .= apiKey])
-        createDirectoryIfMissing True configDir
-        BS.writeFile configFile (BS.toStrict json)
-        pure (Right ())
+        mStore <- getAIStore app
+        case (mStore, aicuApiKey upd) of
+            (Nothing, Nothing) ->
+                pure (Left "apiKey is required for first-time setup")
+            (Nothing, Just key) -> do
+                let model = fromMaybe (envAnthropicModel (appEnv app)) (aicuModel upd)
+                    cfg =
+                        AnthropicConfig
+                            { acApiKey = key
+                            , acModel = model
+                            , acBaseUrl = T.pack "https://api.anthropic.com"
+                            }
+                store <- newAIStore cfg mgr
+                setAIStore app (Just store)
+                persistConfig app key model
+                pure (Right ())
+            (Just store, _) -> do
+                oldCfg <- getAIConfig store
+                let newKey = fromMaybe (acApiKey oldCfg) (aicuApiKey upd)
+                    newModel = fromMaybe (acModel oldCfg) (aicuModel upd)
+                    newCfg =
+                        oldCfg{acApiKey = newKey, acModel = newModel}
+                case (aicuApiKey upd, aicuModel upd) of
+                    (Just _, _) -> setAIFullConfig store newCfg
+                    (Nothing, Just m) -> setAIModel store m
+                    _ -> pure ()
+                persistConfig app newKey newModel
+                pure (Right ())
 
-newApp :: FilePath -> Set Text -> Maybe Manager -> IO App
-newApp workDir globalDeps mHttpMgr = do
+{- | Look up (or lazily create) a per-CLI-session HandleStore keyed by the
+@X-Sabela-Session@ header value. Isolates @explore_result@ handles between
+concurrent external CLI clients.
+-}
+resolveCliHandleStore :: App -> Text -> IO HandleStore
+resolveCliHandleStore app sid = modifyMVar (appCliSessions app) $ \m ->
+    case M.lookup sid m of
+        Just hs -> pure (m, hs)
+        Nothing -> do
+            hs <- newHandleStore
+            pure (M.insert sid hs m, hs)
+
+{- | Read the current notebook and broadcast it as an @EvNotebookChanged@ SSE
+event. Call this after any mutation that changes the cell list, cell order, or
+cell source outside the reactive execute pipeline — AI tool mutations, HTTP
+insert/delete/reorder handlers, accepted edits.
+-}
+broadcastNotebook :: App -> IO ()
+broadcastNotebook app = do
+    nb <- readNotebook (appNotebook app)
+    broadcast (appEvents app) (EvNotebookChanged nb)
+
+persistConfig :: App -> Text -> Text -> IO ()
+persistConfig app key model = do
+    let configDir = envWorkDir (appEnv app) </> ".sabela"
+        configFile = configDir </> "config.json"
+        json = encode (object ["anthropicKey" .= key, "anthropicModel" .= model])
+    createDirectoryIfMissing True configDir
+    BS.writeFile configFile (BS.toStrict json)
+
+newApp :: FilePath -> Set Text -> Maybe Manager -> Maybe Text -> IO App
+newApp workDir globalDeps mHttpMgr mAiToken = do
     absWork <- canonicalizePath workDir
     tmpBase <- getCanonicalTemporaryDirectory
     tmpDir <- createTempDirectory tmpBase "sabela-server"
     debug <- isJust <$> lookupEnv "SABELA_DEBUG"
-    mApiKey <- resolveApiKey absWork
-    apiModel <-
-        fromMaybe "claude-sonnet-4-20250514"
-            <$> lookupEnv "ANTHROPIC_MODEL"
-    let env =
+    (mApiKey, mSavedModel) <- resolveConfig absWork
+    envModel <- lookupEnv "ANTHROPIC_MODEL"
+    let defaultModel = "claude-sonnet-4-20250514"
+        apiModel = fromMaybe defaultModel (envModel <|> fmap T.unpack mSavedModel)
+        env =
             Environment
                 { envWorkDir = absWork
                 , envTmpDir = tmpDir
@@ -119,6 +202,7 @@ newApp workDir globalDeps mHttpMgr = do
             Just <$> newAIStore cfg mgr
         _ -> pure Nothing
     aiVar <- newMVar mAIStore
+    cliSessionsVar <- newMVar M.empty
     App env
         <$> newNotebookStore
         <*> newEventBus
@@ -128,27 +212,31 @@ newApp workDir globalDeps mHttpMgr = do
         <*> newBridgeStore
         <*> pure aiVar
         <*> pure mHttpMgr
+        <*> pure mAiToken
+        <*> pure cliSessionsVar
 
--- | Resolve API key: env var takes priority, then config file on disk.
-resolveApiKey :: FilePath -> IO (Maybe String)
-resolveApiKey workDir = do
+-- | Resolve API key + saved model. Env ANTHROPIC_API_KEY wins for the key.
+resolveConfig :: FilePath -> IO (Maybe String, Maybe Text)
+resolveConfig workDir = do
     mEnv <- lookupEnv "ANTHROPIC_API_KEY"
-    case mEnv of
-        Just key -> pure (Just key)
-        Nothing -> readKeyFromConfig workDir
+    (fileKey, fileModel) <- readConfigFile workDir
+    pure (mEnv <|> fileKey, fileModel)
 
-readKeyFromConfig :: FilePath -> IO (Maybe String)
-readKeyFromConfig workDir = do
+readConfigFile :: FilePath -> IO (Maybe String, Maybe Text)
+readConfigFile workDir = do
     let configFile = workDir </> ".sabela" </> "config.json"
     exists <- doesFileExist configFile
     if not exists
-        then pure Nothing
+        then pure (Nothing, Nothing)
         else do
             bs <- BS.readFile configFile
             case eitherDecodeStrict bs of
-                Left _ -> pure Nothing
                 Right (Object obj) ->
-                    case KM.lookup (Key.fromText "anthropicKey") obj of
-                        Just (String key) -> pure (Just (T.unpack key))
-                        _ -> pure Nothing
-                Right _ -> pure Nothing
+                    let key = case KM.lookup (Key.fromText "anthropicKey") obj of
+                            Just (String s) -> Just (T.unpack s)
+                            _ -> Nothing
+                        model = case KM.lookup (Key.fromText "anthropicModel") obj of
+                            Just (String s) | not (T.null s) -> Just s
+                            _ -> Nothing
+                     in pure (key, model)
+                _ -> pure (Nothing, Nothing)

@@ -565,9 +565,16 @@ broadcastRedefErrors app plan filterCid = do
 broadcastCycleErrors :: App -> ExecutionPlan -> Maybe Int -> IO ()
 broadcastCycleErrors app plan filterCid = do
     let cycleIds = filterCycleIds filterCid (epCycleIds plan)
-    unless (S.null cycleIds) $
-        let msg = cycleErrorMsg (epCellPositions plan) cycleIds
-         in forM_ (S.toList cycleIds) $ \cid -> broadcastCellError app cid msg
+    unless (S.null cycleIds) $ do
+        nb <- readNotebook (appNotebook app)
+        let cells = nbCells nb
+            msg =
+                cycleErrorMsg
+                    (epCellPositions plan)
+                    cycleIds
+                    cells
+                    (epDefMap plan)
+        forM_ (S.toList cycleIds) $ \cid -> broadcastCellError app cid msg
 
 filterByCell :: Maybe Int -> M.Map Int a -> M.Map Int a
 filterByCell Nothing m = m

@@ -86,6 +86,16 @@ data NotebookEvent
       EvChatCancelled Int
     | -- | turnId, error message
       EvChatError Int Text
+    | {- | Full notebook snapshot — fired whenever cells are inserted, deleted,
+      reordered, or edited outside the reactive execute path, so the frontend
+      can refresh its view without re-fetching.
+      -}
+      EvNotebookChanged Notebook
+    | {- | Per-turn token accounting: {turnId, inputTokens, outputTokens,
+      cacheCreationInputTokens, cacheReadInputTokens, wallTimeMs,
+      iterations}. Emitted once when a turn completes.
+      -}
+      EvChatUsageUpdate Int Value
     deriving (Show)
 
 data SessionStatus
@@ -165,6 +175,17 @@ instance ToJSON NotebookEvent where
             [ "type" .= ("chatError" :: Text)
             , "turnId" .= tid
             , "message" .= msg
+            ]
+    toJSON (EvNotebookChanged nb) =
+        object
+            [ "type" .= ("notebookChanged" :: Text)
+            , "notebook" .= nb
+            ]
+    toJSON (EvChatUsageUpdate tid payload) =
+        object
+            [ "type" .= ("chatUsageUpdate" :: Text)
+            , "turnId" .= tid
+            , "usage" .= payload
             ]
 
 data CellError = CellError

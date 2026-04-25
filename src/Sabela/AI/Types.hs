@@ -20,6 +20,9 @@ module Sabela.AI.Types (
 
     -- * Execution result
     ExecutionResult (..),
+
+    -- * Usage helpers
+    emptyUsage,
 ) where
 
 import Control.Concurrent.STM (TVar, newTVarIO)
@@ -27,7 +30,12 @@ import Data.Aeson (ToJSON (..), object, (.=))
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Time (UTCTime, getCurrentTime)
-import Sabela.Anthropic.Types (CancelToken, StopReason, newCancelToken)
+import Sabela.Anthropic.Types (
+    CancelToken,
+    StopReason,
+    Usage (..),
+    newCancelToken,
+ )
 import Sabela.Model (CellError, OutputItem)
 import Sabela.SessionTypes (CellLang, SessionBackend)
 
@@ -68,6 +76,15 @@ data Turn = Turn
     , turnCancel :: CancelToken
     , turnToolCount :: IORef Int
     , turnStartedAt :: UTCTime
+    , turnUsage :: IORef Usage
+    -- ^ Accumulated token usage across every LLM iteration of this turn.
+    , turnIterations :: IORef Int
+    -- ^ Count of LLM round-trips (= assistant responses received) for this turn.
+    , turnScratchpadFails :: IORef Int
+    {- ^ Consecutive scratchpad calls that produced non-empty stderr. Reset
+    to 0 on any scratchpad success. Used for the circuit breaker that
+    nudges the model to change approach after repeated failures.
+    -}
     }
 
 newTurn :: IORef Int -> IO Turn
@@ -77,6 +94,9 @@ newTurn nextIdRef = do
     ct <- newCancelToken
     tc <- newIORef 0
     now <- getCurrentTime
+    usageRef <- newIORef emptyUsage
+    iterRef <- newIORef 0
+    scratchFailRef <- newIORef 0
     pure
         Turn
             { turnId = TurnId tid
@@ -84,7 +104,13 @@ newTurn nextIdRef = do
             , turnCancel = ct
             , turnToolCount = tc
             , turnStartedAt = now
+            , turnUsage = usageRef
+            , turnIterations = iterRef
+            , turnScratchpadFails = scratchFailRef
             }
+
+emptyUsage :: Usage
+emptyUsage = Usage 0 0 Nothing Nothing
 
 ------------------------------------------------------------------------
 -- Pending edits

@@ -173,6 +173,8 @@
     padding: 8px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
   .chat-context { font-size: 10px; color: var(--fg-dim); }
+  .chat-usage { font-size: 10px; color: var(--fg-dim); margin-left: 8px; font-variant-numeric: tabular-nums; cursor: help; }
+  .chat-usage.recent { color: var(--accent); }
   .chat-new-btn {
     font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
     background: var(--bg-cell); color: var(--fg-dim); border: 1px solid var(--border);
@@ -493,12 +495,16 @@
   }
   .ai-modal h2 { font-size: 16px; margin-bottom: 8px; color: var(--fg); }
   .ai-modal p { font-size: 12px; color: var(--fg-dim); margin-bottom: 16px; line-height: 1.5; }
-  .ai-modal input[type="password"] {
+  .ai-modal input[type="password"], .ai-modal input[type="text"], .ai-modal select {
     width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
     background: var(--bg-cell); color: var(--fg); font-family: 'IBM Plex Mono', monospace;
     font-size: 12px; margin-bottom: 12px;
   }
-  .ai-modal input:focus { outline: none; border-color: var(--accent); }
+  .ai-modal input:focus, .ai-modal select:focus { outline: none; border-color: var(--accent); }
+  .ai-modal label { display: block; font-size: 11px; color: var(--fg-dim); margin-bottom: 4px; }
+  .ai-modal .model-desc { font-size: 11px; color: var(--fg-dim); margin: -6px 0 12px; min-height: 14px; }
+  .ai-modal .custom-model { display: none; }
+  .ai-modal .custom-model.shown { display: block; }
   .ai-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
   .ai-modal-actions button {
     padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid var(--border);
@@ -547,13 +553,21 @@
 <body>
 
 <div id="ai-modal-overlay" class="ai-modal-overlay" style="display:none" onclick="if(event.target===this)closeAIModal()">
-  <div class="ai-modal" role="dialog" aria-label="Connect to AI">
-    <h2>Connect to AI</h2>
-    <p>Enter your Anthropic API key to enable the AI assistant. Your key is stored in your workspace and never sent anywhere except Anthropic's API.</p>
+  <div class="ai-modal" role="dialog" aria-label="AI settings">
+    <h2 id="ai-modal-title">Connect to AI</h2>
+    <p id="ai-modal-desc">Enter your Anthropic API key to enable the AI assistant. Your key is stored in your workspace and never sent anywhere except Anthropic's API.</p>
+    <label for="ai-modal-key">API key <span id="ai-modal-key-hint" style="color:var(--fg-dim)"></span></label>
     <input type="password" id="ai-modal-key" placeholder="sk-ant-..." autocomplete="off">
+    <label for="ai-modal-model">Model</label>
+    <select id="ai-modal-model" onchange="onModelChange()"></select>
+    <div class="model-desc" id="ai-modal-model-desc"></div>
+    <div class="custom-model" id="ai-modal-custom-wrap">
+      <label for="ai-modal-custom">Custom model ID</label>
+      <input type="text" id="ai-modal-custom" placeholder="claude-...">
+    </div>
     <div class="ai-modal-actions">
       <button class="secondary" onclick="closeAIModal()">Cancel</button>
-      <button class="primary" onclick="submitAIModal()">Connect</button>
+      <button class="primary" onclick="submitAIModal()">Save</button>
     </div>
     <div class="error" id="ai-modal-error"></div>
   </div>
@@ -636,6 +650,8 @@
     <div class="panel-content" id="panel-chat" role="tabpanel" aria-labelledby="tab-chat" style="display:none;flex-direction:column;padding:0">
       <div class="chat-header">
         <span class="chat-context" id="chat-context"></span>
+        <span class="chat-usage" id="chat-usage" title="Session token usage (cache-read in parens)"></span>
+        <button class="chat-new-btn" id="chat-model-btn" onclick="openAIModal()" title="Change model or API key" style="margin-right:6px">model</button>
         <button class="chat-new-btn" onclick="newChatConversation()" title="New conversation">New</button>
       </div>
       <div class="chat-messages" id="chat-messages">
@@ -668,6 +684,11 @@ let evtSource = null;
 let activeTab = 'info';
 let examples = [];
 let unsavedChanges = false;
+// Per-cell "locally edited since last render/save" flag. Only cells with
+// their id set here have their local CM value preserved across re-renders;
+// clean cells let the server-supplied content win, so AI-driven edits to
+// cells the user didn't touch show up immediately.
+const dirtyCells = new Set();
 const AUTOSAVE_INTERVAL_MS = 30000;
 
 // ── API helpers ──────────────────────────────────────────────────
@@ -806,7 +827,72 @@ function handleSSE(ev) {
       showChatError(ev.message);
       finishChatTurn();
       break;
+    case 'notebookChanged':
+      // Fired when cells are inserted, deleted, reordered, or edited outside
+      // the reactive execute path (AI mutations, accepted proposals, etc).
+      if (ev.notebook) {
+        notebook = ev.notebook;
+        render(notebook);
+        updateChatContext();
+      }
+      break;
+    case 'chatUsageUpdate':
+      recordTurnUsage(ev.turnId, ev.usage);
+      break;
   }
+}
+
+let sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, turns: 0 };
+let lastTurnUsage = null;
+
+function recordTurnUsage(turnId, usage) {
+  if (!usage) return;
+  lastTurnUsage = usage;
+  sessionUsage.inputTokens += (usage.inputTokens || 0);
+  sessionUsage.outputTokens += (usage.outputTokens || 0);
+  sessionUsage.cacheReadInputTokens += (usage.cacheReadInputTokens || 0);
+  sessionUsage.turns += 1;
+  renderUsageBadge();
+}
+
+function formatK(n) {
+  if (n == null) return '0';
+  if (n < 1000) return String(n);
+  return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
+}
+
+function renderUsageBadge() {
+  const el = document.getElementById('chat-usage');
+  if (!el) return;
+  if (sessionUsage.turns === 0) {
+    el.textContent = '';
+    el.removeAttribute('title');
+    return;
+  }
+  const s = sessionUsage;
+  const lu = lastTurnUsage || {};
+  const line1 = 'in ' + formatK(s.inputTokens)
+    + (s.cacheReadInputTokens > 0 ? ' (' + formatK(s.cacheReadInputTokens) + ' cache)' : '')
+    + ' / out ' + formatK(s.outputTokens);
+  el.textContent = line1;
+  el.title = [
+    'Session: ' + s.turns + ' turn(s)',
+    '  input ' + (s.inputTokens) + ' (cache-read ' + (s.cacheReadInputTokens) + ')',
+    '  output ' + (s.outputTokens),
+    'Last turn:',
+    '  iterations ' + (lu.iterations || 0) + ', tool calls ' + (lu.toolCalls || 0),
+    '  wall ' + (lu.wallTimeMs || 0) + ' ms',
+    '  input ' + (lu.inputTokens || 0) + ', output ' + (lu.outputTokens || 0),
+    '  cache read ' + (lu.cacheReadInputTokens || 0) + ', write ' + (lu.cacheCreationInputTokens || 0)
+  ].join('\n');
+  el.classList.add('recent');
+  setTimeout(() => el.classList.remove('recent'), 2500);
+}
+
+function resetSessionUsage() {
+  sessionUsage = { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, turns: 0 };
+  lastTurnUsage = null;
+  renderUsageBadge();
 }
 
 function setCellRunning(cellId, running) {
@@ -1397,6 +1483,7 @@ async function saveNotebook() {
     const nb = await api('POST', 'save', { srPath: null });
     notebook = nb;
     unsavedChanges = false;
+    dirtyCells.clear();
     document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
     flashSaved();
   } catch (e) { setStatus('Save failed: ' + e.message, 'error'); }
@@ -1537,11 +1624,22 @@ function render(nb) {
   document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
   const container = document.getElementById('notebook');
 
-  // Capture unsaved editor content before clearing (preserves user edits across add/delete)
+  // Capture unsaved editor content before clearing the DOM, but ONLY for
+  // cells the user has actively edited (tracked in `dirtyCells`). Clean
+  // cells let the server-supplied source win so AI-driven edits to
+  // untouched cells show up immediately. We scan the live DOM rather
+  // than the `editors` dict to dodge rAF-mount races where `editors`
+  // may have been cleared before the prior render's rAF fired.
   const draftContent = {};
-  for (const [id, cm] of Object.entries(editors)) {
-    draftContent[parseInt(id)] = cm.getValue();
-  }
+  container.querySelectorAll('.cell[data-id]').forEach(cellDiv => {
+    const id = parseInt(cellDiv.dataset.id);
+    if (Number.isNaN(id)) return;
+    if (!dirtyCells.has(id)) return;
+    const cmWrapper = cellDiv.querySelector('.CodeMirror');
+    if (cmWrapper && cmWrapper.CodeMirror) {
+      draftContent[id] = cmWrapper.CodeMirror.getValue();
+    }
+  });
 
   container.innerHTML = '';
   Object.keys(editors).forEach(k => delete editors[k]);
@@ -1596,7 +1694,18 @@ function renderCodeCell(cell, cellNum) {
   if (outDiv) div.appendChild(outDiv);
 
   requestAnimationFrame(() => {
-    if (editors[cell.cellId]) return;
+    // Previously guarded with `if (editors[cell.cellId]) return` to avoid
+    // double-mounting. That guard was a race hazard: when render() is
+    // called twice in quick succession (common under AI-driven
+    // notebookChanged broadcasts), rAF callbacks from the stale render
+    // would populate `editors[id]` against detached DOM, then the
+    // current render's rAFs would skip mounting and leave the visible
+    // `.cell-editor` empty — a 0-height "squished" cell. Always mount
+    // into the current DOM; old detached CM instances are GC'd.
+    if (editors[cell.cellId]) {
+      // Clean up any prior instance still lingering in the dict.
+      delete editors[cell.cellId];
+    }
     const cm = CodeMirror(editorDiv, {
       value: cell.cellSource, mode: cell.cellLang === 'Python' ? 'python' : 'haskell', theme: 'nord',
       lineNumbers: false, viewportMargin: Infinity, indentUnit: 2,
@@ -1634,7 +1743,13 @@ function renderCodeCell(cell, cellNum) {
         'Cmd-S': () => saveNotebook(),
       }
     });
-    cm.on('change', () => { unsavedChanges = true; });
+    cm.on('change', (_cm, changeObj) => {
+      unsavedChanges = true;
+      // Ignore programmatic setValue() from our own mount as "user edit".
+      if (changeObj && changeObj.origin !== 'setValue') {
+        dirtyCells.add(cell.cellId);
+      }
+    });
     editors[cell.cellId] = cm;
   });
   return div;
@@ -1812,25 +1927,90 @@ let aiConfigured = false;
 async function updateChatContext() {
   const el = document.getElementById('chat-context');
   if (!el) return;
-  // Check if AI is configured
+  // Check if AI is configured + refresh model info
   try {
     const resp = await fetch('/api/config/ai');
     const cfg = await resp.json();
     aiConfigured = cfg.configured;
+    aiCurrentModel = cfg.model || null;
+    aiModels = cfg.models || aiModels;
+    updateModelBadge();
   } catch (e) { aiConfigured = false; }
   if (!notebook) return;
   const codeCells = notebook.nbCells.filter(c => c.cellType === 'CodeCell').length;
   el.textContent = `${notebook.nbTitle} — ${codeCells} code cells`;
 }
 
-function openAIModal() {
+let aiModels = [];
+let aiCurrentModel = null;
+const CUSTOM_MODEL_VALUE = '__custom__';
+
+async function openAIModal() {
   const overlay = document.getElementById('ai-modal-overlay');
   overlay.style.display = 'flex';
-  const input = document.getElementById('ai-modal-key');
-  input.value = '';
+  const keyInput = document.getElementById('ai-modal-key');
+  const keyHint = document.getElementById('ai-modal-key-hint');
+  const title = document.getElementById('ai-modal-title');
+  const desc = document.getElementById('ai-modal-desc');
   const err = document.getElementById('ai-modal-error');
+  keyInput.value = '';
   err.style.display = 'none';
-  setTimeout(() => input.focus(), 50);
+  try {
+    const resp = await fetch('/api/config/ai');
+    const info = await resp.json();
+    aiModels = info.models || [];
+    aiCurrentModel = info.model || null;
+    populateModelSelect(aiModels, aiCurrentModel);
+    if (info.configured) {
+      title.textContent = 'AI settings';
+      desc.textContent = 'Change the model, or paste a new API key to replace the stored one.';
+      keyHint.textContent = '(leave blank to keep current)';
+    } else {
+      title.textContent = 'Connect to AI';
+      desc.textContent = 'Enter your Anthropic API key to enable the assistant. Stored in your workspace only.';
+      keyHint.textContent = '';
+    }
+  } catch (e) {
+    populateModelSelect(aiModels, aiCurrentModel);
+  }
+  setTimeout(() => keyInput.focus(), 50);
+}
+
+function populateModelSelect(models, current) {
+  const sel = document.getElementById('ai-modal-model');
+  sel.innerHTML = '';
+  let matched = false;
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.label + ' — ' + m.id;
+    opt.dataset.desc = m.description || '';
+    if (m.id === current) { opt.selected = true; matched = true; }
+    sel.appendChild(opt);
+  }
+  const customOpt = document.createElement('option');
+  customOpt.value = CUSTOM_MODEL_VALUE;
+  customOpt.textContent = 'Custom…';
+  customOpt.dataset.desc = 'Type any model id supported by your Anthropic account';
+  sel.appendChild(customOpt);
+  if (current && !matched) {
+    customOpt.selected = true;
+    document.getElementById('ai-modal-custom').value = current;
+  }
+  onModelChange();
+}
+
+function onModelChange() {
+  const sel = document.getElementById('ai-modal-model');
+  const opt = sel.options[sel.selectedIndex];
+  const descEl = document.getElementById('ai-modal-model-desc');
+  const customWrap = document.getElementById('ai-modal-custom-wrap');
+  descEl.textContent = opt && opt.dataset.desc ? opt.dataset.desc : '';
+  if (sel.value === CUSTOM_MODEL_VALUE) {
+    customWrap.classList.add('shown');
+  } else {
+    customWrap.classList.remove('shown');
+  }
 }
 
 function closeAIModal() {
@@ -1838,21 +2018,39 @@ function closeAIModal() {
 }
 
 async function submitAIModal() {
-  const input = document.getElementById('ai-modal-key');
+  const keyInput = document.getElementById('ai-modal-key');
+  const sel = document.getElementById('ai-modal-model');
+  const customInput = document.getElementById('ai-modal-custom');
   const errEl = document.getElementById('ai-modal-error');
-  const key = input.value.trim();
-  if (!key) { errEl.textContent = 'Please enter a key'; errEl.style.display = 'block'; return; }
+  const key = keyInput.value.trim();
+  let model = sel.value;
+  if (model === CUSTOM_MODEL_VALUE) model = customInput.value.trim();
+
+  if (!aiConfigured && !key) {
+    errEl.textContent = 'Please enter an API key';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!model) {
+    errEl.textContent = 'Please pick or enter a model';
+    errEl.style.display = 'block';
+    return;
+  }
+  const body = { model };
+  if (key) body.apiKey = key;
   try {
     const resp = await fetch('/api/config/ai', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({apiKey: key})
+      body: JSON.stringify(body)
     });
     const result = await resp.json();
     if (result.configured) {
       aiConfigured = true;
+      aiCurrentModel = result.model || model;
       closeAIModal();
       updateChatContext();
+      updateModelBadge();
     } else {
       errEl.textContent = result.error || 'Failed to configure';
       errEl.style.display = 'block';
@@ -1861,6 +2059,19 @@ async function submitAIModal() {
     errEl.textContent = 'Connection failed';
     errEl.style.display = 'block';
   }
+}
+
+function updateModelBadge() {
+  const btn = document.getElementById('chat-model-btn');
+  if (!btn) return;
+  btn.textContent = aiCurrentModel ? shortModelLabel(aiCurrentModel) : 'model';
+}
+
+function shortModelLabel(mid) {
+  if (mid.includes('haiku')) return 'haiku';
+  if (mid.includes('opus')) return 'opus';
+  if (mid.includes('sonnet')) return 'sonnet';
+  return mid.length > 16 ? mid.slice(0, 14) + '…' : mid;
 }
 
 // Enter to submit in the modal
@@ -2013,6 +2224,7 @@ async function newChatConversation() {
   try { await fetch('/api/chat/clear', {method: 'POST'}); } catch (e) {}
   document.getElementById('chat-messages').innerHTML = '';
   document.querySelectorAll('.cell.ai-proposed').forEach(el => el.classList.remove('ai-proposed'));
+  resetSessionUsage();
 }
 
 // Chat input keyboard handling

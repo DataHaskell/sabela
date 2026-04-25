@@ -104,10 +104,21 @@ instance ToJSON SystemBlock where
             ["type" .= ("text" :: Text), "text" .= sbkText sb]
                 ++ maybe [] (\cc -> ["cache_control" .= cc]) (sbkCacheControl sb)
 
-data CacheControl = Ephemeral
+{- | Anthropic @cache_control@. @Ephemeral@ uses the default 5-minute TTL;
+@EphemeralHour@ uses the 1-hour TTL (costs 2× on write but 0.1× on read, same
+as 5-minute reads). Pick @EphemeralHour@ for prefixes that stay stable across
+user idle gaps (system blocks, tool schemas, stable notebook prefix).
+-}
+data CacheControl = Ephemeral | EphemeralHour
+    deriving (Show, Eq)
 
 instance ToJSON CacheControl where
     toJSON Ephemeral = object ["type" .= ("ephemeral" :: Text)]
+    toJSON EphemeralHour =
+        object
+            [ "type" .= ("ephemeral" :: Text)
+            , "ttl" .= ("1h" :: Text)
+            ]
 
 data Message = Message
     { msgRole :: Role
@@ -190,15 +201,17 @@ data ToolDef = ToolDef
     { tdName :: Text
     , tdDescription :: Text
     , tdInputSchema :: Value
+    , tdCacheControl :: Maybe CacheControl
     }
 
 instance ToJSON ToolDef where
     toJSON td =
-        object
+        object $
             [ "name" .= tdName td
             , "description" .= tdDescription td
             , "input_schema" .= tdInputSchema td
             ]
+                ++ maybe [] (\cc -> ["cache_control" .= cc]) (tdCacheControl td)
 
 ------------------------------------------------------------------------
 -- Response types
