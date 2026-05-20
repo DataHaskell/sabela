@@ -88,7 +88,7 @@ executable sabela
                  filepath >= 1.4 && < 1.6,
                  http-client-tls >= 0.3 && < 0.4,
                  text >= 1.2 && < 3,
-                 unix >= 2.7 && < 2.9,
+                 process >= 1.6 && < 1.8,
                  warp >= 3.3  && < 3.5,
                  sabela
   hs-source-dirs:     app

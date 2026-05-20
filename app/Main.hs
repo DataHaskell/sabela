@@ -22,7 +22,7 @@ import System.Directory (
  )
 import System.Environment (getArgs, lookupEnv)
 import System.FilePath (takeDirectory, (</>))
-import System.Posix.Process (getProcessID)
+import System.Process (getCurrentPid)
 
 import Data.Aeson (encode, object, (.=))
 import qualified Data.ByteString.Lazy as LBS
@@ -76,7 +76,7 @@ writeDiscoveryRegistry port workDir mToken = do
     let regDir = home </> ".local" </> "state" </> "sabela" </> "servers"
         regFile = regDir </> (show port ++ ".json")
     createDirectoryIfMissing True regDir
-    pid <- getProcessID
+    pid <- getCurrentPid
     let tokenHint = fmap (T.take 4) mToken
         body =
             object
