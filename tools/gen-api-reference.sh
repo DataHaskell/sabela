@@ -21,7 +21,9 @@ MODULES=(
     "DataFrame.Functions:-- DataFrame.Functions: column references, lifts, declareColumns"
     "DataFrame.Typed:-- DataFrame.Typed: compile-time-typed dataframe (PREFERRED — type-safe columns, better error messages)"
     "DataFrame.Display.Web.Plot:-- DataFrame.Display.Web.Plot: interactive HTML plots"
-    "Granite.Svg:-- Granite.Svg: static SVG chart primitives"
+    "Granite.Svg:-- Granite.Svg: legacy one-shot SVG charts (bars, pie, lineGraph, boxPlot; quick single-series plots)"
+    "Granite.Spec:-- Granite.Spec: grammar-of-graphics chart spec (Chart/Layer/Geom/Stat/Mapping; build via emptyChart/defLayer/emptyMapping; re-exports Granite.Data.Frame fromColumns/ColNum/ColCat; supports layering, facets, stats, polar/log scales)"
+    "Granite.Render.Pipeline:-- Granite.Render.Pipeline: render a Granite.Spec Chart (renderChartSvg, renderChartTerminal :: Chart -> Text)"
 )
 
 cat > "$WORK/card.cabal" <<EOF

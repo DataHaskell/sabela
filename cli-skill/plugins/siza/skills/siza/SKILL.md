@@ -145,6 +145,6 @@ The user edited the cell out from under you. Re-`read_cell`, decide whether your
 - **Cabal metadata.** Cells declare deps with `-- cabal:` comments. Changing those triggers a package-env rebuild and a GHCi restart — slow. Batch dep changes when you can.
 - **Single GHCi kernel per notebook.** A long-running `execute_cell` blocks every other cell. Use `scratchpad` for heavy exploration; only commit to a notebook cell once you're confident.
 - **Token cap.** Responses cap at 4096 tokens; very large `propose_edit` / `replace_cell_source` payloads can truncate mid-JSON. Split: `insert_cell` an empty cell (or a small stub), then patch it in follow-up calls.
-- **`api_reference` first for unfamiliar libs.** Before guessing DataFrame / Granite APIs, call `api_reference '{"module":"DataFrame.Typed"}'` (or the relevant slice). Cheaper and more current than recalling from training.
+- **`api_reference` first for unfamiliar libs.** Before guessing DataFrame / Granite APIs, call `api_reference '{"module":"DataFrame.Typed"}'` (or the relevant slice). Cheaper and more current than recalling from training. Plotting shold primarily be done with Granite and you should browser the API.
 - **Notebooks are Markdown on disk.** "Save" is a separate endpoint not exposed via siza — if the user asks to save, tell them to save in the browser.
 - **Non-localhost URLs trigger a stderr warning** from `siza-tool.sh`. If you see it, double-check with the user that the remote target is intentional before sending data.

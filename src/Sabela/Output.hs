@@ -176,6 +176,71 @@ builtinExamples =
         "Display"
         "displayLatex \"x^2 + y^2 = z^2\""
     , Example
+        "Layered Plot"
+        "Scatter with an OLS best-fit line"
+        "Plotting"
+        ( T.unlines
+            [ "-- cabal: build-depends: text, granite"
+            , "{-# LANGUAGE OverloadedStrings #-}"
+            , "import qualified Data.Text as T"
+            , "import Granite.Color (Color (..))"
+            , "import Granite.Data.Frame"
+            , "import Granite.Render.Pipeline (renderChartSvg)"
+            , "import Granite.Spec"
+            , ""
+            , "fitX = [0,1,2,3,4,5,6,7,8,9] :: [Double]"
+            , "fitY = [1.3,2.5,5.7,6.8,9.4,10.4,13.1,15.3,16.6,19.5]"
+            , "fitDf = fromColumns [(\"x\", ColNum fitX), (\"y\", ColNum fitY)]"
+            , "fitMap = emptyMapping {aesX = Just (ColumnRef \"x\"), aesY = Just (ColumnRef \"y\")}"
+            , "fitPts = (defLayer GeomPoint) {layerMapping = fitMap}"
+            , "fitLine = (defLayer GeomLine) {layerMapping = fitMap, layerStat = StatSmooth SmoothLm, layerAesDef = emptyAesDefaults {defColor = Just (NamedColor BrightRed), defLineWidth = Just 2}}"
+            , "fitChart = emptyChart {chartData = fitDf, chartLayers = [fitPts, fitLine], chartTitle = Just \"Scatter + OLS fit\", chartSize = SizeChars 60 18}"
+            , ""
+            , "displaySvg (T.unpack (renderChartSvg fitChart))"
+            ]
+        )
+    , Example
+        "Grouped Bars"
+        "Multi-series bars with a fill mapping"
+        "Plotting"
+        ( T.unlines
+            [ "-- cabal: build-depends: text, granite"
+            , "{-# LANGUAGE OverloadedStrings #-}"
+            , "import qualified Data.Text as T"
+            , "import Granite.Data.Frame"
+            , "import Granite.Render.Pipeline (renderChartSvg)"
+            , "import Granite.Spec"
+            , ""
+            , "barQuarters = concat [replicate 3 q | q <- [\"Q1\",\"Q2\",\"Q3\",\"Q4\"]]"
+            , "barProducts = take 12 (cycle [\"Widgets\",\"Gadgets\",\"Gizmos\"])"
+            , "barSales = [12,8,4,15,10,6,18,12,8,22,14,10] :: [Double]"
+            , "barDf = fromColumns [(\"quarter\", ColCat barQuarters), (\"product\", ColCat barProducts), (\"sales\", ColNum barSales)]"
+            , "barLayer = (defLayer GeomBar) {layerMapping = emptyMapping {aesX = Just (ColumnRef \"quarter\"), aesY = Just (ColumnRef \"sales\"), aesGroup = Just (ColumnRef \"product\"), aesFill = Just (ColumnRef \"product\")}, layerStat = StatIdentity, layerPosition = PosDodge 0.25}"
+            , "barChart = emptyChart {chartData = barDf, chartLayers = [barLayer], chartTitle = Just \"Sales by quarter\", chartSize = SizeChars 64 18}"
+            , ""
+            , "displaySvg (T.unpack (renderChartSvg barChart))"
+            ]
+        )
+    , Example
+        "Faceted Charts"
+        "Small multiples, one panel per series"
+        "Plotting"
+        ( T.unlines
+            [ "-- cabal: build-depends: text, granite"
+            , "{-# LANGUAGE OverloadedStrings #-}"
+            , "import qualified Data.Text as T"
+            , "import Granite.Data.Frame"
+            , "import Granite.Render.Pipeline (renderChartSvg)"
+            , "import Granite.Spec"
+            , ""
+            , "facetDf = fromColumns [(\"x\", ColNum [0,1,2,3,0,1,2,3,0,1,2,3]), (\"y\", ColNum [1,4,9,16,0,2,4,6,5,4,3,2]), (\"series\", ColCat (replicate 4 \"A\" <> replicate 4 \"B\" <> replicate 4 \"C\"))]"
+            , "facetLayer = (defLayer GeomLine) {layerMapping = emptyMapping {aesX = Just (ColumnRef \"x\"), aesY = Just (ColumnRef \"y\")}}"
+            , "facetChart = emptyChart {chartData = facetDf, chartLayers = [facetLayer], chartFacet = FacetWrap (ColumnRef \"series\") (Just 3) Nothing ScalesFixed, chartTitle = Just \"Faceted by series\", chartSize = SizeChars 72 18}"
+            , ""
+            , "displaySvg (T.unpack (renderChartSvg facetChart))"
+            ]
+        )
+    , Example
         "Interactive Slider"
         "Temperature converter with a live slider"
         "Widgets"

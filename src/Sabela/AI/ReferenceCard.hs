@@ -17,7 +17,8 @@ widget functions (which @:browse@ can't surface because they're injected by
 @displayPrelude@ at session start rather than coming from a library module).
 
 For the full @:browse@ output across @DataFrame@, @DataFrame.Functions@,
-@DataFrame.Display.Web.Plot@, and @Granite.Svg@, use the @api_reference@ tool
+@DataFrame.Display.Web.Plot@, @Granite.Svg@, and the grammar-of-graphics
+@Granite.Spec@ / @Granite.Render.Pipeline@, use the @api_reference@ tool
 (backed by 'fullApiReference' / 'sliceApiReference').
 -}
 apiReferenceCard :: Text
@@ -45,9 +46,10 @@ apiReferenceCard =
         ]
 
 {- | Full output of `:browse` for DataFrame, DataFrame.Functions,
-DataFrame.Display.Web.Plot, and Granite.Svg. Large (tens of KB). Only exposed
-to the LLM via the @api_reference@ tool so it doesn't live in the cached
-prefix. Regenerate via @tools/gen-api-reference.sh@.
+DataFrame.Display.Web.Plot, Granite.Svg, Granite.Spec, and
+Granite.Render.Pipeline. Large (tens of KB). Only exposed to the LLM via the
+@api_reference@ tool so it doesn't live in the cached prefix. Regenerate via
+@tools/gen-api-reference.sh@.
 -}
 fullApiReference :: Text
 fullApiReference = T.pack $(embedStringFile "data/api-reference.txt")

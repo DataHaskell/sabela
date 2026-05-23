@@ -7,6 +7,7 @@ import qualified Test.AiRestSpec as AiRestSpec
 import qualified Test.CacheControlSpec as CacheControlSpec
 import qualified Test.CompactResultSpec as CompactResultSpec
 import qualified Test.CycleMsgSpec as CycleMsgSpec
+import qualified Test.ExportSpec as ExportSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import Test.Hspec (hspec)
 import qualified Test.OutputSpec as OutputSpec
@@ -24,6 +25,7 @@ main :: IO ()
 main = hspec $ do
     SessionSpec.spec
     TopoSpec.spec
+    ExportSpec.spec
     ParseSpec.spec
     OutputSpec.spec
     PreinstalledSpec.spec

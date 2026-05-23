@@ -20,7 +20,29 @@ cabal test                                 # Runs HSpec test suite
 ./scripts/lint.sh                          # HLint on src/, app/, test/
 ./scripts/lint.sh --fix                    # Auto-fix lint issues on edited files
 ./scripts/format.sh                        # Format with fourmolu
+
+# API reference (the dataframe/granite card the AI persona reads)
+make api-reference                         # Regenerate data/api-reference.txt, then rebuild
 ```
+
+### Keeping the API reference fresh
+
+`data/api-reference.txt` is the embedded reference card the AI persona relies
+on. It is **not pinned** — `tools/gen-api-reference.sh` resolves the *latest*
+`dataframe`/`granite` from Hackage, so the file silently goes stale whenever
+those packages release a new version (it is committed, never edited by hand).
+
+Refresh it manually with `make api-reference` (delegates to
+`tools/gen-api-reference.sh`) whenever:
+
+- you bump or notice a new `dataframe`/`granite` release, or
+- the persona reports signatures that no longer match reality.
+
+Commit the regenerated file **raw** — the script's own pipeline is the only
+cleanup; do not hand-edit. Rebuild sabela afterwards so the embedded card
+picks up the new content. The generated header line records that it is
+machine-produced; treat a large unexpected diff as a signal the upstream API
+moved, not as something to massage.
 
 ## Architecture
 

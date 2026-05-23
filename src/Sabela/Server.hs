@@ -46,6 +46,7 @@ import Network.HTTP.Types (
  )
 import Network.Wai (
     Middleware,
+    Request,
     RequestBodyLength (..),
     pathInfo,
     queryString,
@@ -73,6 +74,7 @@ import System.FilePath (
     takeExtension,
     (</>),
  )
+import Text.Read (readMaybe)
 
 import Sabela.AI.Capabilities (acceptEdit, chatTools, executeTool, revertEdit)
 import Sabela.AI.Doc (defaultDocOpts, renderNotebookDoc)
@@ -91,6 +93,8 @@ import Sabela.Anthropic.Types (
  )
 import Sabela.Api
 import Sabela.Dashboard (renderStaticDashboard)
+import Sabela.Export (exportCabalScript, exportLiterate)
+import Sabela.Export.Reactive (exportReactive)
 import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output (builtinExamples, parseMimeOutputs)
@@ -232,6 +236,9 @@ type FullAPI =
         :<|> "api" :> "export" :> "dashboard" :> Raw
         :<|> "api" :> "export" :> "slideshow" :> Raw
         :<|> "api" :> "export" :> "markdown" :> Raw
+        :<|> "api" :> "export" :> "haskell" :> Raw
+        :<|> "api" :> "export" :> "lhs" :> Raw
+        :<|> "api" :> "export" :> "reactive" :> Raw
         :<|> "dashboard" :> Raw
         :<|> "slideshow" :> Raw
         :<|> "api" :> "asset" :> Raw
@@ -394,6 +401,57 @@ exportMarkdownApp app _req resp = do
             ]
             (LBS.fromStrict (TE.encodeUtf8 md))
 
+-- | Export the pipeline ending at @?cell=<id>@ as a single-file cabal script.
+exportHaskellApp :: App -> Application
+exportHaskellApp = exportSourceApp exportCabalScript "hs" "text/x-haskell"
+
+-- | Export the pipeline ending at @?cell=<id>@ as literate Haskell.
+exportLhsApp :: App -> Application
+exportLhsApp = exportSourceApp exportLiterate "lhs" "text/x-literate-haskell"
+
+-- | Export the whole notebook as a headless reactive-banana program.
+exportReactiveApp :: App -> Application
+exportReactiveApp = exportSourceApp exportReactive "reactive.hs" "text/x-haskell"
+
+{- | Shared download handler for the source exporters. Reads an optional
+@?cell=<id>@ slice target (defaulting to the last Haskell code cell), renders,
+and serves the result as a file download named after the notebook.
+-}
+exportSourceApp ::
+    (App -> Int -> IO Text) -> Text -> BS.ByteString -> App -> Application
+exportSourceApp render ext mime app req resp = do
+    nb <- readNotebook (appNotebook app)
+    let target = fromMaybe (lastHaskellCellId nb) (cellParam req)
+    src <- render app target
+    let title = nbTitle nb
+        base = T.takeWhileEnd (/= '/') (T.dropWhileEnd (== '/') title)
+        stem = if T.null base then "notebook" else T.replace ".md" "" base
+        fname = stem <> "." <> ext
+    resp $
+        responseLBS
+            status200
+            [ (hContentType, mime <> "; charset=utf-8")
+            ,
+                ( "Content-Disposition"
+                , "attachment; filename=\"" <> TE.encodeUtf8 fname <> "\""
+                )
+            ]
+            (LBS.fromStrict (TE.encodeUtf8 src))
+
+-- | Parse @?cell=<id>@ from the request query string.
+cellParam :: Request -> Maybe Int
+cellParam req = do
+    mv <- lookup "cell" (queryString req)
+    bs <- mv
+    readMaybe (T.unpack (TE.decodeUtf8 bs))
+
+-- | The last Haskell code cell's id (the default slice target), or -1 if none.
+lastHaskellCellId :: Notebook -> Int
+lastHaskellCellId nb =
+    case [cellId c | c <- nbCells nb, cellType c == CodeCell, cellLang c == ST.Haskell] of
+        [] -> -1
+        ids -> last ids
+
 {- | Maximum request body size (10 MB). Requests exceeding this are rejected
   with 413 Payload Too Large.
 -}
@@ -478,6 +536,9 @@ server app rn =
         :<|> Tagged (exportDashboardApp app)
         :<|> Tagged (exportSlideshowApp app)
         :<|> Tagged (exportMarkdownApp app)
+        :<|> Tagged (exportHaskellApp app)
+        :<|> Tagged (exportLhsApp app)
+        :<|> Tagged (exportReactiveApp app)
         :<|> Tagged dashboardApp
         :<|> Tagged slideshowApp
         :<|> Tagged (assetApp app)

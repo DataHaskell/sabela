@@ -315,7 +315,7 @@ rawChatTools =
         )
     , mkTool
         "api_reference"
-        "Fetch signatures for DataFrame, DataFrame.Functions, DataFrame.Display.Web.Plot, or Granite.Svg. Pass a module name (substring match on the section header) to get that module's section, or omit/empty to get all. Output is cleaned :browse output. Use this before writing dataframe or granite code if you're uncertain of a signature."
+        "Fetch signatures for DataFrame, DataFrame.Functions, DataFrame.Display.Web.Plot, Granite.Svg (legacy one-shot charts), or the grammar-of-graphics API (Granite.Spec, Granite.Render.Pipeline). Pass a module name (substring match on the section header) to get that module's section, or omit/empty to get all. Output is cleaned :browse output. Use this before writing dataframe or granite code if you're uncertain of a signature."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"
@@ -324,7 +324,7 @@ rawChatTools =
                         .= object
                             [ "type" .= ("string" :: Text)
                             , "description"
-                                .= ( "Substring of the module name, e.g. \"DataFrame\", \"Functions\", \"Plot\", \"Granite\". Empty for all sections." ::
+                                .= ( "Substring of the module name, e.g. \"DataFrame\", \"Functions\", \"Plot\", \"Granite.Svg\", \"Granite.Spec\", \"Pipeline\". Empty for all sections." ::
                                         Text
                                    )
                             ]

@@ -5,6 +5,9 @@ module Sabela.Topo (
     topoSort,
     computeTopoOrder,
     selectAffectedTopo,
+    computeAffectedSet,
+    reachableFrom,
+    reverseDeps,
     cellNames,
 ) where
 
@@ -160,14 +163,25 @@ selectAffectedTopo editedCid cells =
 
 computeAffectedSet :: Int -> M.Map Int (S.Set Int) -> S.Set Int
 computeAffectedSet editedCid deps =
-    let revDeps =
-            M.fromListWith
-                S.union
-                [ (dep, S.singleton cid)
-                | (cid, depSet) <- M.toList deps
-                , dep <- S.toList depSet
-                ]
-     in bfsAffected (S.singleton editedCid) (S.singleton editedCid) revDeps
+    reachableFrom (S.singleton editedCid) (reverseDeps deps)
+
+{- | All cell IDs reachable from @seeds@ by following @graph@ edges (seeds
+included). With a forward dep graph this gives a node's transitive
+dependencies; with a reversed graph (see 'reverseDeps'), its transitive
+dependents.
+-}
+reachableFrom :: S.Set Int -> M.Map Int (S.Set Int) -> S.Set Int
+reachableFrom seeds = bfsAffected seeds seeds
+
+-- | Reverse every edge of a dependency map.
+reverseDeps :: M.Map Int (S.Set Int) -> M.Map Int (S.Set Int)
+reverseDeps deps =
+    M.fromListWith
+        S.union
+        [ (dep, S.singleton cid)
+        | (cid, depSet) <- M.toList deps
+        , dep <- S.toList depSet
+        ]
 
 bfsAffected :: S.Set Int -> S.Set Int -> M.Map Int (S.Set Int) -> S.Set Int
 bfsAffected visited frontier revDeps

@@ -86,12 +86,26 @@
   body {
     font-family: var(--font-sans);
     font-size: 15px;
-    background: var(--bg); color: var(--fg);
+    color: var(--fg);
+    background:
+      radial-gradient(1200px 540px at 72% -14%, rgba(var(--accent-rgb), 0.07), transparent 72%),
+      var(--bg);
     line-height: 1.65;
     display: flex; flex-direction: column;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  /* Faint film grain in the reading column (dark theme only — keeps the
+     warm ground from looking flat without muddying the cream paper). */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    display: none; opacity: 0.45; mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+  }
+  :root[data-theme="dark"] body::before { display: block; }
+  .toolbar, .main-layout { position: relative; z-index: 1; }
+  ::selection { background: rgba(var(--accent-rgb), 0.28); color: var(--fg-bright); }
 
   /* ── Toolbar ───────────────────────────────── */
   .toolbar {
@@ -130,6 +144,20 @@
     float: right; font-size: 10px; color: var(--fg-dim); margin-left: 16px;
   }
   .toolbar-dropdown-menu .dd-sep { height: 1px; background: var(--border); margin: 4px 0; }
+  /* Submenu flyout (overflow menu only) — opens LEFT, since the menu is right-anchored */
+  .toolbar-dropdown-menu .dd-item.has-submenu {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: relative;
+  }
+  .toolbar-dropdown-menu .dd-item.has-submenu .dd-chev {
+    width: 12px; height: 12px; color: var(--fg-dim); flex-shrink: 0;
+  }
+  .dd-submenu { top: -5px; right: 100%; left: auto; margin-top: 0; margin-right: 4px; }
+  /* invisible bridge across the 4px gutter so :hover survives the parent→flyout traverse */
+  .dd-item.has-submenu::after {
+    content: ""; position: absolute; top: 0; right: 100%; width: 8px; height: 100%;
+  }
+  .toolbar-dropdown-menu .dd-item.has-submenu:hover > .dd-submenu { display: block; }
   .status { font-size: 11px; white-space: nowrap; }
   .status.running { color: var(--yellow); }
   .status.error { color: var(--red); }
@@ -137,7 +165,7 @@
   .sse-dot.connected { background: var(--green); }
 
   /* ── Layout ────────────────────────────────── */
-  .main-layout { display: flex; flex: 1; overflow: hidden; }
+  .main-layout { display: flex; flex: 1; overflow: hidden; position: relative; }
 
   /* ── Sidebar ───────────────────────────────── */
   .sidebar {
@@ -206,7 +234,26 @@
     font-family: var(--font-mono); font-size: 12px;
     overflow: hidden; transition: width 0.15s, min-width 0.15s;
   }
+  /* Chat wants more room than info/examples, but stays narrower than the
+     notebook. Width is driven by a class (not inline styles) so .collapsed
+     can always win the toggle. */
+  .right-panel.chat-active {
+    width: clamp(320px, 36vw, 480px); min-width: clamp(320px, 36vw, 480px);
+  }
+  /* Keep .collapsed after .chat-active so it wins the specificity tie. */
   .right-panel.collapsed { width: 0; min-width: 0; border-left: none; }
+
+  /* On narrow / split-screen viewports the panel floats over the notebook
+     instead of squeezing it, so the notebook always keeps its full width. */
+  @media (max-width: 900px) {
+    .right-panel {
+      position: absolute; top: 0; right: 0; bottom: 0; z-index: 60;
+      max-width: 92vw;
+    }
+    .right-panel.chat-active { width: min(480px, 92vw); min-width: 0; }
+    .right-panel:not(.collapsed) { box-shadow: -10px 0 30px rgba(0, 0, 0, 0.3); }
+    .right-panel.collapsed { width: 0; min-width: 0; box-shadow: none; }
+  }
   .panel-tabs {
     display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
@@ -402,6 +449,7 @@
 
   /* Code */
   .cell.code { background: var(--bg-cell); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .cell.code:hover { border-color: var(--accent-dim); }
   .cell.code.running { border-color: var(--yellow); }
   .cell.code.has-error { border-color: var(--red); }
   .cell.code.dirty { border-left: 3px solid var(--yellow); }
@@ -413,6 +461,8 @@
   .cell.code.python .cell-gutter .lang-tag:hover { background: var(--yellow); opacity: 0.85; }
   .cell.code .CodeMirror { height: auto; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.55; background: transparent; padding: 4px 0; }
   .cell.code .CodeMirror-scroll { min-height: 28px; }
+  .cell.code .CodeMirror-gutters { background: transparent; border: none; }
+  .cell.code .CodeMirror-linenumber { color: var(--fg-dim); opacity: 0.5; }
 
   /* Error gutter markers */
   .error-gutter { width: 12px; }
@@ -742,6 +792,36 @@
   }
   .file-entry.active .name { color: var(--fg-bright); font-weight: 600; }
   .file-entry:hover { background: var(--accent-dim); }
+
+  /* ── Signature motion: "sabela" = to respond ──────────────────────
+     A code cell emits an amber ripple down its spine the instant a
+     result lands, so reactive (upstream-driven) re-runs visibly cascade. */
+  @keyframes cell-respond {
+    0%   { box-shadow: inset 3px 0 0 -1px rgba(var(--accent-rgb), 0); }
+    18%  { box-shadow: inset 3px 0 0 0 var(--accent), -2px 0 24px -6px rgba(var(--accent-rgb), 0.6); }
+    100% { box-shadow: inset 3px 0 0 -1px rgba(var(--accent-rgb), 0); }
+  }
+  .cell.responding { animation: cell-respond 1.05s cubic-bezier(.22,.61,.36,1); }
+
+  /* One-time staggered reveal on first paint (gated by .intro, which the
+     renderer adds only on the initial load — never on reactive re-renders). */
+  @keyframes cell-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .notebook.intro > * { animation: cell-rise 0.5s both cubic-bezier(.22,.61,.36,1); }
+  .notebook.intro > *:nth-child(1)  { animation-delay: .03s; }
+  .notebook.intro > *:nth-child(2)  { animation-delay: .07s; }
+  .notebook.intro > *:nth-child(3)  { animation-delay: .11s; }
+  .notebook.intro > *:nth-child(4)  { animation-delay: .15s; }
+  .notebook.intro > *:nth-child(5)  { animation-delay: .19s; }
+  .notebook.intro > *:nth-child(6)  { animation-delay: .23s; }
+  .notebook.intro > *:nth-child(7)  { animation-delay: .27s; }
+  .notebook.intro > *:nth-child(8)  { animation-delay: .31s; }
+  .notebook.intro > *:nth-child(9)  { animation-delay: .35s; }
+  .notebook.intro > *:nth-child(10) { animation-delay: .39s; }
+  .notebook.intro > *:nth-child(n+11) { animation-delay: .42s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cell.responding, .notebook.intro > * { animation: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -949,6 +1029,7 @@ const collapsedCells = new Set(); // cellId → collapsed
 let notebook = null;
 let evtSource = null;
 let activeTab = 'info';
+let didIntroReveal = false; // stagger the cell reveal once, on first paint only
 let examples = [];
 let unsavedChanges = false;
 // Per-cell "locally edited since last render/save" flag. Only cells with
@@ -996,6 +1077,28 @@ function closeDropdowns() {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.toolbar-dropdown')) closeDropdowns();
 });
+
+// Build the overflow ("More") dropdown from the OVERFLOW_MENU tree.
+function ddLeafHTML(cmd) {
+  if (!cmd) return '';
+  const hint = cmd.hint ? `<span class="dd-hint">${cmd.hint}</span>` : '';
+  return `<div class="dd-item" data-cmd="${cmd.id}">${cmd.short || cmd.label}${hint}</div>`;
+}
+function ddSubmenuHTML(group) {
+  const inner = group.items.map(id => ddLeafHTML(_cmdById(id))).join('');
+  return `<div class="dd-item has-submenu"><span>${group.label}</span>`
+       + `<svg class="icon-svg dd-chev"><use href="#i-chev-right"/></svg>`
+       + `<div class="toolbar-dropdown-menu dd-submenu">${inner}</div></div>`;
+}
+function renderOverflowMenu() {
+  const ofList = document.getElementById('overflow-menu-list');
+  if (!ofList) return;
+  ofList.innerHTML = OVERFLOW_MENU.map(e =>
+    e === '---' ? '<div class="dd-sep"></div>'
+    : typeof e === 'string' ? ddLeafHTML(_cmdById(e))
+    : ddSubmenuHTML(e)
+  ).join('');
+}
 
 // ── SSE ──────────────────────────────────────────────────────────
 function connectSSE() {
@@ -1045,6 +1148,7 @@ function handleSSE(ev) {
       updateCellOutput(ev.cellId, ev.outputs || [], ev.error);
       if (ev.errors && ev.errors.length) applyErrorMarkers(ev.cellId, ev.errors);
       else clearErrorMarkers(ev.cellId);
+      pulseCell(ev.cellId);
       break;
     case 'executionDone':
       setStatus('Done', '');
@@ -1173,6 +1277,16 @@ function setCellRunning(cellId, running) {
   } else {
     el.classList.remove('running');
   }
+}
+
+// The "respond" ripple: replay it cleanly even if a cell re-fires mid-animation.
+function pulseCell(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  el.classList.remove('responding');
+  void el.offsetWidth; // force reflow so the animation restarts
+  el.classList.add('responding');
+  el.addEventListener('animationend', () => el.classList.remove('responding'), { once: true });
 }
 
 // ── Error markers (gutter) ───────────────────────────────────────
@@ -1865,6 +1979,14 @@ function downloadMarkdown() {
   window.location.href = '/api/export/markdown';
 }
 
+// Export a runnable Haskell pipeline. fmt is 'haskell' (cabal script .hs) or
+// 'lhs' (literate). If cellId is given, exports the backward slice ending at
+// that cell; otherwise the whole notebook (last code cell).
+function exportPipeline(cellId, fmt) {
+  const q = (cellId != null && cellId >= 0) ? ('?cell=' + cellId) : '';
+  window.location.href = '/api/export/' + fmt + q;
+}
+
 setInterval(() => {
   if (unsavedChanges) saveNotebook();
 }, AUTOSAVE_INTERVAL_MS);
@@ -1892,15 +2014,9 @@ function switchTab(tab) {
   document.getElementById('panel-info').style.display = tab === 'info' ? 'block' : 'none';
   document.getElementById('panel-examples').style.display = tab === 'examples' ? 'block' : 'none';
   document.getElementById('panel-chat').style.display = tab === 'chat' ? 'flex' : 'none';
-  // Widen panel for chat
-  const panel = document.getElementById('right-panel');
-  if (tab === 'chat') {
-    panel.style.width = '480px';
-    panel.style.minWidth = '480px';
-  } else {
-    panel.style.width = '';
-    panel.style.minWidth = '';
-  }
+  // Widen panel for chat via a class, so .collapsed can still override the
+  // width when the drawer is toggled shut (inline styles would not let it).
+  document.getElementById('right-panel').classList.toggle('chat-active', tab === 'chat');
   if (tab === 'chat') {
     updateChatContext().then(() => {
       if (!aiConfigured) openAIModal();
@@ -1996,6 +2112,13 @@ function render(nb) {
   document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
   const container = document.getElementById('notebook');
 
+  // Staggered entrance — first render only, so reactive re-renders don't replay it.
+  if (!didIntroReveal) {
+    didIntroReveal = true;
+    container.classList.add('intro');
+    setTimeout(() => container.classList.remove('intro'), 1500);
+  }
+
   // Capture unsaved editor content before clearing the DOM, but ONLY for
   // cells the user has actively edited (tracked in `dirtyCells`). Clean
   // cells let the server-supplied source win so AI-driven edits to
@@ -2050,6 +2173,7 @@ function renderCodeCell(cell, cellNum) {
     <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell" aria-label="Toggle cell visibility" aria-expanded="${collapsed ? 'false' : 'true'}"><svg class="icon-svg small"><use href="#${collapsed ? 'i-chev-right' : 'i-chev-down'}"/></svg></button>
     <button class="run-btn" onclick="runCell(${cell.cellId})" aria-label="Run cell" title="Run cell (${kbd('shift','enter')})"><svg class="icon-svg small"><use href="#i-play"/></svg> run</button>
     <button class="clear-btn" onclick="clearCellOutput(${cell.cellId})" aria-label="Clear output" title="Clear output"><svg class="icon-svg small"><use href="#i-circle-slash"/></svg></button>
+    ${cell.cellLang !== 'Python' ? `<button class="export-btn" onclick="exportPipeline(${cell.cellId}, 'haskell')" aria-label="Export pipeline ending here" title="Export pipeline ending here (.hs)"><svg class="icon-svg small"><use href="#i-download"/></svg></button>` : ''}
     <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell" title="Delete cell"><svg class="icon-svg small"><use href="#i-trash"/></svg></button>`;
   div.appendChild(actions);
 
@@ -2392,8 +2516,11 @@ setInterval(updateDirtyDot, 600);
 const PALETTE_COMMANDS = [
   { id: 'save',          label: 'Save notebook',             icon: 'i-download',  hint: kbd('mod','s'),         run: () => saveNotebook() },
   { id: 'download',      label: 'Download as .md',           icon: 'i-download',  run: () => downloadMarkdown() },
-  { id: 'dashboard',     label: 'View as dashboard',         icon: 'i-eye',       run: () => window.open('/dashboard','_blank') },
-  { id: 'slideshow',     label: 'View as slideshow',         icon: 'i-book-open', run: () => window.open('/slideshow','_blank') },
+  { id: 'export-hs',     label: 'Export pipeline as .hs (cabal script)',     short: 'Cabal script (.hs)',      icon: 'i-download', run: () => exportPipeline(null, 'haskell') },
+  { id: 'export-lhs',    label: 'Export pipeline as .lhs (literate Haskell)', short: 'Literate Haskell (.lhs)', icon: 'i-download', run: () => exportPipeline(null, 'lhs') },
+  { id: 'export-reactive', label: 'Export as reactive-banana app (headless)',  short: 'reactive-banana app',     icon: 'i-download', run: () => exportPipeline(null, 'reactive') },
+  { id: 'dashboard',     label: 'View as dashboard',         short: 'Dashboard', icon: 'i-eye',       run: () => window.open('/dashboard','_blank') },
+  { id: 'slideshow',     label: 'View as slideshow',         short: 'Slideshow', icon: 'i-book-open', run: () => window.open('/slideshow','_blank') },
   { id: 'restart',       label: 'Restart kernel',            icon: 'i-rotate',    run: () => restartKernel() },
   { id: 'reset',         label: 'Reset notebook',            icon: 'i-zap',       run: () => resetNotebook() },
   { id: 'run-all',       label: 'Run all cells',             icon: 'i-play',      hint: kbd('mod','shift','enter'), run: () => runAll() },
@@ -2404,6 +2531,24 @@ const PALETTE_COMMANDS = [
   { id: 'theme',         label: 'Switch theme (light/dark)', icon: 'i-sun',       run: () => toggleTheme() },
   { id: 'ai-settings',   label: 'AI settings…',              icon: 'i-settings',  run: () => openAIModal() },
 ];
+// Structural layout for the overflow ("More") dropdown only. Entries are:
+//   - a string  → command id (leaf), resolved against PALETTE_COMMANDS
+//   - '---'     → separator
+//   - { label, icon?, items: [ids] } → submenu group (hover flyout)
+// The command palette stays FLAT and ignores this tree.
+const OVERFLOW_MENU = [
+  'save', 'download',
+  '---',
+  { label: 'Export',  icon: 'i-download', items: ['export-hs', 'export-lhs', 'export-reactive'] },
+  { label: 'View as', icon: 'i-eye',      items: ['dashboard', 'slideshow'] },
+  '---',
+  'run-all', 'restart', 'reset',
+  '---',
+  'sidebar', 'panel-info', 'panel-examples', 'panel-chat',
+  '---',
+  'theme', 'ai-settings',
+];
+const _cmdById = id => PALETTE_COMMANDS.find(c => c.id === id);
 let _paletteFiltered = PALETTE_COMMANDS.slice();
 let _paletteActive = 0;
 
@@ -2492,19 +2637,16 @@ document.addEventListener('DOMContentLoaded', () => {
       runPaletteActive();
     }
   });
-  // Populate overflow menu with the same commands
+  // Build the overflow menu from the OVERFLOW_MENU tree (grouped, with submenus).
   const ofList = document.getElementById('overflow-menu-list');
   if (ofList) {
-    ofList.innerHTML = PALETTE_COMMANDS.map(c =>
-      `<div class="dd-item" data-cmd="${c.id}">${c.label}${c.hint ? `<span class="dd-hint">${c.hint}</span>` : ''}</div>`
-    ).join('');
-    ofList.querySelectorAll('.dd-item').forEach(el => {
-      el.addEventListener('click', () => {
-        closeDropdowns();
-        const id = el.dataset.cmd;
-        const cmd = PALETTE_COMMANDS.find(c => c.id === id);
-        if (cmd) try { cmd.run(); } catch (e) { console.error(e); }
-      });
+    renderOverflowMenu();
+    ofList.addEventListener('click', (e) => {
+      const leaf = e.target.closest('.dd-item[data-cmd]');
+      if (!leaf) return;  // submenu parent / separator → no-op, keep menu open
+      closeDropdowns();
+      const cmd = _cmdById(leaf.dataset.cmd);
+      if (cmd) try { cmd.run(); } catch (err) { console.error(err); }
     });
   }
 });
