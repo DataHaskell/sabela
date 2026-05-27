@@ -1,17 +1,8 @@
 # sabela
 
-Sabela is a reactive notebook for Haskell. Change a cell and everything
-downstream reruns on its own, so you never run the whole notebook by hand or
-wonder whether an output is still current. The name is the
+Sabela is a reactive notebook for Haskell. The name is the
 [Ndebele](https://en.wikipedia.org/wiki/Northern_Ndebele_language) word for
 *to respond*, which is the behaviour it is built around.
-
-It began as two experiments: a Haskell notebook where reactivity is a
-first-class concern, and a sane story for package and environment management,
-the part that makes IHaskell hurt. It has since grown into somewhere you can
-drag a slider and watch a chart redraw, lasso points on a scatter plot to filter
-a `DataFrame`, drop into Python halfway through, and hand the keyboard to Claude
-Code to edit cells beside you.
 
 ![A screenshot of the web ui](./static/images/screenshot.png)
 
@@ -35,9 +26,9 @@ The execution and dependency model is based on
 
 ## What you can do
 
-* **Edit one cell, watch the rest catch up.** Sabela reruns the cells that
+* **Run cells reactivly.** Sabela reruns the cells that
   depend on what you changed, and nothing else.
-* **Add interactive controls without writing JavaScript.** A `slider`,
+* **Add interactive controls/widgets.** A `slider`,
   `dropdown`, or `button` is one line of Haskell; drag it and the cell reruns
   with the new value.
 * **Mix Haskell and Python in one notebook.** Load and type-check data in
@@ -126,35 +117,34 @@ print (x + y)
 ```
 ````
 
-The last cell prints `30`. Now change the first cell to `x = 100`. You don't
-rerun anything by hand. Sabela notices that the third cell uses `x` and reruns
-it, so the output updates to `120`.
-
-That's the loop you'll work in:
-
-1. define values in small cells
-2. build later cells from earlier ones
-3. edit a definition upstream
-4. let the affected cells rerun themselves
-
 ---
 
 ## 4. How reactivity works
 
-Sabela doesn't build a real Haskell dependency graph. It works the dependencies
-out textually: it scans each cell for the names it defines and the names it
-uses, and when you edit a cell it reruns the later cells that use a name the
-edited cell defines.
+When you edit a cell, Sabela parses every cell with `ghc-lib-parser`, a
+standalone copy of GHC's own parser that works regardless of your GHC version.
+From the syntax tree it reads the top-level names each cell defines and the
+names each cell uses without binding them itself. That gives a real dependency
+graph rather than a guess based on matching text.
 
-That's fast and predictable, but it has limits to keep in mind:
+Editing a cell reruns its dependents in dependency order, computed by a
+topological sort rather than notebook position, so every value is recomputed
+before the cells that read it. Two situations are reported instead of run:
 
-* it reads top to bottom, so order matters
-* it's a heuristic, not the compiler's view
-* unusual syntax may not be tracked
-* circular dependencies aren't modelled
+* **Redefinitions.** The first cell to define a name owns it. A later cell that
+  defines the same name is flagged with an error pointing back to the original,
+  instead of silently shadowing it.
+* **Cycles.** If two cells come to depend on each other, both are reported as a
+  cycle rather than looping.
 
-In practice the fix for all of these is the same: keep cells small, name your
-definitions clearly, and let the notebook read top to bottom.
+The analysis is scope-conservative: a name bound locally inside a `where`, a
+`let`, a lambda, or a comprehension counts as bound, so it never invents a
+dependency on another cell. It reasons about names rather than types, so it
+won't chase a link that exists only through a typeclass instance, but for
+everyday notebook code it tracks the dependencies accurately.
+
+Cells still read best from top to bottom with one definition per name, though
+you no longer have to keep the execution order right by hand.
 
 ---
 
@@ -208,9 +198,6 @@ near the top keeps the environment easy to read.
 
 For dependencies you want in every notebook, put the same directives in a
 `global.md` (by default `~/.sabela/global.md`).
-
-Versions must be exact: `dataframe-0.5.0.0` works, but ranges like
-`dataframe <= 1` don't.
 
 ---
 
