@@ -11,7 +11,9 @@ module Sabela.Topo (
     cellNames,
 ) where
 
+import qualified Data.Foldable as F
 import qualified Data.Map.Strict as M
+import qualified Data.Sequence as Seq
 import qualified Data.Set as S
 import Data.Text (Text)
 import Sabela.Model (Cell (..))
@@ -84,11 +86,17 @@ topoSort cells deps =
                 [ (cellId c, S.size (M.findWithDefault S.empty (cellId c) (tsFilteredDeps st)))
                 | c <- cells
                 ]
-        initQueue = [cellId c | c <- cells, M.findWithDefault 0 (cellId c) inDegree == 0]
+        initQueue =
+            S.fromList
+                [ (pos, cellId c)
+                | c <- cells
+                , M.findWithDefault 0 (cellId c) inDegree == 0
+                , let pos = M.findWithDefault maxBound (cellId c) (tsPositions st)
+                ]
         cids = S.fromList (map cellId cells)
-        (ordered, finalDeg) = runKahns st initQueue inDegree []
+        (orderedSeq, finalDeg) = runKahns st initQueue inDegree Seq.empty
         cycleIds = S.fromList [cid | cid <- S.toList cids, M.findWithDefault 0 cid finalDeg > 0]
-     in TopoResult{trOrdered = ordered, trCycleIds = cycleIds}
+     in TopoResult{trOrdered = F.toList orderedSeq, trCycleIds = cycleIds}
 
 buildTopoState :: [Cell] -> M.Map Int (S.Set Int) -> TopoState
 buildTopoState cells deps =
@@ -112,29 +120,38 @@ buildTopoState cells deps =
             , tsCellById = M.fromList [(cellId c, c) | c <- cells]
             }
 
+{- | Kahn's main loop. The queue is a 'Set' keyed by @(position, cellId)@
+so the lowest-position-first dequeue is O(log n) via 'S.deleteMin'; the
+accumulator is a 'Seq' so each snoc is O(1). The old @[Int]@ queue +
+@[Cell]@ accumulator were jointly O(N²).
+-}
 runKahns ::
-    TopoState -> [Int] -> M.Map Int Int -> [Cell] -> ([Cell], M.Map Int Int)
-runKahns _ [] deg acc = (acc, deg)
-runKahns st queue deg acc =
-    let cid = minimumByPos queue (tsPositions st)
-        queue' = filter (/= cid) queue
-        dependents = S.toList (M.findWithDefault S.empty cid (tsRevDeps st))
-        (newlyUnblocked, deg') = foldl unblock ([], deg) dependents
-        queue'' = queue' ++ newlyUnblocked
-        cell = tsCellById st M.! cid
-     in runKahns st queue'' deg' (acc ++ [cell])
+    TopoState ->
+    S.Set (Int, Int) ->
+    M.Map Int Int ->
+    Seq.Seq Cell ->
+    (Seq.Seq Cell, M.Map Int Int)
+runKahns st queue deg acc = case S.minView queue of
+    Nothing -> (acc, deg)
+    Just ((_, cid), queue') ->
+        let dependents = M.findWithDefault S.empty cid (tsRevDeps st)
+            (newlyUnblocked, deg') = S.foldl' (unblock (tsPositions st)) (S.empty, deg) dependents
+            queue'' = queue' `S.union` newlyUnblocked
+            cell = tsCellById st M.! cid
+         in runKahns st queue'' deg' (acc Seq.|> cell)
 
-unblock :: ([Int], M.Map Int Int) -> Int -> ([Int], M.Map Int Int)
-unblock (unblocked, d) depCid =
+unblock ::
+    M.Map Int Int ->
+    (S.Set (Int, Int), M.Map Int Int) ->
+    Int ->
+    (S.Set (Int, Int), M.Map Int Int)
+unblock positions (unblocked, d) depCid =
     let d' = M.adjust (subtract 1) depCid d
         newDeg = M.findWithDefault 0 depCid d'
-     in if newDeg == 0 then (depCid : unblocked, d') else (unblocked, d')
-
-minimumByPos :: [Int] -> M.Map Int Int -> Int
-minimumByPos xs positions =
-    foldl1 (\a b -> if pos a <= pos b then a else b) xs
-  where
-    pos x = M.findWithDefault maxBound x positions
+        pos = M.findWithDefault maxBound depCid positions
+     in if newDeg == 0
+            then (S.insert (pos, depCid) unblocked, d')
+            else (unblocked, d')
 
 {- | Compose buildDefMap, buildDepGraph, topoSort. The @redefMap@
 identifies cells that redefine an earlier cell's names; the execution

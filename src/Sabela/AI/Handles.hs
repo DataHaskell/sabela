@@ -1,4 +1,6 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 
 module Sabela.AI.Handles (
     HandleId (..),
@@ -149,13 +151,17 @@ lines into a single line with a count suffix. Mirrors marimo's cleanup pass.
 cleanOutput :: Text -> Text
 cleanOutput = T.intercalate "\n" . dedupeConsec . map stripAnsi . T.lines
   where
+    -- Tail-recursive with a strict run-length counter; avoids the
+    -- @span@/@length@ pair that allocated a prefix list per run.
     dedupeConsec [] = []
-    dedupeConsec (x : xs) =
-        let (same, rest) = span (== x) xs
-            n = 1 + length same
-         in if n > 1
-                then (x <> " [\xd7" <> T.pack (show n) <> "]") : dedupeConsec rest
-                else x : dedupeConsec xs
+    dedupeConsec (x : xs) = go x (1 :: Int) xs
+    go x !n (y : ys)
+        | y == x = go x (n + 1) ys
+        | n > 1 = annotate x n : dedupeConsec (y : ys)
+        | otherwise = x : dedupeConsec (y : ys)
+    go x !n [] =
+        if n > 1 then [annotate x n] else [x]
+    annotate x n = x <> " [\xd7" <> T.pack (show n) <> "]"
 
 -- | Remove ANSI CSI sequences (@ESC [ ... letter@). Leaves other bytes alone.
 stripAnsi :: Text -> Text

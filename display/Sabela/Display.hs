@@ -50,7 +50,7 @@ instance Applicative Behavior where
             }
 
 displayMime_ :: String -> String -> IO ()
-displayMime_ t c = putStrLn ("---MIME:" ++ t ++ "---") >> putStrLn c
+displayMime_ t c = putStrLn ("<!-- MIME:" ++ t ++ " -->") >> putStrLn c
 
 displayHtml :: String -> IO ()
 displayHtml = displayMime_ "text/html"
@@ -69,7 +69,7 @@ displayJson = displayMime_ "application/json"
 
 displayImage :: String -> String -> IO ()
 displayImage mime b64 =
-    putStrLn ("---MIME:" ++ mime ++ ";base64---") >> putStrLn b64
+    putStrLn ("<!-- MIME:" ++ mime ++ ";base64 -->") >> putStrLn b64
 
 widgetGet :: String -> IO (Maybe String)
 widgetGet name = fmap (lookup name) (readIORef _sabelaWidgetRef)

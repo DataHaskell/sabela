@@ -11,9 +11,9 @@ if [[ "${1:-}" == "--fix" ]]; then
   FIX_MODE=true
 fi
 
-DIRS=("src" "app" "test")
+DIRS=("src" "app" "test" "sabela-hub/src" "sabela-hub/test")
 
-echo "Running HLint on sabela project..."
+echo "Running HLint on sabela + sabela-hub..."
 echo "Dirs: ${DIRS[*]}"
 
 is_haskell_file() {

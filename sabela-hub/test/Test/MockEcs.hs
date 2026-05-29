@@ -21,7 +21,7 @@ newMockState :: IO MockState
 newMockState = do
     runs <- newTVarIO 0
     stops <- newTVarIO 0
-    status <- newTVarIO (TaskRunning "10.0.1.100")
+    status <- newTVarIO (TaskRunning (TaskIp "10.0.1.100"))
     running <- newTVarIO []
     pure
         MockState
@@ -49,6 +49,7 @@ testConfig :: HubConfig
 testConfig =
     HubConfig
         { hcPort = 8080
+        , hcBackend = BackendEcs
         , hcTaskConfig =
             TaskConfig
                 { tcCluster = "test-cluster"
@@ -57,9 +58,20 @@ testConfig =
                 , tcSecurityGroups = ["sg-abc"]
                 , tcRegion = "us-east-1"
                 }
+        , hcDockerConfig =
+            DockerConfig
+                { dcImage = "datahaskell/sabela:latest"
+                , dcNetwork = "sabela-net"
+                , dcDataRoot = "/mnt/sabela"
+                , dcEnv = []
+                , dcMemory = "6g"
+                , dcCpus = "2"
+                , dcNamePrefix = "sabela-user-"
+                }
         , hcIdleTimeout = 1800
         , hcBackendPort = 3000
         , hcGoogleClientId = "test-client-id"
         , hcGoogleClientSecret = "test-client-secret"
         , hcGoogleRedirectUri = "http://localhost:8080/_hub/oauth/callback"
+        , hcSharesDir = "/tmp/sabela-test-shares"
         }

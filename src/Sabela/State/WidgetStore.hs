@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Sabela.State.WidgetStore (
     WidgetStore (..),
     newWidgetStore,
@@ -20,7 +22,12 @@ getWidgetValues :: WidgetStore -> Int -> IO (M.Map Text Text)
 getWidgetValues ws cid =
     withMVar (wsValues ws) $ pure . M.findWithDefault M.empty cid
 
+{- | Set a widget's value. The bangs keep a high-rate slider drag from
+piling nested @M.insert@ thunks in the 'MVar'.
+-}
 setWidget :: WidgetStore -> Int -> Text -> Text -> IO ()
-setWidget ws cid name val = modifyMVar_ (wsValues ws) $ \wmap ->
-    let cellMap = M.findWithDefault M.empty cid wmap
-     in pure (M.insert cid (M.insert name val cellMap) wmap)
+setWidget ws cid name val = modifyMVar_ (wsValues ws) $ \wmap -> do
+    let !cellMap = M.findWithDefault M.empty cid wmap
+        !cellMap' = M.insert name val cellMap
+        !wmap' = M.insert cid cellMap' wmap
+    pure wmap'

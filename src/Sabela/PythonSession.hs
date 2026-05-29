@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -172,6 +173,12 @@ execViaFile :: PythonSession -> Text -> IO ()
 execViaFile sess block = do
     let tmpPath = pyWorkDir sess </> ".sabela_cell.py"
     TIO.writeFile tmpPath block
+    -- 'show' produces a Haskell-syntax string literal whose escape rules
+    -- coincide with Python's double-quoted string for all ASCII paths.
+    -- 'pyWorkDir' comes from 'createTempDirectory' (ASCII tmpdir), and the
+    -- filename is the fixed ASCII '.sabela_cell.py', so the escaping is
+    -- safe end-to-end. Switch to an explicit Python-repr if either of
+    -- those inputs ever stops being ASCII.
     sendRaw sess $
         "exec(open(" ++ show tmpPath ++ ", encoding='utf-8').read(), globals())"
 
@@ -188,25 +195,25 @@ pythonPrelude =
     T.unlines
         [ "import sys, json, io, traceback"
         , "def displayHtml(s):"
-        , "    print('---MIME:text/html---'); print(s)"
+        , "    print('<!-- MIME:text/html -->'); print(s)"
         , ""
         , "def displayMarkdown(s):"
-        , "    print('---MIME:text/markdown---'); print(s)"
+        , "    print('<!-- MIME:text/markdown -->'); print(s)"
         , ""
         , "def displaySvg(s):"
-        , "    print('---MIME:image/svg+xml---'); print(s)"
+        , "    print('<!-- MIME:image/svg+xml -->'); print(s)"
         , ""
         , "def displayLatex(s):"
-        , "    print('---MIME:text/latex---'); print(s)"
+        , "    print('<!-- MIME:text/latex -->'); print(s)"
         , ""
         , "def displayJson(s):"
-        , "    print('---MIME:application/json---'); print(s)"
+        , "    print('<!-- MIME:application/json -->'); print(s)"
         , ""
         , "def displayImage(mime, b64):"
-        , "    print(f'---MIME:{mime};base64---'); print(b64)"
+        , "    print(f'<!-- MIME:{mime};base64 -->'); print(b64)"
         , ""
         , "def exportBridge(name, val):"
-        , "    print(f'---MIME:EXPORT:{name}---'); print(val)"
+        , "    print(f'<!-- MIME:EXPORT:{name} -->'); print(val)"
         , ""
         ]
 
@@ -281,7 +288,9 @@ errLoop h ref = do
                     then pure ()
                     else do
                         line <- hGetLine h
-                        atomicModifyIORef' ref (\ls -> (take maxErrLines (T.pack line : ls), ()))
+                        -- Force the bounded prefix; lazy @take@ pins the tail.
+                        atomicModifyIORef' ref $ \ls ->
+                            let !ls' = take maxErrLines (T.pack line : ls) in (ls', ())
             ) ::
             IO (Either SomeException ())
     pure ()

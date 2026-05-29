@@ -12,6 +12,7 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -95,10 +96,10 @@ decodeBase64Url input =
 b64decode :: BS.ByteString -> BS.ByteString
 b64decode input =
     let alphabet = B8.pack "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        indexOf c = maybe 0 id (B8.elemIndex c alphabet)
+        indexOf c = fromMaybe 0 (B8.elemIndex c alphabet)
         clean = B8.filter (/= '=') input
         -- Convert each base64 char to 6 bits
-        sextets = map (\w -> indexOf (toEnum (fromIntegral w))) (BS.unpack clean)
+        sextets = map (indexOf . toEnum . fromIntegral) (BS.unpack clean)
         -- Group into 4-sextet blocks → 3 bytes each
         bytes = go sextets
      in BS.pack (map fromIntegral bytes)

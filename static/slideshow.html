@@ -1,1229 +1,1772 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sabela Slideshow</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sabela Slideshow</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/haskell.min.js"></script>
-<script>
-  // Theme bootstrap — shared with editor via 'sabela-theme' localStorage key.
-  (() => {
-    const stored = localStorage.getItem('sabela-theme');
-    const theme = (stored === 'light' || stored === 'dark')
-      ? stored
-      : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-    document.documentElement.dataset.theme = theme;
-    window.__sabelaThemePinned = !!stored;
-  })();
-</script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/haskell.min.js"></script>
+    <script>
+      // Theme bootstrap — shared with editor via 'sabela-theme' localStorage key.
+      (() => {
+        const stored = localStorage.getItem('sabela-theme');
+        const theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+        document.documentElement.dataset.theme = theme;
+        window.__sabelaThemePinned = !!stored;
+      })();
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-  :root {
-    --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      :root {
+        --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-    --bg: #ffffff;
-    --bg-muted: #fafafa;
-    --bg-card: #ffffff;
-    --fg: #0a0a0a;
-    --fg-dim: #71717a;
-    --fg-heading: #000000;
-    --accent: #0066ff;
-    --accent-rgb: 0,102,255;
-    --accent-hover: #0052cc;
-    --border: #e4e4e7;
-    --border-light: #f4f4f5;
-    --radius: 8px;
-    --shadow: 0 1px 3px rgba(0,0,0,0.06);
-    --err-border: #fecaca;
-    --err-bg: #fef2f2;
-    --err-fg: #991b1b;
+        --bg: #ffffff;
+        --bg-muted: #fafafa;
+        --bg-card: #ffffff;
+        --fg: #0a0a0a;
+        --fg-dim: #71717a;
+        --fg-heading: #000000;
+        --accent: #0066ff;
+        --accent-rgb: 0, 102, 255;
+        --accent-hover: #0052cc;
+        --border: #e4e4e7;
+        --border-light: #f4f4f5;
+        --radius: 8px;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --err-border: #fecaca;
+        --err-bg: #fef2f2;
+        --err-fg: #991b1b;
 
-    /* syntax tokens — Catppuccin Latte */
-    --hl-keyword: #8839ef;
-    --hl-string: #40a02b;
-    --hl-number: #fe640b;
-    --hl-comment: #8c8fa1;
-    --hl-function: #1e66f5;
-    --hl-type: #df8e1d;
-    --hl-builtin: #d20f39;
-    --hl-operator: #04a5e5;
-    --hl-meta: #ea76cb;
-  }
-  :root[data-theme="dark"] {
-    --bg: #1e1e2e;
-    --bg-muted: #262637;
-    --bg-card: #181825;
-    --fg: #cdd6f4;
-    --fg-dim: #9399b2;
-    --fg-heading: #f5f5ff;
-    --accent: #89b4fa;
-    --accent-rgb: 137,180,250;
-    --accent-hover: #a4c0fa;
-    --border: #313244;
-    --border-light: #262637;
-    --shadow: 0 1px 3px rgba(0,0,0,0.4);
-    --err-border: #5a2730;
-    --err-bg: #2a1a1e;
-    --err-fg: #f38ba8;
+        /* syntax tokens — Catppuccin Latte */
+        --hl-keyword: #8839ef;
+        --hl-string: #40a02b;
+        --hl-number: #fe640b;
+        --hl-comment: #8c8fa1;
+        --hl-function: #1e66f5;
+        --hl-type: #df8e1d;
+        --hl-builtin: #d20f39;
+        --hl-operator: #04a5e5;
+        --hl-meta: #ea76cb;
+      }
+      :root[data-theme='dark'] {
+        --bg: #1e1e2e;
+        --bg-muted: #262637;
+        --bg-card: #181825;
+        --fg: #cdd6f4;
+        --fg-dim: #9399b2;
+        --fg-heading: #f5f5ff;
+        --accent: #89b4fa;
+        --accent-rgb: 137, 180, 250;
+        --accent-hover: #a4c0fa;
+        --border: #313244;
+        --border-light: #262637;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        --err-border: #5a2730;
+        --err-bg: #2a1a1e;
+        --err-fg: #f38ba8;
 
-    /* syntax tokens — Catppuccin Mocha */
-    --hl-keyword: #cba6f7;
-    --hl-string: #a6e3a1;
-    --hl-number: #fab387;
-    --hl-comment: #7f849c;
-    --hl-function: #89b4fa;
-    --hl-type: #f9e2af;
-    --hl-builtin: #f38ba8;
-    --hl-operator: #89dceb;
-    --hl-meta: #f5c2e7;
-  }
+        /* syntax tokens — Catppuccin Mocha */
+        --hl-keyword: #cba6f7;
+        --hl-string: #a6e3a1;
+        --hl-number: #fab387;
+        --hl-comment: #7f849c;
+        --hl-function: #89b4fa;
+        --hl-type: #f9e2af;
+        --hl-builtin: #f38ba8;
+        --hl-operator: #89dceb;
+        --hl-meta: #f5c2e7;
+      }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
-  html, body { height: 100%; }
-  body {
-    font-family: var(--font-sans);
-    background: var(--bg);
-    color: var(--fg);
-    line-height: 1.65;
-    font-size: 15px;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-variant-ligatures: none;
+        font-feature-settings:
+          'calt' 0,
+          'liga' 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.65;
+        font-size: 15px;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
 
-  /* ── Header ────────────────────────────────── */
-  .slide-header {
-    flex: 0 0 auto;
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 20px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    z-index: 100;
-  }
-  .slide-header h1 {
-    font-family: var(--font-mono);
-    font-size: 14px; font-weight: 600; letter-spacing: 0.3px;
-    color: var(--fg-heading);
-    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .header-actions { display: flex; gap: 8px; align-items: center; }
-  .header-actions a, .header-actions button {
-    font-family: var(--font-mono);
-    font-size: 12px; font-weight: 500;
-    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
-    background: transparent; color: var(--fg-dim); cursor: pointer;
-    text-decoration: none; transition: all 0.15s; white-space: nowrap;
-  }
-  .header-actions a:hover, .header-actions button:hover {
-    border-color: var(--accent); color: var(--accent);
-  }
-  .header-actions button.active {
-    border-color: var(--accent); color: var(--accent);
-    background: rgba(var(--accent-rgb), 0.08);
-  }
-  .header-actions .icon-btn {
-    width: 30px; height: 30px; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    border: 1px solid transparent; color: var(--fg-dim);
-  }
-  .header-actions .icon-btn:hover { background: var(--bg-muted); color: var(--fg-heading); border-color: transparent; }
-  .fontsize-group {
-    display: inline-flex; align-items: stretch;
-    border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
-  }
-  .fontsize-group button {
-    border: none; border-radius: 0;
-    padding: 6px 10px; font-family: var(--font-mono);
-    font-size: 12px; font-weight: 600; color: var(--fg-dim);
-    background: transparent; cursor: pointer; transition: all 0.15s;
-  }
-  .fontsize-group button:hover { background: var(--bg-muted); color: var(--accent); }
-  .fontsize-group button + button { border-left: 1px solid var(--border); }
-  .fontsize-group #fs-pct {
-    min-width: 48px; text-align: center;
-    font-variant-numeric: tabular-nums;
-  }
-  .icon-svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none;
-    stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+      /* ── Header ────────────────────────────────── */
+      .slide-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 20px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
+        z-index: 100;
+      }
+      .slide-header h1 {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        color: var(--fg-heading);
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .header-actions a,
+      .header-actions button {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 500;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg-dim);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      .header-actions a:hover,
+      .header-actions button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .header-actions button.active {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(var(--accent-rgb), 0.08);
+      }
+      .header-actions .icon-btn {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid transparent;
+        color: var(--fg-dim);
+      }
+      .header-actions .icon-btn:hover {
+        background: var(--bg-muted);
+        color: var(--fg-heading);
+        border-color: transparent;
+      }
+      .fontsize-group {
+        display: inline-flex;
+        align-items: stretch;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .fontsize-group button {
+        border: none;
+        border-radius: 0;
+        padding: 6px 10px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--fg-dim);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .fontsize-group button:hover {
+        background: var(--bg-muted);
+        color: var(--accent);
+      }
+      .fontsize-group button + button {
+        border-left: 1px solid var(--border);
+      }
+      .fontsize-group #fs-pct {
+        min-width: 48px;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      .icon-svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex-shrink: 0;
+      }
 
-  /* ── Progress bar ──────────────────────────── */
-  .progress-track {
-    flex: 0 0 auto;
-    height: 3px; background: var(--border-light);
-  }
-  .progress-fill {
-    height: 100%; background: var(--accent);
-    width: 0%; transition: width 0.25s ease;
-  }
+      /* ── Progress bar ──────────────────────────── */
+      .progress-track {
+        flex: 0 0 auto;
+        height: 3px;
+        background: var(--border-light);
+      }
+      .progress-fill {
+        height: 100%;
+        background: var(--accent);
+        width: 0%;
+        transition: width 0.25s ease;
+      }
 
-  /* ── Deck ──────────────────────────────────── */
-  .deck {
-    flex: 1 1 auto;
-    position: relative;
-    overflow: hidden;
-    --slide-zoom: 1;
-  }
-  .slide {
-    position: absolute; inset: 0;
-    display: none;
-    overflow: auto;
-    padding: 48px 56px 80px;
-  }
-  .slide.active { display: flex; }
-  .slide-inner {
-    margin: auto;            /* centers when small, scrolls when large */
-    width: 100%;
-    max-width: 900px;
-    zoom: var(--slide-zoom, 1);
-  }
-  .deck.show-code .slide.has-code .slide-inner {
-    max-width: 1500px;
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 36px;
-    align-items: start;
-  }
-  .slide-code { display: none; }
-  .deck.show-code .slide.has-code .slide-code { display: block; }
-  .slide-code pre {
-    font-family: var(--font-mono); font-size: 14px; line-height: 1.6;
-    background: var(--bg-card); color: var(--fg);
-    border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 18px 20px; overflow-x: auto;
-    white-space: pre; tab-size: 2;
-  }
+      /* ── Deck ──────────────────────────────────── */
+      .deck {
+        flex: 1 1 auto;
+        position: relative;
+        overflow: hidden;
+        --slide-zoom: 1;
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        display: none;
+        overflow: auto;
+        padding: 48px 56px 80px;
+      }
+      .slide.active {
+        display: flex;
+      }
+      .slide-inner {
+        margin: auto; /* centers when small, scrolls when large */
+        width: 100%;
+        max-width: 900px;
+        zoom: var(--slide-zoom, 1);
+      }
+      .deck.show-code .slide.has-code .slide-inner {
+        max-width: 1500px;
+        display: grid;
+        grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+        gap: 36px;
+        align-items: start;
+      }
+      .slide-code {
+        display: none;
+      }
+      .deck.show-code .slide.has-code .slide-code {
+        display: block;
+      }
+      .slide-code pre {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        line-height: 1.6;
+        background: var(--bg-card);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        overflow-x: auto;
+        white-space: pre;
+        tab-size: 2;
+      }
 
-  /* ── Live editing ──────────────────────────────────────────── */
-  /* In edit mode the code pane is always visible (you can't edit
+      /* ── Live editing ──────────────────────────────────────────── */
+      /* In edit mode the code pane is always visible (you can't edit
      what you can't see), regardless of the show-code toggle. */
-  .deck.editing .slide.has-code .slide-code { display: block; }
-  .deck.editing .slide.has-code .slide-inner {
-    max-width: 1500px;
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 36px;
-    align-items: start;
-  }
-  .code-edit-head {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
-  }
-  .code-edit-head .code-lang { margin-bottom: 0; flex: 1; }
-  .run-btn {
-    display: inline-flex; align-items: center; gap: 5px;
-    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-    padding: 5px 10px; border-radius: 6px;
-    border: 1px solid var(--accent); color: var(--accent);
-    background: transparent; cursor: pointer; transition: all 0.15s;
-  }
-  .run-btn:hover { background: var(--accent); color: #fff; }
-  .run-btn svg { width: 12px; height: 12px; }
-  .prose-editor {
-    width: 100%; box-sizing: border-box;
-    background: var(--bg-card); color: var(--fg);
-    border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 18px 20px; resize: vertical;
-    outline: none; transition: border-color 0.15s;
-    font-family: var(--font-sans); font-size: 18px; line-height: 1.6;
-    min-height: 240px;
-  }
-  .prose-editor:focus { border-color: var(--accent); }
+      .deck.editing .slide.has-code .slide-code {
+        display: block;
+      }
+      .deck.editing .slide.has-code .slide-inner {
+        max-width: 1500px;
+        display: grid;
+        grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+        gap: 36px;
+        align-items: start;
+      }
+      .code-edit-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .code-edit-head .code-lang {
+        margin-bottom: 0;
+        flex: 1;
+      }
+      .run-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 5px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .run-btn:hover {
+        background: var(--accent);
+        color: #fff;
+      }
+      .run-btn svg {
+        width: 12px;
+        height: 12px;
+      }
+      .prose-editor {
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--bg-card);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        resize: vertical;
+        outline: none;
+        transition: border-color 0.15s;
+        font-family: var(--font-sans);
+        font-size: 18px;
+        line-height: 1.6;
+        min-height: 240px;
+      }
+      .prose-editor:focus {
+        border-color: var(--accent);
+      }
 
-  /* Code editor: a transparent textarea layered over a highlighted
+      /* Code editor: a transparent textarea layered over a highlighted
      <pre> so the caret is real but the visible text is colored. */
-  .code-ed {
-    position: relative;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--bg-card);
-    transition: border-color 0.15s;
-  }
-  .code-ed:focus-within { border-color: var(--accent); }
-  .code-ed-hl, .code-ed-ta {
-    margin: 0; border: 0; box-sizing: border-box;
-    font-family: var(--font-mono); font-size: 14px; line-height: 1.6;
-    padding: 18px 20px; tab-size: 2;
-    white-space: pre; overflow-wrap: normal; word-break: normal;
-  }
-  .code-ed-hl {
-    position: absolute; inset: 0;
-    overflow: hidden; pointer-events: none;
-    background: transparent; color: var(--fg);
-    border-radius: var(--radius);
-  }
-  .code-ed-hl code {
-    font: inherit; background: transparent; display: block; white-space: pre;
-  }
-  .code-ed-ta {
-    position: relative; display: block; width: 100%;
-    min-height: 180px; resize: vertical; overflow: auto;
-    background: transparent; color: transparent; caret-color: var(--fg);
-    outline: none;
-  }
-  .code-ed-ta::selection { background: rgba(var(--accent-rgb), 0.30); }
-  .edit-hint {
-    margin-top: 6px; font-family: var(--font-mono);
-    font-size: 11px; color: var(--fg-dim);
-  }
+      .code-ed {
+        position: relative;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+        transition: border-color 0.15s;
+      }
+      .code-ed:focus-within {
+        border-color: var(--accent);
+      }
+      .code-ed-hl,
+      .code-ed-ta {
+        margin: 0;
+        border: 0;
+        box-sizing: border-box;
+        font-family: var(--font-mono);
+        font-size: 14px;
+        line-height: 1.6;
+        padding: 18px 20px;
+        tab-size: 2;
+        white-space: pre;
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+      .code-ed-hl {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        background: transparent;
+        color: var(--fg);
+        border-radius: var(--radius);
+      }
+      .code-ed-hl code {
+        font: inherit;
+        background: transparent;
+        display: block;
+        white-space: pre;
+      }
+      .code-ed-ta {
+        position: relative;
+        display: block;
+        width: 100%;
+        min-height: 180px;
+        resize: vertical;
+        overflow: auto;
+        background: transparent;
+        color: transparent;
+        caret-color: var(--fg);
+        outline: none;
+      }
+      .code-ed-ta::selection {
+        background: rgba(var(--accent-rgb), 0.3);
+      }
+      .edit-hint {
+        margin-top: 6px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--fg-dim);
+      }
 
-  /* ── Syntax highlighting (highlight.js token classes) ────────── */
-  .hljs { background: transparent; color: var(--fg); }
-  .hljs-keyword, .hljs-selector-tag, .hljs-section,
-  .hljs-doctag, .hljs-name { color: var(--hl-keyword); }
-  .hljs-string, .hljs-regexp, .hljs-meta .hljs-string,
-  .hljs-char.escape_, .hljs-symbol, .hljs-bullet { color: var(--hl-string); }
-  .hljs-number, .hljs-literal { color: var(--hl-number); }
-  .hljs-comment, .hljs-quote { color: var(--hl-comment); font-style: italic; }
-  .hljs-title, .hljs-title.function_,
-  .hljs-function .hljs-title { color: var(--hl-function); }
-  .hljs-type, .hljs-class .hljs-title,
-  .hljs-title.class_ { color: var(--hl-type); }
-  .hljs-built_in, .hljs-builtin-name { color: var(--hl-builtin); }
-  .hljs-operator, .hljs-punctuation { color: var(--hl-operator); }
-  .hljs-meta, .hljs-meta .hljs-keyword { color: var(--hl-meta); }
-  .hljs-attr, .hljs-attribute, .hljs-variable,
-  .hljs-template-variable, .hljs-params { color: var(--fg); }
-  .hljs-link, .hljs-selector-id, .hljs-selector-class { color: var(--accent); }
-  .hljs-emphasis { font-style: italic; }
-  .hljs-strong { font-weight: 700; }
+      /* ── Syntax highlighting (highlight.js token classes) ────────── */
+      .hljs {
+        background: transparent;
+        color: var(--fg);
+      }
+      .hljs-keyword,
+      .hljs-selector-tag,
+      .hljs-section,
+      .hljs-doctag,
+      .hljs-name {
+        color: var(--hl-keyword);
+      }
+      .hljs-string,
+      .hljs-regexp,
+      .hljs-meta .hljs-string,
+      .hljs-char.escape_,
+      .hljs-symbol,
+      .hljs-bullet {
+        color: var(--hl-string);
+      }
+      .hljs-number,
+      .hljs-literal {
+        color: var(--hl-number);
+      }
+      .hljs-comment,
+      .hljs-quote {
+        color: var(--hl-comment);
+        font-style: italic;
+      }
+      .hljs-title,
+      .hljs-title.function_,
+      .hljs-function .hljs-title {
+        color: var(--hl-function);
+      }
+      .hljs-type,
+      .hljs-class .hljs-title,
+      .hljs-title.class_ {
+        color: var(--hl-type);
+      }
+      .hljs-built_in,
+      .hljs-builtin-name {
+        color: var(--hl-builtin);
+      }
+      .hljs-operator,
+      .hljs-punctuation {
+        color: var(--hl-operator);
+      }
+      .hljs-meta,
+      .hljs-meta .hljs-keyword {
+        color: var(--hl-meta);
+      }
+      .hljs-attr,
+      .hljs-attribute,
+      .hljs-variable,
+      .hljs-template-variable,
+      .hljs-params {
+        color: var(--fg);
+      }
+      .hljs-link,
+      .hljs-selector-id,
+      .hljs-selector-class {
+        color: var(--accent);
+      }
+      .hljs-emphasis {
+        font-style: italic;
+      }
+      .hljs-strong {
+        font-weight: 700;
+      }
 
-  .code-lang {
-    display: inline-block;
-    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-    letter-spacing: 0.5px; text-transform: uppercase;
-    color: var(--fg-dim); margin-bottom: 8px;
-  }
+      .code-lang {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--fg-dim);
+        margin-bottom: 8px;
+      }
 
-  /* ── Prose slides ──────────────────────────── */
-  .prose h1 { font-size: 42px; font-weight: 700; color: var(--fg-heading); margin-bottom: 18px; line-height: 1.2; }
-  .prose h2 { font-size: 32px; font-weight: 600; color: var(--fg-heading); margin-bottom: 14px; line-height: 1.25; }
-  .prose h3 { font-size: 24px; font-weight: 600; color: var(--fg-heading); margin-bottom: 10px; }
-  .prose p { font-size: 19px; margin-bottom: 16px; }
-  .prose ul, .prose ol { font-size: 19px; }
-  /* padding-left (not margin-left) so nested lists compound and markers
+      /* ── Prose slides ──────────────────────────── */
+      .prose h1 {
+        font-size: 42px;
+        font-weight: 700;
+        color: var(--fg-heading);
+        margin-bottom: 18px;
+        line-height: 1.2;
+      }
+      .prose h2 {
+        font-size: 32px;
+        font-weight: 600;
+        color: var(--fg-heading);
+        margin-bottom: 14px;
+        line-height: 1.25;
+      }
+      .prose h3 {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--fg-heading);
+        margin-bottom: 10px;
+      }
+      .prose p {
+        font-size: 19px;
+        margin-bottom: 16px;
+      }
+      .prose ul,
+      .prose ol {
+        font-size: 19px;
+      }
+      /* padding-left (not margin-left) so nested lists compound and markers
      have room after the global "* { padding:0 }" reset. */
-  .prose ul, .prose ol,
-  .slide-output .mime-markdown ul, .slide-output .mime-markdown ol {
-    margin: 0 0 16px; padding-left: 1.5em;
-  }
-  .prose li, .slide-output .mime-markdown li { margin-bottom: 6px; }
-  .prose li > ul, .prose li > ol,
-  .slide-output .mime-markdown li > ul,
-  .slide-output .mime-markdown li > ol { margin: 4px 0 6px; }
-  .prose ul, .slide-output .mime-markdown ul { list-style: disc; }
-  .prose ul ul, .slide-output .mime-markdown ul ul { list-style: circle; }
-  .prose ul ul ul,
-  .slide-output .mime-markdown ul ul ul { list-style: square; }
-  .prose ol, .slide-output .mime-markdown ol { list-style: decimal; }
-  .prose a { color: var(--accent); }
-  .prose code {
-    font-family: var(--font-mono); font-size: 0.88em;
-    background: var(--bg-muted); padding: 2px 6px; border-radius: 4px;
-  }
-  .prose pre {
-    font-family: var(--font-mono); font-size: 15px;
-    background: var(--bg-muted); padding: 16px 20px; border-radius: var(--radius);
-    overflow-x: auto; margin-bottom: 16px;
-  }
-  .prose pre code { background: none; padding: 0; font-size: inherit; }
-  .prose blockquote {
-    border-left: 3px solid var(--accent); padding: 8px 18px;
-    color: var(--fg-dim); margin-bottom: 16px; font-size: 19px;
-  }
-  .prose img { max-width: 100%; }
-  .prose table,
-  .slide-output .mime-markdown table {
-    border-collapse: separate; border-spacing: 0;
-    width: 100%; margin: 16px 0;
-    border: 1px solid var(--border); border-radius: 8px;
-    overflow: hidden; font-size: 15px;
-    box-shadow: var(--shadow); background: var(--bg-card);
-  }
-  .prose th, .prose td,
-  .slide-output .mime-markdown th, .slide-output .mime-markdown td {
-    padding: 10px 14px; text-align: left;
-    border-bottom: 1px solid var(--border-light);
-    font-variant-numeric: tabular-nums;
-  }
-  .prose tr:last-child td,
-  .slide-output .mime-markdown tr:last-child td { border-bottom: none; }
-  .prose th,
-  .slide-output .mime-markdown th {
-    background: var(--bg-muted); color: var(--fg-heading);
-    font-weight: 600; font-size: 14px;
-    border-bottom: 1px solid var(--border);
-  }
-  .prose tr:nth-child(even) td,
-  .slide-output .mime-markdown tr:nth-child(even) td {
-    background: rgba(var(--accent-rgb), 0.04);
-  }
+      .prose ul,
+      .prose ol,
+      .slide-output .mime-markdown ul,
+      .slide-output .mime-markdown ol {
+        margin: 0 0 16px;
+        padding-left: 1.5em;
+      }
+      .prose li,
+      .slide-output .mime-markdown li {
+        margin-bottom: 6px;
+      }
+      .prose li > ul,
+      .prose li > ol,
+      .slide-output .mime-markdown li > ul,
+      .slide-output .mime-markdown li > ol {
+        margin: 4px 0 6px;
+      }
+      .prose ul,
+      .slide-output .mime-markdown ul {
+        list-style: disc;
+      }
+      .prose ul ul,
+      .slide-output .mime-markdown ul ul {
+        list-style: circle;
+      }
+      .prose ul ul ul,
+      .slide-output .mime-markdown ul ul ul {
+        list-style: square;
+      }
+      .prose ol,
+      .slide-output .mime-markdown ol {
+        list-style: decimal;
+      }
+      .prose a {
+        color: var(--accent);
+      }
+      .prose code {
+        font-family: var(--font-mono);
+        font-size: 0.88em;
+        background: var(--bg-muted);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .prose pre {
+        font-family: var(--font-mono);
+        font-size: 15px;
+        background: var(--bg-muted);
+        padding: 16px 20px;
+        border-radius: var(--radius);
+        overflow-x: auto;
+        margin-bottom: 16px;
+      }
+      .prose pre code {
+        background: none;
+        padding: 0;
+        font-size: inherit;
+      }
+      .prose blockquote {
+        border-left: 3px solid var(--accent);
+        padding: 8px 18px;
+        color: var(--fg-dim);
+        margin-bottom: 16px;
+        font-size: 19px;
+      }
+      .prose img {
+        max-width: 100%;
+      }
+      .prose table,
+      .slide-output .mime-markdown table {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+        margin: 16px 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        font-size: 15px;
+        box-shadow: var(--shadow);
+        background: var(--bg-card);
+      }
+      .prose th,
+      .prose td,
+      .slide-output .mime-markdown th,
+      .slide-output .mime-markdown td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-light);
+        font-variant-numeric: tabular-nums;
+      }
+      .prose tr:last-child td,
+      .slide-output .mime-markdown tr:last-child td {
+        border-bottom: none;
+      }
+      .prose th,
+      .slide-output .mime-markdown th {
+        background: var(--bg-muted);
+        color: var(--fg-heading);
+        font-weight: 600;
+        font-size: 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      .prose tr:nth-child(even) td,
+      .slide-output .mime-markdown tr:nth-child(even) td {
+        background: rgba(var(--accent-rgb), 0.04);
+      }
 
-  /* ── Output content ────────────────────────── */
-  .slide-output .output-block { margin-bottom: 18px; }
-  .slide-output .output-block:last-child { margin-bottom: 0; }
-  .slide-output iframe {
-    width: 100%; border: none; display: block; min-height: 60px;
-    border: 1px solid var(--border-light); border-radius: var(--radius);
-  }
-  .slide-output .mime-svg { text-align: center; }
-  .slide-output .mime-svg svg { max-width: 100%; height: auto; }
-  .slide-output .mime-image { text-align: center; }
-  .slide-output .mime-image img { max-width: 100%; display: inline-block; }
-  .slide-output .mime-json {
-    font-family: var(--font-mono); font-size: 14px;
-    background: var(--bg-muted); padding: 14px 18px; border-radius: var(--radius);
-    white-space: pre-wrap; word-break: break-word;
-  }
-  .slide-output .mime-markdown { font-size: 17px; }
-  .slide-output .mime-latex { text-align: center; font-size: 22px; padding: 12px 0; }
-  .slide-output .mime-plain {
-    font-family: var(--font-mono); font-size: 16px;
-    background: var(--bg-muted); padding: 16px 20px; border-radius: var(--radius);
-    white-space: pre-wrap; word-break: break-word;
-  }
-  .slide-widget {
-    border-radius: 6px; overflow: hidden;
-    background: var(--bg-muted); margin-bottom: 12px;
-  }
-  .slide-widget iframe { width: 100%; border: none; display: block; height: 40px; }
-  .slide-widget .static-widget { font-size: 15px; padding: 8px 14px; }
-  .slide-widget .static-widget input[disabled],
-  .slide-widget .static-widget select[disabled] { opacity: 0.7; cursor: default; }
+      /* ── Output content ────────────────────────── */
+      .slide-output .output-block {
+        margin-bottom: 18px;
+      }
+      .slide-output .output-block:last-child {
+        margin-bottom: 0;
+      }
+      .slide-output iframe {
+        width: 100%;
+        border: none;
+        display: block;
+        min-height: 60px;
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius);
+      }
+      .slide-output .mime-svg {
+        text-align: center;
+      }
+      .slide-output .mime-svg svg {
+        max-width: 100%;
+        height: auto;
+      }
+      .slide-output .mime-image {
+        text-align: center;
+      }
+      .slide-output .mime-image img {
+        max-width: 100%;
+        display: inline-block;
+      }
+      .slide-output .mime-json {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        background: var(--bg-muted);
+        padding: 14px 18px;
+        border-radius: var(--radius);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .slide-output .mime-markdown {
+        font-size: 17px;
+      }
+      .slide-output .mime-latex {
+        text-align: center;
+        font-size: 22px;
+        padding: 12px 0;
+      }
+      .slide-output .mime-plain {
+        font-family: var(--font-mono);
+        font-size: 16px;
+        background: var(--bg-muted);
+        padding: 16px 20px;
+        border-radius: var(--radius);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .slide-widget {
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--bg-muted);
+        margin-bottom: 12px;
+      }
+      .slide-widget iframe {
+        width: 100%;
+        border: none;
+        display: block;
+        height: 40px;
+      }
+      .slide-widget .static-widget {
+        font-size: 15px;
+        padding: 8px 14px;
+      }
+      .slide-widget .static-widget input[disabled],
+      .slide-widget .static-widget select[disabled] {
+        opacity: 0.7;
+        cursor: default;
+      }
 
-  .slide-error {
-    padding: 14px 18px;
-    border: 1px solid var(--err-border); border-radius: var(--radius);
-    background: var(--err-bg); color: var(--err-fg);
-    font-family: var(--font-mono); font-size: 14px;
-    white-space: pre-wrap;
-  }
-  .slide-empty {
-    color: var(--fg-dim); font-family: var(--font-mono);
-    font-size: 14px; text-align: center; opacity: 0.6;
-    padding: 40px 0;
-  }
+      .slide-error {
+        padding: 14px 18px;
+        border: 1px solid var(--err-border);
+        border-radius: var(--radius);
+        background: var(--err-bg);
+        color: var(--err-fg);
+        font-family: var(--font-mono);
+        font-size: 14px;
+        white-space: pre-wrap;
+      }
+      .slide-empty {
+        color: var(--fg-dim);
+        font-family: var(--font-mono);
+        font-size: 14px;
+        text-align: center;
+        opacity: 0.6;
+        padding: 40px 0;
+      }
 
-  /* ── Footer nav ────────────────────────────── */
-  .slide-nav {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    display: flex; align-items: center; justify-content: center; gap: 16px;
-    padding: 12px;
-    pointer-events: none;
-  }
-  .slide-nav .nav-group {
-    display: flex; align-items: center; gap: 10px;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 999px; padding: 6px 8px;
-    box-shadow: var(--shadow);
-    pointer-events: auto;
-  }
-  .slide-nav button {
-    width: 30px; height: 30px; border-radius: 999px;
-    border: none; background: transparent; color: var(--fg-dim);
-    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-  }
-  .slide-nav button:hover:not(:disabled) { background: var(--bg-muted); color: var(--fg-heading); }
-  .slide-nav button:disabled { opacity: 0.3; cursor: default; }
-  .slide-counter {
-    font-family: var(--font-mono); font-size: 13px; font-weight: 600;
-    color: var(--fg-dim); min-width: 56px; text-align: center;
-    font-variant-numeric: tabular-nums;
-  }
+      /* ── Footer nav ────────────────────────────── */
+      .slide-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 12px;
+        pointer-events: none;
+      }
+      .slide-nav .nav-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 8px;
+        box-shadow: var(--shadow);
+        pointer-events: auto;
+      }
+      .slide-nav button {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        border: none;
+        background: transparent;
+        color: var(--fg-dim);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .slide-nav button:hover:not(:disabled) {
+        background: var(--bg-muted);
+        color: var(--fg-heading);
+      }
+      .slide-nav button:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+      .slide-counter {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fg-dim);
+        min-width: 56px;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
 
-  /* ── Status indicator ──────────────────────── */
-  .slide-status {
-    position: fixed; bottom: 16px; right: 16px;
-    padding: 6px 14px; border-radius: 20px;
-    font-size: 12px; font-weight: 600;
-    background: var(--bg-muted); border: 1px solid var(--border);
-    color: var(--fg-dim); display: none; z-index: 200;
-  }
-  .slide-status.visible { display: block; }
-  .slide-status.running { color: var(--accent); border-color: var(--accent); }
+      /* ── Status indicator ──────────────────────── */
+      .slide-status {
+        position: fixed;
+        bottom: 16px;
+        right: 16px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--bg-muted);
+        border: 1px solid var(--border);
+        color: var(--fg-dim);
+        display: none;
+        z-index: 200;
+      }
+      .slide-status.visible {
+        display: block;
+      }
+      .slide-status.running {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
 
-  @media (max-width: 900px) {
-    .slide { padding: 28px 24px 76px; }
-    .deck.show-code .slide.has-code .slide-inner {
-      grid-template-columns: 1fr;
-      gap: 20px;
-    }
-    .prose h1 { font-size: 32px; }
-    .prose h2 { font-size: 26px; }
-    .prose p, .prose ul, .prose ol { font-size: 17px; }
-  }
-</style>
-<script>/*__SABELA_INJECT__*/</script>
-</head>
-<body>
+      @media (max-width: 900px) {
+        .slide {
+          padding: 28px 24px 76px;
+        }
+        .deck.show-code .slide.has-code .slide-inner {
+          grid-template-columns: 1fr;
+          gap: 20px;
+        }
+        .prose h1 {
+          font-size: 32px;
+        }
+        .prose h2 {
+          font-size: 26px;
+        }
+        .prose p,
+        .prose ul,
+        .prose ol {
+          font-size: 17px;
+        }
+      }
+    </style>
+    <script>
+      /*__SABELA_INJECT__*/
+    </script>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-sun" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" />
+          <line x1="12" y1="2" x2="12" y2="4" />
+          <line x1="12" y1="20" x2="12" y2="22" />
+          <line x1="4.93" y1="4.93" x2="6.34" y2="6.34" />
+          <line x1="17.66" y1="17.66" x2="19.07" y2="19.07" />
+          <line x1="2" y1="12" x2="4" y2="12" />
+          <line x1="20" y1="12" x2="22" y2="12" />
+          <line x1="4.93" y1="19.07" x2="6.34" y2="17.66" />
+          <line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
+        </symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </symbol>
+        <symbol id="i-prev" viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18" /></symbol>
+        <symbol id="i-next" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18" /></symbol>
+        <symbol id="i-fs" viewBox="0 0 24 24">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+          <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </symbol>
+        <symbol id="i-code" viewBox="0 0 24 24">
+          <polyline points="16 18 22 12 16 6" />
+          <polyline points="8 6 2 12 8 18" />
+        </symbol>
+        <symbol id="i-edit" viewBox="0 0 24 24">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </symbol>
+        <symbol id="i-run" viewBox="0 0 24 24">
+          <polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none" />
+        </symbol>
+      </defs>
+    </svg>
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></symbol>
-    <symbol id="i-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
-    <symbol id="i-prev" viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18"/></symbol>
-    <symbol id="i-next" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></symbol>
-    <symbol id="i-fs" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
-    <symbol id="i-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
-    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></symbol>
-    <symbol id="i-run" viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></symbol>
-  </defs>
-</svg>
-
-<div class="slide-header">
-  <h1 id="deck-title">Slideshow</h1>
-  <div class="header-actions" id="header-actions">
-    <button id="code-toggle" onclick="toggleCode()" title="Show source code (c)">
-      <svg class="icon-svg" style="vertical-align:-3px;margin-right:4px"><use href="#i-code"/></svg>Code
-    </button>
-    <button id="edit-toggle" onclick="toggleEdit()" title="Edit slides live (e)">
-      <svg class="icon-svg" style="vertical-align:-3px;margin-right:4px"><use href="#i-edit"/></svg>Edit
-    </button>
-    <div class="fontsize-group" role="group" aria-label="Slide font size">
-      <button id="fs-dec" onclick="bumpZoom(-1)" title="Decrease font (−)" aria-label="Decrease font size">A&minus;</button>
-      <button id="fs-pct" onclick="resetZoom()" title="Reset font size (0)" aria-label="Reset font size">100%</button>
-      <button id="fs-inc" onclick="bumpZoom(1)" title="Increase font (+)" aria-label="Increase font size">A+</button>
+    <div class="slide-header">
+      <h1 id="deck-title">Slideshow</h1>
+      <div class="header-actions" id="header-actions">
+        <button id="code-toggle" onclick="toggleCode()" title="Show source code (c)">
+          <svg class="icon-svg" style="vertical-align: -3px; margin-right: 4px"><use href="#i-code" /></svg>
+          Code
+        </button>
+        <button id="edit-toggle" onclick="toggleEdit()" title="Edit slides live (e)">
+          <svg class="icon-svg" style="vertical-align: -3px; margin-right: 4px"><use href="#i-edit" /></svg>
+          Edit
+        </button>
+        <div class="fontsize-group" role="group" aria-label="Slide font size">
+          <button id="fs-dec" onclick="bumpZoom(-1)" title="Decrease font (−)" aria-label="Decrease font size">
+            A&minus;
+          </button>
+          <button id="fs-pct" onclick="resetZoom()" title="Reset font size (0)" aria-label="Reset font size">
+            100%
+          </button>
+          <button id="fs-inc" onclick="bumpZoom(1)" title="Increase font (+)" aria-label="Increase font size">
+            A+
+          </button>
+        </div>
+        <a href="/" id="edit-link">Edit Notebook</a>
+        <button onclick="exportSlideshow()" id="export-btn">Export HTML</button>
+        <button
+          class="icon-btn"
+          id="fs-toggle"
+          onclick="toggleFullscreen()"
+          title="Fullscreen (f)"
+          aria-label="Fullscreen"
+        >
+          <svg class="icon-svg"><use href="#i-fs" /></svg>
+        </button>
+        <button
+          class="icon-btn"
+          id="theme-toggle"
+          onclick="toggleTheme()"
+          title="Toggle light/dark theme"
+          aria-label="Toggle theme"
+        >
+          <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
+        </button>
+      </div>
     </div>
-    <a href="/" id="edit-link">Edit Notebook</a>
-    <button onclick="exportSlideshow()" id="export-btn">Export HTML</button>
-    <button class="icon-btn" id="fs-toggle" onclick="toggleFullscreen()" title="Fullscreen (f)" aria-label="Fullscreen">
-      <svg class="icon-svg"><use href="#i-fs"/></svg>
-    </button>
-    <button class="icon-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
-      <svg class="icon-svg" id="theme-icon"><use href="#i-moon"/></svg>
-    </button>
-  </div>
-</div>
 
-<div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
 
-<div class="deck" id="deck"></div>
+    <div class="deck" id="deck"></div>
 
-<div class="slide-nav">
-  <div class="nav-group">
-    <button id="nav-prev" onclick="prev()" title="Previous (←)" aria-label="Previous slide">
-      <svg class="icon-svg"><use href="#i-prev"/></svg>
-    </button>
-    <span class="slide-counter" id="slide-counter">0 / 0</span>
-    <button id="nav-next" onclick="next()" title="Next (→)" aria-label="Next slide">
-      <svg class="icon-svg"><use href="#i-next"/></svg>
-    </button>
-  </div>
-</div>
+    <div class="slide-nav">
+      <div class="nav-group">
+        <button id="nav-prev" onclick="prev()" title="Previous (←)" aria-label="Previous slide">
+          <svg class="icon-svg"><use href="#i-prev" /></svg>
+        </button>
+        <span class="slide-counter" id="slide-counter">0 / 0</span>
+        <button id="nav-next" onclick="next()" title="Next (→)" aria-label="Next slide">
+          <svg class="icon-svg"><use href="#i-next" /></svg>
+        </button>
+      </div>
+    </div>
 
-<div class="slide-status" id="status-indicator"></div>
+    <div class="slide-status" id="status-indicator"></div>
 
-<script>
-const isStatic = !!window.__SABELA_STATIC__;
-let notebookData = null;
-let slideEls = [];      // one .slide element per cell
-let current = 0;
-let editMode = false;            // live-editing toggle (live mode only)
-let _editForcedShowCode = false; // did edit mode auto-enable show-code?
+    <script>
+      const isStatic = !!window.__SABELA_STATIC__;
+      let notebookData = null;
+      let slideEls = []; // one .slide element per cell
+      let current = 0;
+      let editMode = false; // live-editing toggle (live mode only)
+      let _editForcedShowCode = false; // did edit mode auto-enable show-code?
 
-// ── Theme handling (shared with editor via 'sabela-theme' key) ──
-function currentTheme() { return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'; }
-function applyTheme(theme, { persist = true } = {}) {
-  document.documentElement.dataset.theme = theme;
-  if (persist) {
-    localStorage.setItem('sabela-theme', theme);
-    window.__sabelaThemePinned = true;
-  }
-  const iconUse = document.querySelector('#theme-icon use');
-  if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
-  rerenderVisibleIframes();
-}
-function toggleTheme() {
-  applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
-}
-// ── Static-export iframe: opaque-origin sandbox + in-document CSP ──
-// In a shared/offline export we still run a script-drawn widget so its plot
-// renders, but sandbox='allow-scripts' (NO allow-same-origin) gives the frame an
-// opaque origin that cannot read this page (the embedded notebook JSON), cookies,
-// or storage, and the meta-CSP blocks all network egress. Because the frame is
-// cross-origin we cannot read its height, so it reports its own via postMessage.
-const STATIC_CSP = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'\">";
-let __staticFrameSeq = 0;
-function staticSrcdoc(content, kind, id) {
-  const style = kind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
-  const reporter = "<scr" + "ipt>(function(){function r(){try{parent.postMessage({__sabelaH:document.documentElement.scrollHeight,__sabelaId:'" + id + "'},'*')}catch(e){}}requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" + "ipt>";
-  return STATIC_CSP + style + content + reporter;
-}
-function mountStaticFrame(container, content, kind) {
-  const id = 'sframe' + (__staticFrameSeq++);
-  const iframe = document.createElement('iframe');
-  iframe.id = id;
-  iframe.setAttribute('sandbox', 'allow-scripts');
-  if (kind === 'widget') iframe.style.pointerEvents = 'none';
-  iframe.style.height = (kind === 'widget' ? 60 : 80) + 'px';
-  iframe.dataset.iframeKind = kind;
-  iframe.dataset.lastContent = content;
-  iframe.dataset.staticFrame = '1';
-  iframe.srcdoc = staticSrcdoc(content, kind, id);
-  container.appendChild(iframe);
-}
-window.addEventListener('message', (e) => {
-  const d = e.data;
-  if (d && typeof d.__sabelaH === 'number' && d.__sabelaId) {
-    const el = document.getElementById(d.__sabelaId);
-    if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
-  }
-});
-function iframeContentStyle() {
-  const isDark = currentTheme() === 'dark';
-  const bg = isDark ? '#1e1e2e' : '#ffffff';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgHead = isDark ? '#f5f5ff' : '#000000';
-  const muted = isDark ? '#262637' : '#fafafa';
-  const border = isDark ? '#313244' : '#e4e4e7';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  const altRow = isDark ? 'rgba(137,180,250,0.05)' : 'rgba(0,102,255,0.04)';
-  return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:14px 18px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
-}
-function widgetIframeStyle() {
-  const isDark = currentTheme() === 'dark';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgDim = isDark ? '#9399b2' : '#71717a';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:8px 14px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
-}
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-    if (!window.__sabelaThemePinned) applyTheme(e.matches ? 'light' : 'dark', { persist: false });
-  });
-}
-applyTheme(currentTheme(), { persist: false });
-
-// ── Initialization ───────────────────────────────────────────────
-async function init() {
-  restoreZoom();
-  if (isStatic) {
-    notebookData = window.__SABELA_STATIC__;
-    document.getElementById('edit-link').style.display = 'none';
-    document.getElementById('export-btn').style.display = 'none';
-    document.getElementById('edit-toggle').style.display = 'none';
-  } else {
-    const resp = await fetch('/api/notebook');
-    notebookData = await resp.json();
-  }
-  buildDeck(notebookData);
-  if (!isStatic) connectSSE();
-}
-
-// ── Build the deck ───────────────────────────────────────────────
-function buildDeck(nb) {
-  document.getElementById('deck-title').textContent = formatTitle(nb.nbTitle);
-  document.title = formatTitle(nb.nbTitle) + ' — Sabela Slideshow';
-
-  const deck = document.getElementById('deck');
-  deck.innerHTML = '';
-  slideEls = [];
-
-  const cells = nb.nbCells || [];
-  for (const cell of cells) {
-    const slide = document.createElement('section');
-    slide.className = 'slide';
-    slide.dataset.cellId = cell.cellId;
-    renderSlide(slide, cell);
-    deck.appendChild(slide);
-    slideEls.push(slide);
-  }
-
-  if (slideEls.length === 0) {
-    const slide = document.createElement('section');
-    slide.className = 'slide';
-    slide.innerHTML = '<div class="slide-inner"><div class="slide-empty">This notebook has no cells.</div></div>';
-    deck.appendChild(slide);
-    slideEls.push(slide);
-  }
-
-  // Restore position from hash (#3) if present.
-  const fromHash = parseInt((location.hash || '').slice(1), 10);
-  current = Number.isFinite(fromHash) ? Math.min(Math.max(fromHash - 1, 0), slideEls.length - 1) : 0;
-  goTo(current);
-}
-
-// ── Render one slide's content ───────────────────────────────────
-const canEdit = () => editMode && !isStatic;
-
-function renderSlide(slide, cell) {
-  slide.innerHTML = '';
-  const inner = document.createElement('div');
-  inner.className = 'slide-inner';
-
-  if (cell.cellType === 'ProseCell') {
-    if (canEdit()) {
-      inner.appendChild(buildProseEditor(cell));
-    } else {
-      const prose = document.createElement('div');
-      prose.className = 'prose';
-      prose.innerHTML = marked.parse(cell.cellSource || '');
-      wrapTables(prose);
-      highlightWithin(prose);
-      inner.appendChild(prose);
-    }
-    slide.appendChild(inner);
-    return;
-  }
-
-  // CodeCell — mark as code-bearing so the "show code" layout applies.
-  slide.classList.add('has-code');
-
-  const codeCol = document.createElement('div');
-  codeCol.className = 'slide-code';
-  const lang = (cell.cellLang || 'Haskell');
-
-  if (canEdit()) {
-    codeCol.appendChild(buildCodeEditor(cell, lang));
-  } else {
-    codeCol.innerHTML = '<div class="code-lang">' + escapeHtml(lang) + '</div>';
-    const pre = document.createElement('pre');
-    const codeEl = document.createElement('code');
-    codeEl.className = 'hljs';
-    const src = cell.cellSource || '';
-    const hl = HLJS_LANG[lang];
-    if (hl && window.hljs && hljs.getLanguage(hl)) {
-      codeEl.innerHTML = hljs.highlight(src, { language: hl }).value;
-    } else {
-      codeEl.textContent = src;
-    }
-    pre.appendChild(codeEl);
-    codeCol.appendChild(pre);
-  }
-
-  const outCol = document.createElement('div');
-  outCol.className = 'slide-output';
-  fillOutputs(outCol, cell);
-
-  inner.appendChild(codeCol);
-  inner.appendChild(outCol);
-  slide.appendChild(inner);
-}
-
-// Render a cell's outputs/error into a (possibly cleared) container.
-function fillOutputs(outCol, cell) {
-  outCol.innerHTML = '';
-  const merged = mergeHtmlOutputs(cell.cellOutputs || []);
-  let rendered = 0;
-  for (const o of merged) {
-    if (!o.oiOutput || !o.oiOutput.trim()) continue;
-    const isWidget = classifyOutput(o) === 'widget';
-    const block = document.createElement('div');
-    block.className = isWidget ? 'slide-widget' : 'output-block';
-    if (isWidget) renderWidgetOutput(block, o);
-    else renderOutput(block, o.oiOutput, o.oiMime);
-    outCol.appendChild(block);
-    rendered++;
-  }
-  if (cell.cellError && cell.cellError.trim()) {
-    const errEl = document.createElement('div');
-    errEl.className = 'slide-error';
-    errEl.textContent = cell.cellError;
-    outCol.appendChild(errEl);
-    rendered++;
-  }
-  if (rendered === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'slide-empty';
-    empty.textContent = '— no output —';
-    outCol.appendChild(empty);
-  }
-}
-
-// ── Editors (live mode) ──────────────────────────────────────────
-function buildProseEditor(cell) {
-  const ta = document.createElement('textarea');
-  ta.className = 'prose-editor';
-  ta.value = cell.cellSource || '';
-  ta.spellcheck = false;
-  ta.addEventListener('blur', () => saveCell(cell, ta.value, false));
-  ta.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); ta.blur(); }
-    else if (e.key === 'Escape') { ta.value = cell.cellSource || ''; ta.blur(); }
-  });
-  const wrap = document.createElement('div');
-  wrap.appendChild(ta);
-  const hint = document.createElement('div');
-  hint.className = 'edit-hint';
-  hint.textContent = 'Markdown — saves on blur (⌘/Ctrl+Enter), Esc to discard';
-  wrap.appendChild(hint);
-  return wrap;
-}
-
-// Paint the highlight layer. A trailing newline gets a phantom space so
-// the empty last line still has a line box and the layer stays the same
-// height as the textarea.
-function paintHighlight(codeEl, value, lang) {
-  const v = value.endsWith('\n') ? value + ' ' : value;
-  const hl = HLJS_LANG[lang];
-  if (hl && window.hljs && hljs.getLanguage(hl)) {
-    codeEl.innerHTML = hljs.highlight(v, { language: hl }).value;
-  } else {
-    codeEl.textContent = v;
-  }
-}
-
-function buildCodeEditor(cell, lang) {
-  const wrap = document.createElement('div');
-  const head = document.createElement('div');
-  head.className = 'code-edit-head';
-  const label = document.createElement('div');
-  label.className = 'code-lang';
-  label.textContent = lang;
-  const runBtn = document.createElement('button');
-  runBtn.className = 'run-btn';
-  runBtn.title = 'Run cell (⌘/Ctrl+Enter)';
-  runBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></svg>Run';
-  head.appendChild(label);
-  head.appendChild(runBtn);
-
-  const ed = document.createElement('div');
-  ed.className = 'code-ed';
-  const pre = document.createElement('pre');
-  pre.className = 'code-ed-hl';
-  pre.setAttribute('aria-hidden', 'true');
-  const codeEl = document.createElement('code');
-  codeEl.className = 'hljs';
-  pre.appendChild(codeEl);
-
-  const ta = document.createElement('textarea');
-  ta.className = 'code-ed-ta';
-  ta.value = cell.cellSource || '';
-  ta.spellcheck = false;
-  ta.wrap = 'off';
-  paintHighlight(codeEl, ta.value, lang);
-
-  const syncScroll = () => {
-    pre.scrollTop = ta.scrollTop;
-    pre.scrollLeft = ta.scrollLeft;
-  };
-  const sync = () => { paintHighlight(codeEl, ta.value, lang); syncScroll(); };
-
-  const run = () => { cell.cellSource = ta.value; runCell(cell, ta.value); };
-  runBtn.addEventListener('click', run);
-  ta.addEventListener('input', sync);
-  ta.addEventListener('scroll', syncScroll);
-  ta.addEventListener('blur', () => saveCell(cell, ta.value, true));
-  ta.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); run(); }
-    else if (e.key === 'Escape') { ta.value = cell.cellSource || ''; sync(); ta.blur(); }
-  });
-
-  ed.appendChild(pre);
-  ed.appendChild(ta);
-  wrap.appendChild(head);
-  wrap.appendChild(ed);
-  const hint = document.createElement('div');
-  hint.className = 'edit-hint';
-  hint.textContent = '⌘/Ctrl+Enter to run · blur saves without running · Esc discards';
-  wrap.appendChild(hint);
-  return wrap;
-}
-
-async function apiFetch(method, path, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  const res = await fetch('/api/' + path, opts);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-// Persist source. codeOnly=true uses the no-execute /source endpoint so a
-// blur doesn't surprise-run; prose persists via the reactive endpoint.
-async function saveCell(cell, value, codeOnly) {
-  if (isStatic || value === (cell.cellSource || '')) return;
-  cell.cellSource = value;
-  const path = codeOnly ? `cell/${cell.cellId}/source` : `cell/${cell.cellId}`;
-  try {
-    await apiFetch('PUT', path, { ucSource: value });
-    showStatus('Saved', false);
-    setTimeout(hideStatus, 1200);
-  } catch (err) {
-    showStatus('Save failed', false);
-  }
-}
-
-async function runCell(cell, value) {
-  if (isStatic) return;
-  showStatus('Running...', true);
-  try {
-    await apiFetch('PUT', `cell/${cell.cellId}`, { ucSource: value });
-    await apiFetch('POST', `run/${cell.cellId}`);
-    // Outputs arrive via SSE (cellResult) and refresh just the output pane.
-  } catch (err) {
-    showStatus('Run failed', false);
-  }
-}
-
-function wrapTables(root) {
-  root.querySelectorAll('table').forEach(t => {
-    const w = document.createElement('div');
-    w.style.overflowX = 'auto';
-    t.parentNode.insertBefore(w, t);
-    w.appendChild(t);
-  });
-}
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-}
-
-// Map Sabela cell languages to highlight.js language ids.
-const HLJS_LANG = { Haskell: 'haskell', Python: 'python' };
-
-// Syntax-highlight fenced code blocks inside rendered markdown.
-function highlightWithin(root) {
-  if (!window.hljs) return;
-  root.querySelectorAll('pre code').forEach(el => {
-    try { hljs.highlightElement(el); } catch {}
-  });
-}
-
-// ── Output classification / merging (shared with dashboard) ──────
-function classifyOutput(item) {
-  if (item.oiMime === 'text/html' && item.oiOutput && item.oiOutput.includes('parent.postMessage')) {
-    return 'widget';
-  }
-  return 'content';
-}
-function mergeHtmlOutputs(outputs) {
-  const merged = [];
-  for (const o of outputs) {
-    const isWidget = classifyOutput(o) === 'widget';
-    const last = merged[merged.length - 1];
-    if (!isWidget && o.oiMime === 'text/html' && last &&
-        last.oiMime === 'text/html' && classifyOutput(last) !== 'widget') {
-      last.oiOutput += '\n' + o.oiOutput;
-    } else {
-      merged.push({oiMime: o.oiMime, oiOutput: o.oiOutput});
-    }
-  }
-  return merged;
-}
-
-// ── Render a content output ──────────────────────────────────────
-function renderOutput(container, content, mime) {
-  if (mime === 'text/html') {
-    if (isStatic) { mountStaticFrame(container, content, 'content'); return; }
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-    iframe.style.visibility = 'hidden';
-    container.appendChild(iframe);
-    requestAnimationFrame(() => {
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return;
-      iframe.dataset.lastContent = content;
-      doc.open();
-      iframe.onload = () => {
-        iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
-        iframe.style.visibility = '';
-      };
-      doc.write(iframeContentStyle() + content);
-      doc.close();
-    });
-  } else if (mime === 'text/markdown') {
-    const div = document.createElement('div');
-    div.className = 'mime-markdown';
-    div.innerHTML = marked.parse(content);
-    wrapTables(div);
-    highlightWithin(div);
-    container.appendChild(div);
-  } else if (mime === 'image/svg+xml') {
-    const div = document.createElement('div');
-    div.className = 'mime-svg';
-    div.innerHTML = content;
-    container.appendChild(div);
-  } else if (mime.startsWith('image/') && mime.includes('base64')) {
-    const div = document.createElement('div');
-    div.className = 'mime-image';
-    const mimeClean = mime.replace(';base64', '');
-    div.innerHTML = '<img src="data:' + mimeClean + ';base64,' + content.trim() + '" />';
-    container.appendChild(div);
-  } else if (mime === 'application/json') {
-    const div = document.createElement('div');
-    div.className = 'mime-json';
-    try { div.textContent = JSON.stringify(JSON.parse(content), null, 2); }
-    catch { div.textContent = content; }
-    container.appendChild(div);
-  } else if (mime === 'text/latex') {
-    const div = document.createElement('div');
-    div.className = 'mime-latex';
-    try { katex.render(content, div, { displayMode: true, throwOnError: false }); }
-    catch { div.textContent = content; }
-    container.appendChild(div);
-  } else {
-    const div = document.createElement('div');
-    div.className = 'mime-plain';
-    div.textContent = content;
-    container.appendChild(div);
-  }
-}
-
-function renderWidgetOutput(container, output) {
-  if (isStatic) {
-    // Script-drawn widgets (e.g. the scatter <canvas>) need their script to run to
-    // render at all — do it in the opaque-origin, network-dead sandbox (see
-    // mountStaticFrame), inert via pointer-events:none. Form controls have no such
-    // need and stay as greyed-out, script-stripped placeholders.
-    if (/<canvas|<script/i.test(output.oiOutput)) {
-      mountStaticFrame(container, output.oiOutput, 'widget');
-      return;
-    }
-    const wrapper = document.createElement('div');
-    wrapper.className = 'static-widget';
-    let cleaned = output.oiOutput
-      .replace(/\s*on\w+="[^"]*"/g, '')
-      .replace(/<(input|select|button)/gi, '<$1 disabled');
-    wrapper.innerHTML = cleaned;
-    container.appendChild(wrapper);
-    return;
-  }
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-  iframe.style.visibility = 'hidden';
-  container.appendChild(iframe);
-  requestAnimationFrame(() => {
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-    iframe.dataset.lastContent = output.oiOutput;
-    iframe.dataset.iframeKind = 'widget';
-    doc.open();
-    iframe.onload = () => {
-      iframe.style.height = Math.max(32, doc.body.scrollHeight) + 'px';
-      iframe.style.visibility = '';
-    };
-    doc.write(widgetIframeStyle() + output.oiOutput);
-    doc.close();
-  });
-}
-
-// Re-write iframe docs so they reflow at the current width / theme.
-function rerenderVisibleIframes() {
-  const slide = slideEls[current];
-  if (!slide) return;
-  slide.querySelectorAll('iframe[data-last-content]').forEach(f => {
-    if (f.dataset.staticFrame) {
-      f.srcdoc = staticSrcdoc(f.dataset.lastContent, f.dataset.iframeKind || 'content', f.id);
-      return;
-    }
-    try {
-      const doc = f.contentDocument || f.contentWindow?.document;
-      if (!doc) return;
-      const isWidget = f.dataset.iframeKind === 'widget';
-      f.style.visibility = 'hidden';
-      doc.open();
-      f.onload = () => {
-        f.style.height = Math.max(isWidget ? 32 : 60, doc.body.scrollHeight + (isWidget ? 0 : 20)) + 'px';
-        f.style.visibility = '';
-      };
-      doc.write((isWidget ? widgetIframeStyle() : iframeContentStyle()) + f.dataset.lastContent);
-      doc.close();
-    } catch {}
-  });
-}
-
-// ── Navigation ───────────────────────────────────────────────────
-function goTo(i) {
-  if (slideEls.length === 0) return;
-  current = Math.min(Math.max(i, 0), slideEls.length - 1);
-  slideEls.forEach((el, idx) => el.classList.toggle('active', idx === current));
-  const total = slideEls.length;
-  document.getElementById('slide-counter').textContent = (current + 1) + ' / ' + total;
-  document.getElementById('progress-fill').style.width = ((current + 1) / total * 100) + '%';
-  document.getElementById('nav-prev').disabled = current === 0;
-  document.getElementById('nav-next').disabled = current === total - 1;
-  history.replaceState(null, '', '#' + (current + 1));
-  const active = slideEls[current];
-  if (active) active.scrollTop = 0;
-  // Iframes that were rendered while hidden need a reflow once visible.
-  requestAnimationFrame(rerenderVisibleIframes);
-}
-function next() { goTo(current + 1); }
-function prev() { goTo(current - 1); }
-
-function toggleCode() {
-  const deck = document.getElementById('deck');
-  const on = deck.classList.toggle('show-code');
-  document.getElementById('code-toggle').classList.toggle('active', on);
-  // Layout width changed — reflow iframes on the active slide.
-  requestAnimationFrame(rerenderVisibleIframes);
-}
-
-// Re-render every slide in place, preserving the current position.
-function renderAllSlides() {
-  if (!notebookData) return;
-  const cells = notebookData.nbCells || [];
-  slideEls.forEach((slide, i) => {
-    const cell = cells[i];
-    if (!cell) return;
-    slide.classList.remove('has-code');
-    renderSlide(slide, cell);
-  });
-  goTo(current);
-}
-
-function toggleEdit() {
-  if (isStatic) return;
-  editMode = !editMode;
-  const deck = document.getElementById('deck');
-  deck.classList.toggle('editing', editMode);
-  document.getElementById('edit-toggle').classList.toggle('active', editMode);
-  // You can't edit code you can't see — force the code pane open while
-  // editing, and restore the prior show-code state when leaving.
-  if (editMode) {
-    if (!deck.classList.contains('show-code')) {
-      deck.classList.add('show-code');
-      document.getElementById('code-toggle').classList.add('active');
-      _editForcedShowCode = true;
-    }
-  } else if (_editForcedShowCode) {
-    deck.classList.remove('show-code');
-    document.getElementById('code-toggle').classList.remove('active');
-    _editForcedShowCode = false;
-  }
-  renderAllSlides();
-}
-
-// ── Slide font size ──────────────────────────────────────────────
-const ZOOM_MIN = 0.6, ZOOM_MAX = 2.4, ZOOM_STEP = 0.1;
-let slideZoom = 1;
-function applyZoom(z, { persist = true } = {}) {
-  slideZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
-  document.getElementById('deck').style.setProperty('--slide-zoom', slideZoom);
-  document.getElementById('fs-pct').textContent = Math.round(slideZoom * 100) + '%';
-  if (persist) localStorage.setItem('sabela-slide-zoom', String(slideZoom));
-}
-function bumpZoom(dir) { applyZoom(slideZoom + dir * ZOOM_STEP); }
-function resetZoom() { applyZoom(1); }
-function restoreZoom() {
-  const stored = parseFloat(localStorage.getItem('sabela-slide-zoom'));
-  applyZoom(Number.isFinite(stored) ? stored : 1, { persist: false });
-}
-
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen?.();
-  } else {
-    document.exitFullscreen?.();
-  }
-}
-
-// ── Keyboard ─────────────────────────────────────────────────────
-document.addEventListener('keydown', (e) => {
-  // Don't hijack typing inside widget iframes / inputs.
-  const t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
-  switch (e.key) {
-    case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
-      e.preventDefault(); next(); break;
-    case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
-      e.preventDefault(); prev(); break;
-    case 'Home': e.preventDefault(); goTo(0); break;
-    case 'End': e.preventDefault(); goTo(slideEls.length - 1); break;
-    case 'c': case 'C': toggleCode(); break;
-    case 'e': case 'E': if (!isStatic) toggleEdit(); break;
-    case 'f': case 'F': toggleFullscreen(); break;
-    case '+': case '=': e.preventDefault(); bumpZoom(1); break;
-    case '-': case '_': e.preventDefault(); bumpZoom(-1); break;
-    case '0': e.preventDefault(); resetZoom(); break;
-  }
-});
-
-let _resizeTimer = null;
-window.addEventListener('resize', () => {
-  clearTimeout(_resizeTimer);
-  _resizeTimer = setTimeout(rerenderVisibleIframes, 200);
-});
-
-// ── SSE (live mode only) ─────────────────────────────────────────
-function connectSSE() {
-  const evtSource = new EventSource('/api/events');
-  evtSource.onmessage = (e) => {
-    const ev = JSON.parse(e.data);
-    switch (ev.type) {
-      case 'cellUpdating': showStatus('Running...', true); break;
-      case 'cellResult': updateSlideCell(ev.cellId, ev.outputs || [], ev.error); break;
-      case 'executionDone': hideStatus(); break;
-      case 'sessionStatus':
-        if (ev.message === 'ready') hideStatus();
-        else showStatus(ev.message, true);
-        break;
-    }
-  };
-  evtSource.onerror = () => { showStatus('Disconnected', false); };
-}
-
-function updateSlideCell(cellId, outputs, error) {
-  if (!notebookData) return;
-  const cell = (notebookData.nbCells || []).find(c => c.cellId === cellId);
-  if (!cell) return;
-  cell.cellOutputs = outputs;
-  cell.cellError = error || null;
-  const idx = notebookData.nbCells.indexOf(cell);
-  const slide = slideEls[idx];
-  if (!slide) return;
-  const wasActive = slide.classList.contains('active');
-  // Refresh only the output pane so an open editor (and its caret) survive.
-  const outCol = slide.querySelector('.slide-output');
-  if (outCol) {
-    fillOutputs(outCol, cell);
-  } else {
-    renderSlide(slide, cell);
-  }
-  if (wasActive) {
-    slide.classList.add('active');
-    requestAnimationFrame(rerenderVisibleIframes);
-  }
-}
-
-// ── Widget postMessage bridge (live mode) ────────────────────────
-const _widgetTimers = new Map();
-window.addEventListener('message', (e) => {
-  if (isStatic) return;
-  const d = e.data;
-  if (d && d.type === 'widget') {
-    const key = d.cellId + ':' + d.name;
-    clearTimeout(_widgetTimers.get(key));
-    _widgetTimers.set(key, setTimeout(() => {
-      _widgetTimers.delete(key);
-      fetch('/api/widget', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
+      // ── Theme handling (shared with editor via 'sabela-theme' key) ──
+      function currentTheme() {
+        return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      }
+      function applyTheme(theme, { persist = true } = {}) {
+        document.documentElement.dataset.theme = theme;
+        if (persist) {
+          localStorage.setItem('sabela-theme', theme);
+          window.__sabelaThemePinned = true;
+        }
+        const iconUse = document.querySelector('#theme-icon use');
+        if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
+        rerenderVisibleIframes();
+      }
+      function toggleTheme() {
+        applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+      }
+      // ── Static-export iframe: opaque-origin sandbox + in-document CSP ──
+      // In a shared/offline export we still run a script-drawn widget so its plot
+      // renders, but sandbox='allow-scripts' (NO allow-same-origin) gives the frame an
+      // opaque origin that cannot read this page (the embedded notebook JSON), cookies,
+      // or storage; the meta-CSP allows charting libs from trusted CDNs (cdnjs,
+      // jsdelivr) but keeps connect-src closed, so a plot can draw yet can't
+      // exfiltrate the page. Because the frame is
+      // cross-origin we cannot read its height, so it reports its own via postMessage.
+      const STATIC_CSP =
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'\">";
+      let __staticFrameSeq = 0;
+      function staticSrcdoc(content, kind, id) {
+        const style = kind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
+        const reporter =
+          '<scr' +
+          "ipt>(function(){function r(){try{parent.postMessage({__sabelaH:document.documentElement.scrollHeight,__sabelaId:'" +
+          id +
+          "'},'*')}catch(e){}}requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" +
+          'ipt>';
+        return STATIC_CSP + style + content + reporter;
+      }
+      function mountStaticFrame(container, content, kind) {
+        const id = 'sframe' + __staticFrameSeq++;
+        const iframe = document.createElement('iframe');
+        iframe.id = id;
+        iframe.setAttribute('sandbox', 'allow-scripts');
+        if (kind === 'widget') iframe.style.pointerEvents = 'none';
+        iframe.style.height = (kind === 'widget' ? 60 : 80) + 'px';
+        iframe.dataset.iframeKind = kind;
+        iframe.dataset.lastContent = content;
+        iframe.dataset.staticFrame = '1';
+        iframe.srcdoc = staticSrcdoc(content, kind, id);
+        container.appendChild(iframe);
+      }
+      window.addEventListener('message', (e) => {
+        const d = e.data;
+        if (d && typeof d.__sabelaH === 'number' && d.__sabelaId) {
+          const el = document.getElementById(d.__sabelaId);
+          if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
+        }
       });
-    }, 300));
-  }
-});
+      function iframeContentStyle() {
+        const isDark = currentTheme() === 'dark';
+        const bg = isDark ? '#1e1e2e' : '#ffffff';
+        const fg = isDark ? '#cdd6f4' : '#0a0a0a';
+        const fgHead = isDark ? '#f5f5ff' : '#000000';
+        const muted = isDark ? '#262637' : '#fafafa';
+        const border = isDark ? '#313244' : '#e4e4e7';
+        const accent = isDark ? '#89b4fa' : '#0066ff';
+        const altRow = isDark ? 'rgba(137,180,250,0.05)' : 'rgba(0,102,255,0.04)';
+        return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:14px 18px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
+      }
+      function widgetIframeStyle() {
+        const isDark = currentTheme() === 'dark';
+        const fg = isDark ? '#cdd6f4' : '#0a0a0a';
+        const fgDim = isDark ? '#9399b2' : '#71717a';
+        const accent = isDark ? '#89b4fa' : '#0066ff';
+        return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:8px 14px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
+      }
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+          if (!window.__sabelaThemePinned) applyTheme(e.matches ? 'light' : 'dark', { persist: false });
+        });
+      }
+      applyTheme(currentTheme(), { persist: false });
 
-// ── Status indicator ─────────────────────────────────────────────
-function showStatus(msg, running) {
-  const el = document.getElementById('status-indicator');
-  el.textContent = msg;
-  el.className = 'slide-status visible' + (running ? ' running' : '');
-}
-function hideStatus() {
-  document.getElementById('status-indicator').className = 'slide-status';
-}
+      // ── Initialization ───────────────────────────────────────────────
+      async function init() {
+        restoreZoom();
+        if (isStatic) {
+          notebookData = window.__SABELA_STATIC__;
+          document.getElementById('edit-link').style.display = 'none';
+          document.getElementById('export-btn').style.display = 'none';
+          document.getElementById('edit-toggle').style.display = 'none';
+        } else {
+          const resp = await fetch('/api/notebook');
+          notebookData = await resp.json();
+        }
+        buildDeck(notebookData);
+        if (!isStatic) connectSSE();
+      }
 
-// ── Export ───────────────────────────────────────────────────────
-function exportSlideshow() {
-  window.open('/api/export/slideshow', '_blank');
-}
+      // ── Build the deck ───────────────────────────────────────────────
+      function buildDeck(nb) {
+        document.getElementById('deck-title').textContent = formatTitle(nb.nbTitle);
+        document.title = formatTitle(nb.nbTitle) + ' — Sabela Slideshow';
 
-// ── Title formatting ─────────────────────────────────────────────
-function formatTitle(path) {
-  if (!path) return 'Slideshow';
-  const name = path.split('/').pop().replace(/\.[^/.]+$/, '');
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
+        const deck = document.getElementById('deck');
+        deck.innerHTML = '';
+        slideEls = [];
 
-init();
-</script>
-</body>
+        const cells = nb.nbCells || [];
+        for (const cell of cells) {
+          const slide = document.createElement('section');
+          slide.className = 'slide';
+          slide.dataset.cellId = cell.cellId;
+          renderSlide(slide, cell);
+          deck.appendChild(slide);
+          slideEls.push(slide);
+        }
+
+        if (slideEls.length === 0) {
+          const slide = document.createElement('section');
+          slide.className = 'slide';
+          slide.innerHTML = '<div class="slide-inner"><div class="slide-empty">This notebook has no cells.</div></div>';
+          deck.appendChild(slide);
+          slideEls.push(slide);
+        }
+
+        // Restore position from hash (#3) if present.
+        const fromHash = parseInt((location.hash || '').slice(1), 10);
+        current = Number.isFinite(fromHash) ? Math.min(Math.max(fromHash - 1, 0), slideEls.length - 1) : 0;
+        goTo(current);
+      }
+
+      // ── Render one slide's content ───────────────────────────────────
+      const canEdit = () => editMode && !isStatic;
+
+      function renderSlide(slide, cell) {
+        slide.innerHTML = '';
+        const inner = document.createElement('div');
+        inner.className = 'slide-inner';
+
+        if (cell.cellType === 'ProseCell') {
+          if (canEdit()) {
+            inner.appendChild(buildProseEditor(cell));
+          } else {
+            const prose = document.createElement('div');
+            prose.className = 'prose';
+            prose.innerHTML = renderMarkdownWithMath(cell.cellSource || '');
+            wrapTables(prose);
+            highlightWithin(prose);
+            inner.appendChild(prose);
+          }
+          slide.appendChild(inner);
+          return;
+        }
+
+        // CodeCell — mark as code-bearing so the "show code" layout applies.
+        slide.classList.add('has-code');
+
+        const codeCol = document.createElement('div');
+        codeCol.className = 'slide-code';
+        const lang = cell.cellLang || 'Haskell';
+
+        if (canEdit()) {
+          codeCol.appendChild(buildCodeEditor(cell, lang));
+        } else {
+          codeCol.innerHTML = '<div class="code-lang">' + escapeHtml(lang) + '</div>';
+          const pre = document.createElement('pre');
+          const codeEl = document.createElement('code');
+          codeEl.className = 'hljs';
+          const src = cell.cellSource || '';
+          const hl = HLJS_LANG[lang];
+          if (hl && window.hljs && hljs.getLanguage(hl)) {
+            codeEl.innerHTML = hljs.highlight(src, { language: hl }).value;
+          } else {
+            codeEl.textContent = src;
+          }
+          pre.appendChild(codeEl);
+          codeCol.appendChild(pre);
+        }
+
+        const outCol = document.createElement('div');
+        outCol.className = 'slide-output';
+        fillOutputs(outCol, cell);
+
+        inner.appendChild(codeCol);
+        inner.appendChild(outCol);
+        slide.appendChild(inner);
+      }
+
+      // Render a cell's outputs/error into a (possibly cleared) container.
+      function fillOutputs(outCol, cell) {
+        outCol.innerHTML = '';
+        const merged = mergeHtmlOutputs(cell.cellOutputs || []);
+        let rendered = 0;
+        for (const o of merged) {
+          if (!o.oiOutput || !o.oiOutput.trim()) continue;
+          const isWidget = classifyOutput(o) === 'widget';
+          const block = document.createElement('div');
+          block.className = isWidget ? 'slide-widget' : 'output-block';
+          if (isWidget) renderWidgetOutput(block, o);
+          else renderOutput(block, o.oiOutput, o.oiMime);
+          outCol.appendChild(block);
+          rendered++;
+        }
+        if (cell.cellError && cell.cellError.trim()) {
+          const errEl = document.createElement('div');
+          errEl.className = 'slide-error';
+          errEl.textContent = cell.cellError;
+          outCol.appendChild(errEl);
+          rendered++;
+        }
+        if (rendered === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'slide-empty';
+          empty.textContent = '— no output —';
+          outCol.appendChild(empty);
+        }
+      }
+
+      // ── Editors (live mode) ──────────────────────────────────────────
+      // Render KaTeX inside a markdown source before handing to marked, so
+      // $...$ / $$...$$ blocks survive marked's underscore/star handling.
+      function renderMarkdownWithMath(src) {
+        let s = src || '';
+        if (typeof katex !== 'undefined') {
+          s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => {
+            try {
+              return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false });
+            } catch (_e) {
+              return _;
+            }
+          });
+          s = s.replace(/(^|[^\\$])\$([^\$\n]+?)\$(?!\d)/g, (_, pre, tex) => {
+            try {
+              return pre + katex.renderToString(tex, { displayMode: false, throwOnError: false });
+            } catch (_e) {
+              return _;
+            }
+          });
+        }
+        return marked.parse(s);
+      }
+
+      function buildProseEditor(cell) {
+        const ta = document.createElement('textarea');
+        ta.className = 'prose-editor';
+        ta.value = cell.cellSource || '';
+        ta.spellcheck = false;
+        ta.addEventListener('blur', () => saveCell(cell, ta.value, false));
+        ta.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            ta.blur();
+          } else if (e.key === 'Escape') {
+            ta.value = cell.cellSource || '';
+            ta.blur();
+          }
+        });
+        const wrap = document.createElement('div');
+        wrap.appendChild(ta);
+        const hint = document.createElement('div');
+        hint.className = 'edit-hint';
+        hint.textContent = 'Markdown — saves on blur (⌘/Ctrl+Enter), Esc to discard';
+        wrap.appendChild(hint);
+        return wrap;
+      }
+
+      // Paint the highlight layer. A trailing newline gets a phantom space so
+      // the empty last line still has a line box and the layer stays the same
+      // height as the textarea.
+      function paintHighlight(codeEl, value, lang) {
+        const v = value.endsWith('\n') ? value + ' ' : value;
+        const hl = HLJS_LANG[lang];
+        if (hl && window.hljs && hljs.getLanguage(hl)) {
+          codeEl.innerHTML = hljs.highlight(v, { language: hl }).value;
+        } else {
+          codeEl.textContent = v;
+        }
+      }
+
+      function buildCodeEditor(cell, lang) {
+        const wrap = document.createElement('div');
+        const head = document.createElement('div');
+        head.className = 'code-edit-head';
+        const label = document.createElement('div');
+        label.className = 'code-lang';
+        label.textContent = lang;
+        const runBtn = document.createElement('button');
+        runBtn.className = 'run-btn';
+        runBtn.title = 'Run cell (⌘/Ctrl+Enter)';
+        runBtn.innerHTML =
+          '<svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></svg>Run';
+        head.appendChild(label);
+        head.appendChild(runBtn);
+
+        const ed = document.createElement('div');
+        ed.className = 'code-ed';
+        const pre = document.createElement('pre');
+        pre.className = 'code-ed-hl';
+        pre.setAttribute('aria-hidden', 'true');
+        const codeEl = document.createElement('code');
+        codeEl.className = 'hljs';
+        pre.appendChild(codeEl);
+
+        const ta = document.createElement('textarea');
+        ta.className = 'code-ed-ta';
+        ta.value = cell.cellSource || '';
+        ta.spellcheck = false;
+        ta.wrap = 'off';
+        paintHighlight(codeEl, ta.value, lang);
+
+        const syncScroll = () => {
+          pre.scrollTop = ta.scrollTop;
+          pre.scrollLeft = ta.scrollLeft;
+        };
+        const sync = () => {
+          paintHighlight(codeEl, ta.value, lang);
+          syncScroll();
+        };
+
+        const run = () => {
+          cell.cellSource = ta.value;
+          runCell(cell, ta.value);
+        };
+        runBtn.addEventListener('click', run);
+        ta.addEventListener('input', sync);
+        ta.addEventListener('scroll', syncScroll);
+        ta.addEventListener('blur', () => saveCell(cell, ta.value, true));
+        ta.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            run();
+          } else if (e.key === 'Escape') {
+            ta.value = cell.cellSource || '';
+            sync();
+            ta.blur();
+          }
+        });
+
+        ed.appendChild(pre);
+        ed.appendChild(ta);
+        wrap.appendChild(head);
+        wrap.appendChild(ed);
+        const hint = document.createElement('div');
+        hint.className = 'edit-hint';
+        hint.textContent = '⌘/Ctrl+Enter to run · blur saves without running · Esc discards';
+        wrap.appendChild(hint);
+        return wrap;
+      }
+
+      async function apiFetch(method, path, body) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        const res = await fetch('/api/' + path, opts);
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+
+      // Persist source. codeOnly=true uses the no-execute /source endpoint so a
+      // blur doesn't surprise-run; prose persists via the reactive endpoint.
+      async function saveCell(cell, value, codeOnly) {
+        if (isStatic || value === (cell.cellSource || '')) return;
+        cell.cellSource = value;
+        const path = codeOnly ? `cell/${cell.cellId}/source` : `cell/${cell.cellId}`;
+        try {
+          await apiFetch('PUT', path, { ucSource: value });
+          showStatus('Saved', false);
+          setTimeout(hideStatus, 1200);
+        } catch (err) {
+          showStatus('Save failed', false);
+        }
+      }
+
+      async function runCell(cell, value) {
+        if (isStatic) return;
+        showStatus('Running...', true);
+        try {
+          await apiFetch('PUT', `cell/${cell.cellId}`, { ucSource: value });
+          await apiFetch('POST', `run/${cell.cellId}`);
+          // Outputs arrive via SSE (cellResult) and refresh just the output pane.
+        } catch (err) {
+          showStatus('Run failed', false);
+        }
+      }
+
+      function wrapTables(root) {
+        root.querySelectorAll('table').forEach((t) => {
+          const w = document.createElement('div');
+          w.style.overflowX = 'auto';
+          t.parentNode.insertBefore(w, t);
+          w.appendChild(t);
+        });
+      }
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      }
+
+      // Map Sabela cell languages to highlight.js language ids.
+      const HLJS_LANG = { Haskell: 'haskell', Python: 'python' };
+
+      // Syntax-highlight fenced code blocks inside rendered markdown.
+      function highlightWithin(root) {
+        if (!window.hljs) return;
+        root.querySelectorAll('pre code').forEach((el) => {
+          try {
+            hljs.highlightElement(el);
+          } catch {}
+        });
+      }
+
+      // ── Output classification / merging (shared with dashboard) ──────
+      function classifyOutput(item) {
+        if (item.oiMime === 'text/html' && item.oiOutput && item.oiOutput.includes('parent.postMessage')) {
+          return 'widget';
+        }
+        return 'content';
+      }
+      function mergeHtmlOutputs(outputs) {
+        const merged = [];
+        for (const o of outputs) {
+          const isWidget = classifyOutput(o) === 'widget';
+          const last = merged[merged.length - 1];
+          if (
+            !isWidget &&
+            o.oiMime === 'text/html' &&
+            last &&
+            last.oiMime === 'text/html' &&
+            classifyOutput(last) !== 'widget'
+          ) {
+            last.oiOutput += '\n' + o.oiOutput;
+          } else {
+            merged.push({ oiMime: o.oiMime, oiOutput: o.oiOutput });
+          }
+        }
+        return merged;
+      }
+
+      // ── Render a content output ──────────────────────────────────────
+      function renderOutput(container, content, mime) {
+        if (mime === 'text/html') {
+          if (isStatic) {
+            mountStaticFrame(container, content, 'content');
+            return;
+          }
+          const iframe = document.createElement('iframe');
+          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+          iframe.style.visibility = 'hidden';
+          container.appendChild(iframe);
+          requestAnimationFrame(() => {
+            const doc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (!doc) return;
+            iframe.dataset.lastContent = content;
+            doc.open();
+            iframe.onload = () => {
+              iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
+              iframe.style.visibility = '';
+            };
+            doc.write(iframeContentStyle() + content);
+            doc.close();
+          });
+        } else if (mime === 'text/markdown') {
+          const div = document.createElement('div');
+          div.className = 'mime-markdown';
+          div.innerHTML = renderMarkdownWithMath(content);
+          wrapTables(div);
+          highlightWithin(div);
+          container.appendChild(div);
+        } else if (mime === 'image/svg+xml') {
+          const div = document.createElement('div');
+          div.className = 'mime-svg';
+          div.innerHTML = content;
+          container.appendChild(div);
+        } else if (mime.startsWith('image/') && mime.includes('base64')) {
+          const div = document.createElement('div');
+          div.className = 'mime-image';
+          const mimeClean = mime.replace(';base64', '');
+          div.innerHTML = '<img src="data:' + mimeClean + ';base64,' + content.trim() + '" />';
+          container.appendChild(div);
+        } else if (mime === 'application/json') {
+          const div = document.createElement('div');
+          div.className = 'mime-json';
+          try {
+            div.textContent = JSON.stringify(JSON.parse(content), null, 2);
+          } catch {
+            div.textContent = content;
+          }
+          container.appendChild(div);
+        } else if (mime === 'text/latex') {
+          const div = document.createElement('div');
+          div.className = 'mime-latex';
+          try {
+            katex.render(content, div, { displayMode: true, throwOnError: false });
+          } catch {
+            div.textContent = content;
+          }
+          container.appendChild(div);
+        } else {
+          const div = document.createElement('div');
+          div.className = 'mime-plain';
+          div.textContent = content;
+          container.appendChild(div);
+        }
+      }
+
+      function renderWidgetOutput(container, output) {
+        if (isStatic) {
+          // Script-drawn widgets (e.g. the scatter <canvas>) need their script to run to
+          // render at all — do it in the opaque-origin, network-dead sandbox (see
+          // mountStaticFrame), inert via pointer-events:none. Form controls have no such
+          // need and stay as greyed-out, script-stripped placeholders.
+          if (/<canvas|<script/i.test(output.oiOutput)) {
+            mountStaticFrame(container, output.oiOutput, 'widget');
+            return;
+          }
+          const wrapper = document.createElement('div');
+          wrapper.className = 'static-widget';
+          let cleaned = output.oiOutput
+            .replace(/\s*on\w+="[^"]*"/g, '')
+            .replace(/<(input|select|button)/gi, '<$1 disabled');
+          wrapper.innerHTML = cleaned;
+          container.appendChild(wrapper);
+          return;
+        }
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+        iframe.style.visibility = 'hidden';
+        container.appendChild(iframe);
+        requestAnimationFrame(() => {
+          const doc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (!doc) return;
+          iframe.dataset.lastContent = output.oiOutput;
+          iframe.dataset.iframeKind = 'widget';
+          doc.open();
+          iframe.onload = () => {
+            iframe.style.height = Math.max(32, doc.body.scrollHeight) + 'px';
+            iframe.style.visibility = '';
+          };
+          doc.write(widgetIframeStyle() + output.oiOutput);
+          doc.close();
+        });
+      }
+
+      // Re-write iframe docs so they reflow at the current width / theme.
+      function rerenderVisibleIframes() {
+        const slide = slideEls[current];
+        if (!slide) return;
+        slide.querySelectorAll('iframe[data-last-content]').forEach((f) => {
+          if (f.dataset.staticFrame) {
+            f.srcdoc = staticSrcdoc(f.dataset.lastContent, f.dataset.iframeKind || 'content', f.id);
+            return;
+          }
+          try {
+            const doc = f.contentDocument || f.contentWindow?.document;
+            if (!doc) return;
+            const isWidget = f.dataset.iframeKind === 'widget';
+            f.style.visibility = 'hidden';
+            doc.open();
+            f.onload = () => {
+              f.style.height = Math.max(isWidget ? 32 : 60, doc.body.scrollHeight + (isWidget ? 0 : 20)) + 'px';
+              f.style.visibility = '';
+            };
+            doc.write((isWidget ? widgetIframeStyle() : iframeContentStyle()) + f.dataset.lastContent);
+            doc.close();
+          } catch {}
+        });
+      }
+
+      // ── Navigation ───────────────────────────────────────────────────
+      function goTo(i) {
+        if (slideEls.length === 0) return;
+        current = Math.min(Math.max(i, 0), slideEls.length - 1);
+        slideEls.forEach((el, idx) => el.classList.toggle('active', idx === current));
+        const total = slideEls.length;
+        document.getElementById('slide-counter').textContent = current + 1 + ' / ' + total;
+        document.getElementById('progress-fill').style.width = ((current + 1) / total) * 100 + '%';
+        document.getElementById('nav-prev').disabled = current === 0;
+        document.getElementById('nav-next').disabled = current === total - 1;
+        history.replaceState(null, '', '#' + (current + 1));
+        const active = slideEls[current];
+        if (active) active.scrollTop = 0;
+        // Iframes that were rendered while hidden need a reflow once visible.
+        requestAnimationFrame(rerenderVisibleIframes);
+      }
+      function next() {
+        goTo(current + 1);
+      }
+      function prev() {
+        goTo(current - 1);
+      }
+
+      function toggleCode() {
+        const deck = document.getElementById('deck');
+        const on = deck.classList.toggle('show-code');
+        document.getElementById('code-toggle').classList.toggle('active', on);
+        // Layout width changed — reflow iframes on the active slide.
+        requestAnimationFrame(rerenderVisibleIframes);
+      }
+
+      // Re-render every slide in place, preserving the current position.
+      function renderAllSlides() {
+        if (!notebookData) return;
+        const cells = notebookData.nbCells || [];
+        slideEls.forEach((slide, i) => {
+          const cell = cells[i];
+          if (!cell) return;
+          slide.classList.remove('has-code');
+          renderSlide(slide, cell);
+        });
+        goTo(current);
+      }
+
+      function toggleEdit() {
+        if (isStatic) return;
+        editMode = !editMode;
+        const deck = document.getElementById('deck');
+        deck.classList.toggle('editing', editMode);
+        document.getElementById('edit-toggle').classList.toggle('active', editMode);
+        // You can't edit code you can't see — force the code pane open while
+        // editing, and restore the prior show-code state when leaving.
+        if (editMode) {
+          if (!deck.classList.contains('show-code')) {
+            deck.classList.add('show-code');
+            document.getElementById('code-toggle').classList.add('active');
+            _editForcedShowCode = true;
+          }
+        } else if (_editForcedShowCode) {
+          deck.classList.remove('show-code');
+          document.getElementById('code-toggle').classList.remove('active');
+          _editForcedShowCode = false;
+        }
+        renderAllSlides();
+      }
+
+      // ── Slide font size ──────────────────────────────────────────────
+      const ZOOM_MIN = 0.6,
+        ZOOM_MAX = 2.4,
+        ZOOM_STEP = 0.1;
+      let slideZoom = 1;
+      function applyZoom(z, { persist = true } = {}) {
+        slideZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
+        document.getElementById('deck').style.setProperty('--slide-zoom', slideZoom);
+        document.getElementById('fs-pct').textContent = Math.round(slideZoom * 100) + '%';
+        if (persist) localStorage.setItem('sabela-slide-zoom', String(slideZoom));
+      }
+      function bumpZoom(dir) {
+        applyZoom(slideZoom + dir * ZOOM_STEP);
+      }
+      function resetZoom() {
+        applyZoom(1);
+      }
+      function restoreZoom() {
+        const stored = parseFloat(localStorage.getItem('sabela-slide-zoom'));
+        applyZoom(Number.isFinite(stored) ? stored : 1, { persist: false });
+      }
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.();
+        } else {
+          document.exitFullscreen?.();
+        }
+      }
+
+      // ── Keyboard ─────────────────────────────────────────────────────
+      document.addEventListener('keydown', (e) => {
+        // Don't hijack typing inside widget iframes / inputs.
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+        switch (e.key) {
+          case 'ArrowRight':
+          case 'ArrowDown':
+          case 'PageDown':
+          case ' ':
+            e.preventDefault();
+            next();
+            break;
+          case 'ArrowLeft':
+          case 'ArrowUp':
+          case 'PageUp':
+            e.preventDefault();
+            prev();
+            break;
+          case 'Home':
+            e.preventDefault();
+            goTo(0);
+            break;
+          case 'End':
+            e.preventDefault();
+            goTo(slideEls.length - 1);
+            break;
+          case 'c':
+          case 'C':
+            toggleCode();
+            break;
+          case 'e':
+          case 'E':
+            if (!isStatic) toggleEdit();
+            break;
+          case 'f':
+          case 'F':
+            toggleFullscreen();
+            break;
+          case '+':
+          case '=':
+            e.preventDefault();
+            bumpZoom(1);
+            break;
+          case '-':
+          case '_':
+            e.preventDefault();
+            bumpZoom(-1);
+            break;
+          case '0':
+            e.preventDefault();
+            resetZoom();
+            break;
+        }
+      });
+
+      let _resizeTimer = null;
+      window.addEventListener('resize', () => {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(rerenderVisibleIframes, 200);
+      });
+
+      // ── SSE (live mode only) ─────────────────────────────────────────
+      function connectSSE() {
+        const evtSource = new EventSource('/api/events');
+        evtSource.onmessage = (e) => {
+          const ev = JSON.parse(e.data);
+          switch (ev.type) {
+            case 'cellUpdating':
+              showStatus('Running...', true);
+              break;
+            case 'cellResult':
+              updateSlideCell(ev.cellId, ev.outputs || [], ev.error);
+              break;
+            case 'executionDone':
+              hideStatus();
+              break;
+            case 'sessionStatus':
+              if (ev.message === 'ready') hideStatus();
+              else showStatus(ev.message, true);
+              break;
+          }
+        };
+        evtSource.onerror = () => {
+          showStatus('Disconnected', false);
+        };
+      }
+
+      function updateSlideCell(cellId, outputs, error) {
+        if (!notebookData) return;
+        const cell = (notebookData.nbCells || []).find((c) => c.cellId === cellId);
+        if (!cell) return;
+        cell.cellOutputs = outputs;
+        cell.cellError = error || null;
+        const idx = notebookData.nbCells.indexOf(cell);
+        const slide = slideEls[idx];
+        if (!slide) return;
+        const wasActive = slide.classList.contains('active');
+        // Refresh only the output pane so an open editor (and its caret) survive.
+        const outCol = slide.querySelector('.slide-output');
+        if (outCol) {
+          fillOutputs(outCol, cell);
+        } else {
+          renderSlide(slide, cell);
+        }
+        if (wasActive) {
+          slide.classList.add('active');
+          requestAnimationFrame(rerenderVisibleIframes);
+        }
+      }
+
+      // ── Widget postMessage bridge (live mode) ────────────────────────
+      const _widgetTimers = new Map();
+      window.addEventListener('message', (e) => {
+        if (isStatic) return;
+        const d = e.data;
+        if (d && d.type === 'widget') {
+          const key = d.cellId + ':' + d.name;
+          clearTimeout(_widgetTimers.get(key));
+          _widgetTimers.set(
+            key,
+            setTimeout(() => {
+              _widgetTimers.delete(key);
+              fetch('/api/widget', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wuCellId: d.cellId, wuName: d.name, wuValue: d.value }),
+              });
+            }, 300)
+          );
+        }
+      });
+
+      // ── Status indicator ─────────────────────────────────────────────
+      function showStatus(msg, running) {
+        const el = document.getElementById('status-indicator');
+        el.textContent = msg;
+        el.className = 'slide-status visible' + (running ? ' running' : '');
+      }
+      function hideStatus() {
+        document.getElementById('status-indicator').className = 'slide-status';
+      }
+
+      // ── Export ───────────────────────────────────────────────────────
+      function exportSlideshow() {
+        window.open('/api/export/slideshow', '_blank');
+      }
+
+      // ── Title formatting ─────────────────────────────────────────────
+      function formatTitle(path) {
+        if (!path) return 'Slideshow';
+        const name = path
+          .split('/')
+          .pop()
+          .replace(/\.[^/.]+$/, '');
+        return name.charAt(0).toUpperCase() + name.slice(1);
+      }
+
+      init();
+    </script>
+  </body>
 </html>

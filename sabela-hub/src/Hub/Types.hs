@@ -1,17 +1,49 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
+
 module Hub.Types (
     UserId (..),
     SessionId (..),
+    SessionKey (..),
     TaskId (..),
+    TaskIp (..),
     TaskStatus (..),
     Session (..),
     SessionState (..),
+    SessionKind (..),
     TaskConfig (..),
+    DockerConfig (..),
+    RunSpec (..),
+    BackendKind (..),
     HubConfig (..),
     EcsBackend (..),
+    ExportMode (..),
+    parseExportMode,
+    exportModeText,
 ) where
 
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, UTCTime)
+
+{- | Which static export a share captures. Parsed at the @\?mode=@ query
+boundary and threaded as a typed value through 'publishShare' /
+'fetchExport' / 'Share.shareMode', so the only string the wire sees is
+the rendered @"dashboard"@/@"slideshow"@/@"notebook"@ — typos can't
+silently fall through to a default mid-pipeline.
+-}
+data ExportMode = ExpDashboard | ExpSlideshow | ExpNotebook
+    deriving (Eq, Show)
+
+parseExportMode :: Text -> Maybe ExportMode
+parseExportMode "dashboard" = Just ExpDashboard
+parseExportMode "slideshow" = Just ExpSlideshow
+parseExportMode "notebook" = Just ExpNotebook
+parseExportMode _ = Nothing
+
+exportModeText :: ExportMode -> Text
+exportModeText ExpDashboard = "dashboard"
+exportModeText ExpSlideshow = "slideshow"
+exportModeText ExpNotebook = "notebook"
 
 newtype UserId = UserId Text
     deriving (Eq, Ord, Show)
@@ -19,12 +51,33 @@ newtype UserId = UserId Text
 newtype SessionId = SessionId Text
     deriving (Eq, Ord, Show)
 
+{- | The map key for 'SessionManager.smSessions'. A 'UserSession' wraps the
+authenticated user's cookie value; a 'ReattachPlaceholder' is the internal
+entry the hub creates at startup for a container that was already running
+(see 'Hub.Session.reattachSessions'). Because the two constructors live in
+disjoint slots of the map, a forged cookie can never resolve to a
+placeholder — the safety property previously enforced by the
+@"reattach:"@-prefix runtime guard is now structural.
+-}
+data SessionKey
+    = UserSession SessionId
+    | ReattachPlaceholder TaskId
+    deriving (Eq, Ord, Show)
+
 newtype TaskId = TaskId Text
+    deriving (Eq, Ord, Show)
+
+{- | The private IP (or container name, when behind Docker's name-based
+networking) a running task is reachable at. Wrapping the bare 'Text' so
+the @ip@ slot in 'TaskRunning' / 'SReady' can't be swapped with a 'TaskId'
+or any other identifier.
+-}
+newtype TaskIp = TaskIp {unTaskIp :: Text}
     deriving (Eq, Ord, Show)
 
 data TaskStatus
     = TaskPending
-    | TaskRunning Text -- private IP
+    | TaskRunning TaskIp
     | TaskStopped
     deriving (Eq, Show)
 
@@ -33,12 +86,26 @@ data Session = Session
     , sessionState :: SessionState
     , sessionLastActivity :: UTCTime
     , sessionUserId :: UserId
+    , sessionKind :: SessionKind
+    , sessionIdleOverride :: Maybe NominalDiffTime
+    {- ^ Per-session idle timeout; when 'Nothing', the global
+    'hcIdleTimeout' applies. Public sandboxes use a shorter override.
+    -}
     }
     deriving (Show)
 
+{- | Whether a session belongs to an authenticated user or an anonymous
+public-share visitor. Public sessions are reaped sooner and (in Phase 3b)
+run on a separate, more strongly isolated backend.
+-}
+data SessionKind
+    = Authed
+    | Public
+    deriving (Eq, Show)
+
 data SessionState
     = SStarting
-    | SReady Text -- task private IP
+    | SReady TaskIp
     | SStopping
     deriving (Eq, Show)
 
@@ -51,14 +118,65 @@ data TaskConfig = TaskConfig
     }
     deriving (Show)
 
+{- | A single container run request, shared by the Docker (authed) backend and
+(Phase 3b) the Fargate microVM backend. Building one is pure so the argv it
+produces is unit-testable without a daemon.
+-}
+data RunSpec = RunSpec
+    { rsImage :: Text
+    , rsName :: Text
+    , rsNetwork :: Text
+    , rsMemory :: Text
+    , rsCpus :: Text
+    , rsMounts :: [(Text, Text, Bool)]
+    -- ^ Bind mounts as (hostPath, containerPath, readOnly).
+    , rsEnv :: [(Text, Text)]
+    , rsCmd :: [Text]
+    }
+    deriving (Eq, Show)
+
+-- | Configuration for the local-Docker backend (Phase 1, authed users).
+data DockerConfig = DockerConfig
+    { dcImage :: Text
+    , dcNetwork :: Text
+    , dcDataRoot :: Text
+    {- ^ EFS path on the host (e.g. @\/mnt\/sabela@). Per-user containers bind
+    only their own subdir under it (RW) + shared tooling (RO), never the
+    @users\/@ parent, so a cell cannot read other tenants' notebooks.
+    -}
+    , dcEnv :: [(Text, Text)]
+    , dcMemory :: Text
+    , dcCpus :: Text
+    , dcNamePrefix :: Text
+    {- ^ Container-name prefix; must not collide with the @sabela-hub@
+    container (default @sabela-user-@).
+    -}
+    }
+    deriving (Eq, Show)
+
+{- | Which backend the hub spawns sessions on. @docker@ (default) is the
+single-box authed backend; @ecs@ is the legacy Fargate path, kept for
+rollback and reused for the public microVM substrate.
+-}
+data BackendKind
+    = BackendDocker
+    | BackendEcs
+    deriving (Eq, Show)
+
 data HubConfig = HubConfig
     { hcPort :: Int
+    , hcBackend :: BackendKind
     , hcTaskConfig :: TaskConfig
+    , hcDockerConfig :: DockerConfig
     , hcIdleTimeout :: NominalDiffTime
     , hcBackendPort :: Int
     , hcGoogleClientId :: Text
     , hcGoogleClientSecret :: Text
     , hcGoogleRedirectUri :: Text
+    , hcSharesDir :: Text
+    {- ^ Host directory for published static shares (Phase 3a); default
+    @\/mnt\/sabela\/shares@.
+    -}
     }
     deriving (Show)
 

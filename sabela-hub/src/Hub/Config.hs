@@ -4,6 +4,7 @@ module Hub.Config (
     loadConfig,
 ) where
 
+import Data.Char (toLower)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -24,9 +25,13 @@ loadConfig = do
     clientId <- envRequired "GOOGLE_CLIENT_ID"
     clientSecret <- envRequired "GOOGLE_CLIENT_SECRET"
     redirectUri <- envText "GOOGLE_REDIRECT_URI" ""
+    sharesDir <- envText "HUB_SHARES_DIR" "/mnt/sabela/shares"
+    backendKind <- envBackend "HUB_BACKEND" BackendDocker
+    dockerCfg <- loadDockerConfig
     pure
         HubConfig
             { hcPort = port
+            , hcBackend = backendKind
             , hcTaskConfig =
                 TaskConfig
                     { tcCluster = cluster
@@ -35,12 +40,66 @@ loadConfig = do
                     , tcSecurityGroups = splitComma sgs
                     , tcRegion = region
                     }
+            , hcDockerConfig = dockerCfg
             , hcIdleTimeout = fromIntegral (idleMin * 60 :: Int)
             , hcBackendPort = backendPort
             , hcGoogleClientId = clientId
             , hcGoogleClientSecret = clientSecret
             , hcGoogleRedirectUri = redirectUri
+            , hcSharesDir = sharesDir
             }
+
+{- | Build the Docker-backend config. Env defaults mirror the Lean/Python
+paths from infra/task-definition.json so containers see the same layout.
+-}
+loadDockerConfig :: IO DockerConfig
+loadDockerConfig = do
+    image <- envText "HUB_DOCKER_IMAGE" "datahaskell/sabela:latest"
+    network <- envText "HUB_DOCKER_NETWORK" "sabela-net"
+    dataRoot <- envText "HUB_DOCKER_DATA_ROOT" "/mnt/sabela"
+    memory <- envText "HUB_DOCKER_MEMORY" "6g"
+    cpus <- envText "HUB_DOCKER_CPUS" "2"
+    ghciCaps <- envText "HUB_GHCI_CAPS" cpus
+    ghciHeap <- envText "HUB_GHCI_MAXHEAP" "4G"
+    prefix <- envText "HUB_DOCKER_NAME_PREFIX" "sabela-user-"
+    leanRepl <-
+        envText "SABELA_LEAN_REPL" "/mnt/sabela/lean/repl/.lake/build/bin/repl"
+    leanBase <- envText "SABELA_LEAN_BASE" "/mnt/sabela/lean/lean-base"
+    elanHome <- envText "ELAN_HOME" "/mnt/sabela/lean/.elan"
+    venv <- envText "VIRTUAL_ENV" "/mnt/sabela/python/venv"
+    mAiToken <- lookupEnv "SABELA_AI_TOKEN"
+    mAnthropic <- lookupEnv "ANTHROPIC_API_KEY"
+    let baseEnv =
+            [ ("CABAL_DIR", "/root/.cabal")
+            , ("SABELA_DEBUG", "1")
+            , ("SABELA_LEAN_REPL", leanRepl)
+            , ("SABELA_LEAN_BASE", leanBase)
+            , ("ELAN_HOME", elanHome)
+            , ("VIRTUAL_ENV", venv)
+            , ("SABELA_GHCI_CAPS", ghciCaps)
+            , ("SABELA_GHCI_MAXHEAP", ghciHeap)
+            ]
+        optEnv =
+            [("SABELA_AI_TOKEN", T.pack v) | Just v <- [mAiToken]]
+                ++ [("ANTHROPIC_API_KEY", T.pack v) | Just v <- [mAnthropic]]
+    pure
+        DockerConfig
+            { dcImage = image
+            , dcNetwork = network
+            , dcDataRoot = dataRoot
+            , dcEnv = baseEnv ++ optEnv
+            , dcMemory = memory
+            , dcCpus = cpus
+            , dcNamePrefix = prefix
+            }
+
+envBackend :: String -> BackendKind -> IO BackendKind
+envBackend name def = do
+    val <- lookupEnv name
+    pure $ case fmap (map toLower) val of
+        Just "ecs" -> BackendEcs
+        Just "docker" -> BackendDocker
+        _ -> def
 
 splitComma :: Text -> [Text]
 splitComma t

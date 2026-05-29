@@ -27,6 +27,7 @@ import Sabela.Model (
     NotebookEvent (..),
     OutputItem (..),
     SessionStatus (..),
+    textToMime,
  )
 import Sabela.Output (parseMimeOutputs)
 import Sabela.PythonSession (PythonSession, newPythonSession, pythonBackend)
@@ -191,7 +192,11 @@ parsePythonOutput ::
 parsePythonOutput app cid rawOut rawErr = do
     let items = parseMimeOutputs rawOut
         (exports, normalItems) = partitionExports items
-        outputs = [OutputItem m b | (m, b) <- normalItems, not (T.null (T.strip b))]
+        outputs =
+            [ OutputItem (textToMime m) b
+            | (m, b) <- normalItems
+            , not (T.null (T.strip b))
+            ]
     forM_ exports $ \(name, val) ->
         setBridgeValue (appBridge app) name (T.strip val)
     pure

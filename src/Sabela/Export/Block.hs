@@ -65,10 +65,12 @@ splitProgram :: TrailingResolver -> Set Text -> [Text] -> (Hoisted, [Text])
 splitProgram resolve skip cells = go emptyHoisted [] (groupUnits (rawLines cells))
   where
     go h ss [] = (h, ss)
-    go h ss (u : us) = case classifyUnit u of
-        UImport -> go h{hImports = hImports h ++ [T.stripStart (head u)]} ss us
+    -- @u@ is non-empty by 'groupUnits' (each group starts with @l : cont@),
+    -- so the @hd@ pattern is total.
+    go h ss (u@(hd : _) : us) = case classifyUnit u of
+        UImport -> go h{hImports = hImports h ++ [T.stripStart hd]} ss us
         UPragma -> go h{hPragmas = hPragmas h ++ [unlinesU u]} ss us
-        UDirective -> go h{hPragmas = hPragmas h ++ map langPragma (setExts (head u))} ss us
+        UDirective -> go h{hPragmas = hPragmas h ++ map langPragma (setExts hd)} ss us
         UDrop -> go h ss us
         UComment -> go h (ss ++ map T.stripStart u) us
         UDataDecl -> go h{hTopDecls = hTopDecls h ++ [unlinesU u]} ss us
@@ -86,6 +88,8 @@ splitProgram resolve skip cells = go emptyHoisted [] (groupUnits (rawLines cells
             (next : us')
                 | classifyUnit next == UBinding -> go h (ss ++ [letify (u ++ next)]) us'
             _ -> go h ss us
+    -- Unreachable given 'groupUnits' invariant; pinned for exhaustiveness.
+    go h ss ([] : us) = go h ss us
 
 {- | Every single-line trailing-action expression a 'splitProgram' would
 resolve, so a caller can pre-resolve them against a live session and build a

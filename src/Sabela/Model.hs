@@ -1,10 +1,14 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 
 module Sabela.Model (
     -- * Output
     OutputItem (..),
+    MimeType (..),
+    mimeIndicator,
+    textToMime,
 
     -- * Notebook and cells
     Notebook (..),
@@ -21,21 +25,69 @@ module Sabela.Model (
     CellError (..),
 ) where
 
-import Data.Aeson (FromJSON, ToJSON (..), Value, object, (.=))
+import Data.Aeson (
+    FromJSON (..),
+    ToJSON (..),
+    Value,
+    object,
+    withObject,
+    (.:),
+    (.=),
+ )
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
+import Sabela.Ids (EditId (..), ToolCallId (..), TurnId (..))
 import Sabela.SessionTypes (CellLang (..))
+import ScriptHs.Markdown (MimeType (..))
 
 data OutputItem = OutputItem
-    { oiMime :: Text
+    { oiMime :: MimeType
     , oiOutput :: Text
     }
     deriving (Show, Eq, Generic)
 
-instance ToJSON OutputItem
-instance FromJSON OutputItem
+-- | Wire-format MIME label. Round-trips with 'textToMime'.
+mimeIndicator :: MimeType -> Text
+mimeIndicator m = case m of
+    MimeHtml -> "text/html"
+    MimeMarkdown -> "text/markdown"
+    MimeSvg -> "image/svg+xml"
+    MimeLatex -> "text/latex"
+    MimeJson -> "application/json"
+    MimeImage t -> t <> ";base64"
+    MimePlain -> "text/plain"
+
+-- | Inverse of 'mimeIndicator'. Anything unrecognised maps to 'MimePlain'.
+textToMime :: Text -> MimeType
+textToMime m
+    -- @"<type>;base64"@ round-trips back to 'MimeImage' so an image
+    -- output isn't silently saved as plain text.
+    | Just t <- T.stripSuffix ";base64" m = MimeImage t
+    | otherwise = case m of
+        "text/html" -> MimeHtml
+        "text/markdown" -> MimeMarkdown
+        "image/svg+xml" -> MimeSvg
+        "text/latex" -> MimeLatex
+        "application/json" -> MimeJson
+        _ -> MimePlain
+
+-- Hand-rolled instances preserve the wire shape: @oiMime@ goes out as
+-- the indicator string (e.g. @"text/html"@) regardless of which 'MimeType'
+-- constructor it came from, so the frontend continues to see strings.
+instance ToJSON OutputItem where
+    toJSON oi =
+        object
+            [ "oiMime" .= mimeIndicator (oiMime oi)
+            , "oiOutput" .= oiOutput oi
+            ]
+
+instance FromJSON OutputItem where
+    parseJSON = withObject "OutputItem" $ \o -> do
+        mime <- o .: "oiMime"
+        output <- o .: "oiOutput"
+        pure (OutputItem (textToMime mime) output)
 
 data Notebook = Notebook
     { nbTitle :: Text
@@ -73,19 +125,24 @@ data NotebookEvent
     | EvSessionStatus SessionStatus
     | EvInstallLog Text
     | -- | turnId, text token
-      EvChatTextDelta Int Text
+      EvChatTextDelta TurnId Text
     | -- | turnId, toolCallId, toolName, input
-      EvChatToolCall Int Text Text Value
+      EvChatToolCall TurnId ToolCallId Text Value
     | -- | turnId, toolCallId, result
-      EvChatToolResult Int Text Value
-    | -- | turnId, editId, cellId, oldSource, newSource
-      EvChatEditProposed Int Int Int Text Text
+      EvChatToolResult TurnId ToolCallId Value
+    | {- | 'Nothing' is an edit proposed outside any turn (e.g. via the
+      REST tool bridge); previously this was the magic sentinel @TurnId 0@.
+      -}
+      EvChatEditProposed (Maybe TurnId) EditId Int Text Text
     | -- | turnId
-      EvChatDone Int
+      EvChatDone TurnId
     | -- | turnId
-      EvChatCancelled Int
-    | -- | turnId, error message
-      EvChatError Int Text
+      EvChatCancelled TurnId
+    | {- | 'Nothing' is a global error not bound to any turn (e.g. "AI not
+      configured" or "A turn is already in progress"); previously this
+      was the magic sentinel @0@.
+      -}
+      EvChatError (Maybe TurnId) Text
     | {- | Full notebook snapshot — fired whenever cells are inserted, deleted,
       reordered, or edited outside the reactive execute path, so the frontend
       can refresh its view without re-fetching.
@@ -95,7 +152,7 @@ data NotebookEvent
       cacheCreationInputTokens, cacheReadInputTokens, wallTimeMs,
       iterations}. Emitted once when a turn completes.
       -}
-      EvChatUsageUpdate Int Value
+      EvChatUsageUpdate TurnId Value
     deriving (Show)
 
 data SessionStatus

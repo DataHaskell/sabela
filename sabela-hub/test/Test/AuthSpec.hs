@@ -2,7 +2,7 @@
 
 module Test.AuthSpec (spec) where
 
-import Hub.Proxy (extractSessionId)
+import Hub.Auth (extractSessionId)
 import Hub.Types
 import Network.Wai (defaultRequest)
 import Network.Wai.Internal (Request (..))

@@ -84,7 +84,7 @@ cliDescribeTask cfg (TaskId taskArn) = do
                     , "--output"
                     , "text"
                     ]
-            pure $ TaskRunning (T.strip (T.pack ip))
+            pure $ TaskRunning (TaskIp (T.strip (T.pack ip)))
         "STOPPED" -> pure TaskStopped
         _ -> pure TaskPending
 

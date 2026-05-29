@@ -1,10 +1,12 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.Errors where
 
-import Data.Char
+import Control.Applicative ((<|>))
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Read as TR
 import Sabela.Model (CellError (..))
 
 parseErrors :: Text -> [CellError]
@@ -26,10 +28,12 @@ parseErrors stderr
 
     splitErrors t = filter (not . T.null . T.strip) $ splitOnHeaders (T.lines t) [] []
 
-    splitOnHeaders [] current acc =
+    -- Bang both accumulators so a long GHCi stderr doesn't pile a
+    -- thunk chain until the terminal 'reverse' forces it.
+    splitOnHeaders [] !current !acc =
         let b = T.unlines (reverse current)
          in reverse (if T.null (T.strip b) then acc else b : acc)
-    splitOnHeaders (l : ls) current acc
+    splitOnHeaders (l : ls) !current !acc
         | isErrorHeader l && not (null current) =
             let b = T.unlines (reverse current)
              in splitOnHeaders ls [l] (b : acc)
@@ -40,20 +44,16 @@ parseErrors stderr
             || "<cell>:" `T.isPrefixOf` l
 
 parseErrorHeader :: Text -> Maybe (Int, Maybe Int)
-parseErrorHeader hdr =
-    let after = case T.stripPrefix "<interactive>:" hdr of
-            Just r -> Just r
-            Nothing -> T.stripPrefix "<cell>:" hdr
-     in case after of
-            Nothing -> Nothing
-            Just rest ->
-                let (lineStr, rest2) = T.span isDigit rest
-                 in case reads (T.unpack lineStr) :: [(Int, String)] of
-                        [(ln, _)] ->
-                            let col = case T.stripPrefix ":" rest2 of
-                                    Just r3 -> case reads (T.unpack (T.takeWhile isDigit r3)) :: [(Int, String)] of
-                                        [(c, _)] -> Just c
-                                        _ -> Nothing
-                                    Nothing -> Nothing
-                             in Just (ln, col)
+parseErrorHeader hdr = do
+    rest <-
+        T.stripPrefix "<interactive>:" hdr
+            <|> T.stripPrefix "<cell>:" hdr
+    case TR.decimal rest of
+        Right (ln, rest2) ->
+            let col = case T.stripPrefix ":" rest2 of
+                    Just r3 -> case TR.decimal r3 of
+                        Right (c, _) -> Just c
                         _ -> Nothing
+                    Nothing -> Nothing
+             in Just (ln, col)
+        _ -> Nothing

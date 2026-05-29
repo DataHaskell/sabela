@@ -1,692 +1,1267 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sabela Dashboard</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sabela Dashboard</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script>
-  // Theme bootstrap — shared with editor via 'sabela-theme' localStorage key.
-  (() => {
-    const stored = localStorage.getItem('sabela-theme');
-    const theme = (stored === 'light' || stored === 'dark')
-      ? stored
-      : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-    document.documentElement.dataset.theme = theme;
-    window.__sabelaThemePinned = !!stored;
-  })();
-</script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/haskell.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/python.min.js"></script>
+    <script>
+      // Theme bootstrap — shared with editor via 'sabela-theme' localStorage key.
+      (() => {
+        const stored = localStorage.getItem('sabela-theme');
+        const theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+        document.documentElement.dataset.theme = theme;
+        window.__sabelaThemePinned = !!stored;
+      })();
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-  :root {
-    --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      :root {
+        --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-    /* light — clean white with cool accent */
-    --bg: #ffffff;
-    --bg-muted: #fafafa;
-    --bg-card: #ffffff;
-    --fg: #0a0a0a;
-    --fg-dim: #71717a;
-    --fg-heading: #000000;
-    --accent: #0066ff;
-    --accent-rgb: 0,102,255;
-    --accent-hover: #0052cc;
-    --border: #e4e4e7;
-    --border-light: #f4f4f5;
-    --main-max-w: 760px;
-    --radius: 8px;
-    --shadow: 0 1px 3px rgba(0,0,0,0.06);
-    --err-border: #fecaca;
-    --err-bg: #fef2f2;
-    --err-fg: #991b1b;
-  }
-  :root[data-theme="dark"] {
-    /* dark — Catppuccin Mocha */
-    --bg: #1e1e2e;
-    --bg-muted: #262637;
-    --bg-card: #181825;
-    --fg: #cdd6f4;
-    --fg-dim: #9399b2;
-    --fg-heading: #f5f5ff;
-    --accent: #89b4fa;
-    --accent-rgb: 137,180,250;
-    --accent-hover: #a4c0fa;
-    --border: #313244;
-    --border-light: #262637;
-    --shadow: 0 1px 3px rgba(0,0,0,0.4);
-    --err-border: #5a2730;
-    --err-bg: #2a1a1e;
-    --err-fg: #f38ba8;
-  }
+        /* light — clean white with cool accent */
+        --bg: #ffffff;
+        --bg-muted: #fafafa;
+        --bg-card: #ffffff;
+        --fg: #0a0a0a;
+        --fg-dim: #71717a;
+        --fg-heading: #000000;
+        --accent: #0066ff;
+        --accent-rgb: 0, 102, 255;
+        --accent-hover: #0052cc;
+        --border: #e4e4e7;
+        --border-light: #f4f4f5;
+        --main-max-w: 760px;
+        --radius: 8px;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --err-border: #fecaca;
+        --err-bg: #fef2f2;
+        --err-fg: #991b1b;
+        --hl-keyword: #8839ef;
+        --hl-string: #40a02b;
+        --hl-number: #fe640b;
+        --hl-comment: #8c8fa1;
+        --hl-function: #1e66f5;
+        --hl-type: #df8e1d;
+        --hl-builtin: #d20f39;
+        --hl-operator: #04a5e5;
+        --hl-meta: #ea76cb;
+      }
+      :root[data-theme='dark'] {
+        /* dark — Catppuccin Mocha */
+        --bg: #1e1e2e;
+        --bg-muted: #262637;
+        --bg-card: #181825;
+        --fg: #cdd6f4;
+        --fg-dim: #9399b2;
+        --fg-heading: #f5f5ff;
+        --accent: #89b4fa;
+        --accent-rgb: 137, 180, 250;
+        --accent-hover: #a4c0fa;
+        --border: #313244;
+        --border-light: #262637;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        --err-border: #5a2730;
+        --err-bg: #2a1a1e;
+        --err-fg: #f38ba8;
+        --hl-keyword: #cba6f7;
+        --hl-string: #a6e3a1;
+        --hl-number: #fab387;
+        --hl-comment: #7f849c;
+        --hl-function: #89b4fa;
+        --hl-type: #f9e2af;
+        --hl-builtin: #f38ba8;
+        --hl-operator: #89dceb;
+        --hl-meta: #f5c2e7;
+      }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
-  html, body { height: 100%; overflow-x: hidden; }
-  body {
-    font-family: var(--font-sans);
-    background: var(--bg);
-    color: var(--fg);
-    line-height: 1.65;
-    font-size: 15px;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+      /* ── Code blocks (notebook / tutorial mode) ─── */
+      .dash-code {
+        background: var(--bg-muted);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius);
+        margin: 0 0 12px;
+        overflow-x: auto;
+      }
+      .dash-code pre {
+        margin: 0;
+        padding: 14px 16px;
+      }
+      .dash-code code {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        line-height: 1.55;
+        display: block;
+        white-space: pre;
+        tab-size: 2;
+        color: var(--fg);
+      }
+      .hljs {
+        background: transparent;
+        color: var(--fg);
+      }
+      .hljs-keyword,
+      .hljs-selector-tag,
+      .hljs-section,
+      .hljs-doctag,
+      .hljs-name {
+        color: var(--hl-keyword);
+      }
+      .hljs-string,
+      .hljs-regexp,
+      .hljs-meta .hljs-string,
+      .hljs-char.escape_,
+      .hljs-symbol,
+      .hljs-bullet {
+        color: var(--hl-string);
+      }
+      .hljs-number,
+      .hljs-literal {
+        color: var(--hl-number);
+      }
+      .hljs-comment,
+      .hljs-quote {
+        color: var(--hl-comment);
+        font-style: italic;
+      }
+      .hljs-title,
+      .hljs-title.function_,
+      .hljs-function .hljs-title {
+        color: var(--hl-function);
+      }
+      .hljs-type,
+      .hljs-class .hljs-title,
+      .hljs-title.class_ {
+        color: var(--hl-type);
+      }
+      .hljs-built_in,
+      .hljs-builtin-name {
+        color: var(--hl-builtin);
+      }
+      .hljs-operator,
+      .hljs-punctuation {
+        color: var(--hl-operator);
+      }
+      .hljs-meta {
+        color: var(--hl-meta);
+      }
 
-  /* ── Header ────────────────────────────────── */
-  .dashboard-header {
-    position: sticky; top: 0; z-index: 100;
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 24px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    backdrop-filter: saturate(120%) blur(6px);
-  }
-  .dashboard-header h1 {
-    font-family: var(--font-mono);
-    font-size: 15px; font-weight: 600; letter-spacing: 0.3px;
-    color: var(--fg-heading);
-    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .header-actions { display: flex; gap: 8px; align-items: center; }
-  .header-actions a, .header-actions button {
-    font-family: var(--font-mono);
-    font-size: 12px; font-weight: 500;
-    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
-    background: transparent; color: var(--fg-dim); cursor: pointer;
-    text-decoration: none; transition: all 0.15s;
-  }
-  .header-actions a:hover, .header-actions button:hover {
-    border-color: var(--accent); color: var(--accent);
-  }
-  .header-actions .icon-btn {
-    width: 30px; height: 30px; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    border: 1px solid transparent; color: var(--fg-dim);
-  }
-  .header-actions .icon-btn:hover { background: var(--bg-muted); color: var(--fg-heading); border-color: transparent; }
-  .icon-svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none;
-    stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-variant-ligatures: none;
+        font-feature-settings:
+          'calt' 0,
+          'liga' 0;
+      }
+      html,
+      body {
+        height: 100%;
+        overflow-x: hidden;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.65;
+        font-size: 15px;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
 
-  /* ── Main content ──────────────────────────── */
-  .dashboard-main {
-    padding: 32px 24px;
-    display: flex; flex-direction: column; align-items: center;
-  }
-  .dashboard-content {
-    width: 100%; max-width: var(--main-max-w);
-  }
+      /* ── Header ────────────────────────────────── */
+      .dashboard-header {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 24px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: saturate(120%) blur(6px);
+      }
+      .dashboard-header h1 {
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        color: var(--fg-heading);
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .header-actions a,
+      .header-actions button {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 500;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--fg-dim);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all 0.15s;
+      }
+      .header-actions a:hover,
+      .header-actions button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .header-actions .icon-btn {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid transparent;
+        color: var(--fg-dim);
+      }
+      .header-actions .icon-btn:hover {
+        background: var(--bg-muted);
+        color: var(--fg-heading);
+        border-color: transparent;
+      }
+      .icon-svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex-shrink: 0;
+      }
 
-  /* ── Sections (prose cells) ────────────────── */
-  .dash-section {
-    margin-bottom: 24px;
-  }
-  .dash-section h1 { font-size: 28px; font-weight: 700; color: var(--fg-heading); margin-bottom: 8px; }
-  .dash-section h2 { font-size: 22px; font-weight: 600; color: var(--fg-heading); margin-bottom: 6px; }
-  .dash-section h3 { font-size: 18px; font-weight: 600; color: var(--fg-heading); margin-bottom: 4px; }
-  .dash-section p { margin-bottom: 12px; }
-  /* padding-left (not margin-left) so nested lists compound and markers
+      /* ── Main content ──────────────────────────── */
+      .dashboard-main {
+        padding: 32px 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .dashboard-content {
+        width: 100%;
+        max-width: var(--main-max-w);
+      }
+
+      /* ── Sections (prose cells) ────────────────── */
+      .dash-section {
+        margin-bottom: 24px;
+      }
+      .dash-section h1 {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--fg-heading);
+        margin-bottom: 8px;
+      }
+      .dash-section h2 {
+        font-size: 22px;
+        font-weight: 600;
+        color: var(--fg-heading);
+        margin-bottom: 6px;
+      }
+      .dash-section h3 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--fg-heading);
+        margin-bottom: 4px;
+      }
+      .dash-section p {
+        margin-bottom: 12px;
+      }
+      /* padding-left (not margin-left) so nested lists compound and markers
      have room after the global "* { padding:0 }" reset. */
-  .dash-section ul, .dash-section ol,
-  .dash-output .mime-markdown ul, .dash-output .mime-markdown ol {
-    margin: 0 0 12px; padding-left: 1.5em;
-  }
-  .dash-section li, .dash-output .mime-markdown li { margin: 3px 0; }
-  .dash-section li > ul, .dash-section li > ol,
-  .dash-output .mime-markdown li > ul,
-  .dash-output .mime-markdown li > ol { margin: 3px 0 5px; }
-  .dash-section ul, .dash-output .mime-markdown ul { list-style: disc; }
-  .dash-section ul ul,
-  .dash-output .mime-markdown ul ul { list-style: circle; }
-  .dash-section ul ul ul,
-  .dash-output .mime-markdown ul ul ul { list-style: square; }
-  .dash-section ol, .dash-output .mime-markdown ol { list-style: decimal; }
-  .dash-section a { color: var(--accent); }
-  .dash-section code {
-    font-family: var(--font-mono); font-size: 14px;
-    background: var(--bg-muted); padding: 2px 6px; border-radius: 4px;
-  }
-  .dash-section pre {
-    font-family: var(--font-mono); font-size: 14px;
-    background: var(--bg-muted); padding: 12px 16px; border-radius: var(--radius);
-    overflow-x: auto; margin-bottom: 12px;
-  }
-  /* ── Tables (prose + markdown outputs) ─────── */
-  .dash-section table,
-  .dash-output .mime-markdown table {
-    border-collapse: separate; border-spacing: 0;
-    width: 100%; margin: 14px 0;
-    border: 1px solid var(--border); border-radius: 8px;
-    overflow: hidden;
-    font-size: 14px;
-    box-shadow: var(--shadow);
-    background: var(--bg-card);
-  }
-  .dash-section th, .dash-section td,
-  .dash-output .mime-markdown th, .dash-output .mime-markdown td {
-    padding: 10px 14px; text-align: left;
-    border-bottom: 1px solid var(--border-light);
-  }
-  .dash-section tr:last-child td,
-  .dash-output .mime-markdown tr:last-child td { border-bottom: none; }
-  .dash-section th,
-  .dash-output .mime-markdown th {
-    background: var(--bg-muted); color: var(--fg-heading);
-    font-weight: 600; font-size: 13px;
-    letter-spacing: 0.2px;
-    border-bottom: 1px solid var(--border);
-  }
-  .dash-section tr:nth-child(even) td,
-  .dash-output .mime-markdown tr:nth-child(even) td {
-    background: rgba(var(--accent-rgb), 0.04);
-  }
-  .dash-section tbody tr:hover td,
-  .dash-output .mime-markdown tbody tr:hover td {
-    background: rgba(var(--accent-rgb), 0.08);
-  }
-  /* Right-align numeric-looking columns automatically isn't possible without JS;
+      .dash-section ul,
+      .dash-section ol,
+      .dash-output .mime-markdown ul,
+      .dash-output .mime-markdown ol {
+        margin: 0 0 12px;
+        padding-left: 1.5em;
+      }
+      .dash-section li,
+      .dash-output .mime-markdown li {
+        margin: 3px 0;
+      }
+      .dash-section li > ul,
+      .dash-section li > ol,
+      .dash-output .mime-markdown li > ul,
+      .dash-output .mime-markdown li > ol {
+        margin: 3px 0 5px;
+      }
+      .dash-section ul,
+      .dash-output .mime-markdown ul {
+        list-style: disc;
+      }
+      .dash-section ul ul,
+      .dash-output .mime-markdown ul ul {
+        list-style: circle;
+      }
+      .dash-section ul ul ul,
+      .dash-output .mime-markdown ul ul ul {
+        list-style: square;
+      }
+      .dash-section ol,
+      .dash-output .mime-markdown ol {
+        list-style: decimal;
+      }
+      .dash-section a {
+        color: var(--accent);
+      }
+      .dash-section code {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        background: var(--bg-muted);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .dash-section pre {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        background: var(--bg-muted);
+        padding: 12px 16px;
+        border-radius: var(--radius);
+        overflow-x: auto;
+        margin-bottom: 12px;
+      }
+      /* ── Tables (prose + markdown outputs) ─────── */
+      .dash-section table,
+      .dash-output .mime-markdown table {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+        margin: 14px 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        font-size: 14px;
+        box-shadow: var(--shadow);
+        background: var(--bg-card);
+      }
+      .dash-section th,
+      .dash-section td,
+      .dash-output .mime-markdown th,
+      .dash-output .mime-markdown td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-light);
+      }
+      .dash-section tr:last-child td,
+      .dash-output .mime-markdown tr:last-child td {
+        border-bottom: none;
+      }
+      .dash-section th,
+      .dash-output .mime-markdown th {
+        background: var(--bg-muted);
+        color: var(--fg-heading);
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.2px;
+        border-bottom: 1px solid var(--border);
+      }
+      .dash-section tr:nth-child(even) td,
+      .dash-output .mime-markdown tr:nth-child(even) td {
+        background: rgba(var(--accent-rgb), 0.04);
+      }
+      .dash-section tbody tr:hover td,
+      .dash-output .mime-markdown tbody tr:hover td {
+        background: rgba(var(--accent-rgb), 0.08);
+      }
+      /* Right-align numeric-looking columns automatically isn't possible without JS;
      leave default alignment but tighten cell typography. */
-  .dash-section td, .dash-output .mime-markdown td {
-    font-variant-numeric: tabular-nums;
-  }
-  .dash-section blockquote {
-    border-left: 3px solid var(--accent); padding: 8px 16px;
-    color: var(--fg-dim); margin-bottom: 12px;
-  }
+      .dash-section td,
+      .dash-output .mime-markdown td {
+        font-variant-numeric: tabular-nums;
+      }
+      .dash-section blockquote {
+        border-left: 3px solid var(--accent);
+        padding: 8px 16px;
+        color: var(--fg-dim);
+        margin-bottom: 12px;
+      }
 
-  /* ── Output cards ──────────────────────────── */
-  .dash-output {
-    margin-bottom: 24px;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius);
-    overflow: hidden;
-    box-shadow: var(--shadow);
-  }
-  .dash-output iframe {
-    width: 100%; border: none; display: block;
-    min-height: 60px;
-  }
-  .dash-output .mime-svg { padding: 8px; }
-  .dash-output .mime-svg svg { max-width: 100%; height: auto; }
-  .dash-output .mime-image img { max-width: 100%; display: block; }
-  .dash-output .mime-json {
-    font-family: var(--font-mono); font-size: 13px;
-    background: var(--bg-muted); padding: 12px 16px;
-    white-space: pre-wrap; word-break: break-word;
-  }
-  .dash-output .mime-markdown { padding: 16px; }
-  .dash-output .mime-latex { padding: 16px; text-align: center; }
-  .dash-output .mime-plain {
-    font-family: var(--font-mono); font-size: 14px;
-    padding: 12px 16px; white-space: pre-wrap;
-  }
+      /* ── Output cards ──────────────────────────── */
+      .dash-output {
+        margin-bottom: 24px;
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius);
+        overflow: hidden;
+        box-shadow: var(--shadow);
+      }
+      .dash-output iframe {
+        width: 100%;
+        border: none;
+        display: block;
+        min-height: 60px;
+      }
+      .dash-output .mime-svg {
+        padding: 8px;
+      }
+      .dash-output .mime-svg svg {
+        max-width: 100%;
+        height: auto;
+      }
+      .dash-output .mime-image img {
+        max-width: 100%;
+        display: block;
+      }
+      .dash-output .mime-json {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        background: var(--bg-muted);
+        padding: 12px 16px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .dash-output .mime-markdown {
+        padding: 16px;
+      }
+      .dash-output .mime-latex {
+        padding: 16px;
+        text-align: center;
+      }
+      .dash-output .mime-plain {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        padding: 12px 16px;
+        white-space: pre-wrap;
+      }
 
-  /* ── Inline widgets ────────────────────────── */
-  .dash-widget {
-    margin-bottom: 8px;
-    border-radius: 6px;
-    overflow: hidden;
-    background: var(--bg-muted);
-  }
-  .dash-widget iframe {
-    width: 100%; border: none; display: block;
-    height: 36px;
-  }
-  .dash-widget .static-widget {
-    font-size: 14px; padding: 6px 12px;
-  }
-  .dash-widget .static-widget input[disabled],
-  .dash-widget .static-widget select[disabled] {
-    opacity: 0.7; cursor: default;
-  }
+      /* ── Inline widgets ────────────────────────── */
+      .dash-widget {
+        margin-bottom: 8px;
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--bg-muted);
+      }
+      .dash-widget iframe {
+        width: 100%;
+        border: none;
+        display: block;
+        height: 36px;
+      }
+      .dash-widget .static-widget {
+        font-size: 14px;
+        padding: 6px 12px;
+      }
+      .dash-widget .static-widget input[disabled],
+      .dash-widget .static-widget select[disabled] {
+        opacity: 0.7;
+        cursor: default;
+      }
 
-  /* ── Error display ─────────────────────────── */
-  .dash-error {
-    margin-bottom: 24px; padding: 12px 16px;
-    border: 1px solid var(--err-border); border-radius: var(--radius);
-    background: var(--err-bg); color: var(--err-fg);
-    font-family: var(--font-mono); font-size: 13px;
-    white-space: pre-wrap;
-  }
+      /* ── Error display ─────────────────────────── */
+      .dash-error {
+        margin-bottom: 24px;
+        padding: 12px 16px;
+        border: 1px solid var(--err-border);
+        border-radius: var(--radius);
+        background: var(--err-bg);
+        color: var(--err-fg);
+        font-family: var(--font-mono);
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
 
-  /* ── Status indicator ──────────────────────── */
-  .dash-status {
-    position: fixed; bottom: 16px; right: 16px;
-    padding: 6px 14px; border-radius: 20px;
-    font-size: 12px; font-weight: 600;
-    background: var(--bg-muted); border: 1px solid var(--border);
-    color: var(--fg-dim); display: none;
-  }
-  .dash-status.visible { display: block; }
-  .dash-status.running { color: var(--accent); border-color: var(--accent); }
+      /* ── Status indicator ──────────────────────── */
+      .dash-status {
+        position: fixed;
+        bottom: 16px;
+        right: 16px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--bg-muted);
+        border: 1px solid var(--border);
+        color: var(--fg-dim);
+        display: none;
+      }
+      .dash-status.visible {
+        display: block;
+      }
+      .dash-status.running {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
 
-  /* ── Responsive ────────────────────────────── */
-  @media (max-width: 768px) {
-    .dashboard-main { padding: 16px; }
-    .dashboard-content { max-width: 100%; }
-  }
-</style>
-<script>/*__SABELA_INJECT__*/</script>
-</head>
-<body>
+      /* ── Responsive ────────────────────────────── */
+      @media (max-width: 768px) {
+        .dashboard-main {
+          padding: 16px;
+        }
+        .dashboard-content {
+          max-width: 100%;
+        }
+      }
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></symbol>
-    <symbol id="i-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
-  </defs>
-</svg>
+      /* ── Print / Save as PDF ───────────────────────
+     Force a light, ink-friendly page regardless of the on-screen theme, hide
+     the app chrome, and make tall outputs paginate cleanly. Content iframes are
+     swapped for inline .print-inline DOM by printToPdf() before this applies. */
+      @media print {
+        :root,
+        :root[data-theme='dark'] {
+          --bg: #ffffff;
+          --bg-muted: #f6f6f6;
+          --bg-card: #ffffff;
+          --fg: #111111;
+          --fg-dim: #555555;
+          --fg-heading: #000000;
+          --accent: #0050d0;
+          --accent-rgb: 0, 80, 208;
+          --border: #cccccc;
+          --border-light: #e0e0e0;
+          --shadow: none;
+        }
+        html,
+        body {
+          height: auto;
+          overflow: visible;
+        }
+        body {
+          font-size: 11pt;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        @page {
+          margin: 18mm 14mm;
+        }
 
-<div class="dashboard-header">
-  <h1 id="dashboard-title">Dashboard</h1>
-  <div class="header-actions" id="header-actions">
-    <a href="/" id="edit-link">Edit Notebook</a>
-    <button onclick="exportDashboard()" id="export-btn">Export HTML</button>
-    <button class="icon-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
-      <svg class="icon-svg" id="theme-icon"><use href="#i-moon"/></svg>
-    </button>
-  </div>
-</div>
+        /* Hide app chrome — only prose + outputs (and code, in notebook mode) print. */
+        .dashboard-header,
+        .dash-status {
+          display: none !important;
+        }
+        .dashboard-main {
+          padding: 0;
+          display: block;
+        }
+        .dashboard-content {
+          max-width: 100%;
+        }
 
-<main class="dashboard-main">
-  <div class="dashboard-content" id="main-content"></div>
-</main>
+        * {
+          box-shadow: none !important;
+        }
 
-<div class="dash-status" id="status-indicator"></div>
+        /* Keep small blocks whole; let tall tables split with a repeating header. */
+        .dash-section,
+        .dash-code,
+        .dash-widget,
+        .dash-error,
+        .dash-output:not(:has(table)) {
+          break-inside: avoid;
+        }
+        .dash-output,
+        .print-inline {
+          break-inside: auto;
+        }
+        table {
+          break-inside: auto;
+        }
+        thead {
+          display: table-header-group;
+        }
+        tr,
+        img,
+        svg {
+          break-inside: avoid;
+        }
+        h1,
+        h2,
+        h3 {
+          break-after: avoid;
+        }
 
-<script>
-const isStatic = !!window.__SABELA_STATIC__;
-let notebookData = null;
+        /* Wrap long lines so nothing clips off the right edge of the page. */
+        .dash-code code,
+        .dash-output .mime-plain,
+        .dash-output .mime-json,
+        .print-inline pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
 
-// ── Theme handling (shared with editor via 'sabela-theme' key) ──
-function currentTheme() { return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'; }
-function applyTheme(theme, { persist = true } = {}) {
-  document.documentElement.dataset.theme = theme;
-  if (persist) {
-    localStorage.setItem('sabela-theme', theme);
-    window.__sabelaThemePinned = true;
-  }
-  const iconUse = document.querySelector('#theme-icon use');
-  if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
-  // Re-render iframes with current theme colors
-  document.querySelectorAll('iframe[data-last-content]').forEach(f => {
-    if (!f.dataset.lastContent) return;
-    if (f.dataset.staticFrame) {
-      f.srcdoc = staticSrcdoc(f.dataset.lastContent, f.dataset.iframeKind || 'content', f.id);
-      return;
-    }
-    try {
-      const doc = f.contentDocument || f.contentWindow?.document;
-      if (!doc) return;
-      doc.open();
-      const style = f.dataset.iframeKind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
-      doc.write(style + f.dataset.lastContent);
-      doc.close();
-    } catch {}
-  });
-}
-function toggleTheme() {
-  applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
-}
-function iframeContentStyle() {
-  const isDark = currentTheme() === 'dark';
-  const bg = isDark ? '#1e1e2e' : '#ffffff';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgHead = isDark ? '#f5f5ff' : '#000000';
-  const muted = isDark ? '#262637' : '#fafafa';
-  const border = isDark ? '#313244' : '#e4e4e7';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  const altRow = isDark ? 'rgba(137,180,250,0.05)' : 'rgba(0,102,255,0.04)';
-  return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:12px 16px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
-}
-function widgetIframeStyle() {
-  const isDark = currentTheme() === 'dark';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgDim = isDark ? '#9399b2' : '#71717a';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:6px 12px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
-}
-// ── Static-export iframe: opaque-origin sandbox + in-document CSP ──
-// In a shared/offline export we still run a script-drawn widget so its plot
-// renders, but sandbox='allow-scripts' (NO allow-same-origin) gives the frame an
-// opaque origin that cannot read this page (the embedded notebook JSON), cookies,
-// or storage, and the meta-CSP blocks all network egress. Because the frame is
-// cross-origin we cannot read its height, so it reports its own via postMessage.
-const STATIC_CSP = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'\">";
-let __staticFrameSeq = 0;
-function staticSrcdoc(content, kind, id) {
-  const style = kind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
-  const reporter = "<scr" + "ipt>(function(){function r(){try{parent.postMessage({__sabelaH:document.documentElement.scrollHeight,__sabelaId:'" + id + "'},'*')}catch(e){}}requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" + "ipt>";
-  return STATIC_CSP + style + content + reporter;
-}
-function mountStaticFrame(container, content, kind) {
-  const id = 'sframe' + (__staticFrameSeq++);
-  const iframe = document.createElement('iframe');
-  iframe.id = id;
-  iframe.setAttribute('sandbox', 'allow-scripts');
-  if (kind === 'widget') iframe.style.pointerEvents = 'none';
-  iframe.style.height = (kind === 'widget' ? 60 : 80) + 'px';
-  iframe.dataset.iframeKind = kind;
-  iframe.dataset.lastContent = content;
-  iframe.dataset.staticFrame = '1';
-  iframe.srcdoc = staticSrcdoc(content, kind, id);
-  container.appendChild(iframe);
-}
-window.addEventListener('message', (e) => {
-  const d = e.data;
-  if (d && typeof d.__sabelaH === 'number' && d.__sabelaId) {
-    const el = document.getElementById(d.__sabelaId);
-    if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
-  }
-});
-// Live-follow OS theme until the user pins a choice
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-    if (!window.__sabelaThemePinned) applyTheme(e.matches ? 'light' : 'dark', { persist: false });
-  });
-}
-// Initial sync (sets icon)
-applyTheme(currentTheme(), { persist: false });
+        /* Inlined HTML outputs: base typography + reuse the prose table styling. */
+        .print-inline {
+          font-size: 11pt;
+          line-height: 1.5;
+          padding: 4px 0;
+        }
+        .print-inline img {
+          max-width: 100%;
+        }
+        .print-inline table {
+          border-collapse: separate;
+          border-spacing: 0;
+          width: 100%;
+          margin: 10px 0;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          overflow: hidden;
+          font-size: 10pt;
+        }
+        .print-inline th,
+        .print-inline td {
+          padding: 6px 10px;
+          text-align: left;
+          border-bottom: 1px solid var(--border-light);
+        }
+        .print-inline tr:last-child td {
+          border-bottom: none;
+        }
+        .print-inline th {
+          background: var(--bg-muted);
+          color: var(--fg-heading);
+          font-weight: 600;
+        }
+        .print-inline tr:nth-child(even) td {
+          background: rgba(var(--accent-rgb), 0.05);
+        }
+      }
+    </style>
+    <script>
+      /*__SABELA_INJECT__*/
+    </script>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-sun" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" />
+          <line x1="12" y1="2" x2="12" y2="4" />
+          <line x1="12" y1="20" x2="12" y2="22" />
+          <line x1="4.93" y1="4.93" x2="6.34" y2="6.34" />
+          <line x1="17.66" y1="17.66" x2="19.07" y2="19.07" />
+          <line x1="2" y1="12" x2="4" y2="12" />
+          <line x1="20" y1="12" x2="22" y2="12" />
+          <line x1="4.93" y1="19.07" x2="6.34" y2="17.66" />
+          <line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
+        </symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </symbol>
+      </defs>
+    </svg>
 
-// ── Initialization ───────────────────────────────────────────────
-async function init() {
-  if (isStatic) {
-    notebookData = window.__SABELA_STATIC__;
-    document.getElementById('edit-link').style.display = 'none';
-    document.getElementById('export-btn').style.display = 'none';
-  } else {
-    const resp = await fetch('/api/notebook');
-    notebookData = await resp.json();
-  }
-  renderDashboard(notebookData);
-  if (!isStatic) connectSSE();
-}
+    <div class="dashboard-header">
+      <h1 id="dashboard-title">Dashboard</h1>
+      <div class="header-actions" id="header-actions">
+        <a href="/" id="edit-link">Edit Notebook</a>
+        <button onclick="exportDashboard()" id="export-btn">Export HTML</button>
+        <button
+          onclick="printToPdf()"
+          id="pdf-btn"
+          title='Print this page to PDF — use your browser&apos;s "Save as PDF" destination'
+        >
+          Save as PDF
+        </button>
+        <button
+          class="icon-btn"
+          id="theme-toggle"
+          onclick="toggleTheme()"
+          title="Toggle light/dark theme"
+          aria-label="Toggle theme"
+        >
+          <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
+        </button>
+      </div>
+    </div>
 
-// ── Render dashboard ─────────────────────────────────────────────
-function renderDashboard(nb) {
-  document.getElementById('dashboard-title').textContent = formatTitle(nb.nbTitle);
-  document.title = formatTitle(nb.nbTitle) + ' — Sabela Dashboard';
+    <main class="dashboard-main">
+      <div class="dashboard-content" id="main-content"></div>
+    </main>
 
-  const main = document.getElementById('main-content');
-  main.innerHTML = '';
+    <div class="dash-status" id="status-indicator"></div>
 
-  const cells = nb.nbCells || [];
-  for (const cell of cells) {
-    renderCellOutputs(main, cell, null);
-  }
-}
+    <script>
+      const isStatic = !!window.__SABELA_STATIC__;
+      const _query = new URLSearchParams(location.search);
+      // 'notebook' (tutorial) mode shows each code cell's source; 'dashboard'
+      // (default) shows only prose + outputs. Static shares pin the mode via the
+      // injected flag; the live editor can request notebook mode with ?mode=notebook.
+      const renderMode =
+        window.__SABELA_RENDER_MODE__ || (_query.get('mode') === 'notebook' ? 'notebook' : 'dashboard');
+      // ?print=1 — open straight into the browser print dialog (used by the editor's
+      // "Save as PDF" menu items, which open this page in a new tab).
+      const autoPrint = _query.get('print') === '1';
+      const HLJS_LANG = { Haskell: 'haskell', Python: 'python' };
+      let notebookData = null;
 
-// ── Render a single cell's outputs into the container ────────────
-function renderCellOutputs(container, cell, insertBefore) {
-  if (cell.cellType === 'ProseCell') {
-    const section = document.createElement('div');
-    section.className = 'dash-section';
-    section.dataset.cellId = cell.cellId;
-    section.innerHTML = marked.parse(cell.cellSource || '');
-    section.querySelectorAll('table').forEach(t => {
-      const w = document.createElement('div');
-      w.style.overflowX = 'auto';
-      t.parentNode.insertBefore(w, t);
-      w.appendChild(t);
-    });
-    container.insertBefore(section, insertBefore);
-    return;
-  }
-
-  // CodeCell — render all outputs inline in order
-  const outputs = cell.cellOutputs || [];
-  const merged = mergeHtmlOutputs(outputs);
-  for (const o of merged) {
-    if (!o.oiOutput || !o.oiOutput.trim()) continue;
-    const isWidget = classifyOutput(o) === 'widget';
-    const card = document.createElement('div');
-    card.className = isWidget ? 'dash-widget' : 'dash-output';
-    card.dataset.cellId = cell.cellId;
-
-    if (isWidget) {
-      renderWidgetOutput(card, o, cell.cellId);
-    } else {
-      renderOutput(card, o.oiOutput, o.oiMime);
-    }
-    container.insertBefore(card, insertBefore);
-  }
-
-  // Show errors
-  if (cell.cellError && cell.cellError.trim()) {
-    const errEl = document.createElement('div');
-    errEl.className = 'dash-error';
-    errEl.dataset.cellId = cell.cellId;
-    errEl.textContent = cell.cellError;
-    container.insertBefore(errEl, insertBefore);
-  }
-}
-
-// ── Output classification ────────────────────────────────────────
-function classifyOutput(item) {
-  if (item.oiMime === 'text/html' && item.oiOutput && item.oiOutput.includes('parent.postMessage')) {
-    return 'widget';
-  }
-  return 'content';
-}
-
-// ── Merge consecutive HTML outputs (non-widget only) ─────────────
-function mergeHtmlOutputs(outputs) {
-  const merged = [];
-  for (const o of outputs) {
-    const isWidget = classifyOutput(o) === 'widget';
-    const last = merged[merged.length - 1];
-    if (!isWidget && o.oiMime === 'text/html' && last &&
-        last.oiMime === 'text/html' && classifyOutput(last) !== 'widget') {
-      last.oiOutput += '\n' + o.oiOutput;
-    } else {
-      merged.push({oiMime: o.oiMime, oiOutput: o.oiOutput});
-    }
-  }
-  return merged;
-}
-
-// ── Render a content output ──────────────────────────────────────
-function renderOutput(container, content, mime) {
-  if (mime === 'text/html') {
-    if (isStatic) { mountStaticFrame(container, content, 'content'); return; }
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-    iframe.style.visibility = 'hidden';
-    container.appendChild(iframe);
-    requestAnimationFrame(() => {
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return;
-      iframe.dataset.lastContent = content;
-      doc.open();
-      iframe.onload = () => {
-        iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
-        iframe.style.visibility = '';
-      };
-      doc.write(iframeContentStyle() + content);
-      doc.close();
-    });
-  } else if (mime === 'text/markdown') {
-    const div = document.createElement('div');
-    div.className = 'mime-markdown';
-    div.innerHTML = marked.parse(content);
-    div.querySelectorAll('table').forEach(t => {
-      const w = document.createElement('div');
-      w.style.overflowX = 'auto';
-      t.parentNode.insertBefore(w, t);
-      w.appendChild(t);
-    });
-    container.appendChild(div);
-  } else if (mime === 'image/svg+xml') {
-    const div = document.createElement('div');
-    div.className = 'mime-svg';
-    div.innerHTML = content;
-    container.appendChild(div);
-  } else if (mime.startsWith('image/') && mime.includes('base64')) {
-    const div = document.createElement('div');
-    div.className = 'mime-image';
-    const mimeClean = mime.replace(';base64', '');
-    div.innerHTML = '<img src="data:' + mimeClean + ';base64,' + content.trim() + '" />';
-    container.appendChild(div);
-  } else if (mime === 'application/json') {
-    const div = document.createElement('div');
-    div.className = 'mime-json';
-    try { div.textContent = JSON.stringify(JSON.parse(content), null, 2); }
-    catch { div.textContent = content; }
-    container.appendChild(div);
-  } else if (mime === 'text/latex') {
-    const div = document.createElement('div');
-    div.className = 'mime-latex';
-    try { katex.render(content, div, { displayMode: true, throwOnError: false }); }
-    catch { div.textContent = content; }
-    container.appendChild(div);
-  } else {
-    const div = document.createElement('div');
-    div.className = 'mime-plain';
-    div.textContent = content;
-    container.appendChild(div);
-  }
-}
-
-// ── Render widget inline ─────────────────────────────────────────
-function renderWidgetOutput(container, output, cellId) {
-  if (isStatic) {
-    // Script-drawn widgets (e.g. the scatter <canvas>) need their script to run to
-    // render at all — do it in the opaque-origin, network-dead sandbox (see
-    // mountStaticFrame), inert via pointer-events:none. Form controls have no such
-    // need and stay as greyed-out, script-stripped placeholders.
-    if (/<canvas|<script/i.test(output.oiOutput)) {
-      mountStaticFrame(container, output.oiOutput, 'widget');
-      return;
-    }
-    const wrapper = document.createElement('div');
-    wrapper.className = 'static-widget';
-    let cleaned = output.oiOutput
-      .replace(/\s*on\w+="[^"]*"/g, '')
-      .replace(/<(input|select|button)/gi, '<$1 disabled');
-    wrapper.innerHTML = cleaned;
-    container.appendChild(wrapper);
-    return;
-  }
-
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-  iframe.style.visibility = 'hidden';
-  container.appendChild(iframe);
-
-  requestAnimationFrame(() => {
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-    iframe.dataset.lastContent = output.oiOutput;
-    iframe.dataset.iframeKind = 'widget';
-    doc.open();
-    iframe.onload = () => {
-      iframe.style.height = Math.max(32, doc.body.scrollHeight) + 'px';
-      iframe.style.visibility = '';
-    };
-    doc.write(widgetIframeStyle() + output.oiOutput);
-    doc.close();
-  });
-}
-
-// ── SSE (live mode only) ─────────────────────────────────────────
-function connectSSE() {
-  const evtSource = new EventSource('/api/events');
-  evtSource.onmessage = (e) => {
-    const ev = JSON.parse(e.data);
-    switch (ev.type) {
-      case 'cellUpdating':
-        showStatus('Running...', true);
-        break;
-      case 'cellResult':
-        updateDashboardCell(ev.cellId, ev.outputs || [], ev.error);
-        break;
-      case 'executionDone':
-        hideStatus();
-        break;
-      case 'sessionStatus':
-        if (ev.message === 'ready') hideStatus();
-        else showStatus(ev.message, true);
-        break;
-    }
-  };
-  evtSource.onerror = () => {
-    showStatus('Disconnected', false);
-  };
-}
-
-// ── Update a cell in the dashboard ───────────────────────────────
-function updateDashboardCell(cellId, outputs, error) {
-  if (!notebookData) return;
-  const cell = (notebookData.nbCells || []).find(c => c.cellId === cellId);
-  if (!cell) return;
-
-  cell.cellOutputs = outputs;
-  cell.cellError = error || null;
-
-  // Remove only this cell's existing DOM nodes
-  const main = document.getElementById('main-content');
-  main.querySelectorAll(`[data-cell-id="${cellId}"]`).forEach(el => el.remove());
-
-  // Find the next cell's first DOM node to insert before
-  const cells = notebookData.nbCells;
-  const cellIndex = cells.indexOf(cell);
-  let insertBefore = null;
-  for (let j = cellIndex + 1; j < cells.length; j++) {
-    const nextNode = main.querySelector(`[data-cell-id="${cells[j].cellId}"]`);
-    if (nextNode) { insertBefore = nextNode; break; }
-  }
-
-  // Re-render just this cell
-  renderCellOutputs(main, cell, insertBefore);
-}
-
-// ── Widget postMessage bridge (live mode) ────────────────────────
-const _widgetTimers = new Map();
-window.addEventListener('message', (e) => {
-  if (isStatic) return;
-  const d = e.data;
-  if (d && d.type === 'widget') {
-    const key = d.cellId + ':' + d.name;
-    clearTimeout(_widgetTimers.get(key));
-    _widgetTimers.set(key, setTimeout(() => {
-      _widgetTimers.delete(key);
-      fetch('/api/widget', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({wuCellId: d.cellId, wuName: d.name, wuValue: d.value})
+      // ── Theme handling (shared with editor via 'sabela-theme' key) ──
+      function currentTheme() {
+        return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+      }
+      function applyTheme(theme, { persist = true } = {}) {
+        document.documentElement.dataset.theme = theme;
+        if (persist) {
+          localStorage.setItem('sabela-theme', theme);
+          window.__sabelaThemePinned = true;
+        }
+        const iconUse = document.querySelector('#theme-icon use');
+        if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
+        // Re-render iframes with current theme colors
+        document.querySelectorAll('iframe[data-last-content]').forEach((f) => {
+          if (!f.dataset.lastContent) return;
+          if (f.dataset.staticFrame) {
+            f.srcdoc = staticSrcdoc(f.dataset.lastContent, f.dataset.iframeKind || 'content', f.id);
+            return;
+          }
+          try {
+            const doc = f.contentDocument || f.contentWindow?.document;
+            if (!doc) return;
+            doc.open();
+            const style = f.dataset.iframeKind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
+            doc.write(style + f.dataset.lastContent);
+            doc.close();
+          } catch {}
+        });
+      }
+      function toggleTheme() {
+        applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+      }
+      function iframeContentStyle() {
+        const isDark = currentTheme() === 'dark';
+        const bg = isDark ? '#1e1e2e' : '#ffffff';
+        const fg = isDark ? '#cdd6f4' : '#0a0a0a';
+        const fgHead = isDark ? '#f5f5ff' : '#000000';
+        const muted = isDark ? '#262637' : '#fafafa';
+        const border = isDark ? '#313244' : '#e4e4e7';
+        const accent = isDark ? '#89b4fa' : '#0066ff';
+        const altRow = isDark ? 'rgba(137,180,250,0.05)' : 'rgba(0,102,255,0.04)';
+        return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:12px 16px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
+      }
+      function widgetIframeStyle() {
+        const isDark = currentTheme() === 'dark';
+        const fg = isDark ? '#cdd6f4' : '#0a0a0a';
+        const fgDim = isDark ? '#9399b2' : '#71717a';
+        const accent = isDark ? '#89b4fa' : '#0066ff';
+        return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:6px 12px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
+      }
+      // ── Static-export iframe: opaque-origin sandbox + in-document CSP ──
+      // In a shared/offline export we still run a script-drawn widget so its plot
+      // renders, but sandbox='allow-scripts' (NO allow-same-origin) gives the frame an
+      // opaque origin that cannot read this page (the embedded notebook JSON), cookies,
+      // or storage; the meta-CSP allows charting libs from trusted CDNs (cdnjs,
+      // jsdelivr) but keeps connect-src closed, so a plot can draw yet can't
+      // exfiltrate the page. Because the frame is
+      // cross-origin we cannot read its height, so it reports its own via postMessage.
+      const STATIC_CSP =
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'\">";
+      let __staticFrameSeq = 0;
+      function staticSrcdoc(content, kind, id) {
+        const style = kind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
+        const reporter =
+          '<scr' +
+          "ipt>(function(){function r(){try{parent.postMessage({__sabelaH:document.documentElement.scrollHeight,__sabelaId:'" +
+          id +
+          "'},'*')}catch(e){}}requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" +
+          'ipt>';
+        return STATIC_CSP + style + content + reporter;
+      }
+      function mountStaticFrame(container, content, kind) {
+        const id = 'sframe' + __staticFrameSeq++;
+        const iframe = document.createElement('iframe');
+        iframe.id = id;
+        iframe.setAttribute('sandbox', 'allow-scripts');
+        if (kind === 'widget') iframe.style.pointerEvents = 'none';
+        iframe.style.height = (kind === 'widget' ? 60 : 80) + 'px';
+        iframe.dataset.iframeKind = kind;
+        iframe.dataset.lastContent = content;
+        iframe.dataset.staticFrame = '1';
+        iframe.srcdoc = staticSrcdoc(content, kind, id);
+        container.appendChild(iframe);
+      }
+      window.addEventListener('message', (e) => {
+        const d = e.data;
+        if (d && typeof d.__sabelaH === 'number' && d.__sabelaId) {
+          const el = document.getElementById(d.__sabelaId);
+          if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
+        }
       });
-    }, 300));
-  }
-});
+      // Live-follow OS theme until the user pins a choice
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+          if (!window.__sabelaThemePinned) applyTheme(e.matches ? 'light' : 'dark', { persist: false });
+        });
+      }
+      // Initial sync (sets icon)
+      applyTheme(currentTheme(), { persist: false });
 
-// ── Status indicator ─────────────────────────────────────────────
-function showStatus(msg, running) {
-  const el = document.getElementById('status-indicator');
-  el.textContent = msg;
-  el.className = 'dash-status visible' + (running ? ' running' : '');
-}
-function hideStatus() {
-  document.getElementById('status-indicator').className = 'dash-status';
-}
+      // ── Initialization ───────────────────────────────────────────────
+      async function init() {
+        if (isStatic) {
+          notebookData = window.__SABELA_STATIC__;
+          document.getElementById('edit-link').style.display = 'none';
+          document.getElementById('export-btn').style.display = 'none';
+        } else {
+          const resp = await fetch('/api/notebook');
+          notebookData = await resp.json();
+        }
+        renderDashboard(notebookData);
+        if (renderMode === 'notebook') setupDownloadMd();
+        if (!isStatic) connectSSE();
+        // Opened with ?print=1 — let layout settle (iframes report heights, fonts
+        // load), then drop straight into the print dialog.
+        if (autoPrint) requestAnimationFrame(() => setTimeout(printToPdf, 300));
+      }
 
-// ── Export button (live mode) ────────────────────────────────────
-function exportDashboard() {
-  window.open('/api/export/dashboard', '_blank');
-}
+      // In notebook (tutorial) mode, offer the notebook source for download so a
+      // reader can upload it into their own Sabela workspace and run it.
+      function setupDownloadMd() {
+        const md = window.__SABELA_MARKDOWN__;
+        const actions = document.getElementById('header-actions');
+        if (!md || !actions || document.getElementById('dl-md-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'dl-md-btn';
+        btn.textContent = 'Download .md';
+        btn.title = 'Download the notebook source — upload it into your own Sabela workspace to run it';
+        btn.addEventListener('click', () => {
+          const title = (notebookData && notebookData.nbTitle) || 'notebook.md';
+          const name = /\.md$/.test(title) ? title.split('/').pop() : 'notebook.md';
+          const blob = new Blob([md], { type: 'text/markdown' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            URL.revokeObjectURL(a.href);
+            a.remove();
+          }, 0);
+        });
+        actions.insertBefore(btn, actions.firstChild);
+      }
 
-// ── Title formatting ─────────────────────────────────────────────
-function formatTitle(path) {
-  if (!path) return 'Dashboard';
-  const name = path.split('/').pop().replace(/\.[^/.]+$/, '');
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
+      // ── Print to PDF ─────────────────────────────────────────────────
+      // Browsers print an <iframe> as one atomic box: a tall frame is clipped at the
+      // page edge, not paginated. Content outputs (e.g. dataframe tables) live in
+      // iframes, so before printing we swap each one for inline, script-stripped DOM
+      // that flows across pages. SVG/markdown/image/JSON/plain outputs are already
+      // inline and need no help; short widget iframes are left as-is.
 
-// ── Go ───────────────────────────────────────────────────────────
-init();
-</script>
-</body>
+      // Strip <script> elements and on*= handlers, then return the safe HTML. Inlining
+      // runs in this page's origin (unlike the sandboxed iframe), so for untrusted
+      // static shares this prevents the output HTML from executing.
+      function sanitizeForPrint(html) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = html;
+        tpl.content.querySelectorAll('script').forEach((s) => s.remove());
+        tpl.content.querySelectorAll('*').forEach((el) => {
+          for (const attr of [...el.attributes]) {
+            if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
+          }
+        });
+        return tpl.innerHTML;
+      }
+
+      // Replace each content iframe with an inline .print-inline div; return undo fns.
+      function inlineContentFramesForPrint() {
+        const frames = [...document.querySelectorAll('iframe[data-last-content]')].filter(
+          (f) => f.dataset.iframeKind !== 'widget'
+        );
+        const restore = [];
+        for (const f of frames) {
+          const div = document.createElement('div');
+          div.className = 'print-inline';
+          div.innerHTML = sanitizeForPrint(f.dataset.lastContent || '');
+          f.style.display = 'none';
+          f.parentNode.insertBefore(div, f);
+          restore.push(() => {
+            div.remove();
+            f.style.display = '';
+          });
+        }
+        return restore;
+      }
+
+      function printToPdf() {
+        const restore = inlineContentFramesForPrint();
+        const cleanup = () => {
+          restore.forEach((r) => r());
+          window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup);
+        requestAnimationFrame(() => window.print());
+      }
+
+      // ── Render dashboard ─────────────────────────────────────────────
+      function renderDashboard(nb) {
+        document.getElementById('dashboard-title').textContent = formatTitle(nb.nbTitle);
+        document.title = formatTitle(nb.nbTitle) + ' — Sabela Dashboard';
+
+        const main = document.getElementById('main-content');
+        main.innerHTML = '';
+
+        const cells = nb.nbCells || [];
+        for (const cell of cells) {
+          renderCellOutputs(main, cell, null);
+        }
+      }
+
+      // Render KaTeX inside a markdown source before handing to marked, so
+      // $...$ / $$...$$ blocks survive marked's underscore/star handling.
+      // Safe no-op if katex isn't available.
+      function renderMarkdownWithMath(src) {
+        let s = src || '';
+        if (typeof katex !== 'undefined') {
+          s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => {
+            try {
+              return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false });
+            } catch (_e) {
+              return _;
+            }
+          });
+          s = s.replace(/(^|[^\\$])\$([^\$\n]+?)\$(?!\d)/g, (_, pre, tex) => {
+            try {
+              return pre + katex.renderToString(tex, { displayMode: false, throwOnError: false });
+            } catch (_e) {
+              return _;
+            }
+          });
+        }
+        return marked.parse(s);
+      }
+
+      // ── Render a single cell's outputs into the container ────────────
+      function renderCellOutputs(container, cell, insertBefore) {
+        if (cell.cellType === 'ProseCell') {
+          const section = document.createElement('div');
+          section.className = 'dash-section';
+          section.dataset.cellId = cell.cellId;
+          section.innerHTML = renderMarkdownWithMath(cell.cellSource || '');
+          section.querySelectorAll('table').forEach((t) => {
+            const w = document.createElement('div');
+            w.style.overflowX = 'auto';
+            t.parentNode.insertBefore(w, t);
+            w.appendChild(t);
+          });
+          container.insertBefore(section, insertBefore);
+          return;
+        }
+
+        // CodeCell — in notebook (tutorial) mode, show the source above its outputs.
+        if (renderMode === 'notebook' && (cell.cellSource || '').trim()) {
+          const codeWrap = document.createElement('div');
+          codeWrap.className = 'dash-code';
+          codeWrap.dataset.cellId = cell.cellId;
+          const pre = document.createElement('pre');
+          const codeEl = document.createElement('code');
+          codeEl.className = 'hljs';
+          const src = cell.cellSource || '';
+          const hl = HLJS_LANG[cell.cellLang || 'Haskell'];
+          if (hl && window.hljs && hljs.getLanguage(hl)) {
+            codeEl.innerHTML = hljs.highlight(src, { language: hl }).value;
+          } else {
+            codeEl.textContent = src;
+          }
+          pre.appendChild(codeEl);
+          codeWrap.appendChild(pre);
+          container.insertBefore(codeWrap, insertBefore);
+        }
+
+        // CodeCell — render all outputs inline in order
+        const outputs = cell.cellOutputs || [];
+        const merged = mergeHtmlOutputs(outputs);
+        for (const o of merged) {
+          if (!o.oiOutput || !o.oiOutput.trim()) continue;
+          const isWidget = classifyOutput(o) === 'widget';
+          const card = document.createElement('div');
+          card.className = isWidget ? 'dash-widget' : 'dash-output';
+          card.dataset.cellId = cell.cellId;
+
+          if (isWidget) {
+            renderWidgetOutput(card, o, cell.cellId);
+          } else {
+            renderOutput(card, o.oiOutput, o.oiMime);
+          }
+          container.insertBefore(card, insertBefore);
+        }
+
+        // Show errors
+        if (cell.cellError && cell.cellError.trim()) {
+          const errEl = document.createElement('div');
+          errEl.className = 'dash-error';
+          errEl.dataset.cellId = cell.cellId;
+          errEl.textContent = cell.cellError;
+          container.insertBefore(errEl, insertBefore);
+        }
+      }
+
+      // ── Output classification ────────────────────────────────────────
+      function classifyOutput(item) {
+        if (item.oiMime === 'text/html' && item.oiOutput && item.oiOutput.includes('parent.postMessage')) {
+          return 'widget';
+        }
+        return 'content';
+      }
+
+      // ── Merge consecutive HTML outputs (non-widget only) ─────────────
+      function mergeHtmlOutputs(outputs) {
+        const merged = [];
+        for (const o of outputs) {
+          const isWidget = classifyOutput(o) === 'widget';
+          const last = merged[merged.length - 1];
+          if (
+            !isWidget &&
+            o.oiMime === 'text/html' &&
+            last &&
+            last.oiMime === 'text/html' &&
+            classifyOutput(last) !== 'widget'
+          ) {
+            last.oiOutput += '\n' + o.oiOutput;
+          } else {
+            merged.push({ oiMime: o.oiMime, oiOutput: o.oiOutput });
+          }
+        }
+        return merged;
+      }
+
+      // ── Render a content output ──────────────────────────────────────
+      function renderOutput(container, content, mime) {
+        if (mime === 'text/html') {
+          if (isStatic) {
+            mountStaticFrame(container, content, 'content');
+            return;
+          }
+          const iframe = document.createElement('iframe');
+          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+          iframe.style.visibility = 'hidden';
+          container.appendChild(iframe);
+          requestAnimationFrame(() => {
+            const doc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (!doc) return;
+            iframe.dataset.lastContent = content;
+            doc.open();
+            iframe.onload = () => {
+              iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
+              iframe.style.visibility = '';
+            };
+            doc.write(iframeContentStyle() + content);
+            doc.close();
+          });
+        } else if (mime === 'text/markdown') {
+          const div = document.createElement('div');
+          div.className = 'mime-markdown';
+          div.innerHTML = renderMarkdownWithMath(content);
+          div.querySelectorAll('table').forEach((t) => {
+            const w = document.createElement('div');
+            w.style.overflowX = 'auto';
+            t.parentNode.insertBefore(w, t);
+            w.appendChild(t);
+          });
+          container.appendChild(div);
+        } else if (mime === 'image/svg+xml') {
+          const div = document.createElement('div');
+          div.className = 'mime-svg';
+          div.innerHTML = content;
+          container.appendChild(div);
+        } else if (mime.startsWith('image/') && mime.includes('base64')) {
+          const div = document.createElement('div');
+          div.className = 'mime-image';
+          const mimeClean = mime.replace(';base64', '');
+          div.innerHTML = '<img src="data:' + mimeClean + ';base64,' + content.trim() + '" />';
+          container.appendChild(div);
+        } else if (mime === 'application/json') {
+          const div = document.createElement('div');
+          div.className = 'mime-json';
+          try {
+            div.textContent = JSON.stringify(JSON.parse(content), null, 2);
+          } catch {
+            div.textContent = content;
+          }
+          container.appendChild(div);
+        } else if (mime === 'text/latex') {
+          const div = document.createElement('div');
+          div.className = 'mime-latex';
+          try {
+            katex.render(content, div, { displayMode: true, throwOnError: false });
+          } catch {
+            div.textContent = content;
+          }
+          container.appendChild(div);
+        } else {
+          const div = document.createElement('div');
+          div.className = 'mime-plain';
+          div.textContent = content;
+          container.appendChild(div);
+        }
+      }
+
+      // ── Render widget inline ─────────────────────────────────────────
+      function renderWidgetOutput(container, output, cellId) {
+        if (isStatic) {
+          // Script-drawn widgets (e.g. the scatter <canvas>) need their script to run to
+          // render at all — do it in the opaque-origin, network-dead sandbox (see
+          // mountStaticFrame), inert via pointer-events:none. Form controls have no such
+          // need and stay as greyed-out, script-stripped placeholders.
+          if (/<canvas|<script/i.test(output.oiOutput)) {
+            mountStaticFrame(container, output.oiOutput, 'widget');
+            return;
+          }
+          const wrapper = document.createElement('div');
+          wrapper.className = 'static-widget';
+          let cleaned = output.oiOutput
+            .replace(/\s*on\w+="[^"]*"/g, '')
+            .replace(/<(input|select|button)/gi, '<$1 disabled');
+          wrapper.innerHTML = cleaned;
+          container.appendChild(wrapper);
+          return;
+        }
+
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+        iframe.style.visibility = 'hidden';
+        container.appendChild(iframe);
+
+        requestAnimationFrame(() => {
+          const doc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (!doc) return;
+          iframe.dataset.lastContent = output.oiOutput;
+          iframe.dataset.iframeKind = 'widget';
+          doc.open();
+          iframe.onload = () => {
+            iframe.style.height = Math.max(32, doc.body.scrollHeight) + 'px';
+            iframe.style.visibility = '';
+          };
+          doc.write(widgetIframeStyle() + output.oiOutput);
+          doc.close();
+        });
+      }
+
+      // ── SSE (live mode only) ─────────────────────────────────────────
+      function connectSSE() {
+        const evtSource = new EventSource('/api/events');
+        evtSource.onmessage = (e) => {
+          const ev = JSON.parse(e.data);
+          switch (ev.type) {
+            case 'cellUpdating':
+              showStatus('Running...', true);
+              break;
+            case 'cellResult':
+              updateDashboardCell(ev.cellId, ev.outputs || [], ev.error);
+              break;
+            case 'executionDone':
+              hideStatus();
+              break;
+            case 'sessionStatus':
+              if (ev.message === 'ready') hideStatus();
+              else showStatus(ev.message, true);
+              break;
+          }
+        };
+        evtSource.onerror = () => {
+          showStatus('Disconnected', false);
+        };
+      }
+
+      // ── Update a cell in the dashboard ───────────────────────────────
+      function updateDashboardCell(cellId, outputs, error) {
+        if (!notebookData) return;
+        const cell = (notebookData.nbCells || []).find((c) => c.cellId === cellId);
+        if (!cell) return;
+
+        cell.cellOutputs = outputs;
+        cell.cellError = error || null;
+
+        // Remove only this cell's existing DOM nodes
+        const main = document.getElementById('main-content');
+        main.querySelectorAll(`[data-cell-id="${cellId}"]`).forEach((el) => el.remove());
+
+        // Find the next cell's first DOM node to insert before
+        const cells = notebookData.nbCells;
+        const cellIndex = cells.indexOf(cell);
+        let insertBefore = null;
+        for (let j = cellIndex + 1; j < cells.length; j++) {
+          const nextNode = main.querySelector(`[data-cell-id="${cells[j].cellId}"]`);
+          if (nextNode) {
+            insertBefore = nextNode;
+            break;
+          }
+        }
+
+        // Re-render just this cell
+        renderCellOutputs(main, cell, insertBefore);
+      }
+
+      // ── Widget postMessage bridge (live mode) ────────────────────────
+      const _widgetTimers = new Map();
+      window.addEventListener('message', (e) => {
+        if (isStatic) return;
+        const d = e.data;
+        if (d && d.type === 'widget') {
+          const key = d.cellId + ':' + d.name;
+          clearTimeout(_widgetTimers.get(key));
+          _widgetTimers.set(
+            key,
+            setTimeout(() => {
+              _widgetTimers.delete(key);
+              fetch('/api/widget', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wuCellId: d.cellId, wuName: d.name, wuValue: d.value }),
+              });
+            }, 300)
+          );
+        }
+      });
+
+      // ── Status indicator ─────────────────────────────────────────────
+      function showStatus(msg, running) {
+        const el = document.getElementById('status-indicator');
+        el.textContent = msg;
+        el.className = 'dash-status visible' + (running ? ' running' : '');
+      }
+      function hideStatus() {
+        document.getElementById('status-indicator').className = 'dash-status';
+      }
+
+      // ── Export button (live mode) ────────────────────────────────────
+      function exportDashboard() {
+        window.open('/api/export/dashboard', '_blank');
+      }
+
+      // ── Title formatting ─────────────────────────────────────────────
+      function formatTitle(path) {
+        if (!path) return 'Dashboard';
+        const name = path
+          .split('/')
+          .pop()
+          .replace(/\.[^/.]+$/, '');
+        return name.charAt(0).toUpperCase() + name.slice(1);
+      }
+
+      // ── Go ───────────────────────────────────────────────────────────
+      init();
+    </script>
+  </body>
 </html>

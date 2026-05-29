@@ -21,8 +21,11 @@ import System.Directory (
     removeFile,
  )
 import System.Environment (getArgs, lookupEnv)
+import System.Exit (exitFailure)
 import System.FilePath (splitSearchPath, takeDirectory, (</>))
+import System.IO (hPutStrLn, stderr)
 import System.Process (getCurrentPid)
+import Text.Read (readMaybe)
 
 import Data.Aeson (encode, object, (.=))
 import qualified Data.ByteString.Lazy as LBS
@@ -35,10 +38,16 @@ main = do
     args <- getArgs
     case args of
         [] -> start 3000 "." defaultGlobal []
-        [port] -> start (read port) "." defaultGlobal []
-        [port, w] -> start (read port) w defaultGlobal []
-        [port, w, g] -> start (read port) w g []
-        (port : w : g : pkgs) -> start (read port) w g pkgs
+        [port] -> withPort port $ \p -> start p "." defaultGlobal []
+        [port, w] -> withPort port $ \p -> start p w defaultGlobal []
+        [port, w, g] -> withPort port $ \p -> start p w g []
+        (port : w : g : pkgs) -> withPort port $ \p -> start p w g pkgs
+
+-- | Parse the port argument, or exit with a clear message (never 'read'-crash).
+withPort :: String -> (Int -> IO ()) -> IO ()
+withPort s k = case readMaybe s of
+    Just p -> k p
+    Nothing -> hPutStrLn stderr ("Invalid port: " <> s) >> exitFailure
 
 start :: Int -> FilePath -> FilePath -> [String] -> IO ()
 start port workDir globalFile pkgs = do

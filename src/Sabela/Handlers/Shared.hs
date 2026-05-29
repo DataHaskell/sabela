@@ -12,6 +12,7 @@ module Sabela.Handlers.Shared (
     mkStreamingCallback,
     partitionExports,
     applyResult,
+    insertCellAt,
     find,
 ) where
 
@@ -20,7 +21,7 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.Api (RunResult (..))
+import Sabela.Api (InsertAt (..), RunResult (..))
 import Sabela.Model (
     Cell (..),
     CellError (..),
@@ -52,8 +53,14 @@ isCurrentGen = EB.isCurrentGen . appEvents
 whenCurrentGen :: App -> Int -> IO () -> IO ()
 whenCurrentGen = EB.whenCurrentGen . appEvents
 
+{- | True for either the new @<!-- MIME:... -->@ or legacy
+@---MIME:...---@ marker. Such lines are buffered, not broadcast as
+partial output, so the block body stays whole.
+-}
 isMimeLine :: Text -> Bool
-isMimeLine line = "---MIME:" `T.isPrefixOf` line
+isMimeLine line =
+    "<!-- MIME:" `T.isPrefixOf` line
+        || "---MIME:" `T.isPrefixOf` line
 
 mkStreamingCallback :: App -> Int -> IO (Text -> IO ())
 mkStreamingCallback app cid = do
@@ -97,3 +104,15 @@ clearCellOutputs targetCid errMsg c
     | cellId c == targetCid =
         c{cellOutputs = [], cellError = Just errMsg, cellDirty = False}
     | otherwise = c
+
+{- | Insert @c@ at the position described by 'InsertAt'. 'AtBeginning'
+prepends; 'After' inserts after the matching cell, or appends if no such
+cell exists. Shared by 'insertCellH' (REST) and 'execInsertCell' (AI
+tool) so both call sites stay in sync.
+-}
+insertCellAt :: InsertAt -> Cell -> [Cell] -> [Cell]
+insertCellAt AtBeginning c cs = c : cs
+insertCellAt (After _) c [] = [c]
+insertCellAt (After aid) c (x : xs)
+    | cellId x == aid = x : c : xs
+    | otherwise = x : insertCellAt (After aid) c xs

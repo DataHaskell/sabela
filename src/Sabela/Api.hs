@@ -1,12 +1,36 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.Api where
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON (..), ToJSON (..), Value, object, (.=))
+import qualified Data.Aeson as A
+import Data.Aeson.Types (Pair)
+import qualified Data.Aeson.Types as A
 import Data.Text (Text)
+import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Sabela.Model (CellType, OutputItem)
 import Sabela.SessionTypes (CellLang)
+
+-- ---------------------------------------------------------------------
+-- Error-response helpers
+-- ---------------------------------------------------------------------
+
+{- | Build a tool/HTTP error payload: @{"error": <msg>}@. Used wherever a
+handler or tool returns a JSON object whose only field is @error@. One
+shared helper keeps the wire shape consistent across the server and
+'Sabela.AI.Capabilities'.
+-}
+errorJson :: Text -> Value
+errorJson msg = object ["error" .= msg]
+
+{- | Like 'errorJson' but with extra fields appended after @error@. The
+helper preserves insertion order, so @errorJsonWith \"…\" [\"cellId\" .=
+123]@ renders as @{"error":\"…\",\"cellId\":123}@.
+-}
+errorJsonWith :: Text -> [Pair] -> Value
+errorJsonWith msg extras = object (("error" .= msg) : extras)
 
 data WidgetUpdate = WidgetUpdate
     { wuCellId :: Int
@@ -25,8 +49,32 @@ newtype UpdateCell = UpdateCell
 instance ToJSON UpdateCell
 instance FromJSON UpdateCell
 
+{- | Where to insert a new cell. The wire format is a single integer:
+@-1@ means "at the beginning of the notebook"; any non-negative value
+identifies the cell to insert after. Negative values other than @-1@ are
+rejected at parse time — the previous @Int@-typed field silently treated
+them as "append at end", which is a clean illegal-states-unrepresentable
+fix.
+-}
+data InsertAt = AtBeginning | After !Int
+    deriving (Show, Eq, Generic)
+
+instance ToJSON InsertAt where
+    toJSON AtBeginning = toJSON (-1 :: Int)
+    toJSON (After n) = toJSON n
+
+instance FromJSON InsertAt where
+    parseJSON v = do
+        n <- parseJSON v :: A.Parser Int
+        case n of
+            (-1) -> pure AtBeginning
+            k | k >= 0 -> pure (After k)
+            _ ->
+                fail
+                    "after_cell_id must be -1 (at beginning) or a non-negative cell id"
+
 data InsertCell = InsertCell
-    { icAfter :: Int
+    { icAfter :: InsertAt
     , icType :: CellType
     , icLang :: CellLang
     , icSource :: Text
@@ -53,16 +101,33 @@ newtype SaveRequest = SaveRequest
 instance ToJSON SaveRequest
 instance FromJSON SaveRequest
 
-data CreateFileRequest = CreateFileRequest
-    { cfPath :: Text
-    -- ^ relative path
-    , cfContent :: Text
-    , cfIsDir :: Bool
-    }
+{- | Sum type for the @POST /api/files/create@ payload. Directories
+don't carry content; making the two cases distinct constructors removes
+the @{isDir: true, content: "hello"}@ silent-discard footgun the old
+record shape allowed.
+-}
+data CreateFileRequest
+    = CreateDir !Text
+    | CreateFile !Text !Text
     deriving (Show, Generic, Eq)
 
-instance ToJSON CreateFileRequest
-instance FromJSON CreateFileRequest
+instance ToJSON CreateFileRequest where
+    toJSON (CreateDir p) =
+        object ["cfPath" .= p, "cfContent" .= ("" :: Text), "cfIsDir" .= True]
+    toJSON (CreateFile p c) =
+        object ["cfPath" .= p, "cfContent" .= c, "cfIsDir" .= False]
+
+instance FromJSON CreateFileRequest where
+    parseJSON = A.withObject "CreateFileRequest" $ \o -> do
+        p <- o A..: "cfPath"
+        isDir <- o A..:? "cfIsDir" A..!= False
+        content <- o A..:? "cfContent" A..!= ("" :: Text)
+        if isDir
+            then
+                if T.null content
+                    then pure (CreateDir p)
+                    else fail "cfIsDir=true forbids non-empty cfContent"
+            else pure (CreateFile p content)
 
 data WriteFileRequest = WriteFileRequest
     { wfPath :: Text

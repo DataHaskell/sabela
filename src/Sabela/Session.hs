@@ -1,14 +1,18 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{- | Long-lived GHCi session state, the wire helpers that talk to it
+(send raw lines, mint and place markers, drain queued stdout, capture
+stderr into a ring), and the cell/query entry points the rest of the
+backend calls. Process spawn and teardown live in 'Sabela.Session.Process'.
+-}
 module Sabela.Session where
 
-import Control.Concurrent (MVar, forkIO, withMVar)
-import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent (MVar, withMVar)
 import Control.Concurrent.STM (
     TBQueue,
     atomically,
-    newTBQueueIO,
     readTBQueue,
     writeTBQueue,
  )
@@ -18,37 +22,18 @@ import Data.IORef (
     IORef,
     atomicModifyIORef',
     atomicWriteIORef,
-    newIORef,
     readIORef,
  )
-import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Sabela.SessionTypes as ST
-import System.Environment (lookupEnv)
-import System.Exit (ExitCode)
 import System.IO (
-    BufferMode (LineBuffering),
     Handle,
-    hClose,
     hFlush,
     hGetLine,
     hIsEOF,
     hPutStrLn,
-    hSetBuffering,
-    hSetEncoding,
-    utf8,
  )
-import System.Process (
-    CreateProcess (cwd, std_err, std_in, std_out),
-    ProcessHandle,
-    StdStream (CreatePipe),
-    createProcess,
-    getProcessExitCode,
-    proc,
-    terminateProcess,
-    waitForProcess,
- )
+import System.Process (ProcessHandle, getProcessExitCode)
 import System.Timeout (timeout)
 
 newtype Marker = Marker Text
@@ -71,110 +56,6 @@ data SessionConfig = SessionConfig
     , scWorkDir :: FilePath
     }
     deriving (Show, Eq)
-
-newSession :: SessionConfig -> IO Session
-newSession cfg = newSessionStreaming cfg (\_ -> pure ())
-
-newSessionStreaming :: SessionConfig -> (Text -> IO ()) -> IO Session
-newSessionStreaming cfg onStartupLine = do
-    (hIn, hOut, hErr, ph) <- createGhciProcess cfg
-    sess <- buildSessionState cfg hIn hOut hErr ph onStartupLine
-    initializeGhci sess onStartupLine
-    pure sess
-
-createGhciProcess :: SessionConfig -> IO (Handle, Handle, Handle, ProcessHandle)
-createGhciProcess cfg = do
-    mGhc <- lookupEnv "GHC"
-    let compilerArgs = ["--with-compiler=" ++ ghc | ghc <- maybeToList mGhc]
-        args = ghciArgs cfg ++ compilerArgs
-        cp =
-            (proc "cabal" args)
-                { std_in = CreatePipe
-                , std_out = CreatePipe
-                , std_err = CreatePipe
-                , cwd = Just (scWorkDir cfg)
-                }
-    (Just hIn, Just hOut, Just hErr, ph) <- createProcess cp
-    mapM_
-        (\h -> hSetBuffering h LineBuffering >> hSetEncoding h utf8)
-        [hIn, hOut, hErr]
-    pure (hIn, hOut, hErr, ph)
-
-ghciArgs :: SessionConfig -> [String]
-ghciArgs cfg =
-    [ "repl"
-    , "exe:main"
-    , "--project-dir=" ++ scProjectDir cfg
-    , "-v1"
-    , "--repl-options=-fobject-code -O2"
-    , "--ghc-options=+RTS -N -A512m -n4m -H1G -RTS"
-    , "-O2"
-    ]
-
-buildSessionState ::
-    SessionConfig ->
-    Handle ->
-    Handle ->
-    Handle ->
-    ProcessHandle ->
-    (Text -> IO ()) ->
-    IO Session
-buildSessionState cfg hIn hOut hErr ph onStderrLine = do
-    lock <- newMVar ()
-    lineCh <- newTBQueueIO 256
-    errBuf <- newIORef []
-    counter <- newIORef 0
-    cbRef <- newIORef onStderrLine
-    _ <- forkIO $ readLoop hOut lineCh
-    _ <- forkIO $ errLoop hErr errBuf cbRef
-    pure
-        Session
-            { sessLock = lock
-            , sessStdin = hIn
-            , sessStdout = hOut
-            , sessStderr = hErr
-            , sessProc = ph
-            , sessLines = lineCh
-            , sessErrBuf = errBuf
-            , sessCounter = counter
-            , sessConfig = cfg
-            , sessErrCallback = cbRef
-            }
-
-initializeGhci :: Session -> (Text -> IO ()) -> IO ()
-initializeGhci sess onLine = do
-    clearGhciPrompt sess
-    sendRaw sess (":cd " ++ scWorkDir (sessConfig sess))
-    mk <- getMarker sess
-    placeMarker sess mk
-    _ <- drainUntilMarkerStreaming (sessLines sess) mk onLine
-    pure ()
-
-resetSession :: Session -> IO Session
-resetSession sess = do
-    closeSession sess
-    newSession (sessConfig sess)
-
-closeSession :: Session -> IO ()
-closeSession Session{sessStdin, sessProc} = do
-    sendQuit sessStdin
-    exited <- timeout 5000000 (waitForProcess sessProc)
-    case exited of
-        Just _ -> pure ()
-        Nothing -> forceKill sessProc
-
-sendQuit :: Handle -> IO ()
-sendQuit h = do
-    _ <- try (hPutStrLn h ":quit") :: IO (Either SomeException ())
-    _ <- try (hFlush h) :: IO (Either SomeException ())
-    _ <- try (hClose h) :: IO (Either SomeException ())
-    pure ()
-
-forceKill :: ProcessHandle -> IO ()
-forceKill ph = do
-    _ <- try (terminateProcess ph) :: IO (Either SomeException ())
-    _ <- try (waitForProcess ph) :: IO (Either SomeException ExitCode)
-    pure ()
 
 runBlock :: Session -> Text -> IO (Text, Text)
 runBlock sess block = runBlockStreaming sess block (\_ -> pure ())
@@ -216,7 +97,9 @@ drainUntilMarkerStreaming ::
     TBQueue Text -> Marker -> (Text -> IO ()) -> IO Text
 drainUntilMarkerStreaming queue (Marker mk) onLine = fmap (T.strip . T.unlines) (go [])
   where
-    go acc = do
+    -- Bang the accumulator so big cell outputs don't pile a thunk
+    -- chain that only collapses at marker time.
+    go !acc = do
         line <- atomically $ readTBQueue queue
         if T.isInfixOf mk line || T.isInfixOf eofText line
             then pure (reverse acc)
@@ -306,7 +189,11 @@ errLoop h ref cbRef = do
     writeErr h' = do
         line <- hGetLine h'
         let t = T.pack line
-        atomicModifyIORef' ref (\ls -> (take maxErrLines (t : ls), ()))
+        -- Force the bounded prefix so the lazy @take@ doesn't pin the
+        -- old tail beyond the cap.
+        atomicModifyIORef'
+            ref
+            (\ls -> let !ls' = take maxErrLines (t : ls) in (ls', ()))
         cb <- readIORef cbRef
         cb t
 
@@ -320,9 +207,6 @@ sendRaw Session{sessStdin} cmd = do
     hPutStrLn sessStdin cmd
     hFlush sessStdin
 
-clearGhciPrompt :: Session -> IO ()
-clearGhciPrompt sess = mapM_ (sendRaw sess) [":set prompt \"\"", ":set prompt-cont \"\""]
-
 getMarker :: Session -> IO Marker
 getMarker Session{sessCounter} = do
     n <- atomicModifyIORef' sessCounter (\i -> (i + 1, i))
@@ -335,7 +219,8 @@ drainUntilMarker :: Session -> Marker -> IO Text
 drainUntilMarker Session{sessLines} (Marker mk) = fmap (T.strip . T.unlines) (go [])
   where
     go :: [Text] -> IO [Text]
-    go acc = do
+    -- Bang as in 'drainUntilMarkerStreaming'.
+    go !acc = do
         line <- atomically $ readTBQueue sessLines
         if T.isInfixOf mk line || T.isInfixOf eofText line
             then pure (reverse acc)
@@ -352,18 +237,3 @@ clearErrCallback sess = atomicWriteIORef (sessErrCallback sess) (\_ -> pure ())
 
 eofText :: Text
 eofText = "---EOF---"
-
-ghciBackend :: Session -> ST.SessionBackend
-ghciBackend sess =
-    ST.SessionBackend
-        { ST.sbRunBlock = runBlock sess
-        , ST.sbRunBlockStreaming = runBlockStreaming sess
-        , ST.sbClose = closeSession sess
-        , ST.sbReset = ghciBackend <$> resetSession sess
-        , ST.sbQueryComplete = queryComplete sess
-        , ST.sbQueryType = queryType sess
-        , ST.sbQueryInfo = queryInfo sess
-        , ST.sbQueryKind = queryKind sess
-        , ST.sbQueryBrowse = queryBrowse sess
-        , ST.sbQueryDoc = queryDoc sess
-        }

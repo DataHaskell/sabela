@@ -19,7 +19,10 @@ cabal test                                 # Runs HSpec test suite
 # Lint and format
 ./scripts/lint.sh                          # HLint on src/, app/, test/
 ./scripts/lint.sh --fix                    # Auto-fix lint issues on edited files
-./scripts/format.sh                        # Format with fourmolu
+./scripts/format.sh                        # fourmolu (Haskell) + prettier (frontend)
+./scripts/format.sh --haskell-only         # Skip the prettier pass
+./scripts/format.sh --frontend-only        # Only static/*.{html,js,mjs,css}
+./scripts/format.sh --check                # Dry-run; non-zero exit on drift
 
 # API reference (the dataframe/granite card the AI persona reads)
 make api-reference                         # Regenerate data/api-reference.txt, then rebuild
@@ -117,4 +120,11 @@ Notebooks are plain Markdown files. Code blocks become executable cells; prose b
 - HTTP handler functions use `H` suffix (e.g., `runCellH`, `getNotebookH`)
 - State parameters named `app` (App) or `rn` (ReactiveNotebook)
 - All file paths are canonicalized and security-checked to be within the work directory
-- Formatter: fourmolu with 4-space indent, 80-column limit, leading commas (see `fourmolu.yaml`)
+- Formatter: fourmolu with 4-space indent, 80-column limit, leading commas (see `fourmolu.yaml`); frontend uses prettier with 2-space indent, 100-col default / 120-col for HTML (see `.prettierrc.json`). `scripts/format.sh` runs both.
+- **Comments must be top-level (haddock or block above the declaration) and ≤3 lines,
+  unless they contain a code example.** No inline narrative comments inside expressions
+  or argument lists — refactor the explanation onto the binding's haddock instead.
+- **Module size: keep every module ≤ 300 lines** — split an oversized module into focused
+  submodules (handler groups, per-tool modules, a big literal in its own module) rather
+  than letting it grow. Applies to Haskell modules and the `static/*.js` frontend modules;
+  run `scripts/check-module-size.sh` to check.

@@ -8,6 +8,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 import Test.Hspec
 
+import Sabela.Ids (TurnId (..))
 import Sabela.Model (NotebookEvent (..))
 
 field :: String -> Value -> Maybe Value
@@ -28,7 +29,7 @@ spec = do
                         , "toolCalls" .= (5 :: Int)
                         , "wallTimeMs" .= (7123 :: Int)
                         ]
-                ev = EvChatUsageUpdate 42 payload
+                ev = EvChatUsageUpdate (TurnId 42) payload
                 v = case decode (encode ev) of
                     Just x -> x
                     Nothing -> error "encode failed"
@@ -47,7 +48,7 @@ spec = do
 
         it "survives round-trip encode/decode" $ do
             let payload = object ["inputTokens" .= (10 :: Int)]
-                ev = EvChatUsageUpdate 1 payload
+                ev = EvChatUsageUpdate (TurnId 1) payload
                 v = case decode (encode ev) of
                     Just x -> x :: Value
                     Nothing -> error "decode failed"
@@ -58,10 +59,10 @@ spec = do
 
     describe "EvChatUsageUpdate is distinct from other chat events" $ do
         it "does not collide with chatDone" $ do
-            let done = case decode (encode (EvChatDone 1)) of
+            let done = case decode (encode (EvChatDone (TurnId 1))) of
                     Just x -> x :: Value
                     Nothing -> error "encode chatDone failed"
-                usage = case decode (encode (EvChatUsageUpdate 1 (object []))) of
+                usage = case decode (encode (EvChatUsageUpdate (TurnId 1) (object []))) of
                     Just x -> x :: Value
                     Nothing -> error "encode usage failed"
             field "type" done `shouldBe` Just (String "chatDone")

@@ -20,9 +20,9 @@ displaySvg $ T.unpack (bars [("Q1",12),("Q2",18),("Q3",9),("Q4",15)] defPlot {pl
 ```
 
 > <!-- sabela:mime text/plain -->
-> ---MIME:text/latex---
+> <!-- MIME:text/latex -->
 > x ^ 2 + 5
-> ---MIME:image/svg+xml---
+> <!-- MIME:image/svg+xml -->
 > <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 396" width="790" height="396" font-family="system-ui, -apple-system, sans-serif">
 > <rect width="100%" height="100%" fill="white"/>
 > <text x="370" y="26" text-anchor="middle" fill="#222" font-size="14">Sales</text>
@@ -68,7 +68,7 @@ displayLatex "x ^ 2 + 5"
 ```
 
 > <!-- sabela:mime text/plain -->
-> ---MIME:image/svg+xml---
+> <!-- MIME:image/svg+xml -->
 > <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 396" width="790" height="396" font-family="system-ui, -apple-system, sans-serif">
 > <rect width="100%" height="100%" fill="white"/>
 > <text x="370" y="26" text-anchor="middle" fill="#222" font-size="14">Quarterly Revenue Breakdown</text>
@@ -107,7 +107,7 @@ displayLatex "x ^ 2 + 5"
 > <text x="701" y="89" text-anchor="start" fill="#555" font-size="11">Services</text>
 > </svg>
 > 
-> ---MIME:text/latex---
+> <!-- MIME:text/latex -->
 > x ^ 2 + 5
 
 No one likes pie charts but we have them anyway.

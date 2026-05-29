@@ -4,12 +4,15 @@
 module Hub.Reaper (
     startReaper,
     sweepOrphans,
+    reapIdle,
+    reconcileLiveness,
 ) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM
 import Control.Exception (SomeException, try)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Time (diffUTCTime, getCurrentTime)
@@ -27,29 +30,55 @@ loop :: SessionManager -> IO ()
 loop sm = do
     threadDelay 60_000_000 -- 1 minute
     reapIdle sm
+    reconcileLiveness sm
     loop sm
 
 reapIdle :: SessionManager -> IO ()
 reapIdle sm = do
     now <- getCurrentTime
-    let timeout = hcIdleTimeout (smConfig sm)
+    let globalTimeout = hcIdleTimeout (smConfig sm)
+        isIdle sess =
+            sessionState sess /= SStopping
+                && diffUTCTime now (sessionLastActivity sess)
+                    > fromMaybe globalTimeout (sessionIdleOverride sess)
     sessions <- readTVarIO (smSessions sm)
-    let idle =
-            Map.keys $
-                Map.filter
-                    ( \sess ->
-                        sessionState sess /= SStopping
-                            && diffUTCTime now (sessionLastActivity sess) > timeout
-                    )
-                    sessions
-    mapM_ (reapOne sm) idle
+    mapM_ (reapOne sm) (Map.keys (Map.filter isIdle sessions))
 
-reapOne :: SessionManager -> SessionId -> IO ()
-reapOne sm sid = do
-    hPutStrLn stderr $ "[hub] Reaping idle session " ++ sidLabel sid
-    cleanupSession sm sid
+{- | Stop tracking sessions whose backend container has gone away (OOM-killed,
+crashed, externally removed). Without this a dead container leaves a session
+stuck in 'SReady' and the proxy returns 502s forever. Complements the orphan
+sweep (which runs once at startup) by re-checking liveness on every tick.
+-}
+reconcileLiveness :: SessionManager -> IO ()
+reconcileLiveness sm = do
+    let cfg = hcTaskConfig (smConfig sm)
+        ecs = smEcs sm
+    sessions <- readTVarIO (smSessions sm)
+    mapM_ (checkLive cfg ecs) (Map.toList sessions)
   where
-    sidLabel (SessionId s) = T.unpack (T.take 8 s) ++ "..."
+    checkLive cfg ecs (key, sess) = case sessionState sess of
+        SReady _ -> do
+            r <-
+                try (ebDescribeTask ecs cfg (sessionTaskId sess)) ::
+                    IO (Either SomeException TaskStatus)
+            case r of
+                Right TaskStopped -> do
+                    hPutStrLn stderr $
+                        "[hub] Liveness: container gone, reaping " ++ keyLabel key
+                    cleanupByKey sm key
+                _ -> pure ()
+        _ -> pure ()
+
+reapOne :: SessionManager -> SessionKey -> IO ()
+reapOne sm key = do
+    hPutStrLn stderr $ "[hub] Reaping idle session " ++ keyLabel key
+    cleanupByKey sm key
+
+{- | Short, log-friendly label for a 'SessionKey'. Cookie IDs and reattach
+task IDs are both truncated so the log stays readable.
+-}
+keyLabel :: SessionKey -> String
+keyLabel = T.unpack . T.take 16 . sessionKeyText
 
 {- | Stop any RUNNING ECS task in the configured cluster/family that is not
 tracked in the session map. Intended to run once at startup so that tasks

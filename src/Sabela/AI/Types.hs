@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.AI.Types (
-    -- * IDs
+    -- * IDs (re-exported from "Sabela.Ids" for compat)
     TurnId (..),
     EditId (..),
     ToolCallId (..),
@@ -21,12 +21,19 @@ module Sabela.AI.Types (
     -- * Execution result
     ExecutionResult (..),
 
+    -- * Tool execution outcome
+    ToolOutcome (..),
+    toolOutcomeValue,
+    toolOutcomeIsError,
+    okOutcome,
+    errOutcome,
+
     -- * Usage helpers
     emptyUsage,
 ) where
 
 import Control.Concurrent.STM (TVar, newTVarIO)
-import Data.Aeson (ToJSON (..), object, (.=))
+import Data.Aeson (ToJSON (..), Value, object, (.=))
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Time (UTCTime, getCurrentTime)
@@ -36,26 +43,9 @@ import Sabela.Anthropic.Types (
     Usage (..),
     newCancelToken,
  )
+import Sabela.Ids (EditId (..), ToolCallId (..), TurnId (..))
 import Sabela.Model (CellError, OutputItem)
 import Sabela.SessionTypes (CellLang, SessionBackend)
-
-newtype TurnId = TurnId Int
-    deriving (Show, Eq, Ord)
-
-instance ToJSON TurnId where
-    toJSON (TurnId n) = toJSON n
-
-newtype EditId = EditId Int
-    deriving (Show, Eq, Ord)
-
-instance ToJSON EditId where
-    toJSON (EditId n) = toJSON n
-
-newtype ToolCallId = ToolCallId Text
-    deriving (Show, Eq)
-
-instance ToJSON ToolCallId where
-    toJSON (ToolCallId t) = toJSON t
 
 ------------------------------------------------------------------------
 -- Turn state machine
@@ -131,7 +121,10 @@ data AiEdit = AiEdit
     , aeOldSource :: Text
     , aeNewSource :: Text
     , aeStatus :: TVar EditStatus
-    , aeTurnId :: TurnId
+    , aeTurnId :: Maybe TurnId
+    {- ^ 'Nothing' when the edit was proposed outside a chat turn (REST
+    tool bridge). Previously the placeholder was @TurnId 0@.
+    -}
     }
 
 ------------------------------------------------------------------------
@@ -161,3 +154,38 @@ instance ToJSON ExecutionResult where
             , "error" .= erError er
             , "errors" .= erErrors er
             ]
+
+------------------------------------------------------------------------
+-- Tool execution outcome
+------------------------------------------------------------------------
+
+{- | Result of executing one AI tool call. Distinct success and failure
+constructors replace the @(Value, Bool)@ pair every @exec*@ used to return —
+@(value, True)@ was \"error carrying this value\", @(value, False)@ was
+\"success carrying this value\", and getting the boolean backwards silently
+turned a tool error into a successful tool result on the wire.
+
+Convert to the Anthropic wire shape at the very last step via
+'toolOutcomeIsError' (for the @is_error@ field on @ToolResultBlock@) and
+'toolOutcomeValue' (for the content).
+-}
+data ToolOutcome
+    = ToolOk !Value
+    | ToolErr !Value
+    deriving (Show, Eq)
+
+toolOutcomeValue :: ToolOutcome -> Value
+toolOutcomeValue (ToolOk v) = v
+toolOutcomeValue (ToolErr v) = v
+
+toolOutcomeIsError :: ToolOutcome -> Bool
+toolOutcomeIsError ToolOk{} = False
+toolOutcomeIsError ToolErr{} = True
+
+-- | Short alias matching @pure (v, False)@.
+okOutcome :: Value -> ToolOutcome
+okOutcome = ToolOk
+
+-- | Short alias matching @pure (v, True)@.
+errOutcome :: Value -> ToolOutcome
+errOutcome = ToolErr

@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -203,16 +204,20 @@ setAt idx cb xs
     | idx < length xs = take idx xs ++ [cb] ++ drop (idx + 1) xs
     | otherwise = xs ++ [cb]
 
--- | Apply a content delta to the content block at the given index.
+{- | Apply a content delta to the block at @idx@. Forces the merged
+text/JSON before re-wrapping so a long stream of 'TextDelta's doesn't
+build a deep @<>@-tree on the target block.
+-}
 applyDelta :: Int -> ContentDelta -> [ContentBlock] -> [ContentBlock]
 applyDelta idx delta blocks =
     [ if i == idx then merge b delta else b
     | (i, b) <- zip [0 ..] blocks
     ]
   where
-    merge (TextBlock t) (TextDelta dt) = TextBlock (t <> dt)
+    merge (TextBlock t) (TextDelta dt) =
+        let !t' = t <> dt in TextBlock t'
     merge (ToolUseBlock tid name (String jsonSoFar)) (InputJsonDelta dj) =
-        ToolUseBlock tid name (String (jsonSoFar <> dj))
+        let !merged = jsonSoFar <> dj in ToolUseBlock tid name (String merged)
     merge (ToolUseBlock tid name _) (InputJsonDelta dj) =
         ToolUseBlock tid name (String dj)
     merge block _ = block

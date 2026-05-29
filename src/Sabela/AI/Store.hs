@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Sabela.AI.Store (
     AIStore (..),
     newAIStore,
@@ -33,6 +35,7 @@ import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, readMVar)
 import Control.Concurrent.STM (
     TVar,
     atomically,
+    modifyTVar',
     newTVarIO,
     readTVar,
     readTVarIO,
@@ -63,6 +66,11 @@ data AIStore = AIStore
     { aiMessages :: MVar [Message]
     , aiCurrentTurn :: TVar (Maybe Turn)
     , aiPendingEdits :: TVar (M.Map EditId AiEdit)
+    , aiPendingByCell :: TVar (M.Map Int EditId)
+    {- ^ Secondary index: cellId → 'EditId' of the pending edit for that
+    cell. Lets 'addPendingEdit' find the prior pending edit (if any)
+    in O(log n) instead of scanning the whole 'aiPendingEdits' map.
+    -}
     , aiScratchpad :: MVar (Maybe ScratchpadSession)
     , aiNextEditId :: IORef Int
     , aiNextTurnId :: IORef Int
@@ -77,6 +85,7 @@ newAIStore cfg mgr =
     AIStore
         <$> newMVar []
         <*> newTVarIO Nothing
+        <*> newTVarIO M.empty
         <*> newTVarIO M.empty
         <*> newMVar Nothing
         <*> newIORef 0
@@ -114,9 +123,14 @@ tool_use/tool_result pair or leaves an orphan tool_result at the head.
 historyWindow :: Int
 historyWindow = 10
 
+{- | Snoc @msg@ onto the conversation, trimmed to 'historyWindow'.
+The bang forces the trimmed list so successive appends across an
+agent turn don't pile thunks in the 'MVar'.
+-}
 appendMessage :: AIStore -> Message -> IO ()
-appendMessage store msg = modifyMVar_ (aiMessages store) $ \msgs ->
-    pure (trimHistory historyWindow (msgs ++ [msg]))
+appendMessage store msg = modifyMVar_ (aiMessages store) $ \msgs -> do
+    let !trimmed = trimHistory historyWindow (msgs ++ [msg])
+    pure trimmed
 
 {- | Trim to roughly @n@ messages but always cut at a turn boundary — a user
 message whose content is pure text (no @tool_result@ blocks). That anchor is
@@ -165,34 +179,53 @@ clearCurrentTurn store = atomically $ writeTVar (aiCurrentTurn store) Nothing
 getPendingEdits :: AIStore -> IO (M.Map EditId AiEdit)
 getPendingEdits = readTVarIO . aiPendingEdits
 
+{- | Register a new pending edit, superseding any prior pending edit for
+the same cell via the 'aiPendingByCell' secondary index.
+-}
 addPendingEdit :: AIStore -> AiEdit -> IO ()
 addPendingEdit store edit = atomically $ do
-    edits <- readTVar (aiPendingEdits store)
-    -- Supersede any existing pending edit for the same cell
-    edits' <- mapMSupersede (aeCellId edit) edits
-    writeTVar (aiPendingEdits store) (M.insert (aeEditId edit) edit edits')
-  where
-    mapMSupersede cid edits = do
-        let go (_, e)
-                | aeCellId e == cid = do
-                    status <- readTVar (aeStatus e)
+    byCell <- readTVar (aiPendingByCell store)
+    case M.lookup (aeCellId edit) byCell of
+        Just priorEid -> do
+            edits <- readTVar (aiPendingEdits store)
+            case M.lookup priorEid edits of
+                Just prior -> do
+                    status <- readTVar (aeStatus prior)
                     case status of
-                        Pending -> writeTVar (aeStatus e) Superseded
+                        Pending -> writeTVar (aeStatus prior) Superseded
                         _ -> pure ()
-                | otherwise = pure ()
-        mapM_ go (M.toList edits)
-        pure edits
+                Nothing -> pure ()
+        Nothing -> pure ()
+    modifyTVar' (aiPendingEdits store) (M.insert (aeEditId edit) edit)
+    modifyTVar' (aiPendingByCell store) (M.insert (aeCellId edit) (aeEditId edit))
 
 lookupEdit :: AIStore -> EditId -> IO (Maybe AiEdit)
 lookupEdit store eid = do
     edits <- readTVarIO (aiPendingEdits store)
     pure (M.lookup eid edits)
 
+{- | Update the pending edit's status. On any terminal state
+('Accepted', 'Reverted', 'Superseded') the entry is also removed from
+the pending-edits map so the old/new source text isn't pinned for the
+rest of the conversation.
+-}
 updateEditStatus :: AIStore -> EditId -> EditStatus -> IO ()
 updateEditStatus store eid status = do
     mEdit <- lookupEdit store eid
     case mEdit of
-        Just edit -> atomically $ writeTVar (aeStatus edit) status
+        Just edit -> atomically $ do
+            writeTVar (aeStatus edit) status
+            case status of
+                Pending -> pure ()
+                _ -> do
+                    modifyTVar' (aiPendingEdits store) (M.delete eid)
+                    -- Only drop from the secondary index if it still
+                    -- points at this edit — a later edit for the same
+                    -- cell may already have overwritten the slot.
+                    modifyTVar' (aiPendingByCell store) $ \byCell ->
+                        case M.lookup (aeCellId edit) byCell of
+                            Just curr | curr == eid -> M.delete (aeCellId edit) byCell
+                            _ -> byCell
         Nothing -> pure ()
 
 revertAllPendingEdits :: AIStore -> IO ()
@@ -200,6 +233,7 @@ revertAllPendingEdits store = atomically $ do
     edits <- readTVar (aiPendingEdits store)
     mapM_ revertIfPending (M.elems edits)
     writeTVar (aiPendingEdits store) M.empty
+    writeTVar (aiPendingByCell store) M.empty
   where
     revertIfPending edit = do
         status <- readTVar (aeStatus edit)

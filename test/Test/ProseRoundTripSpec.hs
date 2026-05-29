@@ -6,10 +6,22 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Sabela.Model (Cell (..), CellType (..))
-import Sabela.Server (cellsToSegments, splitProseSegments)
+import Sabela.Model (Cell (..), CellType (..), OutputItem (..))
+import Sabela.Output (parseMimeOutputs)
+import Sabela.Server.Notebook (
+    cellsToSegments,
+    mimeIndicator,
+    serializeOutputs,
+    splitProseSegments,
+    textToMime,
+ )
 import qualified Sabela.SessionTypes as ST
-import ScriptHs.Markdown (Segment (..), parseMarkdown, reassemble)
+import ScriptHs.Markdown (
+    MimeType (..),
+    Segment (..),
+    parseMarkdown,
+    reassemble,
+ )
 
 prose :: Text -> Cell
 prose t = Cell 0 ProseCell ST.Haskell t [] Nothing False
@@ -26,7 +38,7 @@ proseTexts :: [Segment] -> [Text]
 proseTexts segs = [t | Prose t <- segs]
 
 spec :: Spec
-spec = describe "prose cell round trip" $ do
+spec = describe "markdown + MIME round trip" $ do
     it "keeps two consecutive prose cells separate" $
         roundTrip [prose "First cell", prose "Second cell"]
             `shouldBe` [Prose "First cell", Prose "Second cell"]
@@ -65,3 +77,30 @@ spec = describe "prose cell round trip" $ do
         md2 `shouldBe` md1
         proseTexts (splitProseSegments (parseMarkdown md2))
             `shouldBe` ["Alpha", "Beta", "Gamma"]
+
+    it "round-trips every MIME through textToMime . mimeIndicator (image too)" $
+        let mimes =
+                [ MimeHtml
+                , MimeMarkdown
+                , MimeSvg
+                , MimeLatex
+                , MimeJson
+                , MimePlain
+                , MimeImage "image/png"
+                ]
+         in map (mimeIndicator . textToMime . mimeIndicator) mimes
+                `shouldBe` map mimeIndicator mimes
+
+    it "serializeOutputs → parseMimeOutputs round-trips an output block" $
+        let items =
+                [ OutputItem MimeHtml "<p>hello</p>\n"
+                , OutputItem MimeMarkdown "# Title\n"
+                , OutputItem MimeSvg "<svg/>\n"
+                ]
+            roundTripped = parseMimeOutputs (serializeOutputs items)
+            expected =
+                [ ("text/html", "<p>hello</p>\n")
+                , ("text/markdown", "# Title\n")
+                , ("image/svg+xml", "<svg/>\n")
+                ]
+         in roundTripped `shouldBe` expected

@@ -33,15 +33,17 @@ import Sabela.Session (
     Marker (Marker),
     Session (..),
     SessionConfig (..),
-    closeSession,
     drainUntilMarker,
     eofText,
     getMarker,
-    newSession,
     readErrorBuffer,
     resetErrorBuffer,
-    resetSession,
     runBlock,
+ )
+import Sabela.Session.Process (
+    closeSession,
+    newSession,
+    resetSession,
  )
 
 {- | A dummy Session that is safe to pass to functions that only use sessLines / sessErrBuf / sessCounter / sessConfig.

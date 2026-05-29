@@ -4,6 +4,8 @@ module Test.SessionSpec (spec) where
 
 import Control.Concurrent.STM
 import qualified Data.Map.Strict as Map
+import Data.Maybe (isNothing)
+import Data.Time (getCurrentTime)
 import Hub.Session
 import Hub.Types
 import Test.Hspec
@@ -63,3 +65,29 @@ spec = describe "Session" $ do
             cleanupSession sm (SessionId "nonexistent")
             stops <- readTVarIO (mockStopCalls ms)
             stops `shouldBe` 0
+
+    describe "lookupBySessionId" $ do
+        it "resolves a normal session id" $ do
+            ms <- newMockState
+            sm <- newSessionManager (mockEcsBackend ms) testConfig
+            _ <- getOrCreateSession sm (SessionId "s1") (UserId "u@x")
+            r <- lookupBySessionId sm (SessionId "s1")
+            (sessionUserId <$> r) `shouldBe` Just (UserId "u@x")
+
+        it "a forged reattach: session id cannot adopt a placeholder" $ do
+            ms <- newMockState
+            sm <- newSessionManager (mockEcsBackend ms) testConfig
+            now <- getCurrentTime
+            -- Placeholder lives under the ReattachPlaceholder constructor;
+            -- any SessionId lookup goes through UserSession, so the two
+            -- name-spaces are disjoint at the type level.
+            insertSession sm (ReattachPlaceholder (TaskId "sabela-user-victim")) $
+                Session
+                    (TaskId "sabela-user-victim")
+                    (SReady (TaskIp "x"))
+                    now
+                    (UserId "")
+                    Authed
+                    Nothing
+            r <- lookupBySessionId sm (SessionId "reattach:sabela-user-victim")
+            r `shouldSatisfy` isNothing

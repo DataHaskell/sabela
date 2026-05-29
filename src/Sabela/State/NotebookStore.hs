@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.State.NotebookStore (
@@ -27,11 +28,15 @@ newNotebookStore =
 readNotebook :: NotebookStore -> IO Notebook
 readNotebook = readMVar . nsNotebook
 
+{- | Apply @f@ to the notebook and store the result. The bang on the
+result keeps the 'MVar' from trapping a thunk chain across edits.
+-}
 modifyNotebook :: NotebookStore -> (Notebook -> Notebook) -> IO ()
-modifyNotebook ns f = modifyMVar_ (nsNotebook ns) (pure . f)
+modifyNotebook ns f = modifyMVar_ (nsNotebook ns) (\nb -> let !nb' = f nb in pure nb')
 
 modifyNotebookIO :: NotebookStore -> (Notebook -> IO Notebook) -> IO ()
-modifyNotebookIO ns = modifyMVar_ (nsNotebook ns)
+modifyNotebookIO ns f =
+    modifyMVar_ (nsNotebook ns) (\nb -> do !nb' <- f nb; pure nb')
 
 freshCellId :: NotebookStore -> IO Int
 freshCellId ns = atomicModifyIORef' (nsNextId ns) (\n -> (n + 1, n))
