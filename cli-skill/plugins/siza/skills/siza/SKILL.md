@@ -51,8 +51,9 @@ ${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh scratchpad \
   '{"language":"Haskell","code":"import qualified DataFrame as D\nlangs <- D.readCsv \"./examples/data/languages.csv\"\nD.dimensions langs"}'
 
 # 5. If the dry-run is clean, insert the cell after the last relevant one.
+#    Always pass cell_type (and language for code cells) — see the gotcha below.
 ${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh insert_cell \
-  '{"after_cell_id":7,"source":"import qualified DataFrame as D\nlangs <- D.readCsv \"./examples/data/languages.csv\"\nD.take 5 langs"}'
+  '{"after_cell_id":7,"cell_type":"CodeCell","language":"Haskell","source":"import qualified DataFrame as D\nlangs <- D.readCsv \"./examples/data/languages.csv\"\nD.take 5 langs"}'
 
 # 6. Read execution.ok in the response. If false, fix in place with replace_cell_source
 #    using the hash returned by insert_cell — never delete + re-insert.
@@ -79,7 +80,7 @@ All tools accept a JSON object input; outputs below are abbreviated.
 | `read_cell` | `{cell_id}` | `{id,hash,type,lang,source,outputs,error}` | Full source + rendered outputs. Large outputs may be a handle. |
 | `read_cell_output` | `{cell_id}` | `{id,outputs,error}` | Cheaper than `read_cell` when you already know the source. |
 | `find_cells_by_content` | `{pattern}` | `{matches:[{id,lang,matchingLines:[{line,text}]}]}` | Case-sensitive substring. Up to 5 matching lines per cell, 120 chars each. |
-| `insert_cell` | `{after_cell_id,source,cell_type?,language?}` | `{cellId,hash,execution}` | Auto-runs Haskell code cells; `execution: null` for Python or prose. |
+| `insert_cell` | `{after_cell_id,source,cell_type,language?}` | `{cellId,hash,execution}` | Auto-runs Haskell code cells; `execution: null` for Python or prose. **Pass `cell_type` explicitly** (`"CodeCell"`/`"ProseCell"`) and `language` (`"Haskell"`/`"Python"`) for code cells — the JSON schema marks them optional but omitting `cell_type` fails with `Unknown cell_type: .`. |
 | `delete_cell` | `{cell_id}` | `{deleted:true,cellId}` | Irreversible. |
 | `replace_cell_source` | `{cell_id,new_source,expected_hash?}` | `{cellId,hash,execution}` | Auto-runs. Pass `expected_hash` to detect concurrent edits. |
 | `propose_edit` | `{cell_id,new_source,expected_hash?}` | `{editId,cellId,status:"pending"}` | Does **not** apply or run. Re-proposing supersedes prior pending edit on the same cell. |

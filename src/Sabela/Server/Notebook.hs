@@ -46,14 +46,14 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Servant (Handler)
 import System.Directory (canonicalizePath, createDirectoryIfMissing)
-import System.FilePath (normalise, splitDirectories, takeDirectory, takeFileName, (</>))
-
-import ScriptHs.Markdown (
-    CodeOutput (..),
-    Segment (..),
-    parseMarkdown,
-    reassemble,
+import System.FilePath (
+    normalise,
+    splitDirectories,
+    takeDirectory,
+    takeFileName,
+    (</>),
  )
+
 import Sabela.Api
 import Sabela.Handlers (
     ReactiveNotebook (..),
@@ -72,6 +72,12 @@ import Sabela.State.NotebookStore (
     freshCellId,
     modifyNotebook,
     readNotebook,
+ )
+import ScriptHs.Markdown (
+    CodeOutput (..),
+    Segment (..),
+    parseMarkdown,
+    reassemble,
  )
 
 getNotebookH :: App -> Handler Notebook

@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Lightweight introspection tools: GHCi @:type@/@:info@/@:kind@/@:browse@/@:doc@,
--- the static API reference card, and 'explore_result' drill-down into
--- handles returned by other tools.
+{- | Lightweight introspection tools: GHCi @:type@/@:info@/@:kind@/@:browse@/@:doc@,
+the static API reference card, and 'explore_result' drill-down into
+handles returned by other tools.
+-}
 module Sabela.AI.Capabilities.Query (
     execGhciQuery,
     execApiReference,

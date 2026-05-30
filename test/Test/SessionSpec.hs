@@ -81,6 +81,7 @@ emptyMeta =
         { metaDeps = []
         , metaExts = []
         , metaGhcOptions = []
+        , metaPackages = []
         , metaSourceRepos = []
         , metaUnknownKeys = []
         }

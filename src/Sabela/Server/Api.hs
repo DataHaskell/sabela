@@ -1,9 +1,10 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
--- | Servant API type definitions for "Sabela.Server". Just types — no
--- handlers or routing — so the type-level surface is its own audit unit
--- and "Sabela.Server" stays focused on assembly.
+{- | Servant API type definitions for "Sabela.Server". Just types — no
+handlers or routing — so the type-level surface is its own audit unit
+and "Sabela.Server" stays focused on assembly.
+-}
 module Sabela.Server.Api (
     JsonAPI,
     FullAPI,

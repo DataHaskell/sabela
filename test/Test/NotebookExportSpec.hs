@@ -12,7 +12,13 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Sabela.Dashboard (renderStaticDashboard, renderStaticNotebook)
-import Sabela.Model (Cell (..), CellType (..), MimeType (..), Notebook (..), OutputItem (..))
+import Sabela.Model (
+    Cell (..),
+    CellType (..),
+    MimeType (..),
+    Notebook (..),
+    OutputItem (..),
+ )
 import Sabela.SessionTypes (CellLang (..))
 import Test.Hspec
 

@@ -30,6 +30,7 @@ import Sabela.AI.Capabilities.Util (compactMaybeText, fieldText, parseCellLang)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Api (errorJson)
+
 -- 'ToolOutcome' (and its smart constructors) is re-exported from
 -- 'Sabela.AI.Types' via the open import above; no explicit list needed.
 import Sabela.Output (displayPrelude)

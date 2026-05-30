@@ -30,7 +30,6 @@ import Network.HTTP.Types (HeaderName, hContentType, status200)
 import Network.Wai (Application, Request, queryString, responseLBS)
 import Text.Read (readMaybe)
 
-import ScriptHs.Markdown (reassemble)
 import Sabela.Dashboard (renderStaticDashboard, renderStaticNotebook)
 import qualified Sabela.Export as Export
 import qualified Sabela.Export.Reactive as Reactive
@@ -40,6 +39,7 @@ import Sabela.Server.Static (dashboardHtml, slideshowHtml)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
+import ScriptHs.Markdown (reassemble)
 
 exportDashboardApp :: App -> Application
 exportDashboardApp app _req resp = do

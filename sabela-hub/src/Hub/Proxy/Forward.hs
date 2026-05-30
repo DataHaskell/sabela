@@ -93,7 +93,8 @@ buildBackendRequest port ip req = do
         initReq
             { HC.method = requestMethod req
             , HC.requestHeaders = filterRequestHeaders (requestHeaders req)
-            , HC.requestBody = HC.RequestBodyStreamChunked (\writeChunk -> writeChunk (popper req))
+            , HC.requestBody =
+                HC.RequestBodyStreamChunked (\writeChunk -> writeChunk (popper req))
             , HC.responseTimeout = HC.responseTimeoutNone
             }
 

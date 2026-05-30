@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Tool schemas for notebook reads + mutations + execution. Sibling of
--- "Sabela.AI.Capabilities.Tools.Query"; both feed the umbrella
--- "Sabela.AI.Capabilities.Tools".
+{- | Tool schemas for notebook reads + mutations + execution. Sibling of
+"Sabela.AI.Capabilities.Tools.Query"; both feed the umbrella
+"Sabela.AI.Capabilities.Tools".
+-}
 module Sabela.AI.Capabilities.Tools.Notebook (notebookTools) where
 
 import Data.Aeson (object, (.=))

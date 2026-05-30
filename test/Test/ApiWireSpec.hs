@@ -38,8 +38,9 @@ spec = describe "Sabela.Api wire shapes" $ do
             decode "{\"cfPath\":\"sub\",\"cfContent\":\"\",\"cfIsDir\":true}"
                 `shouldBe` Just (CreateDir "sub")
         it "rejects cfIsDir=true with non-empty cfContent" $
-            (decode "{\"cfPath\":\"x\",\"cfContent\":\"y\",\"cfIsDir\":true}"
-                :: Maybe CreateFileRequest)
+            ( decode "{\"cfPath\":\"x\",\"cfContent\":\"y\",\"cfIsDir\":true}" ::
+                Maybe CreateFileRequest
+            )
                 `shouldBe` Nothing
         it "round-trips CreateFile through encode/decode" $
             decode (encode (CreateFile "a.md" "hi"))
@@ -61,9 +62,10 @@ spec = describe "Sabela.Api wire shapes" $ do
                 "{\"icAfter\":5,\"icType\":\"CodeCell\",\"icLang\":\"Haskell\",\"icSource\":\"x\"}"
                 `shouldBe` Just (InsertCell (After 5) CodeCell Haskell "x")
         it "rejects icAfter=-2 (negative other than -1)" $
-            (decode
-                "{\"icAfter\":-2,\"icType\":\"CodeCell\",\"icLang\":\"Haskell\",\"icSource\":\"x\"}"
-                :: Maybe InsertCell)
+            ( decode
+                "{\"icAfter\":-2,\"icType\":\"CodeCell\",\"icLang\":\"Haskell\",\"icSource\":\"x\"}" ::
+                Maybe InsertCell
+            )
                 `shouldBe` Nothing
         it "emits AtBeginning as the integer -1 (wire compat)" $
             LC8.unpack (encode AtBeginning) `shouldBe` "-1"

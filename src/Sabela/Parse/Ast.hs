@@ -94,9 +94,10 @@ topLevelDefsFromDecl = \case
     Hs.RoleAnnotD{} -> S.empty
     _ -> S.empty
 
--- | Names introduced by an 'Hs.HsBindLR' (the LHS of a value/function binding).
--- Pattern synonyms count too — they declare a top-level name, so cross-cell
--- @import via PatternSynonyms@ deps need an edge to the defining cell.
+{- | Names introduced by an 'Hs.HsBindLR' (the LHS of a value/function binding).
+Pattern synonyms count too — they declare a top-level name, so cross-cell
+@import via PatternSynonyms@ deps need an edge to the defining cell.
+-}
 bindBinders :: Hs.HsBindLR Hs.GhcPs Hs.GhcPs -> Set Text
 bindBinders = \case
     Hs.FunBind{Hs.fun_id = lname} -> S.singleton (rdrText (unLoc lname))

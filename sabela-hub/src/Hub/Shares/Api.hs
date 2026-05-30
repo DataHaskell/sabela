@@ -66,7 +66,7 @@ which export modes are publishable.
 publishMode :: Query -> ExportMode
 publishMode q =
     case lookup "mode" q of
-        Just (Just bs) -> maybe ExpDashboard id (parseExportMode (TE.decodeUtf8 bs))
+        Just (Just bs) -> Data.Maybe.fromMaybe ExpDashboard (parseExportMode (TE.decodeUtf8 bs))
         _ -> ExpDashboard
 
 {- | @POST \/_hub\/publish?mode=dashboard|slideshow|notebook@: fetch the owner
@@ -148,7 +148,8 @@ handleDeleteShare store sess slug respond = do
         else respond $ jsonError status404 "No such share, or it is not yours."
 
 -- | Fetch a notebook's static export over HTTP from its backend container.
-fetchExport :: HC.Manager -> Int -> TaskIp -> ExportMode -> IO (Either Text Text)
+fetchExport ::
+    HC.Manager -> Int -> TaskIp -> ExportMode -> IO (Either Text Text)
 fetchExport mgr port (TaskIp ip) mode = do
     initReq <-
         HC.parseRequest $

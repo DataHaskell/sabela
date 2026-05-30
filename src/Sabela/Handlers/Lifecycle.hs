@@ -138,16 +138,18 @@ broadcastDepsStatus app metas = do
                 if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
         setHaskellDeps (appDeps app) notebookDeps
 
+{- | Write the throwaway repl project (regenerated each run) into @dir@. The @[]@
+to 'renderCabalFile' adds no extra local-package names to @build-depends@; local
+packages resolve through the @packages:@ stanza in the generated @cabal.project@.
+-}
 setupReplProject :: [FilePath] -> FilePath -> CabalMeta -> IO ()
 setupReplProject localPkgs dir meta = do
     createDirectoryIfMissing True dir
-    -- Regenerate every run (the repl-project temp dir is per-server) so changes
-    -- to local packages / git pins take effect.
     writeFile
         (dir </> "cabal.project")
         (T.unpack (renderCabalProject localPkgs (metaSourceRepos meta)))
     ensureFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
-    writeFile (dir </> "sabela-repl.cabal") (renderCabalFile "sabela-repl" meta)
+    writeFile (dir </> "sabela-repl.cabal") (renderCabalFile "sabela-repl" [] meta)
 
 ensureFile :: FilePath -> String -> IO ()
 ensureFile path content = do

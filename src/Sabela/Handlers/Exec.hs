@@ -27,7 +27,14 @@ import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
 import Sabela.Errors (parseErrors)
 import Sabela.Handlers.Lifecycle (handleKernelCrash, loadSabelaPrelude)
 import Sabela.Handlers.Shared
-import Sabela.Model (Cell (..), CellError (..), Notebook (..), NotebookEvent (..), OutputItem (..), textToMime)
+import Sabela.Model (
+    Cell (..),
+    CellError (..),
+    Notebook (..),
+    NotebookEvent (..),
+    OutputItem (..),
+    textToMime,
+ )
 import Sabela.Output (parseMimeOutputs)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))

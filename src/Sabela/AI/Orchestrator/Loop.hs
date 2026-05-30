@@ -219,9 +219,10 @@ executeToolCalls app store rn turn content = do
                         [TextBlock (resultToText compacted)]
             appendMessage store (Message RoleUser [resultBlock])
 
--- | Extract tool_use blocks from content. The first 'Text' is the
--- Anthropic-supplied tool-use id; downstream we wrap it in 'ToolCallId'
--- when we cross the typed-event boundary.
+{- | Extract tool_use blocks from content. The first 'Text' is the
+Anthropic-supplied tool-use id; downstream we wrap it in 'ToolCallId'
+when we cross the typed-event boundary.
+-}
 extractToolUses :: [ContentBlock] -> [(Text, Text, Value)]
 extractToolUses = mapMaybe extract
   where

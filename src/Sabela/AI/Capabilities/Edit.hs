@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- | Mutating notebook tools (replace, propose-edit, insert, delete) plus
--- the synchronous 'executeCell' / 'autoExecuteAfterMutation' helpers
--- mutation tools call so their response carries fresh execution results.
+{- | Mutating notebook tools (replace, propose-edit, insert, delete) plus
+the synchronous 'executeCell' / 'autoExecuteAfterMutation' helpers
+mutation tools call so their response carries fresh execution results.
+-}
 module Sabela.AI.Capabilities.Edit (
     execReplaceCellSource,
     execProposeEdit,
@@ -46,9 +47,10 @@ import Sabela.Model
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
 
--- | Replace a cell's source, broadcast, and (for Haskell code cells)
--- auto-run via 'autoExecuteAfterMutation' so the response carries the
--- fresh execution summary. AI-internal iteration loop.
+{- | Replace a cell's source, broadcast, and (for Haskell code cells)
+auto-run via 'autoExecuteAfterMutation' so the response carries the
+fresh execution summary. AI-internal iteration loop.
+-}
 execReplaceCellSource ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Value -> IO ToolOutcome
 execReplaceCellSource app store rn cancelTok input = do

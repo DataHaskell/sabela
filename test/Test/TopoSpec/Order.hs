@@ -155,13 +155,14 @@ spec = do
             map cellId (trOrdered result) `shouldBe` [1]
 
         it
-            "two cells each binding `x` do not form a cycle (function params are scope-local)" $ do
-            let cells =
-                    [ mkCell 1 "isPrime x = x * 2"
-                    , mkCell 2 "f x = x + 1"
-                    ]
-                (result, _) = computeTopoOrder cells
-            trCycleIds result `shouldBe` S.empty
+            "two cells each binding `x` do not form a cycle (function params are scope-local)"
+            $ do
+                let cells =
+                        [ mkCell 1 "isPrime x = x * 2"
+                        , mkCell 2 "f x = x + 1"
+                        ]
+                    (result, _) = computeTopoOrder cells
+                trCycleIds result `shouldBe` S.empty
 
     describe "Untitled.md scenario: redefining f x in a separate cell" $ do
         -- Mirrors the actual Untitled.md notebook: two cells use (f . g),

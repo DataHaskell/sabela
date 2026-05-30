@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Tool schemas for live GHCi introspection and result drill-down.
--- Sibling of "Sabela.AI.Capabilities.Tools.Notebook".
+{- | Tool schemas for live GHCi introspection and result drill-down.
+Sibling of "Sabela.AI.Capabilities.Tools.Notebook".
+-}
 module Sabela.AI.Capabilities.Tools.Query (queryTools) where
 
 import Data.Aeson (object, (.=))

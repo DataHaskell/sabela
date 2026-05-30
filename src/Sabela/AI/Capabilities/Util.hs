@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Shared utilities for the tool implementations: field extraction from
--- a JSON tool-arg payload, and compaction of large outputs/error text
--- via the 'AIStore' handle store.
+{- | Shared utilities for the tool implementations: field extraction from
+a JSON tool-arg payload, and compaction of large outputs/error text
+via the 'AIStore' handle store.
+-}
 module Sabela.AI.Capabilities.Util (
     -- * JSON field extraction
     field,

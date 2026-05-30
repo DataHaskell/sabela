@@ -34,6 +34,7 @@ spec = describe "preinstalled packages" $ do
                     { metaDeps = ["containers"]
                     , metaExts = []
                     , metaGhcOptions = []
+                    , metaPackages = []
                     , metaSourceRepos = []
                     , metaUnknownKeys = []
                     }

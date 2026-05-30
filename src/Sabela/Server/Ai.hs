@@ -145,7 +145,10 @@ chatMessageH app rn (ChatRequest msg) = liftIO $ do
         Nothing ->
             broadcast
                 app
-                (EvChatError Nothing "AI not configured. Open the Chat panel to set your API key.")
+                ( EvChatError
+                    Nothing
+                    "AI not configured. Open the Chat panel to set your API key."
+                )
         Just store ->
             handleChatMessage app store rn msg
     pure NoContent

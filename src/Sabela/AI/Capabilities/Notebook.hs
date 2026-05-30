@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Read-only notebook inspection tools: @list_cells@, @read_cell@,
--- @read_cell_output@, @find_cells_by_content@. Each returns a
--- 'ToolOutcome' so success and failure are distinct constructors rather
--- than a positional @(Value, Bool)@.
+{- | Read-only notebook inspection tools: @list_cells@, @read_cell@,
+@read_cell_output@, @find_cells_by_content@. Each returns a
+'ToolOutcome' so success and failure are distinct constructors rather
+than a positional @(Value, Bool)@.
+-}
 module Sabela.AI.Capabilities.Notebook (
     execListCells,
     execReadCell,
