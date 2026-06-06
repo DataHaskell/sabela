@@ -1,37 +1,20 @@
 # Iris Classification with a Decision Tree
 
-This notebook is a port of the [`dataframe` Iris example](https://github.com/mchav/dataframe/blob/main/examples/Iris.ipynb).
-We use the internal decision tre module instead of Hasktorch.
-
-## Setup
-
-We depend on `dataframe` (the dataframe library), `dataframe-learn` (the decision
-tree), `text` (for the label column type) and `random` (for a reproducible
-train/test split).
-
-```haskell
--- cabal: build-depends: dataframe, dataframe-learn, text, random, vector
--- cabal: default-extensions: OverloadedStrings, TypeApplications, ScopedTypeVariables
-
-import qualified DataFrame as D
-import qualified DataFrame.Functions as F
-import DataFrame.Operators
-import qualified DataFrame.DecisionTree as DT
-import qualified Data.Text as T
-import System.Random (mkStdGen)
-```
-
 ## Loading the data
 
 The classic Iris dataset ships as a small Parquet file. Each row is one flower
 with four `Double` measurements and a `variety` label.
 
 ```haskell
+-- cabal: build-depends: dataframe, dataframe-learn, text, random, vector
+-- cabal: default-extensions: OverloadedStrings, TypeApplications, ScopedTypeVariables
+
+import qualified DataFrame as D
+
 df <- D.readParquet "./examples/data/iris.parquet"
 
-df |> D.take 5
-   |> D.toMarkdown'
-   |> displayMarkdown
+displayMarkdown $ D.toMarkdown'
+                $ D.take 5 df
 ```
 
 > <!-- scripths:mime text/markdown -->
@@ -48,9 +31,12 @@ df |> D.take 5
 Before modelling, it helps to know the shape and types of every column.
 
 ```haskell
+import DataFrame.Operators
+
+showMarkdown = displayMarkdown . D.toMarkdown'
+
 df |> D.describeColumns
-   |> D.toMarkdown'
-   |> displayMarkdown
+   |> showMarkdown
 ```
 
 > <!-- scripths:mime text/markdown -->
@@ -66,8 +52,7 @@ A summary of the numeric columns shows the ranges each measurement spans.
 
 ```haskell
 df |> D.summarize
-   |> D.toMarkdown'
-   |> displayMarkdown
+   |> showMarkdown
 ```
 
 > <!-- scripths:mime text/markdown -->
@@ -91,9 +76,10 @@ dataset is famously balanced — 50 of each species — which we can confirm wit
 `frequencies`.
 
 ```haskell
-df |> D.frequencies (F.col @T.Text "variety")
-   |> D.toMarkdown'
-   |> displayMarkdown
+import qualified Data.Text as T
+
+df |> D.frequencies (D.col @T.Text "variety")
+   |> showMarkdown
 ```
 
 > <!-- scripths:mime text/markdown -->
@@ -102,244 +88,59 @@ df |> D.frequencies (F.col @T.Text "variety")
 > | Count             | 50            | 50                | 50               |
 > | Percentage (%)    | 33.33%        | 33.33%            | 33.33%           |
 
-## Splitting into training and test sets
+## Visualizing the classes
 
-`randomSplit` is the equivalent of scikit-learn's `train_test_split`. We hold
-out 30% of the data for testing and fix the random seed (42) so the split is
-reproducible.
-
-```haskell
-let (trainDf, testDf) = D.randomSplit (mkStdGen 42) 0.7 df
-
-(D.dimensions trainDf, D.dimensions testDf)
-```
-
-> <!-- scripths:mime text/plain -->
-> ((104,5),(46,5))
-
-## Fitting the decision tree
-
-This is the whole "training" step. `fitDecisionTree` takes a configuration, the
-target column (`variety`, a `Text` label), and the training frame. It returns an
-`Expr Text`: a self-contained expression that predicts the species from the
-other columns. Everything else in the frame is treated as a candidate feature.
+Before building a model, we can plot petal length against petal width to get a
+sense of how hard the task is. That is, how separable the three varieties really are.
+The dropdown switches between the petal and sepal measurements.
 
 ```haskell
-let model = DT.fitDecisionTree DT.defaultTreeConfig (F.col @T.Text "variety") trainDf
-```
+import qualified DataFrame.Functions as F
 
-The fitted model is just data — a tree of `if`/`then`/`else` rules over the
-measurement columns. Unlike the neural network's weight matrices, you can read
-it directly and see exactly how the tree decides.
+pType <- display (dropdown "feature" ["petal", "sepal"] "petal")
 
-```haskell
-putStrLn $ D.prettyPrint model
-```
+let pts       = zip (D.columnAsList (D.col @Double (T.pack pType <> ".length")) df)
+                    (D.columnAsList (D.col @Double (T.pack pType <> ".width"))  df)
 
-> <!-- scripths:mime text/plain -->
-> if petal.width .> 0.4
->   then if petal.width .< 1.8
->     then if petal.length .> 4.9
->       then "Virginica"
->       else if sepal.length .< 5.0
->         then "Virginica"
->         else "Versicolor"
->     else "Virginica"
->   else "Setosa"
+let varieties = D.columnAsList (D.col @T.Text "variety") df
 
-## Making predictions
-
-Because the model is an expression, we apply it to the test frame the same way
-we'd add any derived column: with `D.derive`. Here we add a `predicted` column
-next to the true `variety`.
-
-```haskell
-let scored = testDf |> D.derive "predicted" model
-
-scored |> D.select ["variety", "predicted"]
-       |> D.take 10
-       |> D.toMarkdown'
-       |> displayMarkdown
-```
-
-> <!-- scripths:mime text/markdown -->
-> | variety<br>Text | predicted<br>Text |
-> | ----------------|------------------ |
-> | Setosa          | Setosa            |
-> | Setosa          | Setosa            |
-> | Setosa          | Setosa            |
-> | Setosa          | Setosa            |
-> | Setosa          | Setosa            |
-> | Setosa          | Setosa            |
-> | Setosa          | Versicolor        |
-> | Setosa          | Setosa            |
-> | Setosa          | Setosa            |
-> | Setosa          | Setosa            |
-
-## Measuring accuracy
-
-We mark each test row as correct (1.0) or wrong (0.0) by comparing the true and
-predicted labels with `F.eq`, then take the mean — that mean is the accuracy.
-
-```haskell
-let withCorrect =
-        scored
-            |> D.derive
-                "is_correct"
-                ( F.ifThenElse
-                    (F.eq (F.col @T.Text "variety") (F.col @T.Text "predicted"))
-                    (F.lit (1.0 :: Double))
-                    (F.lit (0.0 :: Double))
-                )
-
-putStrLn ("Test accuracy: " ++ show (D.mean (F.col @Double "is_correct") withCorrect))
-```
-
-> <!-- scripths:mime text/plain -->
-> Test accuracy: 0.8695652173913043
-
-<!-- sabela:cell -->
-
-## Monte Carlo cross-validation
-
-How robust is the decision tree, and does tuning actually help? A single train/test split can mislead — one lucky shuffle and the tuned model looks better (or worse) than it really is. So we repeat the experiment over many random splits and compare the **default** config against a **tuned** one (deeper trees, finer split percentiles) across all of them.
-```haskell
--- 20 random 70/30 splits; tuned = deeper trees + finer split percentiles
-let nSplits     = 20
-let trainFrac   = 0.7
-let tunedConfig = DT.defaultTreeConfig { DT.maxTreeDepth = 8, DT.percentiles = [0,5..100] }
-```
-
-### Accuracy on one split
-
-For a given config and random seed, we split the data, fit a tree on the training rows, predict `variety` on the held-out rows, and return the fraction predicted correctly.
-```haskell
-let accuracyFor cfg seed =
-        let (tr, te) = D.randomSplit (mkStdGen seed) trainFrac df
-            model    = DT.fitDecisionTree cfg (F.col @T.Text "variety") tr
-            scored   = te
-                |> D.derive "predicted"  model
-                |> D.derive "is_correct"
-                       (F.ifThenElse
-                           (F.eq (F.col @T.Text "variety") (F.col @T.Text "predicted"))
-                           (F.lit (1.0 :: Double))
-                           (F.lit (0.0 :: Double)))
-        in D.mean (F.col @Double "is_correct") scored
-```
-
-### Run it across every split
-
-We score both configs on the same 20 seeds — so they face identical splits — and take the per-split difference, tuned minus default.
-```haskell
-let seeds       = [1 .. nSplits]
-let defaultAccs = map (accuracyFor DT.defaultTreeConfig) seeds
-let tunedAccs   = map (accuracyFor tunedConfig)          seeds
-let diffs       = zipWith (-) tunedAccs defaultAccs
-```
-
-### Results
-
-Mean, spread, and range of accuracy for each config, plus the paired difference — how often tuning actually won across the splits.
-```haskell
-import Text.Printf (printf)
-
-let mean   xs = sum xs / fromIntegral (length xs)
-let stddev xs = let m = mean xs in sqrt (mean [(x - m) ^ 2 | x <- xs])
-let pct    x  = printf "%.2f%%" (x * 100) :: String
-
-let summarise label accs =
-        printf "%s:\n  mean = %s   std = %s   range = [%s, %s]"
-            label (pct (mean accs)) (pct (stddev accs)) (pct (minimum accs)) (pct (maximum accs)) :: String
-
-putStrLn (printf "--- Monte Carlo CV (%d random 70/30 splits) ---" nSplits :: String)
-putStrLn (summarise "default config" defaultAccs)
-putStrLn (summarise "tuned config (depth=8, percentiles every 5%)" tunedAccs)
-putStrLn ""
-putStrLn (printf "paired (tuned - default):  mean diff = %s   tuned wins %d / %d splits"
-            (pct (mean diffs)) (length (filter (> 0) diffs)) nSplits :: String)
-```
-
-```haskell
-import qualified DataFrame.Display.Web.Plot as Plot
-
-let accDf = D.fromNamedColumns
-        [ ("seed",        D.fromList (map (fromIntegral :: Int -> Double) seeds))
-        , ("default_acc", D.fromList defaultAccs)
-        , ("tuned_acc",   D.fromList tunedAccs)
-        ]
-
-Plot.HtmlPlot html <- Plot.line (Plot.mkLine "seed" ["default_acc", "tuned_acc"]) accDf
-displayHtml (T.unpack html)
-```
-
-> <!-- scripths:mime text/html -->
-> <canvas id="chart_VBKxBOjZaLh9b6jvTpjXPl6d3rIunSdpOXOWAXKXV2V9OY8F7my" style="width:100%;max-width:600px;height:400px"></canvas>
-> <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
-> <script>
-> setTimeout(function() { new Chart("chart_VBKxBOjZaLh9b6jvTpjXPl6d3rIunSdpOXOWAXKXV2V9OY8F7my", {
->   type: "line",
->   data: {
->     labels: [1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0],
->     datasets: [
->     {
->       label: "default_acc",
->       data: [0.9130434782608695,0.9433962264150944,0.9736842105263158,0.8695652173913043,0.9387755102040817,0.9782608695652174,0.9347826086956522,0.9523809523809523,0.9777777777777777,0.9787234042553191,0.8974358974358975,0.9215686274509803,1.0,1.0,0.8913043478260869,0.9069767441860465,0.9444444444444444,0.8461538461538461,0.9387755102040817,0.8863636363636364],
->       fill: false,
->       borderColor: "rgb(255, 99, 132)",
->       tension: 0.1
->     },
->     {
->       label: "tuned_acc",
->       data: [0.9565217391304348,0.9433962264150944,0.9210526315789473,0.9565217391304348,0.9591836734693877,0.9565217391304348,0.9565217391304348,0.9285714285714286,0.9333333333333333,0.9787234042553191,0.8974358974358975,0.9215686274509803,1.0,0.975609756097561,0.8913043478260869,0.9302325581395349,0.9444444444444444,0.8974358974358975,0.9591836734693877,0.9545454545454546],
->       fill: false,
->       borderColor: "rgb(54, 162, 235)",
->       tension: 0.1
->     }
->     ]
->   },
->   options: {
->     title: { display: true, text: "default_acc, tuned_acc over seed" },
->     scales: { xAxes: [{ scaleLabel: { display: true, labelString: "seed" } }] }
->   }
-> })}, 100);
-> </script>
-
-```haskell
-let pts       = zip (D.columnAsList (F.col @Double "petal.length") df)
-                    (D.columnAsList (F.col @Double "petal.width")  df)
-let varieties = D.columnAsList (F.col @T.Text "variety") df
-let colorBy   = map (\v -> if v == ("Setosa" :: T.Text) then 0.0
-                           else if v == "Versicolor" then 1.0
-                           else 2.0 :: Double) varieties
+let colourBy   = df |> D.derive "colourBy" (
+                          F.recodeWithDefault (-1) [("Setosa", 0 :: Double),
+                                                    ("Versicolor", 1),
+                                                    ("Virginica", 2)] (F.col @T.Text "variety"))
+                    |> D.columnAsList (F.col @Double "colourBy")
 
 let opts = defScatter
       { soAlpha   = 0.7
       , soRadius  = 5
-      , soTitle   = "Iris: petal length vs petal width (colour = variety) — lasso to select"
-      , soXLabel  = "petal.length"
-      , soYLabel  = "petal.width"
-      , soColorBy = colorBy
+      , soTitle   = "Iris: " <> pType <> " length vs " <> pType <> " width (colour = variety)"
+      , soXLabel  = pType <> ".length"
+      , soYLabel  = pType <> ".width"
+      , soColorBy = colourBy
       }
 
 sel <- display (scatterSelectWith "iris-petal-lasso" opts pts)
 ```
 
-> <!-- scripths:mime text/html -->
+> <!-- scripths:mime text/plain -->
+> <!-- MIME:text/html -->
+> <select onchange="parent.postMessage({type:'widget',cellId:234,name:'feature',value:this.value},'*')"><option selected>petal</option><option>sepal</option></select>
+> <!-- MIME:text/html -->
 > <div style='font-family:sans-serif'>
-> <canvas id='sc_25_iris-petal-lasso' width='560' height='360' style='border:1px solid #e2e2ea;border-radius:6px;cursor:crosshair;max-width:100%'></canvas>
-> <div style='color:#889;font-size:11px;margin-top:5px'>drag to lasso-select &middot; double-click to clear &middot; 150 points, 9 selected</div>
+> <canvas id='sc_234_iris-petal-lasso' width='560' height='360' style='border:1px solid #e2e2ea;border-radius:6px;cursor:crosshair;max-width:100%;touch-action:none'></canvas>
+> <div style='color:#889;font-size:11px;margin-top:5px'>drag to lasso-select &middot; double-click to clear &middot; 150 points</div>
 > <script>
 > (function(){
 > var PTS=[[1.4,0.2],[1.4,0.2],[1.3,0.2],[1.5,0.2],[1.4,0.2],[1.7,0.4],[1.4,0.3],[1.5,0.2],[1.4,0.2],[1.5,0.1],[1.5,0.2],[1.6,0.2],[1.4,0.1],[1.1,0.1],[1.2,0.2],[1.5,0.4],[1.3,0.4],[1.4,0.3],[1.7,0.3],[1.5,0.3],[1.7,0.2],[1.5,0.4],[1.0,0.2],[1.7,0.5],[1.9,0.2],[1.6,0.2],[1.6,0.4],[1.5,0.2],[1.4,0.2],[1.6,0.2],[1.6,0.2],[1.5,0.4],[1.5,0.1],[1.4,0.2],[1.5,0.2],[1.2,0.2],[1.3,0.2],[1.4,0.1],[1.3,0.2],[1.5,0.2],[1.3,0.3],[1.3,0.3],[1.3,0.2],[1.6,0.6],[1.9,0.4],[1.4,0.3],[1.6,0.2],[1.4,0.2],[1.5,0.2],[1.4,0.2],[4.7,1.4],[4.5,1.5],[4.9,1.5],[4.0,1.3],[4.6,1.5],[4.5,1.3],[4.7,1.6],[3.3,1.0],[4.6,1.3],[3.9,1.4],[3.5,1.0],[4.2,1.5],[4.0,1.0],[4.7,1.4],[3.6,1.3],[4.4,1.4],[4.5,1.5],[4.1,1.0],[4.5,1.5],[3.9,1.1],[4.8,1.8],[4.0,1.3],[4.9,1.5],[4.7,1.2],[4.3,1.3],[4.4,1.4],[4.8,1.4],[5.0,1.7],[4.5,1.5],[3.5,1.0],[3.8,1.1],[3.7,1.0],[3.9,1.2],[5.1,1.6],[4.5,1.5],[4.5,1.6],[4.7,1.5],[4.4,1.3],[4.1,1.3],[4.0,1.3],[4.4,1.2],[4.6,1.4],[4.0,1.2],[3.3,1.0],[4.2,1.3],[4.2,1.2],[4.2,1.3],[4.3,1.3],[3.0,1.1],[4.1,1.3],[6.0,2.5],[5.1,1.9],[5.9,2.1],[5.6,1.8],[5.8,2.2],[6.6,2.1],[4.5,1.7],[6.3,1.8],[5.8,1.8],[6.1,2.5],[5.1,2.0],[5.3,1.9],[5.5,2.1],[5.0,2.0],[5.1,2.4],[5.3,2.3],[5.5,1.8],[6.7,2.2],[6.9,2.3],[5.0,1.5],[5.7,2.3],[4.9,2.0],[6.7,2.0],[4.9,1.8],[5.7,2.1],[6.0,1.8],[4.8,1.8],[4.9,1.8],[5.6,2.1],[5.8,1.6],[6.1,1.9],[6.4,2.0],[5.6,2.2],[5.1,1.5],[5.6,1.4],[6.1,2.3],[5.6,2.4],[5.5,1.8],[4.8,1.8],[5.4,2.1],[5.6,2.4],[5.1,2.3],[5.1,1.9],[5.9,2.3],[5.7,2.5],[5.2,2.3],[5.0,1.9],[5.2,2.0],[5.4,2.3],[5.1,1.8],];
-> var SEL=[52,70,72,77,83,119,126,133,138];
+> var SEL=[];
 > var CVAL=[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,];
 > var NAME='iris-petal-lasso';
-> var CID=25;
+> var CID=234;
 > var W=560,H=360,R=5.0,ALPHA=0.7;
 > var COLOR='#4a9eff',SELCOLOR='#e3116c';
-> var TITLE='Iris: petal length vs petal width (colour = variety) — lasso to select',XLAB='petal.length',YLAB='petal.width';
+> var TITLE='Iris: petal length vs petal width (colour = variety)',XLAB='petal.length',YLAB='petal.width';
 > var XB=null,YB=null;
-> var cv=document.getElementById('sc_25_iris-petal-lasso');
+> var cv=document.getElementById('sc_234_iris-petal-lasso');
 > if(!cv)return;
 > var ctx=cv.getContext('2d');
 > if(!PTS.length){return;}
@@ -399,9 +200,9 @@ sel <- display (scatterSelectWith "iris-petal-lasso" opts pts)
 > function post(idx){parent.postMessage({type:'widget',cellId:CID,name:NAME,value:'['+idx.join(',')+']'},'*');}
 > drawBase(new Set(SEL));repaint(null);
 > var drawing=false,poly=[];
-> cv.addEventListener('mousedown',function(e){drawing=true;poly=[pt(e)];});
-> cv.addEventListener('mousemove',function(e){if(!drawing)return;poly.push(pt(e));repaint(poly);});
-> cv.addEventListener('mouseup',function(){if(!drawing)return;drawing=false;if(poly.length<3){repaint(null);return;}var idx=[];for(var i=0;i<PTS.length;i++){if(inPoly(XS[i],YS[i],poly))idx.push(i);}drawBase(new Set(idx));repaint(null);post(idx);});
+> cv.addEventListener('pointerdown',function(e){if(e.button!==0)return;drawing=true;poly=[pt(e)];cv.setPointerCapture(e.pointerId);e.preventDefault();});
+> cv.addEventListener('pointermove',function(e){if(!drawing)return;poly.push(pt(e));repaint(poly);e.preventDefault();});
+> cv.addEventListener('pointerup',function(e){if(!drawing)return;drawing=false;if(poly.length<3){repaint(null);return;}var idx=[];for(var i=0;i<PTS.length;i++){if(inPoly(XS[i],YS[i],poly))idx.push(i);}drawBase(new Set(idx));repaint(null);post(idx);});
 > cv.addEventListener('dblclick',function(){drawBase(new Set());repaint(null);post([]);});
 > })();
 > </script>
@@ -417,25 +218,123 @@ displayMarkdown $
     "**" ++ show n ++ "** of " ++ show (D.nRows df) ++ " flowers selected"
         ++ (if n == 0 then " — draw a lasso on the plot above to begin." else ":")
 
-chosen |> D.toMarkdown'
-       |> displayMarkdown
+showMarkdown chosen
 ```
 
 > <!-- scripths:mime text/plain -->
 > <!-- MIME:text/markdown -->
-> **9** of 150 flowers selected:
+> **0** of 150 flowers selected — draw a lasso on the plot above to begin.
 > <!-- MIME:text/markdown -->
 > | sepal.length<br>Double | sepal.width<br>Double | petal.length<br>Double | petal.width<br>Double | variety<br>Text |
 > | -----------------------|-----------------------|------------------------|-----------------------|---------------- |
-> | 6.9                    | 3.1                   | 4.9                    | 1.5                   | Versicolor      |
-> | 5.9                    | 3.2                   | 4.8                    | 1.8                   | Versicolor      |
-> | 6.3                    | 2.5                   | 4.9                    | 1.5                   | Versicolor      |
-> | 6.7                    | 3.0                   | 5.0                    | 1.7                   | Versicolor      |
-> | 6.0                    | 2.7                   | 5.1                    | 1.6                   | Versicolor      |
-> | 6.0                    | 2.2                   | 5.0                    | 1.5                   | Virginica       |
-> | 6.2                    | 2.8                   | 4.8                    | 1.8                   | Virginica       |
-> | 6.3                    | 2.8                   | 5.1                    | 1.5                   | Virginica       |
-> | 6.0                    | 3.0                   | 4.8                    | 1.8                   | Virginica       |
+
+## Splitting into training and test sets
+
+`randomSplit` is the equivalent of scikit-learn's `train_test_split`. We hold
+out 30% of the data for testing and fix the random seed (42) so the split is
+reproducible.
+
+```haskell
+import System.Random (mkStdGen)
+import Data.Maybe
+import Text.Read
+
+n' <- display (textInput "seed" "42")
+
+let (trainDf, testDf) = D.randomSplit (mkStdGen (fromMaybe 42 (readMaybe n'))) 0.7 df
+
+(D.dimensions trainDf, D.dimensions testDf)
+```
+
+> <!-- scripths:mime text/html -->
+> <input type='text' value='54' oninput="parent.postMessage({type:'widget',cellId:238,name:'seed',value:this.value,sel:this.selectionStart},'*')">
+> ((109,5),(41,5))
+
+## Fitting the decision tree
+
+This is the whole "training" step. `fitDecisionTree` takes a configuration, the
+target column (`variety`, a `Text` label), and the training frame. It returns an
+`Expr Text`: a self-contained expression that predicts the species from the
+other columns. Everything else in the frame is treated as a candidate feature.
+
+```haskell
+import qualified DataFrame.DecisionTree as DT
+
+let model = DT.fitDecisionTree DT.defaultTreeConfig (D.col @T.Text "variety") trainDf
+```
+
+The fitted model is just data — a tree of `if`/`then`/`else` rules over the
+measurement columns. Unlike the neural network's weight matrices, you can read
+it directly and see exactly how the tree decides.
+
+```haskell
+putStrLn $ D.prettyPrint model
+```
+
+> <!-- scripths:mime text/plain -->
+> if petal.length .<= 3.9
+>   then if sepal.width .- petal.width .<= 1.7000000000000002
+>     then "Versicolor"
+>     else "Setosa"
+>   else if petal.width .< 1.8
+>     then if petal.length .> 5.0
+>       then "Virginica"
+>       else if sepal.length .>= 5.0
+>         then "Versicolor"
+>         else "Virginica"
+>     else "Virginica"
+
+## Making predictions
+
+Because the model is an expression, we apply it to the test frame the same way
+we'd add any derived column: with `D.derive`. Here we add a `predicted` column
+next to the true `variety`.
+
+```haskell
+let scored = testDf |> D.derive "predicted" model
+
+scored |> D.select ["variety", "predicted"]
+       |> D.take 10
+       |> showMarkdown
+```
+
+> <!-- scripths:mime text/markdown -->
+> | variety<br>Text | predicted<br>Text |
+> | ----------------|------------------ |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+
+## Measuring accuracy
+
+We mark each test row as correct (1.0) or wrong (0.0) by comparing the true and
+predicted labels with `F.eq`, then take the mean — that mean is the accuracy.
+
+```haskell
+import qualified DataFrame.Functions as F
+
+let withCorrect =
+        scored
+            |> D.derive
+                "is_correct"
+                ( F.ifThenElse
+                    (F.eq (F.col @T.Text "variety") (F.col @T.Text "predicted"))
+                    (F.lit (1.0 :: Double))
+                    (F.lit (0.0 :: Double))
+                )
+
+putStrLn ("Test accuracy: " ++ show (D.mean (F.col @Double "is_correct") withCorrect))
+```
+
+> <!-- scripths:mime text/plain -->
+> Test accuracy: 0.926829268292683
 
 ## Confusion matrix
 
@@ -448,31 +347,19 @@ the mistakes.
 scored |> D.groupBy ["variety", "predicted"]
        |> D.aggregate ["count" .= F.count (F.col @T.Text "variety")]
        |> D.sortBy [D.Asc "variety", D.Asc "predicted"]
-       |> D.toMarkdown'
-       |> displayMarkdown
+       |> showMarkdown
 ```
 
 > <!-- scripths:mime text/markdown -->
 > | variety<br>Text | predicted<br>Text | count<br>Int |
 > | ----------------|-------------------|------------- |
-> | Versicolor      | Versicolor        | 14           |
-> | Virginica       | Virginica         | 14           |
-> | Setosa          | Versicolor        | 2            |
+> | Versicolor      | Versicolor        | 16           |
+> | Virginica       | Virginica         | 10           |
+> | Virginica       | Versicolor        | 1            |
 > | Setosa          | Setosa            | 12           |
-> | Versicolor      | Virginica         | 4            |
+> | Versicolor      | Virginica         | 2            |
 
 ## Conclusion
 
 Decision trees ,on a clean, well-separated
 dataset like Iris, are pretty easy and efficient to run.
-
-```haskell
-:! cat CHANGELOG.md
-```
-
-> <!-- scripths:mime text/plain -->
-> # Revision history for sabela
-> 
-> ## 0.1.0.0 -- YYYY-mm-dd
-> 
-> * First version. Released on an unsuspecting world.
