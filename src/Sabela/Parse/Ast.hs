@@ -149,7 +149,7 @@ constructor matching.
 patNodeBinders :: Hs.Pat Hs.GhcPs -> Set Text
 patNodeBinders = \case
     Hs.VarPat _ ln -> S.singleton (rdrText (unLoc ln))
-    Hs.AsPat _ ln _ -> S.singleton (rdrText (unLoc ln))
+    Hs.AsPat _ ln _ _ -> S.singleton (rdrText (unLoc ln))
     Hs.NPlusKPat _ ln _ _ _ _ -> S.singleton (rdrText (unLoc ln))
     _ -> S.empty
 
