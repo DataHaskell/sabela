@@ -243,6 +243,8 @@ displayHtml $ unlines
   ]
 ```
 
+Files from the notebook work-dir are served via `/api/asset?path=<path>`, and can be used in the HTML.
+
 ### SVG
 
 ```haskell
