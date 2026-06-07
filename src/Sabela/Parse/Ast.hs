@@ -30,14 +30,13 @@ import qualified Data.List.NonEmpty as NE
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
-import qualified Data.Text as T
 
 import Data.Generics.Uniplate.Data (universeBi)
 
 import qualified GHC.Hs as Hs
-import GHC.Types.Name.Occurrence (occNameString)
-import GHC.Types.Name.Reader (RdrName, rdrNameOcc)
 import GHC.Types.SrcLoc (unLoc)
+import Sabela.Parse.Ast.Names (rdrText)
+import qualified Sabela.Parse.Ast.PatNodeBinders as PatNodeBinders
 
 -- ---------------------------------------------------------------------------
 -- Module-level extraction
@@ -147,11 +146,7 @@ bumps — sub-patterns are reached generically rather than by hand-coded
 constructor matching.
 -}
 patNodeBinders :: Hs.Pat Hs.GhcPs -> Set Text
-patNodeBinders = \case
-    Hs.VarPat _ ln -> S.singleton (rdrText (unLoc ln))
-    Hs.AsPat _ ln _ _ -> S.singleton (rdrText (unLoc ln))
-    Hs.NPlusKPat _ ln _ _ _ _ -> S.singleton (rdrText (unLoc ln))
-    _ -> S.empty
+patNodeBinders = PatNodeBinders.patNodeBinders
 
 -- | Recursive pattern-binder extraction (every level of nesting).
 patBinders :: Hs.Pat Hs.GhcPs -> Set Text
@@ -195,11 +190,3 @@ collectBinders x = S.unions [bindersFromBind, bindersFromPat, bindersFromTyCl]
             [ tyClBinders t
             | t <- universeBi x :: [Hs.TyClDecl Hs.GhcPs]
             ]
-
--- ---------------------------------------------------------------------------
--- Names
--- ---------------------------------------------------------------------------
-
--- | Convert an 'RdrName' to its bare @OccName@ as 'Text'.
-rdrText :: RdrName -> Text
-rdrText = T.pack . occNameString . rdrNameOcc
