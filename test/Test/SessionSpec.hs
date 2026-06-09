@@ -254,4 +254,4 @@ spec = do
                     htmlOut `shouldSatisfy` T.isInfixOf "parent.postMessage"
                     -- granite-style options thread into the canvas: title + color-by data
                     optOut `shouldSatisfy` T.isInfixOf "MyTitle"
-                    optOut `shouldSatisfy` T.isInfixOf "CVAL=[1.0,2.0,3.0"
+                    optOut `shouldSatisfy` T.isInfixOf "cval:[1.0,2.0,3.0"

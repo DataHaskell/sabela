@@ -4,10 +4,14 @@
 // opaque origin that cannot read this page (the embedded notebook JSON), cookies,
 // or storage; the meta-CSP allows charting libs from trusted CDNs (cdnjs,
 // jsdelivr) but keeps connect-src closed, so a plot can draw yet can't
-// exfiltrate the page. Because the frame is
-// cross-origin we cannot read its height, so it reports its own via postMessage.
+// exfiltrate the page. 'unsafe-eval' is required because Vega compiles its
+// dataflow expressions at runtime via the Function() constructor; it adds
+// little risk here since 'unsafe-inline' already runs arbitrary script and the
+// opaque origin + closed connect-src block any reads or exfiltration. Because
+// the frame is cross-origin we cannot read its height, so it reports its own
+// via postMessage.
 const STATIC_CSP =
-  "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'\">";
+  "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'\">";
 let __staticFrameSeq = 0;
 function staticSrcdoc(content, kind, id) {
   const style = kind === 'widget' ? widgetIframeStyle() : iframeContentStyle();

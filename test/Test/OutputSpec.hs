@@ -2,11 +2,34 @@
 
 module Test.OutputSpec (spec) where
 
+import qualified Data.Text as T
 import Sabela.Output (parseMimeOutputs)
+import Sabela.Output.Scatter (scatterDefs, scatterWidgetJs)
 import Test.Hspec
 
 spec :: Spec
-spec = describe "parseMimeOutputs" $ do
+spec = do
+    parseMimeOutputsSpec
+    scatterEmbedSpec
+
+scatterEmbedSpec :: Spec
+scatterEmbedSpec = describe "scatter widget JS embedding" $ do
+    it "embeds the real scatter.js library, not a hand-escaped blob" $ do
+        -- The render logic lives in static/src/widgets/scatter.js and is
+        -- embedded verbatim; these tokens pin that the file is wired in.
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "function sabelaScatter"
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "parent.postMessage"
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "inPoly"
+
+    it "splices the embedded library into the GHCi prelude defs" $ do
+        scatterDefs `shouldSatisfy` T.isInfixOf "_sabelaScatterJs"
+        scatterDefs `shouldSatisfy` T.isInfixOf "function sabelaScatter"
+
+    it "emits a per-render bootstrap call rather than an inline IIFE" $ do
+        scatterDefs `shouldSatisfy` T.isInfixOf "sabelaScatter({"
+
+parseMimeOutputsSpec :: Spec
+parseMimeOutputsSpec = describe "parseMimeOutputs" $ do
     it "plain text with no MIME markers returns text/plain" $ do
         parseMimeOutputs "hello\n" `shouldBe` [("text/plain", "hello\n")]
 
