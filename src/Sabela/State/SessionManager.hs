@@ -2,6 +2,7 @@ module Sabela.State.SessionManager (
     SessionManager (..),
     newSessionManager,
     getHaskellSession,
+    takeHaskellSession,
     setHaskellSession,
     modifyHaskellSession,
     getPythonSession,
@@ -10,16 +11,19 @@ module Sabela.State.SessionManager (
     forceResetAllSessions,
 ) where
 
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (
     MVar,
     modifyMVar,
     modifyMVar_,
+    newEmptyMVar,
     newMVar,
     putMVar,
     readMVar,
+    takeMVar,
     tryTakeMVar,
  )
-import Control.Exception (SomeException, try)
+import Control.Exception (SomeException, finally, try)
 import Control.Monad (void)
 import qualified Sabela.SessionTypes as ST
 
@@ -36,6 +40,10 @@ newSessionManager =
 
 getHaskellSession :: SessionManager -> IO (Maybe ST.SessionBackend)
 getHaskellSession = readMVar . smHaskell
+
+-- | Swap the slot to Nothing and return the old backend (close it outside).
+takeHaskellSession :: SessionManager -> IO (Maybe ST.SessionBackend)
+takeHaskellSession sm = modifyMVar (smHaskell sm) (\old -> pure (Nothing, old))
 
 setHaskellSession :: SessionManager -> Maybe ST.SessionBackend -> IO ()
 setHaskellSession sm val = modifyMVar_ (smHaskell sm) (\_ -> pure val)
@@ -58,19 +66,26 @@ modifyPythonSession ::
     IO a
 modifyPythonSession sm = modifyMVar (smPython sm)
 
-{- | Force-reset all sessions without blocking on MVars.
-Uses tryTakeMVar so it never deadlocks, even if another thread holds the lock.
-Closes any sessions it can grab, then puts Nothing back.
+{- | Force-reset all sessions without blocking on MVars: tryTakeMVar so it
+never deadlocks; slots it cannot grab are reclaimed by the caller's
+registry sweep. The two backends close concurrently to bound shutdown.
 -}
 forceResetAllSessions :: SessionManager -> IO ()
 forceResetAllSessions sm = do
-    forceResetMVar
-        (smHaskell sm)
-        (\s -> void (try (ST.sbClose s) :: IO (Either SomeException ())))
-    forceResetMVar
-        (smPython sm)
-        (\s -> void (try (ST.sbClose s) :: IO (Either SomeException ())))
+    done <- newEmptyMVar
+    _ <- forkIO $ resetSlot (smPython sm) `finally` putMVar done ()
+    resetSlot (smHaskell sm)
+    takeMVar done
+  where
+    resetSlot mv =
+        forceResetMVar
+            mv
+            (\s -> void (try (ST.sbClose s) :: IO (Either SomeException ())))
 
+{- | Close-and-clear one slot without blocking: a slot whose MVar is held
+by another thread is skipped (at server exit the shutdown registry sweep
+still reclaims it; runtime resets simply leave it to its holder).
+-}
 forceResetMVar :: MVar (Maybe a) -> (a -> IO ()) -> IO ()
 forceResetMVar mv close = do
     taken <- tryTakeMVar mv
@@ -79,4 +94,4 @@ forceResetMVar mv close = do
             _ <- try (close s) :: IO (Either SomeException ())
             putMVar mv Nothing
         Just Nothing -> putMVar mv Nothing
-        Nothing -> pure () -- MVar is held by another thread; that thread will clean up
+        Nothing -> pure ()

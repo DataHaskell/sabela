@@ -11,11 +11,13 @@ module Hub.Shares.Api (
     handleDeleteShare,
     fetchExport,
     publishMode,
+    parsePublishTitle,
     shareToJSON,
 ) where
 
 import Control.Exception (SomeException, try)
-import Data.Aeson (Value, object, toJSON, (.=))
+import Data.Aeson (Value, decode, object, toJSON, withObject, (.:), (.=))
+import Data.Aeson.Types (parseMaybe)
 import qualified Data.ByteString.Lazy as BL
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -33,8 +35,10 @@ import Hub.Share (
     listShares,
     lookupShareHtml,
     publishShare,
+    sanitizeTitle,
     scrubSecrets,
     shareHeaders,
+    writeShareSource,
  )
 import Hub.Types
 import qualified Network.HTTP.Client as HC
@@ -70,6 +74,17 @@ publishMode q =
         Just (Just bs) -> fromMaybe ExpDashboard (parseExportMode (TE.decodeUtf8 bs))
         _ -> ExpDashboard
 
+{- | The notebook title from the publish POST body (@{title}@), sanitized; a
+missing or blank title falls back to @\"Untitled\"@. Kept out of the query
+string so titles never transit proxy/ALB access logs (CWE-598).
+-}
+parsePublishTitle :: BL.ByteString -> Text
+parsePublishTitle body =
+    maybe
+        "Untitled"
+        sanitizeTitle
+        (decode body >>= parseMaybe (withObject "publish" (.: "title")))
+
 {- | @POST \/_hub\/publish?mode=dashboard|slideshow|notebook@: fetch the owner
 container's self-contained HTML export, refuse it if it looks like it embeds a
 credential, then store it under a fresh slug. Responds @{slug,url}@.
@@ -83,9 +98,11 @@ handlePublish ::
     (Response -> IO ResponseReceived) ->
     IO ResponseReceived
 handlePublish sm store mgr sess req respond = do
+    body <- strictRequestBody req
     let cfg = smConfig sm
         UserId email = sessionUserId sess
         mode = publishMode (queryString req)
+        title = parsePublishTitle body
     case sessionState sess of
         SReady ip -> do
             eFetched <-
@@ -103,20 +120,35 @@ handlePublish sm store mgr sess req respond = do
                                 <> reason
                                 <> "."
                     Nothing -> do
-                        slug <- generateRandomToken
-                        now <- getCurrentTime
-                        publishShare
-                            store
-                            Share
-                                { shareSlug = slug
-                                , shareOwner = email
-                                , shareMode = mode
-                                , shareCreatedAt = T.pack (iso8601Show now)
-                                }
-                            html
-                        logHub $ email <> " published " <> exportModeText mode <> " /s/" <> slug
-                        respond . jsonResponse status200 $
-                            object ["slug" .= slug, "url" .= ("/s/" <> slug)]
+                        eSrc <-
+                            try (fetchSource mgr (hcBackendPort cfg) ip) ::
+                                IO (Either SomeException (Either Text Text))
+                        let mSrc = case eSrc of
+                                Right (Right s) -> Just s
+                                _ -> Nothing
+                        case mSrc >>= scrubSecrets of
+                            Just reason ->
+                                respond . jsonError status400 $
+                                    "Refusing to publish: the notebook source appears to contain "
+                                        <> reason
+                                        <> "."
+                            Nothing -> do
+                                slug <- generateRandomToken
+                                now <- getCurrentTime
+                                publishShare
+                                    store
+                                    Share
+                                        { shareSlug = slug
+                                        , shareOwner = email
+                                        , shareMode = mode
+                                        , shareCreatedAt = T.pack (iso8601Show now)
+                                        , shareTitle = title
+                                        }
+                                    html
+                                maybe (pure ()) (writeShareSource store slug) mSrc
+                                logHub $ email <> " published " <> exportModeText mode <> " /s/" <> slug
+                                respond . jsonResponse status200 $
+                                    object ["slug" .= slug, "url" .= ("/s/" <> slug)]
         _ ->
             respond . jsonError status409 $
                 "Your notebook is still starting; try again in a moment."
@@ -151,15 +183,18 @@ handleDeleteShare store sess slug respond = do
 -- | Fetch a notebook's static export over HTTP from its backend container.
 fetchExport ::
     HC.Manager -> Int -> TaskIp -> ExportMode -> IO (Either Text Text)
-fetchExport mgr port (TaskIp ip) mode = do
+fetchExport mgr port (TaskIp ip) mode =
+    fetchBackend mgr port ip ("/api/export/" <> exportModeText mode)
+
+-- | Fetch the notebook's reassembled source markdown (for Download/Fork).
+fetchSource :: HC.Manager -> Int -> TaskIp -> IO (Either Text Text)
+fetchSource mgr port (TaskIp ip) = fetchBackend mgr port ip "/api/export/markdown"
+
+fetchBackend :: HC.Manager -> Int -> Text -> Text -> IO (Either Text Text)
+fetchBackend mgr port ip path = do
     initReq <-
         HC.parseRequest $
-            "http://"
-                <> T.unpack ip
-                <> ":"
-                <> show port
-                <> "/api/export/"
-                <> T.unpack (exportModeText mode)
+            "http://" <> T.unpack ip <> ":" <> show port <> T.unpack path
     let req = initReq{HC.responseTimeout = HC.responseTimeoutMicro 30000000}
     resp <- HC.httpLbs req mgr
     let st = HC.responseStatus resp

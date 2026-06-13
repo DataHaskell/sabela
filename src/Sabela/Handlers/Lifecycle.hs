@@ -9,29 +9,29 @@ backend behind the reactive engine.
 module Sabela.Handlers.Lifecycle (
     -- * Top-level lifecycle
     killAllSessions,
+    shutdownAllSessions,
     reloadHaskellSession,
     killSession,
     ensureSessionAlive,
+    sessionMetaMatches,
     installAndRestart,
     handleKernelCrash,
     loadSabelaPrelude,
 
     -- * Install + REPL setup (also exposed for tests)
     setupReplProject,
-
-    -- * Pieces (exposed for reuse from Plan)
-    depsMatch,
+    resolveLocalPackages,
 ) where
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void)
-import Data.Set (Set)
+import Data.List (nub)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.Deps (mergedMeta)
+import Sabela.Deps (ProjectSig, depsMatch, mergedMeta, projectSig)
 import Sabela.Handlers.Shared
 import Sabela.Model (NotebookEvent (..), SessionStatus (..))
 import Sabela.Output (displayPrelude)
@@ -42,18 +42,21 @@ import Sabela.Session (
     readErrorBuffer,
     runBlock,
  )
+import Sabela.Session.Proc (killLeftoverSessions)
 import Sabela.Session.Process (
     closeSession,
     ghciBackend,
     newSessionStreaming,
  )
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..))
+import Sabela.State (App (..), clearCompiledModules)
 import Sabela.State.DependencyTracker (
     getHaskellDeps,
     getHaskellExts,
+    getHaskellProjectSig,
     setHaskellDeps,
     setHaskellExts,
+    setHaskellProjectSig,
  )
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.SessionManager (
@@ -61,15 +64,26 @@ import Sabela.State.SessionManager (
     getHaskellSession,
     modifyHaskellSession,
     setHaskellSession,
+    takeHaskellSession,
  )
 import ScriptHs.Parser (CabalMeta (..))
 import ScriptHs.Run (renderCabalFile, renderCabalProject)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
-import System.FilePath ((</>))
+import System.FilePath (isAbsolute, (</>))
 
+-- | Runtime reset of the managed backends (notebook reset/restart).
 killAllSessions :: App -> IO ()
 killAllSessions app =
     forceResetAllSessions (appSessions app)
+
+{- | Server-exit teardown: polite closes plus the registry sweep that
+reclaims sessions no manager slot references (scratchpad, half-spawns).
+Shutdown only — at runtime the sweep would kill live scratchpad sessions.
+-}
+shutdownAllSessions :: App -> IO ()
+shutdownAllSessions app = do
+    forceResetAllSessions (appSessions app)
+    killLeftoverSessions
 
 reloadHaskellSession :: App -> IO ()
 reloadHaskellSession app = do
@@ -81,30 +95,59 @@ reloadHaskellSession app = do
             Left (e :: SomeException) ->
                 handleKernelCrash
                     app
+                    backend
                     ("Kernel crashed during :reload: " <> T.pack (show e))
             Right _ -> pure ()
 
+{- | Swap the slot out first, then close outside the manager MVar so
+session queries never stall behind a multi-second teardown.
+-}
 killSession :: App -> IO ()
-killSession app =
-    modifyHaskellSession (appSessions app) $ \mSess -> do
-        forM_ mSess $ \s ->
-            void (try (ST.sbClose s) :: IO (Either SomeException ()))
-        pure Nothing
+killSession app = do
+    mSess <- takeHaskellSession (appSessions app)
+    forM_ mSess $ \s ->
+        void (try (ST.sbClose s) :: IO (Either SomeException ()))
 
 ensureSessionAlive :: App -> Int -> CabalMeta -> IO Bool
 ensureSessionAlive app gen metas = do
+    ok <- sessionMetaMatches app metas
+    if ok then pure True else installAndRestart app gen metas
+
+{- | Is there a live session whose installed state covers the notebook's
+metadata — dep names, extensions, and the project signature (local
+packages, git pins, ghc-options)?
+-}
+sessionMetaMatches :: App -> CabalMeta -> IO Bool
+sessionMetaMatches app metas = do
     installed <- getHaskellDeps (appDeps app)
     instExts <- getHaskellExts (appDeps app)
+    instSig <- getHaskellProjectSig (appDeps app)
     mSess <- getHaskellSession (appSessions app)
-    let metaMatch = depsMatch metas installed instExts (envGlobalDeps (appEnv app))
+    let neededSig = neededProjectSig app metas
+        metaMatch =
+            depsMatch
+                metas
+                installed
+                instExts
+                (envGlobalDeps (appEnv app))
+                neededSig
+                instSig
     case mSess of
-        Just _ | metaMatch -> pure True
-        _ -> installAndRestart app gen metas
+        Just _ -> pure metaMatch
+        Nothing -> pure False
 
-depsMatch :: CabalMeta -> Set Text -> Set Text -> Set Text -> Bool
-depsMatch metas installed instExts globalDeps =
-    S.fromList (metaDeps metas) `S.isSubsetOf` (installed `S.union` globalDeps)
-        && S.fromList (metaExts metas) == instExts
+{- | The project signature the notebook's metadata asks for, resolved the
+same way 'installDepsAndStartSession' resolves it before installing.
+-}
+neededProjectSig :: App -> CabalMeta -> ProjectSig
+neededProjectSig app metas =
+    let merged = mergedMeta (envGlobalDeps (appEnv app)) metas
+        localPkgs =
+            resolveLocalPackages
+                (envWorkDir (appEnv app))
+                (envLocalPackages (appEnv app))
+                merged
+     in projectSig localPkgs merged
 
 installAndRestart :: App -> Int -> CabalMeta -> IO Bool
 installAndRestart app gen metas = do
@@ -118,10 +161,14 @@ installDepsAndStartSession app _gen metas = do
     broadcastDepsStatus app metas
     setHaskellExts (appDeps app) (S.fromList (metaExts metas))
     let projDir = envTmpDir (appEnv app) </> "repl-project"
-    setupReplProject
-        (envLocalPackages (appEnv app))
-        projDir
-        (mergedMeta (envGlobalDeps (appEnv app)) metas)
+        merged = mergedMeta (envGlobalDeps (appEnv app)) metas
+        localPkgs =
+            resolveLocalPackages
+                (envWorkDir (appEnv app))
+                (envLocalPackages (appEnv app))
+                merged
+    setHaskellProjectSig (appDeps app) (projectSig localPkgs merged)
+    setupReplProject localPkgs projDir merged
     broadcast app (EvSessionStatus SStarting)
     killSession app
     startSessionWith app projDir
@@ -138,6 +185,19 @@ broadcastDepsStatus app metas = do
                 if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
         setHaskellDeps (appDeps app) notebookDeps
 
+{- | Combine the operator's @SABELA_LOCAL_PACKAGES@ overlays with the notebook's
+own @-- cabal: packages:@ directive. Operator overlays come first (and win on
+dedupe); notebook-relative dirs resolve against the working directory, absolute
+dirs pass through.
+-}
+resolveLocalPackages :: FilePath -> [FilePath] -> CabalMeta -> [FilePath]
+resolveLocalPackages workDir envLocals meta =
+    nub (envLocals ++ map resolve (metaPackages meta))
+  where
+    resolve t =
+        let p = T.unpack t
+         in if isAbsolute p then p else workDir </> p
+
 {- | Write the throwaway repl project (regenerated each run) into @dir@. The @[]@
 to 'renderCabalFile' adds no extra local-package names to @build-depends@; local
 packages resolve through the @packages:@ stanza in the generated @cabal.project@.
@@ -147,7 +207,14 @@ setupReplProject localPkgs dir meta = do
     createDirectoryIfMissing True dir
     writeFile
         (dir </> "cabal.project")
-        (T.unpack (renderCabalProject localPkgs (metaSourceRepos meta)))
+        ( T.unpack
+            ( renderCabalProject
+                localPkgs
+                (metaSourceRepos meta)
+                (metaExtraLibDirs meta)
+                (metaExtraIncludeDirs meta)
+            )
+        )
     ensureFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
     writeFile (dir </> "sabela-repl.cabal") (renderCabalFile "sabela-repl" [] meta)
 
@@ -158,6 +225,7 @@ ensureFile path content = do
 
 startSessionWith :: App -> FilePath -> IO Bool
 startSessionWith app projDir = do
+    clearCompiledModules app
     debugLog app "[handler] Injecting display prelude"
     let cfg = SessionConfig{scProjectDir = projDir, scWorkDir = envWorkDir (appEnv app)}
         onLine t = unless (T.null t) $ broadcast app (EvInstallLog t)
@@ -210,11 +278,23 @@ loadSabelaPrelude app = do
         result <- try (ST.sbRunBlock backend displayPrelude)
         case result of
             Left (e :: SomeException) ->
-                handleKernelCrash app ("Kernel crashed during prelude: " <> T.pack (show e))
+                handleKernelCrash
+                    app
+                    backend
+                    ("Kernel crashed during prelude: " <> T.pack (show e))
             Right _ -> pure ()
 
-handleKernelCrash :: App -> Text -> IO ()
-handleKernelCrash app msg = do
+{- | Clear the manager slot only if it still holds the crashed backend,
+then unconditionally tear the crashed backend down (idempotent), so a
+late crash event can never drop or leak a fresh replacement session.
+-}
+handleKernelCrash :: App -> ST.SessionBackend -> Text -> IO ()
+handleKernelCrash app crashed msg = do
     debugLog app $ "[handler] Kernel crash detected: " <> msg
-    setHaskellSession (appSessions app) Nothing
+    clearCompiledModules app
+    modifyHaskellSession (appSessions app) $ \mSess ->
+        pure $ case mSess of
+            Just s | ST.sbSessionId s == ST.sbSessionId crashed -> Nothing
+            other -> other
+    void (try (ST.sbClose crashed) :: IO (Either SomeException ()))
     broadcast app (EvSessionStatus SCrashed)

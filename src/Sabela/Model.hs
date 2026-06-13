@@ -119,6 +119,8 @@ instance FromJSON CellType
 
 data NotebookEvent
     = EvCellUpdating Int
+    | -- | A compiled cell's module is being (re)compiled.
+      EvCellCompiling Int
     | EvCellPartialOutput Int Text
     | EvCellResult Int [OutputItem] (Maybe Text) [CellError]
     | EvExecutionDone
@@ -176,6 +178,8 @@ instance Show SessionStatus where
 instance ToJSON NotebookEvent where
     toJSON (EvCellUpdating cid) =
         object ["type" .= ("cellUpdating" :: Text), "cellId" .= cid]
+    toJSON (EvCellCompiling cid) =
+        object ["type" .= ("cellCompiling" :: Text), "cellId" .= cid]
     toJSON (EvCellPartialOutput cid line) =
         object
             ["type" .= ("cellPartialOutput" :: Text), "cellId" .= cid, "line" .= line]

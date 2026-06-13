@@ -4,17 +4,22 @@ module Sabela.SessionTypes where
 
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
+import Data.Unique (Unique)
 import GHC.Generics (Generic)
 
 data SessionBackend = SessionBackend
-    { sbRunBlock :: Text -> IO (Text, Text)
+    { sbSessionId :: Unique
+    -- ^ Identity of this backend instance, for swap-iff-same crash handling.
+    , sbRunBlock :: Text -> IO (Text, Text)
     -- ^ Execute a block of code, returning (stdout, stderr).
     , sbRunBlockStreaming :: Text -> (Text -> IO ()) -> IO (Text, Text)
     -- ^ Like sbRunBlock, but calls the callback with each output line as it arrives.
     , sbClose :: IO ()
-    -- ^ Shut down the backend process.
+    -- ^ Shut down the backend process and reclaim its whole tree.
     , sbReset :: IO SessionBackend
     -- ^ Kill and restart the backend, returning a fresh handle.
+    , sbInterrupt :: IO ()
+    -- ^ Abort the running cell (group SIGINT); no-op when idle.
     , sbQueryComplete :: Text -> IO [Text]
     -- ^ Completion query (GHCi :complete).
     , sbQueryType :: Text -> IO Text

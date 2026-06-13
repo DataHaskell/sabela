@@ -30,6 +30,8 @@ async function publishShare(mode) {
   try {
     const res = await hubFetch('/_hub/publish?mode=' + encodeURIComponent(mode), {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: (notebook && notebook.nbTitle) || 'Untitled' }),
     });
     if (!res.hub) {
       list.textContent = '';

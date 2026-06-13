@@ -105,6 +105,7 @@ import Sabela.Server.Run (
     completeH,
     examplesH,
     infoH,
+    interruptKernelH,
     resetH,
     restartKernelH,
     runAllH,
@@ -198,6 +199,7 @@ server app rn =
         :<|> runAllH rn
         :<|> resetH rn app
         :<|> restartKernelH rn
+        :<|> interruptKernelH app
         :<|> clearCellH app
         :<|> listFilesH app
         :<|> readFileH app

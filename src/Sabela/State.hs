@@ -3,6 +3,7 @@
 module Sabela.State (
     App (..),
     newApp,
+    clearCompiledModules,
     getAIStore,
     setAIStore,
     configureAI,
@@ -33,6 +34,7 @@ import Data.Aeson (Value (..), eitherDecodeStrict, encode, object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
+import Data.IORef (IORef, newIORef, writeIORef)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set (Set)
@@ -73,6 +75,10 @@ data App = App
     , appDeps :: DependencyTracker
     , appWidgets :: WidgetStore
     , appBridge :: BridgeStore
+    , appCompiledModules :: IORef (M.Map Text Text)
+    {- ^ Module name → rendered source currently loaded into the live GHCi
+    session. Drives the compile-phase skip; cleared on session restart.
+    -}
     , appAI :: MVar (Maybe AIStore)
     , appHttpMgr :: Maybe Manager
     , appAiToken :: Maybe Text
@@ -84,6 +90,10 @@ data App = App
     the @X-Sabela-Session@ header. Created lazily on first request.
     -}
     }
+
+-- | Forget which compiled modules the live session has loaded.
+clearCompiledModules :: App -> IO ()
+clearCompiledModules app = writeIORef (appCompiledModules app) M.empty
 
 -- | Read the current AI store (if configured).
 getAIStore :: App -> IO (Maybe AIStore)
@@ -213,6 +223,7 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
         <*> newDependencyTracker
         <*> newWidgetStore
         <*> newBridgeStore
+        <*> newIORef M.empty
         <*> pure aiVar
         <*> pure mHttpMgr
         <*> pure mAiToken

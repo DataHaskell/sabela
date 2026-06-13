@@ -72,7 +72,18 @@ function showChatToolResult(toolCallId, result) {
   }
 }
 
+// Surface proposals that arrive while the chat drawer is hidden (e.g.
+// siza/CLI propose_edit): open the chat tab without the API-key modal.
+function revealChatPanel() {
+  const panel = document.getElementById('right-panel');
+  if (panel.classList.contains('collapsed') || activeTab !== 'chat') {
+    panel.classList.remove('collapsed');
+    switchTab('chat', { quiet: true });
+  }
+}
+
 function showChatEditProposal(editId, cellId, oldSource, newSource) {
+  revealChatPanel();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-edit-proposal';

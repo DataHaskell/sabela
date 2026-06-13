@@ -2,19 +2,22 @@
 
 module Main where
 
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import qualified Data.Text as T
 import Hub.Config (loadConfig)
 import Hub.Docker (cliDockerOps, dockerBackend)
 import Hub.Ecs (cliEcsBackend)
+import Hub.Gallery (newGalleryStore)
 import Hub.Proxy (hubApp)
 import Hub.Reaper (startReaper, sweepOrphans)
 import Hub.Session (newSessionManager, reattachSessions)
 import Hub.Share (newShareStore)
 import Hub.Types
+import Hub.Users (isAnyAdmin, newUserStore)
 import qualified Network.HTTP.Client as HC
 import qualified Network.HTTP.Client.TLS as TLS
 import qualified Network.Wai.Handler.Warp as Warp
+import System.Directory (doesFileExist)
 import System.IO (hPutStrLn, stderr)
 
 main :: IO ()
@@ -35,7 +38,14 @@ main = do
             ++ show (hcPort cfg)
             ++ " with Google OAuth"
     store <- newShareStore (T.unpack (hcSharesDir cfg))
-    app <- hubApp sm store mgr
+    users <- newUserStore (T.unpack (hcUsersDir cfg)) (hcBootstrapAdmin cfg)
+    gallery <- newGalleryStore (T.unpack (hcGalleryDir cfg))
+    admins <- isAnyAdmin users
+    unless admins $
+        hPutStrLn stderr $
+            "[hub] WARNING: no admin exists (set HUB_BOOTSTRAP_ADMIN) - "
+                ++ "the gallery curation surface is inert"
+    app <- hubApp sm store users gallery mgr
     Warp.run (hcPort cfg) app
 
 validateConfig :: HubConfig -> IO ()
@@ -55,3 +65,16 @@ validateConfig cfg = do
     hPutStrLn stderr $
         "[hub] OAuth redirect: "
             ++ T.unpack (hcGoogleRedirectUri cfg)
+    case hcAllowlistFile cfg of
+        Just path -> do
+            readable <- doesFileExist path
+            hPutStrLn stderr $ "[hub] Signup allowlist: " ++ path
+            unless readable $
+                hPutStrLn stderr $
+                    "[hub] WARNING: allowlist file missing ("
+                        ++ path
+                        ++ ") - all logins will be DENIED until it exists"
+        Nothing ->
+            hPutStrLn stderr $
+                "[hub] WARNING: HUB_ALLOWLIST_FILE unset - signup is OPEN; "
+                    ++ "anyone with a Google account gets a container"

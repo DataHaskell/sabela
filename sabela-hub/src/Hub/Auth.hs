@@ -33,6 +33,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
+import Hub.Allowlist (checkAllowed)
 import Hub.OAuth (exchangeCodeForEmail, generateRandomToken, googleAuthUrl)
 import Hub.Pages (jsonError, textResponse)
 import Hub.Session (
@@ -105,8 +106,9 @@ parseCookies = map parsePair . B8.split ';'
                     | otherwise -> (name, B8.drop 1 rest)
 
 {- | Handle the OAuth callback from Google. The session cookie is set
-'SameSite=Lax' so it survives the post-redirect navigation back to @/@;
-'Strict' would withhold it and bounce the user to login.
+'SameSite=Lax' so it survives the post-redirect navigation back to @/@.
+The verified email is normalized at this identity boundary and gated on the
+signup allowlist before any 'UserId' is minted.
 -}
 handleOAuthCallback ::
     SessionManager -> HC.Manager -> PendingStates -> HubConfig -> Application
@@ -132,25 +134,34 @@ handleOAuthCallback sm mgr states cfg req respond = do
                             IO (Either SomeException (Either Text Text))
                     case result of
                         Right (Right email) -> do
-                            sid <- SessionId <$> generateRandomToken
-                            let uid = UserId email
-                            -- Insert session placeholder and spawn task in background
-                            startSessionAsync sm sid uid
-                            let SessionId sidText = sid
-                            respond $
-                                responseLBS
-                                    status302
-                                    [ ("Location", "/")
-                                    ,
-                                        ( "Set-Cookie"
-                                        , "_sabela_session="
-                                            <> TE.encodeUtf8 sidText
-                                            <> "; Path=/; HttpOnly; SameSite=Lax"
-                                            <> secureAttr req
-                                            <> "; Max-Age=2592000"
-                                        )
-                                    ]
-                                    ""
+                            let norm = normalizeEmail email
+                            allowed <- checkAllowed (hcAllowlistFile cfg) norm
+                            if not allowed
+                                then
+                                    respond $
+                                        textResponse
+                                            status403
+                                            "This Sabela hub is invite-only. Ask the operator for access."
+                                else do
+                                    sid <- SessionId <$> generateRandomToken
+                                    let uid = UserId norm
+                                    -- Insert session placeholder and spawn task in background
+                                    startSessionAsync sm sid uid
+                                    let SessionId sidText = sid
+                                    respond $
+                                        responseLBS
+                                            status302
+                                            [ ("Location", "/")
+                                            ,
+                                                ( "Set-Cookie"
+                                                , "_sabela_session="
+                                                    <> TE.encodeUtf8 sidText
+                                                    <> "; Path=/; HttpOnly; SameSite=Lax"
+                                                    <> secureAttr req
+                                                    <> "; Max-Age=2592000"
+                                                )
+                                            ]
+                                            ""
                         Right (Left err) ->
                             respond $ textResponse status500 ("OAuth error: " <> err)
                         Left e ->

@@ -48,6 +48,16 @@
         <svg class="icon-svg" style="vertical-align: -2px"><use href="#i-play" /></svg>
         <span class="btn-label">Run all</span>
       </button>
+      <button
+        class="icon-btn"
+        id="btn-stop"
+        style="display: none"
+        onclick="interruptKernel()"
+        title="Stop running cell"
+        aria-label="Stop running cell"
+      >
+        <svg class="icon-svg"><use href="#i-square" /></svg>
+      </button>
       <button class="palette-trigger" id="btn-palette" onclick="openPalette()" aria-label="Open command palette">
         <svg class="icon-svg"><use href="#i-search" /></svg>
         <span class="palette-trigger-label">Search commands…</span>
@@ -59,13 +69,7 @@
         </button>
         <div class="toolbar-dropdown-menu" id="overflow-menu-list"></div>
       </div>
-      <button
-        class="icon-btn"
-        id="theme-toggle"
-        onclick="toggleTheme()"
-        title="Toggle theme"
-        aria-label="Toggle light/dark theme"
-      >
+      <button class="icon-btn" id="theme-toggle" onclick="openThemePicker()" title="Theme" aria-label="Choose a theme">
         <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
       </button>
       <span class="save-indicator" id="save-indicator">saved ✓</span>

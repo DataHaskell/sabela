@@ -1,0 +1,199 @@
+{- | Process-group lifecycle for interpreter subprocesses: masked spawn
+into a registry, group signalling, and the single 'destroySession'
+teardown chokepoint every kill path must route through.
+-}
+module Sabela.Session.Proc (
+    ProcSession (..),
+    sessionProcessSpec,
+    withSpawnedSession,
+    destroySession,
+    interruptGroup,
+    killLeftoverSessions,
+    configureSessionHandles,
+) where
+
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
+import Control.Exception (
+    SomeException,
+    mask,
+    onException,
+    try,
+    uninterruptibleMask_,
+ )
+import Control.Monad (forM_, void)
+import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import Data.Unique (Unique, newUnique)
+import Sabela.Session.Reader (OutQueue, drainToEof, newOutQueue, readLoop)
+import System.IO (
+    BufferMode (LineBuffering),
+    Handle,
+    hClose,
+    hSetBinaryMode,
+    hSetBuffering,
+    hSetEncoding,
+    mkTextEncoding,
+ )
+import System.IO.Unsafe (unsafePerformIO)
+import System.Posix.Signals (Signal, sigINT, sigKILL, sigTERM, signalProcessGroup)
+import System.Posix.Types (ProcessGroupID)
+import System.Process (
+    CreateProcess (create_group, cwd, std_err, std_in, std_out),
+    ProcessHandle,
+    StdStream (CreatePipe),
+    createProcess,
+    getPid,
+    getProcessExitCode,
+    waitForProcess,
+ )
+import System.Timeout (timeout)
+
+{- | A spawned interpreter process: handles, its process group (captured
+once at spawn, while the leader is alive), the output queue its reader
+feeds, and the kill-lock serialising teardown.
+-}
+data ProcSession = ProcSession
+    { psId :: Unique
+    , psProc :: ProcessHandle
+    , psPgid :: Maybe ProcessGroupID
+    , psKillLock :: MVar ()
+    , psStdin :: Handle
+    , psStdout :: Handle
+    , psStderr :: Handle
+    , psQueue :: OutQueue
+    }
+
+{- | The sole way to build a session 'CreateProcess': piped std handles
+and an own process group, so group signals can never reach the server.
+-}
+sessionProcessSpec :: Maybe FilePath -> CreateProcess -> CreateProcess
+sessionProcessSpec mCwd cp =
+    cp
+        { std_in = CreatePipe
+        , std_out = CreatePipe
+        , std_err = CreatePipe
+        , cwd = mCwd
+        , create_group = True
+        }
+
+{- | Spawn under mask, register before exceptions can land, run the
+initialiser with exceptions restored, and tear down on any failure.
+The returned session is always registered for the shutdown sweep.
+-}
+withSpawnedSession :: CreateProcess -> (ProcSession -> IO a) -> IO a
+withSpawnedSession spec initialise = mask $ \restore -> do
+    ps <- spawnRegistered spec
+    restore (initialise ps) `onException` destroySession ps
+
+spawnRegistered :: CreateProcess -> IO ProcSession
+spawnRegistered spec = do
+    (mIn, mOut, mErr, ph) <- createProcess spec
+    ps <- flip onException (rawKill ph) $ do
+        (hIn, hOut, hErr) <- case (mIn, mOut, mErr) of
+            (Just a, Just b, Just c) -> pure (a, b, c)
+            _ -> ioError (userError "session spawn: missing std pipe")
+        pgid <- getPid ph
+        q <- newOutQueue
+        klock <- newMVar ()
+        uid <- newUnique
+        let ps = ProcSession uid ph pgid klock hIn hOut hErr q
+        registryInsert ps
+        pure ps
+    flip onException (destroySession ps) $ do
+        configureSessionHandles (psStdin ps) (psStdout ps) (psStderr ps)
+        _ <- forkIO (readLoop (psStdout ps) (psQueue ps))
+        pure ps
+
+{- | Stdin gets transliterating UTF-8 (encode side); stdout/stderr are
+read as raw bytes and decoded leniently by the reader.
+-}
+configureSessionHandles :: Handle -> Handle -> Handle -> IO ()
+configureSessionHandles hIn hOut hErr = do
+    hSetBuffering hIn LineBuffering
+    enc <- mkTextEncoding "UTF-8//TRANSLIT"
+    hSetEncoding hIn enc
+    forM_ [hOut, hErr] $ \h -> hSetBinaryMode h True
+
+{- | Idempotent whole-tree teardown. The masked core probes under the
+kill-lock (a reaped leader's pgid may be recycled, so it is then never
+signalled), TERM→grace→KILL→reaps; drain and closes follow, bounded.
+-}
+destroySession :: ProcSession -> IO ()
+destroySession ps = withMVar (psKillLock ps) $ \_ -> do
+    uninterruptibleMask_ core
+    _ <- timeout drainTimeoutUs (drainToEof (psQueue ps))
+    mapM_ closeQuiet [psStdin ps, psStdout ps, psStderr ps]
+  where
+    core = do
+        exited <- getProcessExitCode (psProc ps)
+        case exited of
+            Just _ -> pure ()
+            Nothing -> do
+                signalGroupQuiet sigTERM ps
+                waitGrace gracePolls
+                signalGroupQuiet sigKILL ps
+        quiet (void (waitForProcess (psProc ps)))
+        registryRemove (psId ps)
+    waitGrace :: Int -> IO ()
+    waitGrace 0 = pure ()
+    waitGrace n = do
+        exited <- getProcessExitCode (psProc ps)
+        case exited of
+            Just _ -> pure ()
+            Nothing -> threadDelay gracePollUs >> waitGrace (n - 1)
+
+{- | SIGINT the session's group to abort the current evaluation. Probes
+under the kill-lock so a reaped (possibly recycled) pgid is never hit.
+-}
+interruptGroup :: ProcSession -> IO ()
+interruptGroup ps = withMVar (psKillLock ps) $ \_ -> do
+    exited <- getProcessExitCode (psProc ps)
+    case exited of
+        Just _ -> pure ()
+        Nothing -> signalGroupQuiet sigINT ps
+
+-- | Pre-registration failure path: group-KILL by the live handle, reap.
+rawKill :: ProcessHandle -> IO ()
+rawKill ph = uninterruptibleMask_ $ do
+    mPid <- getPid ph
+    forM_ mPid $ \pid -> quiet (signalProcessGroup sigKILL pid)
+    quiet (void (waitForProcess ph))
+
+signalGroupQuiet :: Signal -> ProcSession -> IO ()
+signalGroupQuiet sig ps =
+    forM_ (psPgid ps) $ \pgid -> quiet (signalProcessGroup sig pgid)
+
+closeQuiet :: Handle -> IO ()
+closeQuiet h = void (timeout closeTimeoutUs (quiet (hClose h)))
+
+quiet :: IO () -> IO ()
+quiet act = void (try act :: IO (Either SomeException ()))
+
+gracePolls, gracePollUs, drainTimeoutUs, closeTimeoutUs :: Int
+gracePolls = 40
+gracePollUs = 50000
+drainTimeoutUs = 2000000
+closeTimeoutUs = 1000000
+
+{- | Live sessions by id, inserted at spawn and removed at reap, so the
+shutdown sweep reclaims sessions that no manager slot references.
+-}
+{-# NOINLINE sessionRegistry #-}
+sessionRegistry :: IORef (Map Unique ProcSession)
+sessionRegistry = unsafePerformIO (newIORef Map.empty)
+
+registryInsert :: ProcSession -> IO ()
+registryInsert ps =
+    atomicModifyIORef' sessionRegistry (\m -> (Map.insert (psId ps) ps m, ()))
+
+registryRemove :: Unique -> IO ()
+registryRemove uid =
+    atomicModifyIORef' sessionRegistry (\m -> (Map.delete uid m, ()))
+
+-- | Shutdown sweep: swap the registry out, then destroy every leftover.
+killLeftoverSessions :: IO ()
+killLeftoverSessions = do
+    m <- atomicModifyIORef' sessionRegistry (\m -> (Map.empty, m))
+    mapM_ destroySession (Map.elems m)

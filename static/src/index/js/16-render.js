@@ -49,6 +49,16 @@ function render(nb) {
   }
 }
 
+// Matches the `-- compile` / `-- compile: Module.Name` cell directive.
+const COMPILE_DIRECTIVE_RE = /^--\s*compile(\s*:.*)?\s*$/;
+
+function isCompiledSource(cell) {
+  return (
+    cell.cellLang !== 'Python' &&
+    cell.cellSource.split('\n').some((l) => COMPILE_DIRECTIVE_RE.test(l))
+  );
+}
+
 function renderCodeCell(cell, cellNum) {
   const div = document.createElement('div');
   div.className = 'cell code';
@@ -56,10 +66,16 @@ function renderCodeCell(cell, cellNum) {
   if (cell.cellLang === 'Python') div.classList.add('python');
   if (cell.cellDirty) div.classList.add('dirty');
   if (cell.cellError) div.classList.add('has-error');
+  const compiled = isCompiledSource(cell);
+  if (compiled) div.classList.add('compiled');
 
   const gutter = document.createElement('div');
   gutter.className = 'cell-gutter';
-  gutter.innerHTML = `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>`;
+  gutter.innerHTML =
+    `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>` +
+    (compiled
+      ? `<button class="compile-tag" onclick="toggleCellCompile(${cell.cellId})" title="Compiled to native code (-O2). Click to switch back to interpreted.">⚡comp</button>`
+      : '');
   div.appendChild(gutter);
 
   const collapsed = collapsedCells.has(cell.cellId);
@@ -72,6 +88,7 @@ function renderCodeCell(cell, cellNum) {
     <button class="run-btn" onclick="runCell(${cell.cellId})" aria-label="Run cell" title="Run cell (${kbd('shift', 'enter')})"><svg class="icon-svg small"><use href="#i-play"/></svg> run</button>
     <button class="clear-btn" onclick="clearCellOutput(${cell.cellId})" aria-label="Clear output" title="Clear output"><svg class="icon-svg small"><use href="#i-circle-slash"/></svg></button>
     ${cell.cellLang !== 'Python' ? `<button class="export-btn" onclick="exportPipeline(${cell.cellId}, 'haskell')" aria-label="Export pipeline ending here" title="Export pipeline ending here (.hs)"><svg class="icon-svg small"><use href="#i-download"/></svg></button>` : ''}
+    ${cell.cellLang !== 'Python' && !compiled ? `<button class="compile-mode-btn" onclick="toggleCellCompile(${cell.cellId})" aria-label="Compile this cell" title="Compile this cell to native code (-O2)">⚡</button>` : ''}
     <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell" title="Delete cell"><svg class="icon-svg small"><use href="#i-trash"/></svg></button>`;
   div.appendChild(actions);
 
@@ -103,7 +120,7 @@ function renderCodeCell(cell, cellNum) {
     const cm = CodeMirror(editorDiv, {
       value: cell.cellSource,
       mode: cell.cellLang === 'Python' ? 'python' : 'haskell',
-      theme: currentTheme() === 'light' ? 'idea' : 'nord',
+      theme: cmTheme(),
       lineNumbers: false,
       viewportMargin: Infinity,
       inputStyle: window.matchMedia('(pointer: coarse)').matches ? 'contenteditable' : 'textarea',

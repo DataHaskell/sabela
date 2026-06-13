@@ -15,12 +15,16 @@ module Hub.Share (
     ShareStore,
     newShareStore,
     publishShare,
+    writeShareSource,
     lookupShareHtml,
+    lookupShareSource,
     listShares,
+    listAllShares,
     deleteShare,
 
     -- * Pure helpers (exported for testing)
     validSlug,
+    sanitizeTitle,
     scrubSecrets,
     shareHeaders,
 ) where
@@ -28,7 +32,6 @@ module Hub.Share (
 import Control.Concurrent.STM
 import Control.Monad (forM)
 import qualified Data.ByteString as BS
-import Data.Char (isDigit)
 import Data.List (find)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -45,16 +48,22 @@ import System.Directory (
  )
 import System.FilePath ((</>))
 
-import Hub.Types (ExportMode, exportModeText, parseExportMode)
+import Hub.Meta (parseMeta, sanitizeLine, writeMetaLine)
+import Hub.Types (ExportMode, exportModeText, isLowerHex, parseExportMode)
 
 data Share = Share
     { shareSlug :: Text
     , shareOwner :: Text
     , shareMode :: ExportMode
     , shareCreatedAt :: Text
+    , shareTitle :: Text
     }
     deriving (Eq, Show)
 
+{- | Per-share dirs + a 'TVar' cache. The disk write and the cache update are
+two separate steps (fine here: each slug has its own dir) — do NOT copy this
+pattern for a shared file; serialize writers instead (cf. the gallery store).
+-}
 data ShareStore = ShareStore
     { ssBaseDir :: FilePath
     , ssCache :: TVar (Map Text Share)
@@ -89,11 +98,36 @@ lookupShareHtml store slug
         e <- doesFileExist f
         if e then Just <$> BS.readFile f else pure Nothing
 
+{- | Store the notebook's secret-scrubbed source markdown beside the export,
+enabling Download/Fork. A legacy share with no @source.md@ is simply not
+forkable/downloadable.
+-}
+writeShareSource :: ShareStore -> Text -> Text -> IO ()
+writeShareSource store slug src
+    | not (validSlug slug) = pure ()
+    | otherwise = do
+        let dir = ssBaseDir store </> T.unpack slug
+        createDirectoryIfMissing True dir
+        BS.writeFile (dir </> "source.md") (TE.encodeUtf8 src)
+
+-- | The stored source markdown for a slug (slug re-validated), or 'Nothing'.
+lookupShareSource :: ShareStore -> Text -> IO (Maybe BS.ByteString)
+lookupShareSource store slug
+    | not (validSlug slug) = pure Nothing
+    | otherwise = do
+        let f = ssBaseDir store </> T.unpack slug </> "source.md"
+        e <- doesFileExist f
+        if e then Just <$> BS.readFile f else pure Nothing
+
 -- | Shares owned by the given user.
 listShares :: ShareStore -> Text -> IO [Share]
 listShares store owner = do
     m <- readTVarIO (ssCache store)
     pure [s | s <- Map.elems m, shareOwner s == owner]
+
+-- | Every share regardless of owner (the admin curation view).
+listAllShares :: ShareStore -> IO [Share]
+listAllShares store = Map.elems <$> readTVarIO (ssCache store)
 
 {- | Delete a share if it belongs to @owner@. Returns 'True' if removed,
 'False' if missing or owned by someone else.
@@ -119,9 +153,16 @@ deleteShare store owner slug
 @\/s\/<slug>@ - no @\/@, @.@, or @..@ can pass.
 -}
 validSlug :: Text -> Bool
-validSlug s = not (T.null s) && T.all isHex s
-  where
-    isHex c = isDigit c || (c >= 'a' && c <= 'f')
+validSlug = isLowerHex
+
+{- | Titles are free text destined for a meta line and HTML cards: collapse
+newlines (via 'sanitizeLine'), cap the length, and default a blank title to
+@\"Untitled\"@ so a card never renders empty.
+-}
+sanitizeTitle :: Text -> Text
+sanitizeTitle t =
+    let cleaned = T.take 200 (sanitizeLine t)
+     in if T.null (T.strip cleaned) then "Untitled" else cleaned
 
 {- | Best-effort guard: refuse to publish a snapshot that appears to contain a
 credential, so a notebook output can't leak a key into a public page. 'Just' a
@@ -165,11 +206,16 @@ shareHeaders =
 metaText :: Share -> Text
 metaText s =
     T.unlines
-        [ "owner=" <> shareOwner s
-        , "mode=" <> exportModeText (shareMode s)
-        , "createdAt=" <> shareCreatedAt s
+        [ writeMetaLine "owner" (shareOwner s)
+        , writeMetaLine "mode" (exportModeText (shareMode s))
+        , writeMetaLine "createdAt" (shareCreatedAt s)
+        , writeMetaLine "title" (sanitizeTitle (shareTitle s))
         ]
 
+{- | Load one share's meta. The title enters via 'pure' with a default, never
+a bare @get@: a legacy 3-key meta must load (as @\"Untitled\"@), not silently
+drop the share from the cache at startup.
+-}
 loadShare :: FilePath -> Text -> IO (Maybe Share)
 loadShare baseDir slug = do
     let metaF = baseDir </> T.unpack slug </> "meta"
@@ -177,16 +223,12 @@ loadShare baseDir slug = do
     if not e
         then pure Nothing
         else do
-            txt <- TE.decodeUtf8 <$> BS.readFile metaF
-            let kv =
-                    [ (k, T.drop 1 v)
-                    | line <- T.lines txt
-                    , let (k, v) = T.breakOn "=" line
-                    , not (T.null v)
-                    ]
-                get k = lookup k kv
+            txt <- TE.decodeUtf8Lenient <$> BS.readFile metaF
+            let get k = lookup k (parseMeta txt)
+                title = maybe "Untitled" sanitizeTitle (get "title")
             pure $
                 Share slug
                     <$> get "owner"
                     <*> (get "mode" >>= parseExportMode)
                     <*> get "createdAt"
+                    <*> pure title

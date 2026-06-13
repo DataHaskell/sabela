@@ -73,14 +73,14 @@ execCellWith app cell backend = do
     result <- try (ST.sbRunBlockStreaming backend ghci onLine)
     case result of
         Left (e :: SomeException) -> do
-            handleKernelCrash app ("Kernel crashed: " <> T.pack (show e))
+            handleKernelCrash app backend ("Kernel crashed: " <> T.pack (show e))
             pure
                 (RunResult (cellId cell) [] (Just ("Kernel crashed: " <> T.pack (show e))), [])
         Right (rawOut, rawErr) -> do
             storeBridgeExports app rawOut
             (rr, errs) <- parseCellResult (cellId cell) rawOut rawErr
             when (isReplCrash rawErr) $
-                handleKernelCrash app rawErr
+                handleKernelCrash app backend rawErr
             pure (rr, errs)
 
 isReplCrash :: Text -> Bool
@@ -112,8 +112,16 @@ parseCellResult cid rawOut rawErr = do
         actualErr = classifyError errs rawErr
     pure (RunResult cid outputs actualErr, errs)
 
+{- | Decide whether raw stderr counts as a cell failure. Template Haskell
+chatter and linker noise (macOS @ld: warning:@ lines emitted when GHCi
+links native code) are harmless and never flag the cell.
+-}
 classifyError :: [CellError] -> Text -> Maybe Text
 classifyError errs rawErr
     | null errs && isTemplateHaskellOutput rawErr = Nothing
-    | T.null rawErr = Nothing
-    | otherwise = Just rawErr
+    | T.null cleaned = Nothing
+    | otherwise = Just cleaned
+  where
+    cleaned =
+        T.strip . T.unlines . filter (not . isLinkerNoise) . T.lines $ rawErr
+    isLinkerNoise l = "ld: warning:" `T.isPrefixOf` T.strip l

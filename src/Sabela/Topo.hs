@@ -5,6 +5,7 @@ module Sabela.Topo (
     topoSort,
     computeTopoOrder,
     selectAffectedTopo,
+    selectAffectedTopoFrom,
     computeAffectedSet,
     reachableFrom,
     reverseDeps,
@@ -170,10 +171,16 @@ included in the topo result; redef-flagged cells are filtered out at
 execution time by 'Reactivity.computeExecutionPlan'.
 -}
 selectAffectedTopo :: Int -> [Cell] -> (TopoResult, M.Map Int [Text])
-selectAffectedTopo editedCid cells =
+selectAffectedTopo editedCid = selectAffectedTopoFrom (S.singleton editedCid)
+
+{- | Multi-root variant: cells transitively downstream of ANY root (roots
+included), as one scoped TopoResult. Used by the stale run-all plan.
+-}
+selectAffectedTopoFrom :: S.Set Int -> [Cell] -> (TopoResult, M.Map Int [Text])
+selectAffectedTopoFrom roots cells =
     let (defMap, redefMap) = buildDefMap cells
         deps = buildDepGraph defMap cells
-        affected = computeAffectedSet editedCid deps
+        affected = reachableFrom roots (reverseDeps deps)
         toSort = filter (\c -> S.member (cellId c) affected) cells
         result = topoSort toSort deps
      in (result, redefMap)

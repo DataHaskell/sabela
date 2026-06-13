@@ -49,7 +49,7 @@ async function showFilePreview(name, path) {
     const cm = CodeMirror(wrapper, {
       value: first.fpContent,
       mode: mode,
-      theme: currentTheme() === 'light' ? 'idea' : 'nord',
+      theme: cmTheme(),
       lineNumbers: true,
       readOnly: !first.fpEof,
       viewportMargin: Infinity,

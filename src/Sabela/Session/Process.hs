@@ -1,11 +1,9 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | Spawn, initialise, and tear down the long-lived GHCi subprocess
-that backs a notebook session. The flow is: 'createGhciProcess' starts
-@cabal repl@ with the right RTS knobs, 'buildSessionState' wires the
-output drains, and 'initializeGhci' silences the prompt and
-synchronises on a first marker so the session is ready to run a cell.
+backing a notebook session: 'newSessionStreaming' starts @cabal repl@
+in its own process group via 'Sabela.Session.Proc', wires the output
+drains, and synchronises on a first marker before any cell runs.
 -}
 module Sabela.Session.Process (
     -- * Lifecycle
@@ -17,66 +15,61 @@ module Sabela.Session.Process (
     -- * Backend adapter
     ghciBackend,
 
-    -- * Building blocks (exposed for tests and the streaming hook)
-    createGhciProcess,
+    -- * Building blocks (exposed for tests)
     ghciArgs,
     rtsGhcOptions,
+    ghciProcessSpec,
     buildSessionState,
     initializeGhci,
+    startupErrorMessage,
     clearGhciPrompt,
-
-    -- * Teardown helpers
     sendQuit,
-    forceKill,
 ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newMVar)
-import Control.Concurrent.STM (newTBQueueIO)
 import Control.Exception (SomeException, try)
+import Control.Monad (void)
 import Data.IORef (newIORef)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Sabela.Session (
     Session (..),
     SessionConfig (..),
-    drainUntilMarkerStreaming,
-    errLoop,
     getMarker,
+    interruptIfBusy,
+    markerText,
     placeMarker,
+    readErrorBuffer,
+    runBlock,
+    runBlockStreaming,
+    sendRaw,
+    sessLines,
+    sessProc,
+    sessStdin,
+ )
+import Sabela.Session.Drain (DrainResult (..), drainUntilMarker)
+import Sabela.Session.Proc (
+    ProcSession (..),
+    destroySession,
+    sessionProcessSpec,
+    withSpawnedSession,
+ )
+import Sabela.Session.Query (
     queryBrowse,
     queryComplete,
     queryDoc,
     queryInfo,
     queryKind,
     queryType,
-    readLoop,
-    runBlock,
-    runBlockStreaming,
-    sendRaw,
  )
+import Sabela.Session.Reader (errLoop)
 import qualified Sabela.SessionTypes as ST
 import System.Environment (lookupEnv)
-import System.Exit (ExitCode)
-import System.IO (
-    BufferMode (LineBuffering),
-    Handle,
-    hClose,
-    hFlush,
-    hPutStrLn,
-    hSetBuffering,
-    hSetEncoding,
-    utf8,
- )
-import System.Process (
-    CreateProcess (cwd, std_err, std_in, std_out),
-    ProcessHandle,
-    StdStream (CreatePipe),
-    createProcess,
-    proc,
-    terminateProcess,
-    waitForProcess,
- )
+import System.FilePath ((</>))
+import System.IO (Handle, hClose, hFlush, hPutStrLn)
+import System.Process (CreateProcess, proc, waitForProcess)
 import System.Timeout (timeout)
 
 newSession :: SessionConfig -> IO Session
@@ -84,41 +77,43 @@ newSession cfg = newSessionStreaming cfg (\_ -> pure ())
 
 newSessionStreaming :: SessionConfig -> (Text -> IO ()) -> IO Session
 newSessionStreaming cfg onStartupLine = do
-    (hIn, hOut, hErr, ph) <- createGhciProcess cfg
-    sess <- buildSessionState cfg hIn hOut hErr ph onStartupLine
-    initializeGhci sess onStartupLine
-    pure sess
+    spec <- ghciProcessSpec cfg
+    withSpawnedSession spec $ \ps -> do
+        sess <- buildSessionState cfg ps onStartupLine
+        initializeGhci sess onStartupLine
+        pure sess
 
-createGhciProcess :: SessionConfig -> IO (Handle, Handle, Handle, ProcessHandle)
-createGhciProcess cfg = do
+-- | The @cabal repl@ spec, in its own process group with piped handles.
+ghciProcessSpec :: SessionConfig -> IO CreateProcess
+ghciProcessSpec cfg = do
     mGhc <- lookupEnv "GHC"
     mCaps <- lookupEnv "SABELA_GHCI_CAPS"
     mHeap <- lookupEnv "SABELA_GHCI_MAXHEAP"
     let compilerArgs = ["--with-compiler=" ++ ghc | ghc <- maybeToList mGhc]
         args = ghciArgs cfg (rtsGhcOptions mCaps mHeap) ++ compilerArgs
-        cp =
-            (proc "cabal" args)
-                { std_in = CreatePipe
-                , std_out = CreatePipe
-                , std_err = CreatePipe
-                , cwd = Just (scWorkDir cfg)
-                }
-    (Just hIn, Just hOut, Just hErr, ph) <- createProcess cp
-    mapM_
-        (\h -> hSetBuffering h LineBuffering >> hSetEncoding h utf8)
-        [hIn, hOut, hErr]
-    pure (hIn, hOut, hErr, ph)
+    pure (sessionProcessSpec (Just (scWorkDir cfg)) (proc "cabal" args))
 
+{- | Repl args. Loaded modules (the compile-mode generated ones) build as
+@-O2@ object code; @-odir@\/@-hidir@ are pinned absolute so the @:cd@ at init
+cannot orphan the cache, and @-fexpose-all-unfoldings@ lets hot functions
+inline across generated module boundaries.
+-}
 ghciArgs :: SessionConfig -> String -> [String]
 ghciArgs cfg rtsOpts =
     [ "repl"
     , "exe:main"
     , "--project-dir=" ++ scProjectDir cfg
     , "-v1"
-    , "--repl-options=-fobject-code -O2"
+    , "--repl-options=-fobject-code -O2 -fexpose-all-unfoldings"
+        ++ " -odir "
+        ++ objDir
+        ++ " -hidir "
+        ++ objDir
     , "--ghc-options=" ++ rtsOpts
     , "-O2"
     ]
+  where
+    objDir = scProjectDir cfg </> "ghci-objs"
 
 {- | GHCi RTS options. @-N@ and the heap limit are pinned from the environment
 so a containerized session honors its CPU/memory caps: a bare @-N@ spins up one
@@ -134,32 +129,25 @@ rtsGhcOptions mCaps mHeap =
 
 buildSessionState ::
     SessionConfig ->
-    Handle ->
-    Handle ->
-    Handle ->
-    ProcessHandle ->
+    ProcSession ->
     (Text -> IO ()) ->
     IO Session
-buildSessionState cfg hIn hOut hErr ph onStderrLine = do
+buildSessionState cfg ps onStderrLine = do
     lock <- newMVar ()
-    lineCh <- newTBQueueIO 256
     errBuf <- newIORef []
     counter <- newIORef 0
     cbRef <- newIORef onStderrLine
-    _ <- forkIO $ readLoop hOut lineCh
-    _ <- forkIO $ errLoop hErr errBuf cbRef
+    busy <- newIORef False
+    _ <- forkIO $ errLoop (psStderr ps) errBuf cbRef
     pure
         Session
-            { sessLock = lock
-            , sessStdin = hIn
-            , sessStdout = hOut
-            , sessStderr = hErr
-            , sessProc = ph
-            , sessLines = lineCh
+            { sessProcSess = ps
+            , sessLock = lock
             , sessErrBuf = errBuf
             , sessCounter = counter
             , sessConfig = cfg
             , sessErrCallback = cbRef
+            , sessBusy = busy
             }
 
 initializeGhci :: Session -> (Text -> IO ()) -> IO ()
@@ -168,8 +156,28 @@ initializeGhci sess onLine = do
     sendRaw sess (":cd " ++ scWorkDir (sessConfig sess))
     mk <- getMarker sess
     placeMarker sess mk
-    _ <- drainUntilMarkerStreaming (sessLines sess) mk onLine
-    pure ()
+    r <- drainUntilMarker (sessLines sess) (markerText mk) onLine
+    case r of
+        DrainOk _ -> pure ()
+        DrainEof _ -> do
+            threadDelay startupErrSettleUs
+            detail <- readErrorBuffer sess
+            ioError (userError (startupErrorMessage detail))
+
+{- | GHCi never reached the first marker: the @cabal repl@ build/configure
+step died. Append the captured stderr (the real cause, e.g. a missing C
+library) so the failure is diagnosable, not an opaque "exited during startup".
+-}
+startupErrorMessage :: Text -> String
+startupErrorMessage detail
+    | T.null (T.strip detail) = base
+    | otherwise = base ++ ":\n" ++ T.unpack (T.strip detail)
+  where
+    base = "GHCi exited during startup"
+
+-- | Brief grace for the stderr drain to flush the build log before we read it.
+startupErrSettleUs :: Int
+startupErrSettleUs = 200000
 
 clearGhciPrompt :: Session -> IO ()
 clearGhciPrompt sess = mapM_ (sendRaw sess) [":set prompt \"\"", ":set prompt-cont \"\""]
@@ -179,26 +187,30 @@ resetSession sess = do
     closeSession sess
     newSession (sessConfig sess)
 
+{- | Polite close: @:quit@, a short grace, then the 'destroySession'
+chokepoint — which also reclaims handles, queue, and registry entry
+when the quit succeeded.
+-}
 closeSession :: Session -> IO ()
-closeSession Session{sessStdin, sessProc} = do
-    sendQuit sessStdin
-    exited <- timeout 5000000 (waitForProcess sessProc)
-    case exited of
-        Just _ -> pure ()
-        Nothing -> forceKill sessProc
+closeSession sess = do
+    _ <- timeout quitWriteGraceUs (sendQuit (sessStdin sess))
+    _ <- timeout quitGraceUs (waitForProcess (sessProc sess))
+    destroySession (sessProcSess sess)
 
+quitGraceUs, quitWriteGraceUs :: Int
+quitGraceUs = 2000000
+quitWriteGraceUs = 1000000
+
+{- | One try around the whole sequence: the enclosing 'timeout' throws
+exactly once, so per-op handlers would swallow it and re-block on flush.
+An aborted close is reclaimed by 'destroySession'.
+-}
 sendQuit :: Handle -> IO ()
-sendQuit h = do
-    _ <- try (hPutStrLn h ":quit") :: IO (Either SomeException ())
-    _ <- try (hFlush h) :: IO (Either SomeException ())
-    _ <- try (hClose h) :: IO (Either SomeException ())
-    pure ()
-
-forceKill :: ProcessHandle -> IO ()
-forceKill ph = do
-    _ <- try (terminateProcess ph) :: IO (Either SomeException ())
-    _ <- try (waitForProcess ph) :: IO (Either SomeException ExitCode)
-    pure ()
+sendQuit h =
+    void
+        ( try (hPutStrLn h ":quit" >> hFlush h >> hClose h) ::
+            IO (Either SomeException ())
+        )
 
 {- | Adapter exposing the live GHCi 'Session' through the generic
 'ST.SessionBackend' record-of-functions interface.
@@ -206,10 +218,12 @@ forceKill ph = do
 ghciBackend :: Session -> ST.SessionBackend
 ghciBackend sess =
     ST.SessionBackend
-        { ST.sbRunBlock = runBlock sess
+        { ST.sbSessionId = psId (sessProcSess sess)
+        , ST.sbRunBlock = runBlock sess
         , ST.sbRunBlockStreaming = runBlockStreaming sess
         , ST.sbClose = closeSession sess
         , ST.sbReset = ghciBackend <$> resetSession sess
+        , ST.sbInterrupt = interruptIfBusy sess
         , ST.sbQueryComplete = queryComplete sess
         , ST.sbQueryType = queryType sess
         , ST.sbQueryInfo = queryInfo sess

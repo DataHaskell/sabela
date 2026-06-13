@@ -3,18 +3,29 @@
 
 {- | Phase 3a acceptance tests for the static share store: publish/lookup
 round-trip, owner-scoped listing + deletion, slug path-traversal guard,
-secret scrubbing, header hardening, and reload-from-disk.
+secret scrubbing, header hardening, reload-from-disk, titles, and the
+meta-line write chokepoint.
 -}
 module Test.ShareSpec (spec) where
 
 import Control.Exception (SomeException, try)
+import qualified Data.ByteString as BS
 import Data.List (sort)
 import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Hub.Meta (parseMeta, writeMetaLine)
 import Hub.Share
+import Hub.Shares.Api (parsePublishTitle)
 import Hub.Types (ExportMode (..))
-import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
+import System.Directory (
+    createDirectoryIfMissing,
+    getTemporaryDirectory,
+    removeDirectoryRecursive,
+ )
 import System.FilePath ((</>))
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
 
 -- | Run with a fresh store in a wiped temp dir.
 withStore :: (ShareStore -> FilePath -> IO a) -> IO a
@@ -32,6 +43,7 @@ mkShare slug owner =
         , shareOwner = owner
         , shareMode = ExpDashboard
         , shareCreatedAt = "2026-05-27T00:00:00Z"
+        , shareTitle = "My Notebook"
         }
 
 spec :: Spec
@@ -94,3 +106,87 @@ spec = describe "Hub.Share" $ do
             lookupShareHtml store2 "aa11" `shouldReturn` Just "<h1>persisted</h1>"
             owned <- listShares store2 "alice@x"
             map shareSlug owned `shouldBe` ["aa11"]
+
+    describe "titles (gallery step 1)" $ do
+        it "round-trips the title through publish + reload" $
+            withStore $ \store dir -> do
+                publishShare
+                    store
+                    (mkShare "aa11" "alice@x"){shareTitle = "Iris, end to end"}
+                    "x"
+                store2 <- newShareStore dir
+                owned <- listShares store2 "alice@x"
+                map shareTitle owned `shouldBe` ["Iris, end to end"]
+
+        it "loads a legacy 3-key meta with the title defaulted, not dropped" $
+            withStore $ \_ dir -> do
+                createDirectoryIfMissing True (dir </> "ee55")
+                BS.writeFile
+                    (dir </> "ee55" </> "meta")
+                    ( TE.encodeUtf8
+                        "owner=old@x\nmode=dashboard\ncreatedAt=2026-01-01T00:00:00Z\n"
+                    )
+                store2 <- newShareStore dir
+                owned <- listShares store2 "old@x"
+                map shareTitle owned `shouldBe` ["Untitled"]
+
+        it "a newline-bearing title cannot forge a meta line" $
+            withStore $ \store dir -> do
+                publishShare
+                    store
+                    (mkShare "aa11" "alice@x"){shareTitle = "evil\nowner=mallory@x"}
+                    "x"
+                store2 <- newShareStore dir
+                owned <- listShares store2 "alice@x"
+                map shareOwner owned `shouldBe` ["alice@x"]
+                listShares store2 "mallory@x" `shouldReturn` []
+
+        it "sanitizeTitle strips newlines and caps the length" $ do
+            sanitizeTitle "a\r\nb\nc" `shouldSatisfy` (not . T.any (`elem` ['\r', '\n']))
+            T.length (sanitizeTitle (T.replicate 500 "x")) `shouldBe` 200
+            T.length (sanitizeTitle (T.replicate 200 "x")) `shouldBe` 200
+
+        it "sanitizeTitle defaults a blank title to Untitled" $ do
+            sanitizeTitle "" `shouldBe` "Untitled"
+            sanitizeTitle "   " `shouldBe` "Untitled"
+
+        it "an explicitly empty stored title loads as Untitled, not empty" $
+            withStore $ \store dir -> do
+                publishShare
+                    store
+                    (mkShare "aa11" "alice@x"){shareTitle = ""}
+                    "x"
+                store2 <- newShareStore dir
+                owned <- listShares store2 "alice@x"
+                map shareTitle owned `shouldBe` ["Untitled"]
+
+    describe "listAllShares" $
+        it "returns every owner's shares (the admin view)" $
+            withStore $ \store _ -> do
+                publishShare store (mkShare "aa11" "alice@x") "a"
+                publishShare store (mkShare "cc33" "bob@x") "c"
+                allShares <- listAllShares store
+                sort (map shareSlug allShares) `shouldBe` ["aa11", "cc33"]
+
+    describe "Hub.Meta (the one way a key=value line is written)" $ do
+        prop "round-trips any value with newlines collapsed, never forging a key" $
+            \(s :: String) ->
+                let v = T.pack s
+                    parsed = parseMeta (writeMetaLine "title" v)
+                 in map fst parsed == ["title"]
+                        && not (any (T.any (`elem` ['\r', '\n']) . snd) parsed)
+
+        it "preserves values containing '='" $
+            parseMeta (writeMetaLine "title" "a=b=c") `shouldBe` [("title", "a=b=c")]
+
+    describe "parsePublishTitle (publish POST body → title)" $ do
+        it "reads and sanitizes the title field" $
+            parsePublishTitle "{\"title\":\"Iris, end to end\"}"
+                `shouldBe` "Iris, end to end"
+        it "defaults a missing or blank title to Untitled" $ do
+            parsePublishTitle "{}" `shouldBe` "Untitled"
+            parsePublishTitle "{\"title\":\"   \"}" `shouldBe` "Untitled"
+            parsePublishTitle "not json" `shouldBe` "Untitled"
+        it "strips a newline so a title cannot forge a meta line" $
+            parsePublishTitle "{\"title\":\"x\\nowner=mallory\"}"
+                `shouldSatisfy` (not . T.any (`elem` ['\r', '\n']))

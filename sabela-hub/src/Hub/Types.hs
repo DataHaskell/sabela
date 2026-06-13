@@ -20,10 +20,29 @@ module Hub.Types (
     ExportMode (..),
     parseExportMode,
     exportModeText,
+    normalizeEmail,
+    isLowerHex,
 ) where
 
+import Data.Char (isDigit)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time (NominalDiffTime, UTCTime)
+
+{- | The one identity normalization: lowercase + trim, applied at the OAuth
+callback boundary before a 'UserId' is minted and to every allowlist / role
+comparison — a casing mismatch must never yield a second identity.
+-}
+normalizeEmail :: Text -> Text
+normalizeEmail = T.toLower . T.strip
+
+{- | Non-empty lowercase hex (the 'Hub.OAuth.generateRandomToken' /
+'emailHash' charset). The path-traversal guard shared by share slugs and
+user-dir keys.
+-}
+isLowerHex :: Text -> Bool
+isLowerHex t =
+    not (T.null t) && T.all (\c -> isDigit c || (c >= 'a' && c <= 'f')) t
 
 {- | Which static export a share captures. Parsed at the @\?mode=@ query
 boundary and threaded as a typed value through 'publishShare' /
@@ -176,6 +195,22 @@ data HubConfig = HubConfig
     , hcSharesDir :: Text
     {- ^ Host directory for published static shares (Phase 3a); default
     @\/mnt\/sabela\/shares@.
+    -}
+    , hcAllowlistFile :: Maybe FilePath
+    {- ^ Signup allowlist file (@HUB_ALLOWLIST_FILE@), re-read per login.
+    'Nothing' = open signup (dev mode; @app/Main.hs@ warns at startup).
+    -}
+    , hcUsersDir :: Text
+    -- ^ Host directory for the user-role store (@HUB_USERS_DIR@).
+    , hcGalleryDir :: Text
+    -- ^ Host directory for the curated gallery index (@HUB_GALLERY_DIR@).
+    , hcBootstrapAdmin :: Maybe Text
+    {- ^ Email ensured-admin at hydrate (@HUB_BOOTSTRAP_ADMIN@); without it and
+    with no admin on disk the admin surface is inert.
+    -}
+    , hcAdminContact :: Maybe Text
+    {- ^ Public request-access address (@HUB_ADMIN_CONTACT@); the gallery footer
+    CTA and the share panel @mailto:@ degrade gracefully when unset.
     -}
     }
     deriving (Show)

@@ -20,77 +20,194 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
     <script>
 // Theme bootstrap — runs before any rendering to avoid FOUC.
+// Default palette is the original blue (Original Dark / Light by OS).
 (() => {
+  const KNOWN = ['warm', 'nord', 'nord-light', 'nord-aurora', 'nord-ember', 'vscode'];
   const stored = localStorage.getItem('sabela-theme');
-  const theme =
-    stored === 'light' || stored === 'dark'
-      ? stored
-      : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
-        ? 'light'
-        : 'dark';
+  let theme;
+  if (KNOWN.includes(stored)) {
+    theme = stored;
+  } else {
+    // Default to the shared Warm Paper palette for everyone.
+    theme = 'warm';
+  }
   document.documentElement.dataset.theme = theme;
   window.__sabelaThemePinned = !!stored;
 })();
     </script>
     <style>
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-
-  /* dark — Catppuccin Mocha (default) */
-  --bg: #1e1e2e;
-  --bg-cell: #262637;
-  --bg-output: #1a1a28;
-  --bg-sidebar: #1a1a28;
-  --bg-panel: #181825;
-  --fg: #cdd6f4;
-  --fg-dim: #9399b2;
-  --fg-bright: #f5f5ff;
-  --accent: #89b4fa;
-  --accent-rgb: 137, 180, 250;
-  --accent-dim: #45475a;
-  --green: #a6e3a1;
-  --red: #f38ba8;
-  --yellow: #f9e2af;
-  --peach: #fab387;
-  --mauve: #cba6f7;
-  --border: #313244;
-  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --error-tooltip-bg: #2a1a1e;
-  --output-html-bg: #ffffff;
-  --output-html-fg: #1e1e2e;
+  --font-display: 'Fraunces', Georgia, serif;
   --radius: 8px;
   --sidebar-w: 240px;
   --panel-w: 320px;
-}
-:root[data-theme='light'] {
-  /* light — clean white with cool accent */
-  --bg: #ffffff;
-  --bg-cell: #ffffff;
-  --bg-output: #fafafa;
-  --bg-sidebar: #fafafa;
-  --bg-panel: #f5f5f5;
-  --fg: #0a0a0a;
-  --fg-dim: #71717a;
-  --fg-bright: #000000;
-  --accent: #0066ff;
-  --accent-rgb: 0, 102, 255;
-  --accent-dim: #e4e4e7;
-  --green: #16a34a;
-  --red: #dc2626;
-  --yellow: #ca8a04;
-  --peach: #ea580c;
-  --mauve: #7c3aed;
-  --border: #e4e4e7;
-  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.1);
-  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --error-tooltip-bg: #fef2f2;
+
+  /* default: Nord — Polar Night + Frost (frost-cyan accent) */
+  --bg: #2e3440;
+  --bg-cell: #3b4252;
+  --bg-output: #353c4a;
+  --bg-sidebar: #2b303b;
+  --bg-panel: #272c36;
+  --fg: #f7f9fc;
+  --fg-dim: #7b8696;
+  --fg-bright: #ffffff;
+  --accent: #88c0d0;
+  --accent-rgb: 136, 192, 208;
+  --accent-soft: #b8dde6;
+  --accent-dim: #434c5e;
+  --green: #a3be8c;
+  --red: #bf616a;
+  --yellow: #ebcb8b;
+  --peach: #d08770;
+  --mauve: #b48ead;
+  --border: #434c5e;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --error-tooltip-bg: #3b2b30;
   --output-html-bg: #ffffff;
-  --output-html-fg: #0a0a0a;
+  --output-html-fg: #2e3440;
 }
+
+/* Nord Light — soft near-white reading surface, cool grey chrome */
+:root[data-theme='nord-light'] {
+  --bg: #f8fafc;
+  --bg-cell: #fcfdfe;
+  --bg-output: #f1f4f8;
+  --bg-sidebar: #eef1f7;
+  --bg-panel: #eef1f7;
+  --fg: #2e3440;
+  --fg-dim: #4c566a;
+  --fg-bright: #2e3440;
+  --accent: #5e81ac;
+  --accent-rgb: 94, 129, 172;
+  --accent-soft: #d2ddec;
+  --accent-dim: #dde3ec;
+  --green: #5b8a5a;
+  --red: #b5535c;
+  --yellow: #b58a3c;
+  --peach: #cf7a55;
+  --mauve: #9d6f96;
+  --border: #e2e7f0;
+  --shadow-strong: 0 8px 32px rgba(46, 52, 64, 0.12);
+  --shadow-soft: 0 1px 3px rgba(46, 52, 64, 0.08);
+  --error-tooltip-bg: #f7e4e6;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
+/* Aurora Purple — Polar Night, Nord aurora purple accent */
+:root[data-theme='nord-aurora'] {
+  --bg: #2e3440;
+  --bg-cell: #3b4252;
+  --bg-output: #353c4a;
+  --bg-sidebar: #2b303b;
+  --bg-panel: #272c36;
+  --fg: #f7f9fc;
+  --fg-dim: #828ca0;
+  --fg-bright: #ffffff;
+  --accent: #b48ead;
+  --accent-rgb: 180, 142, 173;
+  --accent-soft: #ddc7d8;
+  --accent-dim: #434c5e;
+  --green: #a3be8c;
+  --red: #bf616a;
+  --yellow: #ebcb8b;
+  --peach: #d08770;
+  --mauve: #b48ead;
+  --border: #434c5e;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --error-tooltip-bg: #3b2b30;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
+/* Aurora Ember — Polar Night, Nord aurora orange accent */
+:root[data-theme='nord-ember'] {
+  --bg: #2e3440;
+  --bg-cell: #3b4252;
+  --bg-output: #353c4a;
+  --bg-sidebar: #2b303b;
+  --bg-panel: #272c36;
+  --fg: #f7f9fc;
+  --fg-dim: #828ca0;
+  --fg-bright: #ffffff;
+  --accent: #d08770;
+  --accent-rgb: 208, 135, 112;
+  --accent-soft: #f0d2c4;
+  --accent-dim: #434c5e;
+  --green: #a3be8c;
+  --red: #bf616a;
+  --yellow: #ebcb8b;
+  --peach: #d08770;
+  --mauve: #b48ead;
+  --border: #434c5e;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --error-tooltip-bg: #3b2b30;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
+/* VS Code Dark+ — the familiar editor palette (#1e1e1e ground, blue accent). */
+:root[data-theme='vscode'] {
+  --bg: #1e1e1e;
+  --bg-cell: #1e1e1e;
+  --bg-output: #181818;
+  --bg-sidebar: #252526;
+  --bg-panel: #252526;
+  --fg: #d4d4d4;
+  --fg-dim: #858585;
+  --fg-bright: #ffffff;
+  --accent: #3794ff;
+  --accent-rgb: 55, 148, 255;
+  --accent-soft: #6cb0ff;
+  --accent-dim: #094771;
+  --green: #6a9955;
+  --red: #f14c4c;
+  --yellow: #dcdcaa;
+  --peach: #ce9178;
+  --mauve: #c586c0;
+  --border: #333333;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --error-tooltip-bg: #5a1d1d;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #1e1e1e;
+}
+
+/* Warm Paper — warm light ground, Nord ink, terracotta + Aurora accents
+   (the shared gallery identity; the default). */
+:root[data-theme='warm'] {
+  --bg: #f7f3ec;
+  --bg-cell: #ffffff;
+  --bg-output: #f0eadf;
+  --bg-sidebar: #f0eadf;
+  --bg-panel: #f0eadf;
+  --fg: #2e3440;
+  --fg-dim: #6f6a5d;
+  --fg-bright: #1c2027;
+  --accent: #c2674a;
+  --accent-rgb: 194, 103, 74;
+  --accent-soft: #f0d8cb;
+  --accent-dim: #e7ddcf;
+  --green: #6f9355;
+  --red: #bf616a;
+  --yellow: #bb842c;
+  --peach: #c2674a;
+  --mauve: #9a6f96;
+  --border: #e7ddcf;
+  --shadow-strong: 0 8px 32px rgba(70, 52, 34, 0.14);
+  --shadow-soft: 0 1px 3px rgba(70, 52, 34, 0.07);
+  --error-tooltip-bg: #fbeae4;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -122,8 +239,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-/* Faint film grain in the reading column (dark theme only — keeps the
-     warm ground from looking flat without muddying the cream paper). */
+/* Faint paper grain on the reading surface (Nord Light only — gives the
+     warm paper some tooth without muddying it). */
 body::before {
   content: '';
   position: fixed;
@@ -131,14 +248,12 @@ body::before {
   z-index: 0;
   pointer-events: none;
   display: none;
-  opacity: 0.45;
-  mix-blend-mode: soft-light;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
 }
-:root[data-theme='dark'] body::before {
-  display: block;
-}
+/* (paper grain intentionally off — Nord Light is a clean near-white) */
 .toolbar,
 .main-layout {
   position: relative;
@@ -148,6 +263,63 @@ body::before {
   background: rgba(var(--accent-rgb), 0.28);
   color: var(--fg-bright);
 }
+/* ── Theme picker menu ─────────────────────── */
+.theme-menu {
+  position: fixed;
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--bg-cell);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-strong);
+}
+.theme-menu.open {
+  display: flex;
+}
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-menu-item:hover {
+  background: var(--bg-panel);
+}
+.theme-menu-item.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+.theme-menu-item .sw {
+  width: 26px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.theme-menu-item .sw i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.theme-menu-item.active .nm::after {
+  content: ' ✓';
+  color: var(--accent);
+}
+
 /* ── Toolbar ───────────────────────────────── */
 .toolbar {
   flex-shrink: 0;
@@ -202,7 +374,10 @@ body::before {
   padding: 0 14px;
 }
 .toolbar .primary:hover {
-  opacity: 0.9;
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: #000;
+  opacity: 1;
 }
 .toolbar .sep {
   width: 1px;
@@ -1051,23 +1226,29 @@ body::before {
 }
 .cell.prose .prose-rendered {
   max-width: 720px;
+  color: var(--fg-bright);
 }
 .cell.prose .prose-rendered h1 {
-  font-size: 1.8em;
+  font-family: var(--font-display);
+  font-size: 1.9em;
   font-weight: 600;
+  letter-spacing: -0.015em;
   color: var(--fg-bright);
   margin: 0.6em 0 0.3em;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 .cell.prose .prose-rendered h2 {
-  font-size: 1.4em;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.45em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--fg-bright);
   margin: 0.5em 0 0.2em;
 }
 .cell.prose .prose-rendered h3 {
-  font-size: 1.15em;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.18em;
+  font-weight: 500;
   color: var(--fg-bright);
   margin: 0.4em 0 0.2em;
 }
@@ -1210,6 +1391,22 @@ body::before {
   background: var(--yellow);
   opacity: 0.85;
 }
+/* Compile-mode chip: shown when the cell carries a `-- compile` directive. */
+.cell.code .cell-gutter .compile-tag {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  border: none;
+  cursor: pointer;
+}
+.cell.code .cell-gutter .compile-tag:hover {
+  opacity: 0.85;
+}
 .cell.code .CodeMirror {
   height: auto;
   font-family: var(--font-mono);
@@ -1298,6 +1495,21 @@ body::before {
 .cell-output.error {
   color: var(--red);
 }
+/* Stale output while a cell re-runs (marimo-style). The 200ms delay means
+   fast re-runs finish before the dim ever paints. */
+.cell.code > .cell-output {
+  transition:
+    opacity 120ms ease,
+    filter 120ms ease;
+}
+.cell.code.running > .cell-output {
+  opacity: 0.4;
+  filter: grayscale(50%);
+  transition:
+    opacity 300ms ease,
+    filter 300ms ease;
+  transition-delay: 200ms;
+}
 .cell-stream {
   border-top: 1px solid var(--yellow);
   padding: 8px 14px;
@@ -1376,6 +1588,9 @@ body::before {
 .cell-output.mime-markdown h1,
 .cell-output.mime-markdown h2,
 .cell-output.mime-markdown h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--fg-bright);
 }
 .cell-output.mime-markdown p {
@@ -1533,6 +1748,92 @@ input:focus-visible {
   border-top: 1px solid var(--border);
   padding-top: 8px;
   white-space: pre-wrap;
+}
+
+/* Lift the CodeMirror "nord" theme's lowest-contrast tokens (base text,
+   comments, gutter) so dark-theme code cells read crisp rather than cloudy.
+   Shared by every dark Nord theme, which all use the 'nord' CM theme. */
+.cm-s-nord.CodeMirror {
+  color: #ffffff;
+}
+.cm-s-nord .cm-variable,
+.cm-s-nord .cm-punctuation,
+.cm-s-nord .cm-bracket {
+  color: #ffffff;
+}
+.cm-s-nord .cm-comment {
+  color: #8b96ab;
+}
+.cm-s-nord .CodeMirror-linenumber {
+  color: #6b768f;
+}
+.cm-s-nord .cm-operator {
+  color: #c8d2e0;
+}
+
+/* VS Code Dark+ CodeMirror theme. No CDN theme ships 'vscode'; CodeMirror only
+   adds the .cm-s-vscode class, so the full theme (chrome + token hues) lives
+   here, matching the [data-theme='vscode'] palette. */
+.cm-s-vscode.CodeMirror {
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+.cm-s-vscode .CodeMirror-gutters {
+  background: #1e1e1e;
+  border: none;
+}
+.cm-s-vscode .CodeMirror-linenumber {
+  color: #858585;
+}
+.cm-s-vscode .CodeMirror-cursor {
+  border-left: 1px solid #aeafad;
+}
+.cm-s-vscode div.CodeMirror-selected,
+.cm-s-vscode.CodeMirror-focused div.CodeMirror-selected {
+  background: #264f78;
+}
+.cm-s-vscode .CodeMirror-activeline-background {
+  background: #282828;
+}
+.cm-s-vscode .CodeMirror-matchingbracket {
+  color: #d4d4d4;
+  outline: 1px solid #4ec9b0;
+}
+.cm-s-vscode .cm-comment {
+  color: #6a9955;
+}
+.cm-s-vscode .cm-keyword,
+.cm-s-vscode .cm-atom,
+.cm-s-vscode .cm-tag,
+.cm-s-vscode .cm-meta {
+  color: #569cd6;
+}
+.cm-s-vscode .cm-def {
+  color: #dcdcaa;
+}
+.cm-s-vscode .cm-variable,
+.cm-s-vscode .cm-property,
+.cm-s-vscode .cm-attribute {
+  color: #9cdcfe;
+}
+.cm-s-vscode .cm-variable-2,
+.cm-s-vscode .cm-variable-3,
+.cm-s-vscode .cm-type,
+.cm-s-vscode .cm-qualifier,
+.cm-s-vscode .cm-builtin {
+  color: #4ec9b0;
+}
+.cm-s-vscode .cm-number {
+  color: #b5cea8;
+}
+.cm-s-vscode .cm-string,
+.cm-s-vscode .cm-string-2 {
+  color: #ce9178;
+}
+.cm-s-vscode .cm-operator,
+.cm-s-vscode .cm-bracket,
+.cm-s-vscode .cm-punctuation {
+  color: #d4d4d4;
 }
 /* ── File context menu ──────────────────────── */
 .ctx-menu {
@@ -2601,6 +2902,16 @@ button.palette-trigger kbd {
         <svg class="icon-svg" style="vertical-align: -2px"><use href="#i-play" /></svg>
         <span class="btn-label">Run all</span>
       </button>
+      <button
+        class="icon-btn"
+        id="btn-stop"
+        style="display: none"
+        onclick="interruptKernel()"
+        title="Stop running cell"
+        aria-label="Stop running cell"
+      >
+        <svg class="icon-svg"><use href="#i-square" /></svg>
+      </button>
       <button class="palette-trigger" id="btn-palette" onclick="openPalette()" aria-label="Open command palette">
         <svg class="icon-svg"><use href="#i-search" /></svg>
         <span class="palette-trigger-label">Search commands…</span>
@@ -2612,13 +2923,7 @@ button.palette-trigger kbd {
         </button>
         <div class="toolbar-dropdown-menu" id="overflow-menu-list"></div>
       </div>
-      <button
-        class="icon-btn"
-        id="theme-toggle"
-        onclick="toggleTheme()"
-        title="Toggle theme"
-        aria-label="Toggle light/dark theme"
-      >
+      <button class="icon-btn" id="theme-toggle" onclick="openThemePicker()" title="Theme" aria-label="Choose a theme">
         <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
       </button>
       <span class="save-indicator" id="save-indicator">saved ✓</span>
@@ -2793,7 +3098,7 @@ let unsavedChanges = false;
 // clean cells let the server-supplied content win, so AI-driven edits to
 // cells the user didn't touch show up immediately.
 const dirtyCells = new Set();
-const AUTOSAVE_INTERVAL_MS = 30000;
+const AUTOSAVE_INTERVAL_MS = 10000;
 // ── API helpers ──────────────────────────────────────────────────
 async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -2909,6 +3214,14 @@ function handleSSE(ev) {
       setCellRunning(ev.cellId, true);
       clearPartialOutput(ev.cellId);
       break;
+    case 'cellCompiling': {
+      setCellRunning(ev.cellId, true);
+      clearPartialOutput(ev.cellId);
+      const cEl = document.querySelector(`.cell[data-id="${ev.cellId}"]`);
+      if (cEl) cEl.classList.add('compiling');
+      setStatus(`Compiling cell ${ev.cellId}...`, 'running');
+      break;
+    }
     case 'cellPartialOutput':
       appendPartialOutput(ev.cellId, ev.line);
       break;
@@ -2924,6 +3237,7 @@ function handleSSE(ev) {
       document
         .querySelectorAll('.cell.code.running')
         .forEach((el) => el.classList.remove('running'));
+      updateStopButton();
       break;
     case 'sessionStatus':
       setStatus(ev.message, 'running');
@@ -3055,7 +3369,16 @@ function setCellRunning(cellId, running) {
     // TODO: mchavinda: Add a spinner here.
   } else {
     el.classList.remove('running');
+    el.classList.remove('compiling');
   }
+  updateStopButton();
+}
+
+// Show the toolbar stop button only while at least one cell is running.
+function updateStopButton() {
+  const btn = document.getElementById('btn-stop');
+  if (!btn) return;
+  btn.style.display = document.querySelector('.cell.running') ? '' : 'none';
 }
 
 // The "respond" ripple: replay it cleanly even if a cell re-fires mid-animation.
@@ -3208,6 +3531,9 @@ function mergeOutputs(outputs) {
   return merged;
 }
 
+// Reconciles outputs in place: blocks are reused by (index, mime) and skipped when
+// `_rendered` content is unchanged, so html iframes survive re-runs — theme reapply,
+// the widget bridge, and _activeTextInput all rely on iframe identity persisting.
 function updateCellOutput(cellId, outputs, error) {
   const el = document.querySelector(`.cell[data-id="${cellId}"]`);
   if (!el) return;
@@ -3239,24 +3565,51 @@ function updateCellOutput(cellId, outputs, error) {
     out.className = 'cell-output';
     el.appendChild(out);
   }
-  out.className = 'cell-output';
+
+  // Pin the wrapper's height so nothing collapses mid-swap; released after
+  // the new content has rendered (covers iframe onload height settling).
+  if (out.offsetHeight) out.style.minHeight = out.offsetHeight + 'px';
 
   if (error && !hasOutput) {
-    out.innerHTML = '';
+    if (out._errText !== error) {
+      out.textContent = error;
+      out._errText = error;
+    }
     out.className = 'cell-output error';
-    out.textContent = error;
+    releaseHeightSoon(out);
     return;
   }
+  out._errText = null;
+  if (out.classList.contains('error')) out.textContent = '';
+  out.className = 'cell-output';
 
-  // Clear previous content (including old errors) before rendering new output
-  out.innerHTML = '';
   const items = mergeOutputs(outputs).filter((i) => i.oiOutput && i.oiOutput.trim());
+  const trail = out.querySelector('.output-error-trail');
+  const blocks = [...out.children].filter((c) => !c.classList.contains('output-error-trail'));
   for (let i = 0; i < items.length; i++) {
-    const block = document.createElement('div');
-    block.dataset.cellId = cellId;
-    out.appendChild(block);
-    renderMimeOutput(block, items[i].oiOutput, items[i].oiMime);
+    const item = items[i];
+    let block = blocks[i];
+    if (block && block._mime === item.oiMime && block._rendered === item.oiOutput) {
+      // Identical content: zero work; iframe focus was never lost, consume the marker
+      if (item.oiMime === 'text/html' && _activeTextInput?.cellId === String(cellId)) {
+        _activeTextInput = null;
+      }
+      continue;
+    }
+    if (block) {
+      // Mime changed: drop stale content (e.g. an old iframe) before re-render
+      if (block._mime !== item.oiMime) block.innerHTML = '';
+    } else {
+      block = document.createElement('div');
+      block.dataset.cellId = cellId;
+      out.insertBefore(block, trail);
+    }
+    block._mime = item.oiMime;
+    block._rendered = item.oiOutput;
+    renderMimeOutput(block, item.oiOutput, item.oiMime);
   }
+  for (let j = items.length; j < blocks.length; j++) blocks[j].remove();
+
   let errDiv = out.querySelector('.output-error-trail');
   if (error && error.trim()) {
     if (!errDiv) {
@@ -3268,6 +3621,16 @@ function updateCellOutput(cellId, outputs, error) {
   } else {
     if (errDiv) errDiv.remove();
   }
+  releaseHeightSoon(out);
+}
+
+// Releases the minHeight pin once the swapped-in content has painted; if the
+// new output is shorter the wrapper settles in one step after the release.
+function releaseHeightSoon(out) {
+  clearTimeout(out._minHRelease);
+  out._minHRelease = setTimeout(() => {
+    out.style.minHeight = '';
+  }, 350);
 }
 
 function clearPartialOutput(cellId) {
@@ -3387,11 +3750,15 @@ function renderOutputDiv(cell) {
   if (cell.cellError && !hasOutput) {
     out.className = 'cell-output error';
     out.textContent = cell.cellError;
+    out._errText = cell.cellError;
     return out;
   }
   for (const item of mergeOutputs(outputs)) {
     if (!item.oiOutput || !item.oiOutput.trim()) continue;
     const block = document.createElement('div');
+    block.dataset.cellId = cell.cellId;
+    block._mime = item.oiMime;
+    block._rendered = item.oiOutput;
     out.appendChild(block);
     renderMimeOutput(block, item.oiOutput, item.oiMime);
   }
@@ -3603,7 +3970,7 @@ async function showFilePreview(name, path) {
     const cm = CodeMirror(wrapper, {
       value: first.fpContent,
       mode: mode,
-      theme: currentTheme() === 'light' ? 'idea' : 'nord',
+      theme: cmTheme(),
       lineNumbers: true,
       readOnly: !first.fpEof,
       viewportMargin: Infinity,
@@ -4127,6 +4494,8 @@ async function publishShare(mode) {
   try {
     const res = await hubFetch('/_hub/publish?mode=' + encodeURIComponent(mode), {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: (notebook && notebook.nbTitle) || 'Untitled' }),
     });
     if (!res.hub) {
       list.textContent = '';
@@ -4391,18 +4760,29 @@ async function promptNewFolderIn(dirPath) {
   createNewItem('folder', (dirPath ? dirPath + '/' : '') + name);
 }
 // ── Save notebook ────────────────────────────────────────────────
+// The save endpoint persists SERVER state, so locally-edited cells must
+// be flushed to the server first (non-executing PUT). dirtyCells entries
+// are dropped per cell, and only when the editor still holds exactly the
+// flushed text — keystrokes landing mid-save keep their draft protection
+// against renders.
 async function saveNotebook() {
   if (!notebook) return;
-  // Flush all editors
-  for (const [id, cm] of Object.entries(editors)) {
-    const cell = notebook.nbCells.find((c) => c.cellId === parseInt(id));
-    if (cell) cell.cellSource = cm.getValue();
-  }
   try {
+    const flushed = {};
+    for (const id of [...dirtyCells]) {
+      const cm = editors[id];
+      if (!cm) continue;
+      const val = cm.getValue();
+      await api('PUT', `cell/${id}/source`, { ucSource: val });
+      flushed[id] = val;
+    }
     const nb = await api('POST', 'save', { srPath: null });
     notebook = nb;
     unsavedChanges = false;
-    dirtyCells.clear();
+    for (const [id, val] of Object.entries(flushed)) {
+      const cm = editors[id];
+      if (cm && cm.getValue() === val) dirtyCells.delete(parseInt(id));
+    }
     document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
     flashSaved();
   } catch (e) {
@@ -4454,7 +4834,7 @@ function closePanel() {
   document.getElementById('right-panel').classList.add('collapsed');
 }
 
-function switchTab(tab) {
+function switchTab(tab, opts) {
   activeTab = tab;
   document.querySelectorAll('.panel-tab').forEach((t) => {
     const isActive = t.dataset.tab === tab;
@@ -4469,7 +4849,7 @@ function switchTab(tab) {
   document.getElementById('right-panel').classList.toggle('chat-active', tab === 'chat');
   if (tab === 'chat') {
     updateChatContext().then(() => {
-      if (!aiConfigured) openAIModal();
+      if (!aiConfigured && !(opts && opts.quiet)) openAIModal();
     });
   }
 }
@@ -4618,6 +4998,16 @@ function render(nb) {
   }
 }
 
+// Matches the `-- compile` / `-- compile: Module.Name` cell directive.
+const COMPILE_DIRECTIVE_RE = /^--\s*compile(\s*:.*)?\s*$/;
+
+function isCompiledSource(cell) {
+  return (
+    cell.cellLang !== 'Python' &&
+    cell.cellSource.split('\n').some((l) => COMPILE_DIRECTIVE_RE.test(l))
+  );
+}
+
 function renderCodeCell(cell, cellNum) {
   const div = document.createElement('div');
   div.className = 'cell code';
@@ -4625,10 +5015,16 @@ function renderCodeCell(cell, cellNum) {
   if (cell.cellLang === 'Python') div.classList.add('python');
   if (cell.cellDirty) div.classList.add('dirty');
   if (cell.cellError) div.classList.add('has-error');
+  const compiled = isCompiledSource(cell);
+  if (compiled) div.classList.add('compiled');
 
   const gutter = document.createElement('div');
   gutter.className = 'cell-gutter';
-  gutter.innerHTML = `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>`;
+  gutter.innerHTML =
+    `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>` +
+    (compiled
+      ? `<button class="compile-tag" onclick="toggleCellCompile(${cell.cellId})" title="Compiled to native code (-O2). Click to switch back to interpreted.">⚡comp</button>`
+      : '');
   div.appendChild(gutter);
 
   const collapsed = collapsedCells.has(cell.cellId);
@@ -4641,6 +5037,7 @@ function renderCodeCell(cell, cellNum) {
     <button class="run-btn" onclick="runCell(${cell.cellId})" aria-label="Run cell" title="Run cell (${kbd('shift', 'enter')})"><svg class="icon-svg small"><use href="#i-play"/></svg> run</button>
     <button class="clear-btn" onclick="clearCellOutput(${cell.cellId})" aria-label="Clear output" title="Clear output"><svg class="icon-svg small"><use href="#i-circle-slash"/></svg></button>
     ${cell.cellLang !== 'Python' ? `<button class="export-btn" onclick="exportPipeline(${cell.cellId}, 'haskell')" aria-label="Export pipeline ending here" title="Export pipeline ending here (.hs)"><svg class="icon-svg small"><use href="#i-download"/></svg></button>` : ''}
+    ${cell.cellLang !== 'Python' && !compiled ? `<button class="compile-mode-btn" onclick="toggleCellCompile(${cell.cellId})" aria-label="Compile this cell" title="Compile this cell to native code (-O2)">⚡</button>` : ''}
     <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell" title="Delete cell"><svg class="icon-svg small"><use href="#i-trash"/></svg></button>`;
   div.appendChild(actions);
 
@@ -4672,7 +5069,7 @@ function renderCodeCell(cell, cellNum) {
     const cm = CodeMirror(editorDiv, {
       value: cell.cellSource,
       mode: cell.cellLang === 'Python' ? 'python' : 'haskell',
-      theme: currentTheme() === 'light' ? 'idea' : 'nord',
+      theme: cmTheme(),
       lineNumbers: false,
       viewportMargin: Infinity,
       inputStyle: window.matchMedia('(pointer: coarse)').matches ? 'contenteditable' : 'textarea',
@@ -4957,9 +5354,17 @@ async function resetNotebook() {
   api('POST', 'reset').then(render).catch(console.error);
 }
 
+async function interruptKernel() {
+  setStatus('Interrupting…', 'running');
+  await api('POST', 'interrupt').catch(console.error);
+}
+
 async function restartKernel() {
   hideCrashBanner();
   setStatus('Restarting kernel...', 'running');
+  // Flush editor drafts first so the restarted kernel runs what's on screen.
+  for (const [id, cm] of Object.entries(editors))
+    await api('PUT', `cell/${parseInt(id)}/source`, { ucSource: cm.getValue() }).catch(() => {});
   await api('POST', 'restart-kernel').catch(console.error);
 }
 
@@ -4996,6 +5401,27 @@ async function addCell(afterId, type, lang) {
 
 async function clearCellOutput(cellId) {
   api('POST', `clear/${cellId}`).catch(console.error);
+}
+
+// The `-- compile` directive in the cell text is the single source of truth;
+// this button is sugar over an ordinary edit (insert/remove the line).
+async function toggleCellCompile(cellId) {
+  const cm = editors[cellId];
+  if (!cm) return;
+  const lines = cm.getValue().split('\n');
+  let next;
+  if (lines.some((l) => COMPILE_DIRECTIVE_RE.test(l))) {
+    next = lines.filter((l) => !COMPILE_DIRECTIVE_RE.test(l)).join('\n');
+  } else {
+    let at = 0;
+    while (at < lines.length && /^--\s*cabal:/.test(lines[at])) at++;
+    lines.splice(at, 0, '-- compile');
+    next = lines.join('\n');
+  }
+  await api('PUT', `cell/${cellId}`, { ucSource: next }).catch(() => {});
+  const nb = await api('GET', 'notebook');
+  render(nb);
+  api('POST', `run/${cellId}`).catch(console.error);
 }
 
 async function deleteCell(cellId) {
@@ -5045,8 +5471,33 @@ function kbd(...parts) {
     .join('+');
 }
 // ── Theme handling ───────────────────────────────────────────────
+const THEMES = [
+  { id: 'warm', name: 'Warm Paper', mode: 'light', bg: '#f7f3ec', accent: '#c2674a' },
+  { id: 'nord', name: 'Nord', mode: 'dark', bg: '#2e3440', accent: '#88c0d0' },
+  { id: 'nord-light', name: 'Nord Light', mode: 'light', bg: '#eceff4', accent: '#5e81ac' },
+  { id: 'nord-aurora', name: 'Aurora Purple', mode: 'dark', bg: '#2e3440', accent: '#b48ead' },
+  { id: 'nord-ember', name: 'Aurora Ember', mode: 'dark', bg: '#2e3440', accent: '#d08770' },
+  {
+    id: 'vscode',
+    name: 'VS Code Dark',
+    mode: 'dark',
+    bg: '#1e1e1e',
+    accent: '#3794ff',
+    cm: 'vscode',
+  },
+];
 function currentTheme() {
-  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  const t = document.documentElement.dataset.theme;
+  return THEMES.some((x) => x.id === t) ? t : 'warm';
+}
+function themeMode(id) {
+  return (THEMES.find((x) => x.id === id) || THEMES[0]).mode;
+}
+// CodeMirror theme name for the active palette (used by editors on mount too).
+function cmTheme() {
+  const t = THEMES.find((x) => x.id === currentTheme());
+  if (t && t.cm) return t.cm;
+  return themeMode(currentTheme()) === 'light' ? 'idea' : 'nord';
 }
 function applyTheme(theme, { persist = true } = {}) {
   document.documentElement.dataset.theme = theme;
@@ -5054,17 +5505,12 @@ function applyTheme(theme, { persist = true } = {}) {
     localStorage.setItem('sabela-theme', theme);
     window.__sabelaThemePinned = true;
   }
-  // Theme toggle icon: show the icon for what clicking will switch TO.
-  const iconUse = document.querySelector('#theme-icon use');
-  if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
-  // Update CodeMirror theme on every existing editor.
-  const cmTheme = theme === 'light' ? 'idea' : 'nord';
+  const cm = cmTheme();
   for (const id in editors) {
     try {
-      editors[id].setOption('theme', cmTheme);
+      editors[id].setOption('theme', cm);
     } catch {}
   }
-  // Refresh any rendered HTML iframes so their inlined CSS picks up new colors.
   document.querySelectorAll('.cell-output.mime-html iframe').forEach((f) => {
     if (f.dataset.lastContent) {
       try {
@@ -5077,24 +5523,72 @@ function applyTheme(theme, { persist = true } = {}) {
       } catch {}
     }
   });
+  markActiveTheme();
 }
+function markActiveTheme() {
+  const cur = currentTheme();
+  document
+    .querySelectorAll('.theme-menu-item')
+    .forEach((el) => el.classList.toggle('active', el.dataset.theme === cur));
+}
+function buildThemeMenu() {
+  let menu = document.getElementById('theme-menu');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'theme-menu';
+  menu.className = 'theme-menu';
+  THEMES.forEach((t) => {
+    const item = document.createElement('button');
+    item.className = 'theme-menu-item';
+    item.dataset.theme = t.id;
+    item.innerHTML =
+      `<span class="sw" style="background:${t.bg}"><i style="background:${t.accent}"></i></span>` +
+      `<span class="nm">${t.name}</span>`;
+    item.onclick = () => {
+      applyTheme(t.id);
+      menu.classList.remove('open');
+    };
+    menu.appendChild(item);
+  });
+  document.body.appendChild(menu);
+  return menu;
+}
+function openThemePicker() {
+  const menu = buildThemeMenu();
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    const r = btn.getBoundingClientRect();
+    menu.style.top = r.bottom + 6 + 'px';
+    menu.style.right = window.innerWidth - r.right + 'px';
+  }
+  const open = menu.classList.toggle('open');
+  markActiveTheme();
+  if (open) {
+    setTimeout(() => {
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (!menu.contains(e.target) && e.target !== btn && !btn?.contains(e.target))
+            menu.classList.remove('open');
+        },
+        { once: true }
+      );
+    }, 0);
+  }
+}
+// Kept for the command palette + any keybinding: open the palette picker.
 function toggleTheme() {
-  applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+  openThemePicker();
 }
 function iframeBaseStyle() {
-  const isLight = currentTheme() === 'light';
-  const bg = isLight ? '#ffffff' : '#ffffff';
-  const fg = isLight ? '#0a0a0a' : '#1e1e2e';
-  const accent = isLight ? '#0066ff' : '#89b4fa';
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n, d) => (cs.getPropertyValue(n) || d).trim();
+  const bg = v('--output-html-bg', '#ffffff');
+  const fg = v('--output-html-fg', '#1e1e2e');
+  const accent = v('--accent', '#89b4fa');
   return `<style>body{background:${bg};color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;margin:0;padding:4px 8px;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select,button{accent-color:${accent};font-family:inherit;font-size:13px;cursor:pointer}</style>`;
 }
-// Live-follow OS theme until the user makes a manual choice
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-    if (!window.__sabelaThemePinned) applyTheme(e.matches ? 'light' : 'dark', { persist: false });
-  });
-}
-// Initial sync (icon + CodeMirror theme will be set once editors mount)
+// Initial sync (CodeMirror theme will be set once editors mount).
 applyTheme(currentTheme(), { persist: false });
 
 // ── Dirty-dot indicator (filename next to the toolbar title) ─────
@@ -5104,8 +5598,6 @@ function updateDirtyDot() {
   if (unsavedChanges) dot.classList.add('show');
   else dot.classList.remove('show');
 }
-const _origSetStatusUnsaved = () => {};
-// Hook into autosave + saveNotebook by polling unsavedChanges every 600ms — cheap.
 setInterval(updateDirtyDot, 600);
 // ── Command palette ──────────────────────────────────────────────
 const PALETTE_COMMANDS = [
@@ -5200,6 +5692,7 @@ const PALETTE_COMMANDS = [
     icon: 'i-copy',
     run: () => openSharesModal(),
   },
+  { id: 'interrupt', label: 'Stop running cell', icon: 'i-square', run: () => interruptKernel() },
   { id: 'restart', label: 'Restart kernel', icon: 'i-rotate', run: () => restartKernel() },
   { id: 'reset', label: 'Reset notebook', icon: 'i-zap', run: () => resetNotebook() },
   {
@@ -5237,7 +5730,7 @@ const PALETTE_COMMANDS = [
     hint: kbd('mod', 'j'),
     run: () => togglePanel('chat'),
   },
-  { id: 'theme', label: 'Switch theme (light/dark)', icon: 'i-sun', run: () => toggleTheme() },
+  { id: 'theme', label: 'Choose theme…', icon: 'i-sun', run: () => openThemePicker() },
   { id: 'ai-settings', label: 'AI settings…', icon: 'i-settings', run: () => openAIModal() },
 ];
 // Structural layout for the overflow ("More") dropdown only. Entries are:
@@ -5710,7 +6203,18 @@ function showChatToolResult(toolCallId, result) {
   }
 }
 
+// Surface proposals that arrive while the chat drawer is hidden (e.g.
+// siza/CLI propose_edit): open the chat tab without the API-key modal.
+function revealChatPanel() {
+  const panel = document.getElementById('right-panel');
+  if (panel.classList.contains('collapsed') || activeTab !== 'chat') {
+    panel.classList.remove('collapsed');
+    switchTab('chat', { quiet: true });
+  }
+}
+
 function showChatEditProposal(editId, cellId, oldSource, newSource) {
+  revealChatPanel();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-edit-proposal';
@@ -5809,6 +6313,7 @@ document.addEventListener('DOMContentLoaded', () => {
   connectSSE();
   refreshFiles();
   loadExamples();
+  togglePanel('examples');
   try {
     const nb = await api('GET', 'notebook');
     render(nb);

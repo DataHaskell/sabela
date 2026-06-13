@@ -1,16 +1,27 @@
 // ── Save notebook ────────────────────────────────────────────────
+// The save endpoint persists SERVER state, so locally-edited cells must
+// be flushed to the server first (non-executing PUT). dirtyCells entries
+// are dropped per cell, and only when the editor still holds exactly the
+// flushed text — keystrokes landing mid-save keep their draft protection
+// against renders.
 async function saveNotebook() {
   if (!notebook) return;
-  // Flush all editors
-  for (const [id, cm] of Object.entries(editors)) {
-    const cell = notebook.nbCells.find((c) => c.cellId === parseInt(id));
-    if (cell) cell.cellSource = cm.getValue();
-  }
   try {
+    const flushed = {};
+    for (const id of [...dirtyCells]) {
+      const cm = editors[id];
+      if (!cm) continue;
+      const val = cm.getValue();
+      await api('PUT', `cell/${id}/source`, { ucSource: val });
+      flushed[id] = val;
+    }
     const nb = await api('POST', 'save', { srPath: null });
     notebook = nb;
     unsavedChanges = false;
-    dirtyCells.clear();
+    for (const [id, val] of Object.entries(flushed)) {
+      const cm = editors[id];
+      if (cm && cm.getValue() === val) dirtyCells.delete(parseInt(id));
+    }
     document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
     flashSaved();
   } catch (e) {
@@ -62,7 +73,7 @@ function closePanel() {
   document.getElementById('right-panel').classList.add('collapsed');
 }
 
-function switchTab(tab) {
+function switchTab(tab, opts) {
   activeTab = tab;
   document.querySelectorAll('.panel-tab').forEach((t) => {
     const isActive = t.dataset.tab === tab;
@@ -77,7 +88,7 @@ function switchTab(tab) {
   document.getElementById('right-panel').classList.toggle('chat-active', tab === 'chat');
   if (tab === 'chat') {
     updateChatContext().then(() => {
-      if (!aiConfigured) openAIModal();
+      if (!aiConfigured && !(opts && opts.quiet)) openAIModal();
     });
   }
 }

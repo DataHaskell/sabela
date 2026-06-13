@@ -12,9 +12,11 @@ module Sabela.Handlers.Plan (
     executeAffected,
     executeSingleCell,
     executeFullRestart,
+    executeRunAll,
 
-    -- * Sub-pieces (exposed for the entry-points module)
+    -- * Sub-pieces (exposed for the entry-points module and tests)
     rerunBridgeCells,
+    runPlanPhases,
 ) where
 
 import Control.Concurrent (forkIO)
@@ -23,16 +25,24 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 
+import Sabela.Compiled (CompilePlan (..))
 import Sabela.Deps (collectMetadata)
+import Sabela.Handlers.Compile (CompileOutcome (..), runCompilePhase)
 import Sabela.Handlers.Exec (runAndBroadcast)
 import Sabela.Handlers.Lifecycle (
-    depsMatch,
     ensureSessionAlive,
     installAndRestart,
     killAllSessions,
     loadSabelaPrelude,
+    sessionMetaMatches,
  )
-import Sabela.Handlers.Python (executePythonCell, executePythonCells)
+import Sabela.Handlers.PlanErrors (broadcastPlanErrors)
+import Sabela.Handlers.PostCompile (runCellList, runPostCompile)
+import Sabela.Handlers.Python (
+    executePythonCell,
+    executePythonCells,
+    executeStalePythonCells,
+ )
 import Sabela.Handlers.Shared
 import Sabela.Model (
     Cell (..),
@@ -44,17 +54,13 @@ import Sabela.Reactivity (
     ExecutionPlan (..),
     computeExecutionPlan,
     computeFullExecutionPlan,
-    cycleErrorMsg,
+    computeStaleExecutionPlan,
     haskellCodeCells,
-    redefinitionErrorMsg,
  )
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.BridgeStore (getBridgeValues)
-import Sabela.State.DependencyTracker (getHaskellDeps, getHaskellExts)
-import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (readNotebook)
-import Sabela.State.SessionManager (getHaskellSession)
 import qualified Sabela.Topo as Topo
 
 dispatchByLang :: App -> Int -> Int -> ST.CellLang -> IO () -> IO ()
@@ -100,12 +106,52 @@ executeSingleCellPlan app gen cid allCode plan =
             whenCurrentGen app gen $
                 if cellInSkipSet cid plan
                     then broadcastPlanErrors app plan (Just cid)
-                    else runAndBroadcast app gen cell
+                    else
+                        if M.member cid (cpCellModule (epCompilePlan plan))
+                            then do
+                                outcome <-
+                                    runCompilePhase app gen (epCompilePlan plan) [cell]
+                                runPostCompile app gen plan outcome []
+                            else runAndBroadcast app gen cell
         Nothing -> pure ()
 
 cellInSkipSet :: Int -> ExecutionPlan -> Bool
 cellInSkipSet cid plan =
-    S.member cid (epCycleIds plan `S.union` M.keysSet (epRedefErrors plan))
+    S.member cid $
+        epCycleIds plan
+            `S.union` M.keysSet (epRedefErrors plan)
+            `S.union` M.keysSet (cpViolations (epCompilePlan plan))
+
+{- | Run-all entry: when the live session is current, only stale cells
+(changed or errored) and their dependents re-run; otherwise the full
+restart path runs everything against a fresh interpreter.
+-}
+executeRunAll :: App -> Int -> IO ()
+executeRunAll app gen = do
+    nb <- readNotebook (appNotebook app)
+    sessionReady <- isSessionUpToDate app nb
+    if sessionReady
+        then executeStaleRun app gen nb
+        else executeFullRestart app gen
+
+executeStaleRun :: App -> Int -> Notebook -> IO ()
+executeStaleRun app gen nb = do
+    let allCode = haskellCodeCells nb
+        plan = computeStaleExecutionPlan allCode nb
+    debugLog app $
+        T.pack $
+            "[handler] executeStaleRun: " ++ show (map cellId (epCellsToRun plan))
+    runPlanPhases app gen plan
+    whenCurrentGen app gen $ executeStaleNonHaskell app gen
+
+executeStaleNonHaskell :: App -> Int -> IO ()
+executeStaleNonHaskell app gen = do
+    whenCurrentGen app gen $ do
+        oldBridge <- getBridgeValues (appBridge app)
+        executeStalePythonCells app gen
+        newBridge <- getBridgeValues (appBridge app)
+        when (oldBridge /= newBridge) $ rerunBridgeCells app gen
+    whenCurrentGen app gen $ broadcast app EvExecutionDone
 
 executeFullRestart :: App -> Int -> IO ()
 executeFullRestart app gen = do
@@ -123,8 +169,7 @@ executeFullRestart app gen = do
 executeFullPlan :: App -> Int -> [Cell] -> Notebook -> IO ()
 executeFullPlan app gen allCode nb = do
     let plan = computeFullExecutionPlan allCode nb
-    broadcastPlanErrors app plan Nothing
-    runCellList app gen (epCellsToRun plan)
+    runPlanPhases app gen plan
 
 executeNonHaskellCells :: App -> Int -> IO ()
 executeNonHaskellCells app gen = do
@@ -148,23 +193,14 @@ executeAffected app gen editedCid = do
         else executeFullRestartPlan app gen nb
 
 isSessionUpToDate :: App -> Notebook -> IO Bool
-isSessionUpToDate app nb = do
-    installed <- getHaskellDeps (appDeps app)
-    instExts <- getHaskellExts (appDeps app)
-    mSess <- getHaskellSession (appSessions app)
-    let needed = collectMetadata nb
-        match = depsMatch needed installed instExts (envGlobalDeps (appEnv app))
-    case mSess of
-        Just _ | match -> pure True
-        _ -> pure False
+isSessionUpToDate app nb = sessionMetaMatches app (collectMetadata nb)
 
 executeIncrementalPlan :: App -> Int -> Int -> Notebook -> IO ()
 executeIncrementalPlan app gen editedCid nb = do
     let allCode = haskellCodeCells nb
         plan = computeExecutionPlan editedCid allCode nb
     logExecutionPlan app allCode plan
-    broadcastPlanErrors app plan Nothing
-    runCellList app gen (epCellsToRun plan)
+    runPlanPhases app gen plan
     whenCurrentGen app gen $ broadcast app EvExecutionDone
 
 executeFullRestartPlan :: App -> Int -> Notebook -> IO ()
@@ -204,43 +240,17 @@ logCellDeps app c = do
                 ++ " uses="
                 ++ show usesPreview
 
-broadcastPlanErrors :: App -> ExecutionPlan -> Maybe Int -> IO ()
-broadcastPlanErrors app plan filterCid = do
-    broadcastRedefErrors app plan filterCid
-    broadcastCycleErrors app plan filterCid
-
-broadcastRedefErrors :: App -> ExecutionPlan -> Maybe Int -> IO ()
-broadcastRedefErrors app plan filterCid = do
-    let redefMap = filterByCell filterCid (epRedefErrors plan)
-    forM_ (M.toList redefMap) $ \(cid, names) ->
-        broadcastCellError
-            app
-            cid
-            (redefinitionErrorMsg (epDefMap plan) (epCellPositions plan) cid names)
-
-broadcastCycleErrors :: App -> ExecutionPlan -> Maybe Int -> IO ()
-broadcastCycleErrors app plan filterCid = do
-    let cycleIds = filterCycleIds filterCid (epCycleIds plan)
-    unless (S.null cycleIds) $ do
-        nb <- readNotebook (appNotebook app)
-        let cells = nbCells nb
-            msg =
-                cycleErrorMsg
-                    (epCellPositions plan)
-                    cycleIds
-                    cells
-                    (epDefMap plan)
-        forM_ (S.toList cycleIds) $ \cid -> broadcastCellError app cid msg
-
-filterByCell :: Maybe Int -> M.Map Int a -> M.Map Int a
-filterByCell Nothing m = m
-filterByCell (Just cid) m = M.filterWithKey (\k _ -> k == cid) m
-
-filterCycleIds :: Maybe Int -> S.Set Int -> S.Set Int
-filterCycleIds Nothing s = s
-filterCycleIds (Just cid) s = S.intersection s (S.singleton cid)
-
-runCellList :: App -> Int -> [Cell] -> IO ()
-runCellList app gen cells =
-    forM_ cells $ \cell ->
-        whenCurrentGen app gen $ runAndBroadcast app gen cell
+{- | Run a plan: plan-level errors, then the compile phase (generated
+modules), then interpreted cells. Any actual reload — successful or not —
+wiped every prompt binding, so the interpreted run set escalates to all
+interpreted cells; a failed compile additionally skips the interpreted
+cells that transitively depend on a compiled cell.
+-}
+runPlanPhases :: App -> Int -> ExecutionPlan -> IO ()
+runPlanPhases app gen plan = do
+    broadcastPlanErrors app plan Nothing
+    outcome <-
+        if null (epCompileCells plan)
+            then pure CompileNoChange
+            else runCompilePhase app gen (epCompilePlan plan) (epCompileCells plan)
+    runPostCompile app gen plan outcome (epCellsToRun plan)

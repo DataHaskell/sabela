@@ -2,8 +2,13 @@
 
 module Sabela.Reactivity (
     ExecutionPlan (..),
+    cellStale,
     computeExecutionPlan,
+    markDependentsDirty,
+    markAllInterpretedDirty,
     computeFullExecutionPlan,
+    computeStaleExecutionPlan,
+    escalatedCellsToRun,
     haskellCodeCells,
     cellPositionMap,
     redefinitionErrorMsg,
@@ -12,16 +17,29 @@ module Sabela.Reactivity (
 
 import Data.Containers.ListUtils (nubOrdOn)
 import qualified Data.Map.Strict as M
+import Data.Maybe (isJust)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
+import Sabela.Compiled (
+    CompilePlan (..),
+    compiledRootExpansion,
+    planCompiledModules,
+    pruneIntraModuleDeps,
+ )
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import qualified Sabela.SessionTypes as ST
 import qualified Sabela.Topo as Topo
 
 data ExecutionPlan = ExecutionPlan
     { epCellsToRun :: [Cell]
-    -- ^ Cells in dependency order that should be executed.
+    -- ^ Interpreted cells in dependency order that should be executed.
+    , epCompileCells :: [Cell]
+    {- ^ Affected compiled cells, in notebook order (module decls are
+    order-independent; notebook order keeps generated files diff-stable).
+    -}
+    , epCompilePlan :: CompilePlan
+    -- ^ Module sources + violations, reused by the compile-phase executor.
     , epCycleIds :: S.Set Int
     -- ^ Cell IDs that are part of circular dependencies (should get error).
     , epRedefErrors :: M.Map Int [Text]
@@ -33,37 +51,121 @@ data ExecutionPlan = ExecutionPlan
     }
 
 computeExecutionPlan :: Int -> [Cell] -> Notebook -> ExecutionPlan
-computeExecutionPlan editedCid allCode nb =
-    let (defMap, _) = Topo.buildDefMap allCode
-        posMap = cellPositionMap nb
-        (topoResult, redefMap) = Topo.selectAffectedTopo editedCid allCode
-        skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
-        toRun =
-            filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
+computeExecutionPlan editedCid = computePlanCore (Just (S.singleton editedCid))
+
+computeFullExecutionPlan :: [Cell] -> Notebook -> ExecutionPlan
+computeFullExecutionPlan = computePlanCore Nothing
+
+-- | Stale = edited since its last run, or its last run errored.
+cellStale :: Cell -> Bool
+cellStale c = cellDirty c || isJust (cellError c)
+
+{- | Plan for an incremental run-all: only stale cells and their
+transitive dependents run, in dependency order; clean cells keep their
+outputs. An all-clean notebook yields an empty plan.
+-}
+computeStaleExecutionPlan :: [Cell] -> Notebook -> ExecutionPlan
+computeStaleExecutionPlan allCode =
+    computePlanCore
+        (Just (S.fromList (map cellId (filter cellStale allCode))))
+        allCode
+
+{- | Shared plan core. @Nothing@ roots = run everything. Compiled cells are
+planned via 'planCompiledModules'; same-module dependency edges are pruned
+(declaration order inside a module is irrelevant, so same-module mutual
+recursion is not a cycle); and when an affected cell belongs to a compiled
+module, every cell of that module and of the modules importing it joins the
+roots — one module reload invalidates prompt bindings downstream of all of
+them.
+-}
+computePlanCore :: Maybe (S.Set Int) -> [Cell] -> Notebook -> ExecutionPlan
+computePlanCore mRoots allCode nb =
+    let posMap = cellPositionMap nb
+        cplan = planCompiledModules posMap allCode
+        (defMap, redefMap) = Topo.buildDefMap allCode
+        deps =
+            pruneIntraModuleDeps
+                (cpCellModule cplan)
+                (Topo.buildDepGraph defMap allCode)
+        revDeps = Topo.reverseDeps deps
+        allIds = S.fromList (map cellId allCode)
+        affected = case mRoots of
+            Nothing -> allIds
+            Just roots ->
+                let affected0 = Topo.reachableFrom roots revDeps
+                    roots' = roots `S.union` compiledRootExpansion cplan affected0
+                 in Topo.reachableFrom roots' revDeps
+        toSort = filter (\c -> S.member (cellId c) affected) allCode
+        topoResult = Topo.topoSort toSort deps
+        skipIds =
+            Topo.trCycleIds topoResult
+                `S.union` M.keysSet redefMap
+                `S.union` M.keysSet (cpViolations cplan)
+        isCompiledId cid = M.member cid (cpCellModule cplan)
+        keep c = not (S.member (cellId c) skipIds)
+        interp =
+            nubOrdOn cellId $
+                filter
+                    (\c -> keep c && not (isCompiledId (cellId c)))
+                    (Topo.trOrdered topoResult)
+        compiledCells =
+            [ c
+            | c <- allCode
+            , S.member (cellId c) affected
+            , isCompiledId (cellId c)
+            , keep c
+            ]
      in ExecutionPlan
-            { epCellsToRun = toRun
+            { epCellsToRun = interp
+            , epCompileCells = compiledCells
+            , epCompilePlan = cplan
             , epCycleIds = Topo.trCycleIds topoResult
             , epRedefErrors = redefMap
             , epDefMap = defMap
             , epCellPositions = posMap
             }
 
-computeFullExecutionPlan :: [Cell] -> Notebook -> ExecutionPlan
-computeFullExecutionPlan allCode nb =
-    let (defMap, _) = Topo.buildDefMap allCode
-        posMap = cellPositionMap nb
-        (topoResult, redefMap) = Topo.computeTopoOrder allCode
-        skipIds = Topo.trCycleIds topoResult `S.union` M.keysSet redefMap
-        toRun =
-            nubOrdOn cellId $
-                filter (\c -> not (S.member (cellId c) skipIds)) (Topo.trOrdered topoResult)
-     in ExecutionPlan
-            { epCellsToRun = toRun
-            , epCycleIds = Topo.trCycleIds topoResult
-            , epRedefErrors = redefMap
-            , epDefMap = defMap
-            , epCellPositions = posMap
-            }
+{- | Mark every cell transitively downstream of @cid@ dirty, so graph
+staleness survives a later solo run of the root (which clears only the
+root's own flag).
+-}
+markDependentsDirty :: Int -> Notebook -> Notebook
+markDependentsDirty cid nb =
+    let code = haskellCodeCells nb
+        (defMap, _) = Topo.buildDefMap code
+        deps = Topo.buildDepGraph defMap code
+        affected = Topo.reachableFrom (S.singleton cid) (Topo.reverseDeps deps)
+        markIds = S.delete cid affected
+        upd c
+            | S.member (cellId c) markIds = c{cellDirty = True}
+            | otherwise = c
+     in nb{nbCells = map upd (nbCells nb)}
+
+{- | After a compile-phase reload wiped the GHCi prompt context, every
+interpreted cell's bindings are gone: mark them all dirty so staleness
+stays truthful even if the recovery run is interrupted.
+-}
+markAllInterpretedDirty :: Notebook -> Notebook
+markAllInterpretedDirty nb =
+    let code = haskellCodeCells nb
+        cplan = planCompiledModules (cellPositionMap nb) code
+        interpIds =
+            S.fromList
+                [ cellId c
+                | c <- code
+                , not (M.member (cellId c) (cpCellModule cplan))
+                ]
+        upd c
+            | S.member (cellId c) interpIds = c{cellDirty = True}
+            | otherwise = c
+     in nb{nbCells = map upd (nbCells nb)}
+
+{- | The recovery run set after a reload: every interpreted cell in
+dependency order, exactly what a full plan would run.
+-}
+escalatedCellsToRun :: Notebook -> [Cell]
+escalatedCellsToRun nb =
+    epCellsToRun (computeFullExecutionPlan (haskellCodeCells nb) nb)
 
 haskellCodeCells :: Notebook -> [Cell]
 haskellCodeCells nb =

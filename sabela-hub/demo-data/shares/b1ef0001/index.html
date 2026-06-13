@@ -1,0 +1,218 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A tour of Bluefin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{--bg:#f7f3ec;--cell:#fff;--panel:#f0eadf;--fg:#2e3440;--dim:#6f6a5d;--accent:#c2674a;--border:#e7ddcf;--mono:'JetBrains Mono',ui-monospace,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(60% 44% at 86% -10%,rgba(208,135,111,.18),transparent 72%),var(--bg);color:var(--fg);font-family:Geist,system-ui,sans-serif;line-height:1.6}
+a{color:var(--accent)}
+.top{display:flex;align-items:center;justify-content:space-between;padding:0 clamp(1.2rem,5vw,3rem);height:58px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0}
+.brand{font-weight:600;font-size:1.1rem;text-decoration:none;color:var(--fg)}.brand .lam{color:var(--accent);font-family:var(--mono)}
+.acts{display:flex;gap:.7rem;align-items:center;font-family:var(--mono);font-size:.8rem}
+.acts .gal{color:var(--dim)}.acts .gal:hover{color:var(--fg)}
+.acts .dl{color:var(--dim);border:1px solid var(--border);border-radius:6px;padding:.3rem .7rem;background:var(--cell);text-decoration:none}
+.acts .dl:hover{color:var(--fg);border-color:var(--dim)}
+.acts form{margin:0}
+.acts .fork{color:#fff;background:var(--accent);border:none;border-radius:6px;padding:.38rem .9rem;font:inherit;font-weight:600;cursor:pointer}
+.acts .fork:hover{opacity:.9}
+main{max-width:46rem;margin:0 auto;padding:clamp(1.6rem,4vw,3rem) clamp(1.2rem,5vw,2rem) 5rem}
+h1,h2,h3{font-family:Fraunces,Georgia,serif;letter-spacing:-.01em;line-height:1.2}
+h1{font-size:clamp(1.9rem,4vw,2.6rem);margin:.2rem 0 .3rem}
+h2{font-size:1.5rem;margin:2.2rem 0 .6rem}
+.byline{font-family:var(--mono);font-size:.8rem;color:var(--accent);margin:0 0 2rem}
+p{margin:.9rem 0}
+code{font-family:var(--mono);font-size:.86em;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre.code{background:#fff;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:1rem 1.2rem;overflow:auto;box-shadow:0 4px 14px rgba(70,52,34,.06)}
+pre.code code{background:none;padding:0;font-size:.82rem;line-height:1.5}
+pre.code code.hljs{background:transparent;padding:0}
+.out{border-left:3px solid #6f9355;background:#fff;border-radius:0 8px 8px 0;padding:.8rem 1.1rem;margin:.4rem 0 1.4rem}
+pre.out{font-family:var(--mono);font-size:.8rem;color:var(--dim);white-space:pre-wrap}
+img{max-width:100%;border-radius:8px}
+</style></head><body>
+<header class="top">
+<a class="brand" href="/gallery"><span class="lam">&lambda;</span> Sabela</a>
+<nav class="acts">
+<a class="gal" href="/gallery">Gallery</a>
+<a class="dl" href="/_hub/source/b1ef0001">Download</a>
+<form method="post" action="/_hub/fork/b1ef0001"><button class="fork" type="submit">Fork &#9656;</button></form>
+</nav>
+</header>
+<main>
+<h1>A tour of Bluefin</h1>
+<p class="byline">by Tom Ellis</p>
+<p><a href="https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html">Bluefin</a> is an effect system that lets you freely mix a variety of effects: early return, exceptions, mutable state, streams, and <code>IO</code>. What makes it distinctive is that <strong>effects are accessed through value-level capabilities</strong>: each effect is a *handle* you receive from a <code>run*</code> function and pass explicitly into the operations that use it, rather than a constraint smeared across a monad.</p>
+<p>This notebook is a port of the examples from Tom Ellis's <a href="https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html"><code>Bluefin</code> module documentation</a>. Fork it and run the cells to follow along.</p>
+<p>Everything below draws on a handful of modules. <code>Eff es a</code> is a computation producing an <code>a</code> whose available effects are tracked in <code>es</code>. <code>runPureEff</code> discharges a computation needing no <code>IO</code>; <code>runEff</code> is its <code>IO</code>-aware sibling. The <code>Modify</code> capability is Bluefin's mutable cell (think <code>IORef</code>), and <code>Exception</code> is its checked-exception capability.</p>
+<pre class="code"><code class="language-haskell">-- cabal: build-depends: bluefin &gt;= 0.6
+{-# LANGUAGE TypeOperators #-}
+import Bluefin.Eff (Eff, runPureEff, runEff, (:&amp;), (:&gt;))
+import Bluefin.Capability.Modify (Modify, evalModify, runModify, get, put, modify)
+import Bluefin.Exception (Exception, try, throw)
+import Bluefin.IO (IOE, effIO)
+import Bluefin.Jump (Jump, withJump, jumpTo)
+import Control.Monad (when, forever)
+import Data.Foldable (for_)
+import Text.Read (readMaybe)</code></pre>
+<h2>Mutable state</h2>
+<p><code>evalModify</code> introduces a <code>Modify</code> capability initialised to a starting value and hands it to your block as a handle (<code>sn</code> here). Through it you <code>get</code>, <code>put</code>, and <code>modify</code> the cell. The capability behaves like an <code>STRef</code> or <code>IORef</code>, but the whole computation reduces to a pure value.</p>
+<pre class="code"><code class="language-haskell">-- If `n &lt; 10` then add 10 to it, otherwise
+-- return it unchanged
+example1 :: Int -&gt; Int
+example1 n = runPureEff $
+  evalModify n $ \sn -&gt; do
+    n' &lt;- get sn
+    when (n' &lt; 10) $
+      modify sn (+ 10)
+    get sn</code></pre>
+<pre class="code"><code class="language-haskell">example1 5</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+15</pre>
+<pre class="code"><code class="language-haskell">example1 12</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+12</pre>
+<h2>Multiple effects of the same type</h2>
+<p>Because a capability is just a value, you can have several of the same kind in scope at once and keep them straight: <code>sm</code> and <code>sn</code> are two independent <code>Modify</code> cells. No newtype tagging, no lifting.</p>
+<pre class="code"><code class="language-haskell">-- Compare two values and add 10
+-- to the smaller
+example2 :: (Int, Int) -&gt; (Int, Int)
+example2 (m, n) = runPureEff $
+  evalModify m $ \sm -&gt; do
+    evalModify n $ \sn -&gt; do
+      do
+        n' &lt;- get sn
+        m' &lt;- get sm
+
+        if n' &lt; m'
+          then modify sn (+ 10)
+          else modify sm (+ 10)
+
+      n' &lt;- get sn
+      m' &lt;- get sm
+
+      pure (n', m')</code></pre>
+<pre class="code"><code class="language-haskell">example2 (5, 10)</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+(10,15)</pre>
+<pre class="code"><code class="language-haskell">example2 (30, 3)</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+(13,30)</pre>
+<h2>Exceptions</h2>
+<p><code>try</code> introduces an <code>Exception</code> capability and runs your block; the result is an <code>Either</code>. Inside, <code>throw</code> short-circuits to the matching <code>try</code>. The exception capability cannot escape its handler's scope, so every <code>throw</code> is guaranteed to be caught by the <code>try</code> that introduced it.</p>
+<pre class="code"><code class="language-haskell">example3 :: Int -&gt; Either String Int
+example3 n = runPureEff $
+  try $ \ex -&gt; do
+    evalModify 0 $ \total -&gt; do
+      for_ [1 .. n] $ \i -&gt; do
+        soFar &lt;- get total
+        when (soFar &gt; 20) $ do
+          throw ex ("Became too big: " ++ show soFar)
+        put total (soFar + i)
+
+      get total</code></pre>
+<pre class="code"><code class="language-haskell">example3 4</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+Right 10</pre>
+<pre class="code"><code class="language-haskell">example3 10</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+Left "Became too big: 21"</pre>
+<h2>Effect scoping</h2>
+<p>The phantom scope on a capability's type is what keeps <code>runPureEff</code> sound: a <code>Modify</code> cell introduced by <code>evalModify</code> cannot leak out of its handler. This version uses the cell only inside the block, so it is well scoped:</p>
+<pre class="code"><code class="language-haskell">-- Result: 1100
+correctlyScoped :: Eff es Integer
+correctlyScoped = do
+  r &lt;- evalModify 0 $ \st -&gt; do
+    for_ [1 .. 10] $ \i -&gt; do
+      modify st (+ i)
+    get st
+  pure (r * 20)</code></pre>
+<pre class="code"><code class="language-haskell">runPureEff correctlyScoped</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+1100</pre>
+<p>Returning the handle <code>st</code> from the block and using it afterwards is a *type error*, not a runtime bug: the scope variable <code>e</code> would escape. Bluefin rejects it at compile time, exactly as <code>runST</code> rejects a leaked <code>STRef</code>:</p>
+<pre class="code"><code class="language-haskell">incorrectlyScoped :: Eff es Integer
+incorrectlyScoped = do
+  (total, st) &lt;- evalModify 0 $ \st -&gt; do
+    for_ [1 .. 10] $ \i -&gt; do
+      modify st (+ i)
+    r &lt;- get st
+    pure (r, st)
+
+  modify st (* 20)   -- using st out here ...
+  get st
+
+-- error: Couldn't match type 'e0' with 'e'
+--   because type variable 'e' would escape its scope</code></pre>
+<h2>Type signatures, and reaching <code>IO</code></h2>
+<p>A function that needs several capabilities just takes them as arguments. The <code>e &lt;: es</code> constraints (an alias for <code>e :&gt; es</code>) read as "effect <code>e</code> is available in the set <code>es</code>", so the function declares the capabilities it needs without pinning down the whole effect stack. <code>effIO</code> lifts an <code>IO</code> action through an <code>IOE</code> handle, and <code>withJump</code>/<code>jumpTo</code> give an untyped early return.</p>
+<pre class="code"><code class="language-haskell">incrementReadLine ::
+  (e1 :&gt; es, e2 :&gt; es, e3 :&gt; es) =&gt;
+  Modify Int e1 -&gt;
+  Exception String e2 -&gt;
+  IOE e3 -&gt;
+  Eff es ()
+incrementReadLine state exception io = do
+  withJump $ \break -&gt; forever $ do
+    line &lt;- effIO io getLine
+    i &lt;- case readMaybe line of
+      Nothing -&gt;
+        throw exception ("Couldn't read: " ++ line)
+      Just i -&gt;
+        pure i
+
+    when (i == 0) $
+      jumpTo break
+
+    modify state (+ i)</code></pre>
+<p><code>runEff</code> hands you the <code>IOE</code> handle; <code>try</code> and <code>runModify</code> supply the other two. Reading lines until a <code>0</code>, then returning the running total:</p>
+<pre class="code"><code class="language-haskell">runIncrementReadLine :: IO (Either String Int)
+runIncrementReadLine = runEff $ \io -&gt; do
+  try $ \exception -&gt; do
+    ((), r) &lt;- runModify 0 $ \state -&gt; do
+      incrementReadLine state exception io
+    pure r</code></pre>
+<pre class="code"><code class="language-haskell">runIncrementReadLine</code></pre>
+<h2>Putting it together</h2>
+<p>A larger example combining two <code>Modify</code> cells with an early exit via an <code>Exception</code>: count positives and negatives in a list, but bail out the moment a zero appears.</p>
+<pre class="code"><code class="language-haskell">countPositivesNegatives :: [Int] -&gt; String
+countPositivesNegatives is = runPureEff $
+  evalModify (0 :: Int) $ \positives -&gt; do
+    r &lt;- try $ \ex -&gt;
+      evalModify (0 :: Int) $ \negatives -&gt; do
+        for_ is $ \i -&gt; do
+          case compare i 0 of
+            GT -&gt; modify positives (+ 1)
+            EQ -&gt; throw ex ()
+            LT -&gt; modify negatives (+ 1)
+
+        p &lt;- get positives
+        n &lt;- get negatives
+
+        pure $
+          "Positives: "
+            ++ show p
+            ++ ", negatives "
+            ++ show n
+
+    case r of
+      Right r' -&gt; pure r'
+      Left () -&gt; do
+        p &lt;- get positives
+        pure $
+          "We saw a zero, but before that there were "
+            ++ show p
+            ++ " positives"</code></pre>
+<pre class="code"><code class="language-haskell">countPositivesNegatives [1, -2, 3, -4, 5]</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+"Positives: 3, negatives 2"</pre>
+<pre class="code"><code class="language-haskell">countPositivesNegatives [1, 2, 0, 3, -1]</code></pre>
+<pre class="out">&lt;!-- scripths:mime text/plain --&gt;
+"We saw a zero, but before that there were 2 positives"</pre>
+<p>Read Bluefin top to bottom and the shape never changes: every effect arrives as an explicit handle, scoped by the <code>run*</code> that introduced it, and ordinary functions move those handles around. The full reference, with comparisons to other effect systems, is in the <a href="https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html"><code>Bluefin</code> documentation</a>.</p>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/haskell.min.js"></script>
+<script>hljs.highlightAll();</script>
+</body></html>

@@ -17,9 +17,17 @@ async function resetNotebook() {
   api('POST', 'reset').then(render).catch(console.error);
 }
 
+async function interruptKernel() {
+  setStatus('Interrupting…', 'running');
+  await api('POST', 'interrupt').catch(console.error);
+}
+
 async function restartKernel() {
   hideCrashBanner();
   setStatus('Restarting kernel...', 'running');
+  // Flush editor drafts first so the restarted kernel runs what's on screen.
+  for (const [id, cm] of Object.entries(editors))
+    await api('PUT', `cell/${parseInt(id)}/source`, { ucSource: cm.getValue() }).catch(() => {});
   await api('POST', 'restart-kernel').catch(console.error);
 }
 
@@ -56,6 +64,27 @@ async function addCell(afterId, type, lang) {
 
 async function clearCellOutput(cellId) {
   api('POST', `clear/${cellId}`).catch(console.error);
+}
+
+// The `-- compile` directive in the cell text is the single source of truth;
+// this button is sugar over an ordinary edit (insert/remove the line).
+async function toggleCellCompile(cellId) {
+  const cm = editors[cellId];
+  if (!cm) return;
+  const lines = cm.getValue().split('\n');
+  let next;
+  if (lines.some((l) => COMPILE_DIRECTIVE_RE.test(l))) {
+    next = lines.filter((l) => !COMPILE_DIRECTIVE_RE.test(l)).join('\n');
+  } else {
+    let at = 0;
+    while (at < lines.length && /^--\s*cabal:/.test(lines[at])) at++;
+    lines.splice(at, 0, '-- compile');
+    next = lines.join('\n');
+  }
+  await api('PUT', `cell/${cellId}`, { ucSource: next }).catch(() => {});
+  const nb = await api('GET', 'notebook');
+  render(nb);
+  api('POST', `run/${cellId}`).catch(console.error);
 }
 
 async function deleteCell(cellId) {

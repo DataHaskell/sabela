@@ -91,6 +91,9 @@ spec = describe "Sabela.Api wire shapes" $ do
                 `shouldBe` map tdName chatTools
 
     describe "NotebookEvent typed-id wire shape" $ do
+        it "EvCellCompiling emits type cellCompiling with a bare cellId" $ do
+            evField "type" (EvCellCompiling 4) `shouldBe` Just (String "cellCompiling")
+            evField "cellId" (EvCellCompiling 4) `shouldBe` Just (Number 4)
         it "EvChatDone (TurnId 42) emits turnId as a bare integer" $
             evField "turnId" (EvChatDone (TurnId 42)) `shouldBe` Just (Number 42)
         it "EvChatError with Just (TurnId 7) emits turnId 7" $

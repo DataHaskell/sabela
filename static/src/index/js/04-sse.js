@@ -41,6 +41,14 @@ function handleSSE(ev) {
       setCellRunning(ev.cellId, true);
       clearPartialOutput(ev.cellId);
       break;
+    case 'cellCompiling': {
+      setCellRunning(ev.cellId, true);
+      clearPartialOutput(ev.cellId);
+      const cEl = document.querySelector(`.cell[data-id="${ev.cellId}"]`);
+      if (cEl) cEl.classList.add('compiling');
+      setStatus(`Compiling cell ${ev.cellId}...`, 'running');
+      break;
+    }
     case 'cellPartialOutput':
       appendPartialOutput(ev.cellId, ev.line);
       break;
@@ -56,6 +64,7 @@ function handleSSE(ev) {
       document
         .querySelectorAll('.cell.code.running')
         .forEach((el) => el.classList.remove('running'));
+      updateStopButton();
       break;
     case 'sessionStatus':
       setStatus(ev.message, 'running');
@@ -187,7 +196,16 @@ function setCellRunning(cellId, running) {
     // TODO: mchavinda: Add a spinner here.
   } else {
     el.classList.remove('running');
+    el.classList.remove('compiling');
   }
+  updateStopButton();
+}
+
+// Show the toolbar stop button only while at least one cell is running.
+function updateStopButton() {
+  const btn = document.getElementById('btn-stop');
+  if (!btn) return;
+  btn.style.display = document.querySelector('.cell.running') ? '' : 'none';
 }
 
 // The "respond" ripple: replay it cleanly even if a cell re-fires mid-animation.

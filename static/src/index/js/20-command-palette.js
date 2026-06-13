@@ -91,6 +91,7 @@ const PALETTE_COMMANDS = [
     icon: 'i-copy',
     run: () => openSharesModal(),
   },
+  { id: 'interrupt', label: 'Stop running cell', icon: 'i-square', run: () => interruptKernel() },
   { id: 'restart', label: 'Restart kernel', icon: 'i-rotate', run: () => restartKernel() },
   { id: 'reset', label: 'Reset notebook', icon: 'i-zap', run: () => resetNotebook() },
   {
@@ -128,7 +129,7 @@ const PALETTE_COMMANDS = [
     hint: kbd('mod', 'j'),
     run: () => togglePanel('chat'),
   },
-  { id: 'theme', label: 'Switch theme (light/dark)', icon: 'i-sun', run: () => toggleTheme() },
+  { id: 'theme', label: 'Choose theme…', icon: 'i-sun', run: () => openThemePicker() },
   { id: 'ai-settings', label: 'AI settings…', icon: 'i-settings', run: () => openAIModal() },
 ];
 // Structural layout for the overflow ("More") dropdown only. Entries are:

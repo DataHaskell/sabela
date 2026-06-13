@@ -10,7 +10,10 @@ module Hub.Proxy (
 ) where
 
 import Control.Concurrent.STM (newTVarIO)
+import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
+import Hub.Admin.Api (adminDispatch, requireAdmin)
+import Hub.Admin.Page (adminPage)
 import Hub.Auth (
     PendingStates,
     extractSessionId,
@@ -19,7 +22,17 @@ import Hub.Auth (
     logoutResponse,
     requireSession,
  )
-import Hub.Pages (loginPage, startingPage, textResponse)
+import Hub.Fork (serveFork)
+import Hub.Gallery (GalleryStore)
+import Hub.Gallery.Public (
+    serveCollection,
+    serveCollectionReader,
+    serveFeed,
+    serveGallery,
+    serveSitemap,
+    serveSource,
+ )
+import Hub.Pages (jsonError, loginPage, startingPage, textResponse)
 import Hub.Proxy.Forward (proxyWithRetry)
 import Hub.Session (
     SessionManager (..),
@@ -33,28 +46,55 @@ import Hub.Shares.Api (
     serveShare,
  )
 import Hub.Types
+import Hub.Users (UserStore)
 import qualified Network.HTTP.Client as HC
 import Network.HTTP.Types
 import Network.Wai
 
 -- | Create the WAI application. Call once at startup.
-hubApp :: SessionManager -> ShareStore -> HC.Manager -> IO Application
-hubApp sm store mgr = do
+hubApp ::
+    SessionManager ->
+    ShareStore ->
+    UserStore ->
+    GalleryStore ->
+    HC.Manager ->
+    IO Application
+hubApp sm store users gallery mgr = do
     states <- newTVarIO Map.empty
-    pure $ hubApp' sm store mgr states
+    pure $ hubApp' sm store users gallery mgr states
 
-{- | Top-level routing. Phase 3a share routes match first on the split
-'pathInfo'; everything else (auth, health, and the authed proxy) falls through
-to 'hubDispatch' unchanged.
+{- | Top-level routing. Static-share, public-gallery, and admin routes match
+first on the split 'pathInfo'; everything else (auth, health, the authed proxy,
+and the anonymous gallery homepage) falls through to 'hubDispatch'.
 -}
 hubApp' ::
-    SessionManager -> ShareStore -> HC.Manager -> PendingStates -> Application
-hubApp' sm store mgr states req respond =
+    SessionManager ->
+    ShareStore ->
+    UserStore ->
+    GalleryStore ->
+    HC.Manager ->
+    PendingStates ->
+    Application
+hubApp' sm store users gallery mgr states req respond =
     case pathInfo req of
-        -- Public static share (Phase 3a): no auth, no backend — a file serve.
         ["s", slug] -> serveShare store slug respond
-        -- Authed share management; the owner is taken from the session cookie,
-        -- never from the request body.
+        -- Public gallery (no auth, soft-resolved against the share cache).
+        ["gallery"] -> serveGallery cfg gallery store req respond
+        ["gallery", "feed.xml"] -> serveFeed cfg gallery store respond
+        ["sitemap.xml"] -> serveSitemap cfg gallery store respond
+        ["c", cid] -> serveCollection cfg gallery store cid respond
+        ["c", cid, n] -> serveCollectionReader cfg gallery store cid n respond
+        -- Download a public notebook's source markdown (no auth; public-gated).
+        ["_hub", "source", slug] -> serveSource gallery store slug respond
+        -- Fork into the caller's work dir (authed; the caller is allowlisted).
+        ["_hub", "fork", slug]
+            | requestMethod req == methodPost ->
+                requireSessionOrLogin sm req respond $ \sess ->
+                    let UserId email = sessionUserId sess
+                     in serveFork cfg gallery store email slug req respond
+        -- Admin: the server-rendered page, then the JSON curation endpoints.
+        ["_hub", "admin"] -> adminPageRoute
+        ("_hub" : "admin" : _) -> adminDispatch sm users gallery store req respond
         ["_hub", "publish"] ->
             requireSession sm req respond $ \sess ->
                 handlePublish sm store mgr sess req respond
@@ -65,10 +105,56 @@ hubApp' sm store mgr states req respond =
             | requestMethod req == methodDelete ->
                 requireSession sm req respond $ \sess ->
                     handleDeleteShare store sess slug respond
-        _ -> hubDispatch sm mgr states req respond
+        _ -> hubDispatch sm store gallery mgr states req respond
+  where
+    cfg = smConfig sm
+    -- The page must not be enumerable: an authed non-admin (or anyone) falls to
+    -- the login page, never a 403 that confirms the route.
+    adminPageRoute =
+        requireAdminPage sm users req respond $
+            respond (adminPage (hcAdminContact cfg))
 
-hubDispatch :: SessionManager -> HC.Manager -> PendingStates -> Application
-hubDispatch sm mgr states req respond =
+{- | Session gate for the Fork POST: a browser form with no session is sent to
+login (so the gallery Fork button degrades to "sign in"), while an API caller
+still gets JSON 401.
+-}
+requireSessionOrLogin ::
+    SessionManager ->
+    Request ->
+    (Response -> IO ResponseReceived) ->
+    (Session -> IO ResponseReceived) ->
+    IO ResponseReceived
+requireSessionOrLogin sm req respond k =
+    case extractSessionId req of
+        Nothing -> noAuth
+        Just sid -> lookupBySessionId sm sid >>= maybe noAuth k
+  where
+    noAuth
+        | maybe False ("text/html" `BS.isInfixOf`) (lookup hAccept (requestHeaders req)) =
+            respond (responseLBS status303 [("Location", "/_hub/login")] "")
+        | otherwise = respond (jsonError status401 "Not signed in.")
+
+{- | Page-flavoured admin gate: 'requireAdmin' answers JSON 403, which would
+make @\/_hub\/admin@ enumerable, so the page instead falls back to 'loginPage'.
+-}
+requireAdminPage ::
+    SessionManager ->
+    UserStore ->
+    Request ->
+    (Response -> IO ResponseReceived) ->
+    IO ResponseReceived ->
+    IO ResponseReceived
+requireAdminPage sm users req respond k =
+    requireAdmin sm users req (const (respond loginPage)) (const k)
+
+hubDispatch ::
+    SessionManager ->
+    ShareStore ->
+    GalleryStore ->
+    HC.Manager ->
+    PendingStates ->
+    Application
+hubDispatch sm store gallery mgr states req respond =
     let path = rawPathInfo req
         cfg = smConfig sm
      in case path of
@@ -82,18 +168,23 @@ hubDispatch sm mgr states req respond =
                 respond (logoutResponse req)
             _ ->
                 case extractSessionId req of
-                    Nothing ->
-                        respond loginPage
+                    Nothing -> anonymous
                     Just sid -> do
                         mSess <- lookupBySessionId sm sid
                         case mSess of
-                            Nothing ->
-                                respond loginPage
+                            Nothing -> anonymous
                             Just sess ->
                                 case sessionState sess of
                                     SReady ip ->
                                         proxyWithRetry mgr (hcBackendPort cfg) ip req respond
                                     SStarting ->
                                         respond startingPage
-                                    SStopping ->
-                                        respond loginPage
+                                    SStopping -> anonymous
+  where
+    -- The gallery is the public homepage: an anonymous root request renders it;
+    -- any other unmatched anonymous path keeps the login page (scope the gallery
+    -- to '/' so it isn't served at infinite URLs).
+    anonymous
+        | rawPathInfo req == "/" =
+            serveGallery (smConfig sm) gallery store req respond
+        | otherwise = respond loginPage

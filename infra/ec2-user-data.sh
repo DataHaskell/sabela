@@ -24,9 +24,18 @@ grep -q " /mnt/sabela efs " /etc/fstab \
   || echo "${EFS_ID} /mnt/sabela efs _netdev,tls,accesspoint=${EFS_AP} 0 0" >> /etc/fstab
 mount -a -t efs || mount -a
 mkdir -p /mnt/sabela/users /mnt/sabela/shares
+# Signup allowlist: lives on EFS so the operator can grant access by
+# editing the file (one email or @domain per line) -- no restart/redeploy;
+# the hub re-reads it on every login. Empty file = deny all (fail closed).
+touch /mnt/sabela/allowlist
 
-# 3. Shared bridge network so the hub reaches user containers by name.
+# 3. Networks. sabela-net carries hub <-> user containers; sabela-control
+#    carries hub <-> docker-socket-proxy ONLY. User containers must never
+#    share a bridge with the proxy: ICC is on by default, the proxy gates by
+#    API path/method (not body), and a tenant cell is RCE by design -- so a
+#    shared bridge is a tenant -> docker -> host-root escape.
 docker network inspect sabela-net >/dev/null 2>&1 || docker network create sabela-net
+docker network inspect sabela-control >/dev/null 2>&1 || docker network create sabela-control
 
 # 4. ECR login + pre-pull (warm cache => ~1-3s container starts).
 aws ecr get-login-password --region "$REGION" \
@@ -36,10 +45,12 @@ docker pull "$SABELA_IMAGE"
 
 # 5. docker-socket-proxy: least-privilege Docker API for the hub (defense in
 #    depth for the docker.sock = host root concern). The hub talks to it over
-#    sabela-net via DOCKER_HOST; it never mounts the raw socket itself.
+#    sabela-control via DOCKER_HOST; it never mounts the raw socket itself.
+#    Control-plane network only -- user containers (sabela-net) cannot
+#    resolve or reach it.
 docker rm -f docker-socket-proxy 2>/dev/null || true
 docker run -d --name docker-socket-proxy --restart always \
-  --network sabela-net \
+  --network sabela-control \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e CONTAINERS=1 -e IMAGES=1 -e NETWORKS=1 -e INFO=1 -e POST=1 -e EXEC=0 \
   -e VOLUMES=0 -e BUILD=0 -e SWARM=0 -e SYSTEM=0 \
@@ -56,6 +67,7 @@ DOCKER_HOST=tcp://docker-socket-proxy:2375
 HUB_DOCKER_IMAGE=${SABELA_IMAGE}
 HUB_DOCKER_NETWORK=sabela-net
 HUB_DOCKER_DATA_ROOT=/mnt/sabela
+HUB_ALLOWLIST_FILE=/mnt/sabela/allowlist
 HUB_DOCKER_MEMORY=@@HUB_DOCKER_MEMORY@@
 HUB_DOCKER_CPUS=@@HUB_DOCKER_CPUS@@
 HUB_GHCI_CAPS=@@HUB_GHCI_CAPS@@
@@ -69,6 +81,22 @@ chmod 600 /etc/sabela/hub.env
 # 7. Hub systemd unit. Logs to the existing CloudWatch group so list-users.sh
 #    keeps working. Note: no docker.sock mount here — DOCKER_HOST points at the
 #    socket-proxy. /mnt/sabela is mounted so the hub can manage shares.
+#    Dual-homing helper: ExecStartPost fires as soon as docker run is
+#    spawned, possibly before the container exists, so retry briefly. A script
+#    on disk avoids systemd's own $-expansion in Exec lines.
+cat > /usr/local/bin/sabela-hub-join-net <<'JOIN'
+#!/bin/sh
+for _ in $(seq 1 30); do
+  docker network connect sabela-net sabela-hub 2>/dev/null && exit 0
+  docker inspect --format '{{json .NetworkSettings.Networks}}' sabela-hub 2>/dev/null \
+    | grep -q sabela-net && exit 0
+  sleep 1
+done
+echo "sabela-hub failed to join sabela-net" >&2
+exit 1
+JOIN
+chmod +x /usr/local/bin/sabela-hub-join-net
+
 cat > /etc/systemd/system/sabela-hub.service <<UNIT
 [Unit]
 Description=Sabela hub (front door + per-user container spawner)
@@ -86,7 +114,7 @@ TimeoutStartSec=0
 # host cannot resolve. The container still receives every var via --env-file.
 ExecStartPre=-/usr/bin/docker rm -f sabela-hub
 ExecStart=/usr/bin/docker run --rm --name sabela-hub \\
-  --network sabela-net \\
+  --network sabela-control \\
   -p 8080:8080 \\
   -v /mnt/sabela:/mnt/sabela \\
   --env-file /etc/sabela/hub.env \\
@@ -96,6 +124,10 @@ ExecStart=/usr/bin/docker run --rm --name sabela-hub \\
   --log-opt awslogs-create-group=true \\
   --log-opt awslogs-stream=hub \\
   ${HUB_IMAGE}
+# Dual-home the hub -- control plane for the socket-proxy (its primary
+# network above), sabela-net so it can reach user containers by name. User
+# containers stay on sabela-net only.
+ExecStartPost=/usr/local/bin/sabela-hub-join-net
 ExecStop=/usr/bin/docker stop sabela-hub
 
 [Install]

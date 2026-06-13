@@ -74,4 +74,9 @@ testConfig =
         , hcGoogleClientSecret = "test-client-secret"
         , hcGoogleRedirectUri = "http://localhost:8080/_hub/oauth/callback"
         , hcSharesDir = "/tmp/sabela-test-shares"
+        , hcAllowlistFile = Nothing
+        , hcUsersDir = "/tmp/sabela-test-users"
+        , hcGalleryDir = "/tmp/sabela-test-gallery"
+        , hcBootstrapAdmin = Nothing
+        , hcAdminContact = Just "admin@datahaskell.com"
         }

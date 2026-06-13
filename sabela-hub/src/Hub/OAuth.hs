@@ -3,6 +3,7 @@
 module Hub.OAuth (
     googleAuthUrl,
     exchangeCodeForEmail,
+    extractVerifiedEmailFromJwt,
     generateRandomToken,
 ) where
 
@@ -59,15 +60,16 @@ exchangeCodeForEmail mgr cfg code = do
     case decode respBody :: Maybe (Map Text Value) of
         Just m
             | Just (String idToken) <- Map.lookup "id_token" m ->
-                pure $ extractEmailFromJwt idToken
+                pure $ extractVerifiedEmailFromJwt idToken
         _ ->
             pure $ Left ("Token exchange failed: " <> TE.decodeUtf8 (BL.toStrict respBody))
 
-{- | Extract the email from a JWT ID token payload.
-No signature verification needed — we received it directly from Google over HTTPS.
+{- | Extract the email from a JWT ID token payload, requiring a boolean-true
+@email_verified@ claim (OIDC Core §5.1: the claim is trustworthy only when
+verified). No signature check: the token comes straight from Google over HTTPS.
 -}
-extractEmailFromJwt :: Text -> Either Text Text
-extractEmailFromJwt jwt =
+extractVerifiedEmailFromJwt :: Text -> Either Text Text
+extractVerifiedEmailFromJwt jwt =
     case T.splitOn "." jwt of
         [_, payload, _] ->
             case decodeBase64Url (TE.encodeUtf8 payload) of
@@ -76,7 +78,9 @@ extractEmailFromJwt jwt =
                     case decode (BL.fromStrict decoded) :: Maybe (Map Text Value) of
                         Just m
                             | Just (String email) <- Map.lookup "email" m ->
-                                Right email
+                                if Map.lookup "email_verified" m == Just (Bool True)
+                                    then Right email
+                                    else Left "Email not verified by Google"
                         _ -> Left "No email in ID token"
         _ -> Left "Invalid JWT format"
 

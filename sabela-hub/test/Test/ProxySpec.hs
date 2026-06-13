@@ -7,23 +7,47 @@ import qualified Data.ByteString.Lazy.Char8 as LC8
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time (addUTCTime, getCurrentTime)
 import Hub.Auth (dropExpiredStates, secureAttr)
+import Hub.Gallery (GalleryStore, addFeatured, newGalleryStore)
 import Hub.Proxy (hubApp)
 import Hub.Proxy.Forward (
     filterRequestHeaders,
     hardenResponseHeaders,
  )
-import Hub.Session (newSessionManager)
-import Hub.Share (Share (..), ShareStore, newShareStore, publishShare)
+import Hub.Session (insertSession, newSessionManager)
+import Hub.Share (
+    Share (..),
+    ShareStore,
+    newShareStore,
+    publishShare,
+    writeShareSource,
+ )
 import Hub.Shares.Api (publishMode)
-import Hub.Types (ExportMode (..))
+import Hub.Types (
+    DockerConfig (..),
+    ExportMode (..),
+    HubConfig (..),
+    Session (..),
+    SessionId (..),
+    SessionKey (..),
+    SessionKind (..),
+    SessionState (..),
+    TaskId (..),
+    UserId (..),
+ )
+import Hub.Users (newUserStore)
 import qualified Network.HTTP.Client as HC
 import qualified Network.HTTP.Client.TLS as TLS
 import Network.HTTP.Types
 import Network.Wai
-import Network.Wai.Test
-import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
+import Network.Wai.Test hiding (Session)
+import System.Directory (
+    getTemporaryDirectory,
+    listDirectory,
+    removeDirectoryRecursive,
+ )
 import System.FilePath ((</>))
 import Test.Hspec
 import Test.MockEcs
@@ -57,6 +81,107 @@ spec = describe "Proxy" $ do
             body `shouldSatisfy` isInfixOf "re-run"
             body `shouldSatisfy` isInfixOf "/_hub/login"
             body `shouldSatisfy` isInfixOf "<svg"
+
+    describe "gallery + admin routes" $ do
+        it "serves the gallery at /gallery" $ do
+            app <- makeApp
+            resp <- runSession (request (setPath defaultRequest "/gallery")) app
+            simpleStatus resp `shouldBe` status200
+            LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "/_hub/login"
+
+        it "serves the gallery as the anonymous homepage (/)" $ do
+            app <- makeApp
+            resp <- runSession (request defaultRequest{rawPathInfo = "/"}) app
+            simpleStatus resp `shouldBe` status200
+            LC8.unpack (simpleBody resp)
+                `shouldSatisfy` isInfixOf "github.com/DataHaskell/sabela"
+
+        it "405s an admin route method mismatch (not a proxied 200)" $ do
+            app <- makeApp
+            resp <- runSession (request (setPath defaultRequest "/_hub/admin/feature")) app
+            simpleStatus resp `shouldBe` status405
+
+        it "downloads a featured notebook's source (.md)" $ do
+            (app, store, gallery) <- makeAppFull
+            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            writeShareSource store "ab12" "# Iris\nplot iris"
+            addFeatured gallery "ab12"
+            resp <- runSession (request (setPath defaultRequest "/_hub/source/ab12")) app
+            simpleStatus resp `shouldBe` status200
+            LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "plot iris"
+            lookup hContentType (simpleHeaders resp)
+                `shouldBe` Just "text/markdown; charset=utf-8"
+
+        it "refuses to download a non-public slug (404)" $ do
+            (app, store, _) <- makeAppFull
+            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            writeShareSource store "ab12" "# secret-ish source"
+            resp <- runSession (request (setPath defaultRequest "/_hub/source/ab12")) app
+            simpleStatus resp `shouldBe` status404
+
+        it "rejects fork without a session (401)" $ do
+            app <- makeApp
+            let req = (setPath defaultRequest "/_hub/fork/ab12"){requestMethod = methodPost}
+            resp <- runSession (request req) app
+            simpleStatus resp `shouldBe` status401
+
+        it "forks a public notebook into the caller's work dir" $ do
+            base <- getTemporaryDirectory
+            let root = base </> "sabela-fork-test"
+            _ <- try (removeDirectoryRecursive root) :: IO (Either SomeException ())
+            (app, store, gallery) <- makeAppForkable root
+            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            writeShareSource store "ab12" "# Iris\nplot iris"
+            addFeatured gallery "ab12"
+            let req =
+                    (setPath defaultRequest "/_hub/fork/ab12")
+                        { requestMethod = methodPost
+                        , requestHeaders =
+                            [ ("Cookie", "_sabela_session=usersid")
+                            , ("Origin", "http://localhost:8080")
+                            ]
+                        }
+            resp <- runSession (request req) app
+            simpleStatus resp `shouldBe` status200
+            LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "forked-"
+            -- the source landed in the forker's (user@x → user_x) work dir
+            files <- listDirectory (root </> "users" </> "user_x")
+            length (filter (isInfixOf "forked-") files) `shouldBe` 1
+
+        it "rejects a cross-origin fork (403)" $ do
+            base <- getTemporaryDirectory
+            (app, store, gallery) <- makeAppForkable (base </> "sabela-fork-test2")
+            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            writeShareSource store "ab12" "# Iris"
+            addFeatured gallery "ab12"
+            let req =
+                    (setPath defaultRequest "/_hub/fork/ab12")
+                        { requestMethod = methodPost
+                        , requestHeaders =
+                            [ ("Cookie", "_sabela_session=usersid")
+                            , ("Origin", "http://evil.example")
+                            ]
+                        }
+            resp <- runSession (request req) app
+            simpleStatus resp `shouldBe` status403
+
+        it "authed non-admin gets login at /_hub/admin (not enumerable)" $ do
+            app <- makeAppSess
+            let req =
+                    (setPath defaultRequest "/_hub/admin")
+                        { requestHeaders = [("Cookie", "_sabela_session=usersid")]
+                        }
+            resp <- runSession (request req) app
+            LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "Reactive notebooks"
+
+        it "admin gets the curation page at /_hub/admin" $ do
+            app <- makeAppSess
+            let req =
+                    (setPath defaultRequest "/_hub/admin")
+                        { requestHeaders = [("Cookie", "_sabela_session=adminsid")]
+                        }
+            resp <- runSession (request req) app
+            LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "Gallery curation"
 
         it "serves a published share at /s/<slug> with hardened headers" $ do
             (app, store) <- makeAppWithStore
@@ -179,8 +304,68 @@ makeAppWithStore = do
     let dir = base </> "sabela-proxy-share-test"
     _ <- try (removeDirectoryRecursive dir) :: IO (Either SomeException ())
     store <- newShareStore dir
-    app <- hubApp sm store mgr
+    users <- newUserStore (dir <> "-users") Nothing
+    gallery <- newGalleryStore (dir <> "-gallery")
+    app <- hubApp sm store users gallery mgr
     pure (app, store)
+
+-- | App + its share and gallery stores (for download/feature tests).
+makeAppFull :: IO (Application, ShareStore, GalleryStore)
+makeAppFull = do
+    ms <- newMockState
+    sm <- newSessionManager (mockEcsBackend ms) testConfig
+    mgr <- HC.newManager TLS.tlsManagerSettings
+    base <- getTemporaryDirectory
+    let dir = base </> "sabela-proxy-full-test"
+        wipe d = try (removeDirectoryRecursive d) :: IO (Either SomeException ())
+    mapM_ wipe [dir, dir <> "-users", dir <> "-gallery"]
+    store <- newShareStore dir
+    users <- newUserStore (dir <> "-users") Nothing
+    gallery <- newGalleryStore (dir <> "-gallery")
+    app <- hubApp sm store users gallery mgr
+    pure (app, store, gallery)
+
+{- | App with a "user@x" session and the data root pointed at @root@ (so a
+fork's file write lands in a temp dir, not /mnt/sabela).
+-}
+makeAppForkable :: FilePath -> IO (Application, ShareStore, GalleryStore)
+makeAppForkable root = do
+    ms <- newMockState
+    let cfg =
+            testConfig
+                { hcDockerConfig =
+                    (hcDockerConfig testConfig){dcDataRoot = T.pack root}
+                }
+        wipe d = try (removeDirectoryRecursive d) :: IO (Either SomeException ())
+    mapM_ wipe [root <> "-shares", root <> "-users", root <> "-gallery"]
+    sm <- newSessionManager (mockEcsBackend ms) cfg
+    mgr <- HC.newManager TLS.tlsManagerSettings
+    store <- newShareStore (root <> "-shares")
+    users <- newUserStore (root <> "-users") Nothing
+    gallery <- newGalleryStore (root <> "-gallery")
+    now <- getCurrentTime
+    insertSession sm (UserSession (SessionId "usersid")) $
+        Session (TaskId "") SStarting now (UserId "user@x") Authed Nothing
+    app <- hubApp sm store users gallery mgr
+    pure (app, store, gallery)
+
+-- | An app with an admin ("admin@x") and a non-admin ("user@x") session.
+makeAppSess :: IO Application
+makeAppSess = do
+    ms <- newMockState
+    sm <- newSessionManager (mockEcsBackend ms) testConfig
+    mgr <- HC.newManager TLS.tlsManagerSettings
+    base <- getTemporaryDirectory
+    let dir = base </> "sabela-proxy-sess-test"
+    _ <- try (removeDirectoryRecursive dir) :: IO (Either SomeException ())
+    store <- newShareStore dir
+    users <- newUserStore (dir <> "-users") (Just "admin@x")
+    gallery <- newGalleryStore (dir <> "-gallery")
+    now <- getCurrentTime
+    let mkSess uid = Session (TaskId "") SStarting now (UserId uid) Authed Nothing
+    insertSession sm (UserSession (SessionId "adminsid")) (mkSess "admin@x")
+    insertSession sm (UserSession (SessionId "usersid")) (mkSess "user@x")
+    hubApp sm store users gallery mgr
 
 mkShare :: Text -> Share
 mkShare slug =
@@ -189,4 +374,5 @@ mkShare slug =
         , shareOwner = "owner@x"
         , shareMode = ExpDashboard
         , shareCreatedAt = "2026-05-27T00:00:00Z"
+        , shareTitle = "Untitled"
         }

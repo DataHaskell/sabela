@@ -5,13 +5,12 @@ module Test.SessionSpec (spec) where
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (newMVar)
-import Control.Concurrent.STM (TBQueue, atomically, newTBQueueIO, writeTBQueue)
-import Control.Exception (evaluate)
+import Control.Concurrent.STM (atomically)
 import Data.Function ((&))
 import Data.IORef (IORef, newIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.Handlers (setupReplProject)
+import Sabela.Handlers (resolveLocalPackages, setupReplProject)
 import Sabela.Output (displayPrelude)
 import ScriptHs.Parser (CabalMeta (..))
 import System.Directory (findExecutable)
@@ -29,48 +28,73 @@ import Test.Hspec (
     shouldSatisfy,
  )
 
+import Data.Unique (newUnique)
 import Sabela.Session (
     Marker (Marker),
     Session (..),
     SessionConfig (..),
-    drainUntilMarker,
-    eofText,
     getMarker,
     readErrorBuffer,
     resetErrorBuffer,
     runBlock,
  )
+import Sabela.Session.Drain (
+    DrainResult (..),
+    drainUntilMarker,
+ )
+import Sabela.Session.Proc (ProcSession (..))
 import Sabela.Session.Process (
     closeSession,
     newSession,
     resetSession,
+    startupErrorMessage,
+ )
+import Sabela.Session.Reader (
+    OutQueue,
+    enqueueEof,
+    enqueueLine,
+    newOutQueue,
  )
 
-{- | A dummy Session that is safe to pass to functions that only use sessLines / sessErrBuf / sessCounter / sessConfig.
-Any attempt to touch the other fields will crash, which is fine for unit tests that don't use them.
+{- | A dummy Session safe for functions that only use the queue, error
+buffer, counter, or config; touching process fields crashes the test.
 -}
 dummySession ::
-    TBQueue Text ->
+    OutQueue ->
     IORef [Text] ->
     IORef Int ->
     SessionConfig ->
     IO Session
-dummySession ch errRef ctrRef cfg = do
+dummySession q errRef ctrRef cfg = do
     lock <- newMVar ()
     cbRef <- newIORef (\_ -> pure ())
+    klock <- newMVar ()
+    uid <- newUnique
+    busy <- newIORef False
+    let ps =
+            ProcSession
+                { psId = uid
+                , psProc = error "dummySession: psProc used unexpectedly"
+                , psPgid = Nothing
+                , psKillLock = klock
+                , psStdin = error "dummySession: psStdin used unexpectedly"
+                , psStdout = error "dummySession: psStdout used unexpectedly"
+                , psStderr = error "dummySession: psStderr used unexpectedly"
+                , psQueue = q
+                }
     pure
         Session
-            { sessLock = lock
-            , sessStdin = error "dummySession: sessStdin used unexpectedly"
-            , sessStdout = error "dummySession: sessStdout used unexpectedly"
-            , sessStderr = error "dummySession: sessStderr used unexpectedly"
-            , sessProc = error "dummySession: sessProc used unexpectedly"
-            , sessLines = ch
+            { sessProcSess = ps
+            , sessLock = lock
             , sessErrBuf = errRef
             , sessCounter = ctrRef
             , sessConfig = cfg
             , sessErrCallback = cbRef
+            , sessBusy = busy
             }
+
+push :: OutQueue -> Text -> IO ()
+push q t = atomically (enqueueLine q (T.length t) t)
 
 defaultCfg :: SessionConfig
 defaultCfg = SessionConfig{scProjectDir = ".", scWorkDir = "."}
@@ -81,6 +105,8 @@ emptyMeta =
         { metaDeps = []
         , metaExts = []
         , metaGhcOptions = []
+        , metaExtraLibDirs = []
+        , metaExtraIncludeDirs = []
         , metaPackages = []
         , metaSourceRepos = []
         , metaUnknownKeys = []
@@ -95,16 +121,26 @@ withTimeout usec action = do
 
 spec :: Spec
 spec = do
-    describe "processHandle" $ do
-        it "runs eofHandler when hIsEOF is True" $ do
-            evaluate (eofText `seq` ()) `shouldReturn` ()
+    describe "resolveLocalPackages" $ do
+        it "passes absolute notebook package dirs through unchanged" $
+            resolveLocalPackages "/work" [] emptyMeta{metaPackages = ["/abs/pkg"]}
+                `shouldBe` ["/abs/pkg"]
+        it "resolves relative notebook dirs against the working dir" $
+            resolveLocalPackages "/work" [] emptyMeta{metaPackages = ["../sibling"]}
+                `shouldBe` ["/work/../sibling"]
+        it "keeps operator overlays first and dedupes against notebook dirs" $
+            resolveLocalPackages
+                "/work"
+                ["/op/over"]
+                emptyMeta{metaPackages = ["/abs/pkg", "/op/over"]}
+                `shouldBe` ["/op/over", "/abs/pkg"]
 
     describe "error buffer helpers" $ do
         it "resetErrorBuffer clears, readErrorBuffer returns lines in original order" $ do
-            ch <- newTBQueueIO 256
+            q <- newOutQueue
             errRef <- newIORef []
             ctrRef <- newIORef 0
-            sess <- dummySession ch errRef ctrRef defaultCfg
+            sess <- dummySession q errRef ctrRef defaultCfg
 
             writeIORef errRef ["third", "second", "first"]
 
@@ -114,46 +150,63 @@ spec = do
             resetErrorBuffer sess
             readErrorBuffer sess `shouldReturn` ""
 
+    describe "startupErrorMessage" $ do
+        it "is the bare message when no stderr was captured" $
+            startupErrorMessage "" `shouldBe` "GHCi exited during startup"
+        it "appends the captured cabal/GHCi stderr when present" $
+            startupErrorMessage "Missing C libraries: TKMath, TKernel"
+                `shouldBe` "GHCi exited during startup:\n"
+                    <> "Missing C libraries: TKMath, TKernel"
+
     describe "drainUntilMarker" $ do
         it "collects output until marker, excluding marker" $ do
-            ch <- newTBQueueIO 256
-            errRef <- newIORef []
-            ctrRef <- newIORef 0
-            sess <- dummySession ch errRef ctrRef defaultCfg
-
-            let mk = Marker "---SABELA_MARKER_0---"
-
+            q <- newOutQueue
             _ <- forkIO $ do
-                atomically $ writeTBQueue ch "line 1"
-                atomically $ writeTBQueue ch "line 2"
-                atomically $ writeTBQueue ch "---SABELA_MARKER_0---"
-                atomically $ writeTBQueue ch "line after (should not be read)"
+                push q "line 1"
+                push q "line 2"
+                push q "---SABELA_MARKER_0---"
+                push q "line after (should not be read)"
+            out <-
+                withTimeout
+                    2_000_000
+                    (drainUntilMarker q "---SABELA_MARKER_0---" (\_ -> pure ()))
+            out `shouldBe` DrainOk "line 1\nline 2"
 
-            out <- withTimeout 2_000_000 (drainUntilMarker sess mk)
-            out `shouldBe` "line 1\nline 2"
-
-        it "stops on eofText even if marker never arrives" $ do
-            ch <- newTBQueueIO 256
-            errRef <- newIORef []
-            ctrRef <- newIORef 0
-            sess <- dummySession ch errRef ctrRef defaultCfg
-
-            let mk = Marker "---SABELA_MARKER_999---"
-
+        it "reports a sticky EOF if the marker never arrives" $ do
+            q <- newOutQueue
             _ <- forkIO $ do
-                atomically $ writeTBQueue ch "hello"
-                atomically $ writeTBQueue ch eofText
-                atomically $ writeTBQueue ch "after eof (ignored)"
+                push q "hello"
+                atomically (enqueueEof q)
+            out <-
+                withTimeout
+                    2_000_000
+                    (drainUntilMarker q "---SABELA_MARKER_999---" (\_ -> pure ()))
+            out `shouldBe` DrainEof "hello"
+            again <-
+                withTimeout
+                    2_000_000
+                    (drainUntilMarker q "---SABELA_MARKER_999---" (\_ -> pure ()))
+            again `shouldBe` DrainEof ""
 
-            out <- withTimeout 2_000_000 (drainUntilMarker sess mk)
-            out `shouldBe` "hello"
+        it "discards a stale run's output at a lower-numbered marker" $ do
+            q <- newOutQueue
+            _ <- forkIO $ do
+                push q "stale tail from run 4"
+                push q "---SABELA_MARKER_4---"
+                push q "real output"
+                push q "---SABELA_MARKER_5---"
+            out <-
+                withTimeout
+                    2_000_000
+                    (drainUntilMarker q "---SABELA_MARKER_5---" (\_ -> pure ()))
+            out `shouldBe` DrainOk "real output"
 
     describe "getMarker" $ do
         it "increments counter and produces distinct markers" $ do
-            ch <- newTBQueueIO 256
+            q <- newOutQueue
             errRef <- newIORef []
             ctrRef <- newIORef 0
-            sess <- dummySession ch errRef ctrRef defaultCfg
+            sess <- dummySession q errRef ctrRef defaultCfg
 
             Marker a <- getMarker sess
             Marker b <- getMarker sess

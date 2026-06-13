@@ -1,7 +1,9 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{- | Python REPL session backend, with the same lifecycle guarantees as
+the GHCi backend: own process group, bounded binary-safe capture,
+busy-gated interrupt, and timeout→interrupt→resync→destroy.
+-}
 module Sabela.PythonSession (
     PythonSession,
     newPythonSession,
@@ -11,82 +13,51 @@ module Sabela.PythonSession (
 
 import Control.Concurrent (MVar, forkIO, withMVar)
 import Control.Concurrent.MVar (newMVar)
-import Control.Concurrent.STM (
-    TBQueue,
-    atomically,
-    newTBQueueIO,
-    readTBQueue,
-    writeTBQueue,
- )
-import Control.Exception (SomeException, try)
-import Control.Monad (forever)
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Control.Exception (SomeException, bracket_, try)
+import Control.Monad (void, when)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Sabela.Session.Drain (
+    DrainResult (..),
+    discardUntilMarker,
+    drainUntilMarker,
+ )
+import Sabela.Session.Proc (
+    ProcSession (..),
+    destroySession,
+    interruptGroup,
+    sessionProcessSpec,
+    withSpawnedSession,
+ )
+import Sabela.Session.Reader (OutQueue, errLoop, mkMarkerText)
 import qualified Sabela.SessionTypes as ST
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
-import System.IO (
-    BufferMode (LineBuffering),
-    Handle,
-    hClose,
-    hFlush,
-    hGetLine,
-    hIsEOF,
-    hPutStrLn,
-    hSetBuffering,
-    hSetEncoding,
-    utf8,
- )
-import System.Process (
-    CreateProcess (cwd, std_err, std_in, std_out),
-    ProcessHandle,
-    StdStream (CreatePipe),
-    createProcess,
-    proc,
-    terminateProcess,
-    waitForProcess,
- )
+import System.IO (hFlush, hPutStrLn)
+import System.Process (proc, waitForProcess)
 import System.Timeout (timeout)
 
 newtype Marker = Marker Text
 
 data PythonSession = PythonSession
-    { pyLock :: MVar ()
-    , pyStdin :: Handle
-    , pyStdout :: Handle
-    , pyStderr :: Handle
-    , pyProc :: ProcessHandle
-    , pyLines :: TBQueue Text
+    { pyProcSess :: ProcSession
+    , pyLock :: MVar ()
     , pyErrBuf :: IORef [Text]
     , pyCounter :: IORef Int
     , pyWorkDir :: FilePath
+    , pyBusy :: IORef Bool
     }
 
 newPythonSession :: Maybe FilePath -> FilePath -> IO PythonSession
 newPythonSession mVenvDir workDir = do
-    (hIn, hOut, hErr, ph) <- createPythonProcess mVenvDir workDir
-    sess <- buildPythonState workDir hIn hOut hErr ph
-    initializePython sess
-    pure sess
-
-createPythonProcess ::
-    Maybe FilePath -> FilePath -> IO (Handle, Handle, Handle, ProcessHandle)
-createPythonProcess mVenvDir workDir = do
     python <- findPython mVenvDir workDir
-    let cp =
-            (proc python ["-u", "-i"])
-                { std_in = CreatePipe
-                , std_out = CreatePipe
-                , std_err = CreatePipe
-                , cwd = Just workDir
-                }
-    (Just hIn, Just hOut, Just hErr, ph) <- createProcess cp
-    mapM_
-        (\h -> hSetBuffering h LineBuffering >> hSetEncoding h utf8)
-        [hIn, hOut, hErr]
-    pure (hIn, hOut, hErr, ph)
+    let spec = sessionProcessSpec (Just workDir) (proc python ["-u", "-i"])
+    withSpawnedSession spec $ \ps -> do
+        sess <- buildPythonState workDir ps
+        initializePython sess
+        pure sess
 
 findPython :: Maybe FilePath -> FilePath -> IO FilePath
 findPython (Just venvDir) _ = pure (venvDir </> "bin" </> "python3")
@@ -95,26 +66,22 @@ findPython Nothing workDir = do
     hasVenv <- doesFileExist venvPython
     pure $ if hasVenv then venvPython else "python3"
 
-buildPythonState ::
-    FilePath -> Handle -> Handle -> Handle -> ProcessHandle -> IO PythonSession
-buildPythonState workDir hIn hOut hErr ph = do
+buildPythonState :: FilePath -> ProcSession -> IO PythonSession
+buildPythonState workDir ps = do
     lock <- newMVar ()
-    lineCh <- newTBQueueIO 256
     errBuf <- newIORef []
     counter <- newIORef 0
-    _ <- forkIO $ readLoop hOut lineCh
-    _ <- forkIO $ errLoop hErr errBuf
+    busy <- newIORef False
+    cbRef <- newIORef (\_ -> pure ())
+    _ <- forkIO $ errLoop (psStderr ps) errBuf cbRef
     pure
         PythonSession
-            { pyLock = lock
-            , pyStdin = hIn
-            , pyStdout = hOut
-            , pyStderr = hErr
-            , pyProc = ph
-            , pyLines = lineCh
+            { pyProcSess = ps
+            , pyLock = lock
             , pyErrBuf = errBuf
             , pyCounter = counter
             , pyWorkDir = workDir
+            , pyBusy = busy
             }
 
 initializePython :: PythonSession -> IO ()
@@ -123,27 +90,38 @@ initializePython sess = do
     mk <- getMarker sess
     sendRaw sess (T.unpack pythonPrelude)
     placeMarker sess mk
-    _ <- drainUntilMarker sess mk
-    pure ()
+    r <- drainUntilMarker (psQueue (pyProcSess sess)) (markerOf mk) (\_ -> pure ())
+    case r of
+        DrainOk _ -> pure ()
+        DrainEof _ -> ioError (userError "Python exited during startup")
+  where
+    markerOf (Marker t) = t
 
+-- | Polite close: @exit()@, a short grace, then the teardown chokepoint.
 closePythonSession :: PythonSession -> IO ()
-closePythonSession PythonSession{pyStdin, pyProc} = do
-    _ <- try (hPutStrLn pyStdin "exit()") :: IO (Either SomeException ())
-    _ <- try (hFlush pyStdin) :: IO (Either SomeException ())
-    _ <- try (hClose pyStdin) :: IO (Either SomeException ())
-    _ <- try (terminateProcess pyProc) :: IO (Either SomeException ())
-    _ <- waitForProcess pyProc
-    pure ()
+closePythonSession sess = do
+    _ <- timeout quitWriteGraceUs (quiet (sendRaw sess "exit()"))
+    _ <- timeout quitGraceUs (waitForProcess (psProc (pyProcSess sess)))
+    destroySession (pyProcSess sess)
+
+quiet :: IO () -> IO ()
+quiet act = void (try act :: IO (Either SomeException ()))
+
+quitGraceUs, quitWriteGraceUs :: Int
+quitGraceUs = 2000000
+quitWriteGraceUs = 1000000
 
 pythonBackend :: PythonSession -> ST.SessionBackend
 pythonBackend sess =
     ST.SessionBackend
-        { ST.sbRunBlock = runBlock sess
+        { ST.sbSessionId = psId (pyProcSess sess)
+        , ST.sbRunBlock = runBlock sess
         , ST.sbRunBlockStreaming = runBlockStreaming sess
         , ST.sbClose = closePythonSession sess
         , ST.sbReset = do
             closePythonSession sess
             pythonBackend <$> newPythonSession Nothing (pyWorkDir sess)
+        , ST.sbInterrupt = interruptIfBusy sess
         , ST.sbQueryComplete = \_ -> pure []
         , ST.sbQueryType = \_ -> pure ""
         , ST.sbQueryInfo = \_ -> pure ""
@@ -152,43 +130,85 @@ pythonBackend sess =
         , ST.sbQueryDoc = \_ -> pure ""
         }
 
+interruptIfBusy :: PythonSession -> IO ()
+interruptIfBusy sess = do
+    busy <- readIORef (pyBusy sess)
+    when busy $ interruptGroup (pyProcSess sess)
+
 runBlock :: PythonSession -> Text -> IO (Text, Text)
 runBlock sess block = runBlockStreaming sess block (\_ -> pure ())
 
-executionTimeoutUs :: Int
+executionTimeoutUs, resyncTimeoutUs :: Int
 executionTimeoutUs = 120 * 1000000
+resyncTimeoutUs = 5 * 1000000
 
+{- | Run a cell. On timeout: group SIGINT (KeyboardInterrupt), resync on
+a fresh marker, destroy if the interpreter stays silent — identical
+semantics to the GHCi backend.
+-}
 runBlockStreaming :: PythonSession -> Text -> (Text -> IO ()) -> IO (Text, Text)
 runBlockStreaming sess block onLine = withMVar (pyLock sess) $ \_ -> do
     resetErrorBuffer sess
     mk <- getMarker sess
-    execViaFile sess block
-    placeMarker sess mk
     mResult <-
-        timeout executionTimeoutUs $
-            drainUntilMarkerStreaming (pyLines sess) mk onLine
-    collectPythonResult sess mResult
+        timeout executionTimeoutUs $ do
+            execViaFile sess block
+            placeMarker sess mk
+            bracket_ (setBusy sess True) (setBusy sess False) $
+                drainUntilMarker (queue sess) (markerOf mk) onLine
+    finishRun sess mResult
+  where
+    markerOf (Marker t) = t
 
+finishRun :: PythonSession -> Maybe DrainResult -> IO (Text, Text)
+finishRun sess (Just (DrainOk out)) = do
+    errLines <- readErrorBuffer sess
+    pure (out, errLines)
+finishRun sess (Just (DrainEof _)) = do
+    destroySession (pyProcSess sess)
+    ioError (userError "Python session ended unexpectedly mid-cell")
+finishRun sess Nothing = do
+    interruptGroup (pyProcSess sess)
+    mk2 <- getMarker sess
+    synced <-
+        timeout resyncTimeoutUs $ do
+            placeMarker sess mk2
+            discardUntilMarker (queue sess) (markerTextOf mk2)
+    case synced of
+        Just True -> do
+            errLines <- readErrorBuffer sess
+            pure
+                ( ""
+                , errLines
+                    <> "\n*** Execution timed out after 120 seconds; \
+                       \computation interrupted ***"
+                )
+        _ -> do
+            destroySession (pyProcSess sess)
+            ioError
+                ( userError
+                    "Cell timed out and the session did not respond \
+                    \to interrupt; session killed"
+                )
+  where
+    markerTextOf (Marker t) = t
+
+queue :: PythonSession -> OutQueue
+queue = psQueue . pyProcSess
+
+setBusy :: PythonSession -> Bool -> IO ()
+setBusy sess = writeIORef (pyBusy sess)
+
+{- | Write the cell to a temp file and exec it. 'show' on the path
+coincides with Python string-literal escaping because both the tmp dir
+and the fixed filename are ASCII; revisit if either stops being ASCII.
+-}
 execViaFile :: PythonSession -> Text -> IO ()
 execViaFile sess block = do
     let tmpPath = pyWorkDir sess </> ".sabela_cell.py"
     TIO.writeFile tmpPath block
-    -- 'show' produces a Haskell-syntax string literal whose escape rules
-    -- coincide with Python's double-quoted string for all ASCII paths.
-    -- 'pyWorkDir' comes from 'createTempDirectory' (ASCII tmpdir), and the
-    -- filename is the fixed ASCII '.sabela_cell.py', so the escaping is
-    -- safe end-to-end. Switch to an explicit Python-repr if either of
-    -- those inputs ever stops being ASCII.
     sendRaw sess $
         "exec(open(" ++ show tmpPath ++ ", encoding='utf-8').read(), globals())"
-
-collectPythonResult :: PythonSession -> Maybe Text -> IO (Text, Text)
-collectPythonResult sess (Just outLines) = do
-    errLines <- readErrorBuffer sess
-    pure (outLines, errLines)
-collectPythonResult sess Nothing = do
-    errLines <- readErrorBuffer sess
-    pure ("", errLines <> "\n*** Execution timed out after 120 seconds ***")
 
 pythonPrelude :: Text
 pythonPrelude =
@@ -218,35 +238,18 @@ pythonPrelude =
         ]
 
 sendRaw :: PythonSession -> String -> IO ()
-sendRaw PythonSession{pyStdin} cmd = do
-    hPutStrLn pyStdin cmd
-    hFlush pyStdin
+sendRaw sess cmd = do
+    hPutStrLn (psStdin (pyProcSess sess)) cmd
+    hFlush (psStdin (pyProcSess sess))
 
 getMarker :: PythonSession -> IO Marker
-getMarker PythonSession{pyCounter} = do
-    n <- atomicModifyIORef' pyCounter (\i -> (i + 1, i))
-    pure $ Marker $ "---SABELA_MARKER_" <> T.pack (show n) <> "---"
+getMarker sess = do
+    n <- atomicModifyIORef' (pyCounter sess) (\i -> (i + 1, i))
+    pure (Marker (mkMarkerText n))
 
 placeMarker :: PythonSession -> Marker -> IO ()
 placeMarker sess (Marker mk) =
     sendRaw sess $ "print(" ++ show (T.unpack mk) ++ ")"
-
-drainUntilMarker :: PythonSession -> Marker -> IO Text
-drainUntilMarker PythonSession{pyLines} (Marker mk) =
-    drainUntilMarkerStreaming pyLines (Marker mk) (\_ -> pure ())
-
-drainUntilMarkerStreaming ::
-    TBQueue Text -> Marker -> (Text -> IO ()) -> IO Text
-drainUntilMarkerStreaming queue (Marker mk) onLine =
-    fmap (T.strip . T.unlines) (go [])
-  where
-    go acc = do
-        line <- atomically $ readTBQueue queue
-        if T.isInfixOf mk line || T.isInfixOf eofText line
-            then pure (reverse acc)
-            else do
-                onLine line
-                go (line : acc)
 
 resetErrorBuffer :: PythonSession -> IO ()
 resetErrorBuffer sess = atomicModifyIORef' (pyErrBuf sess) (const ([], ()))
@@ -261,39 +264,3 @@ filterPrompts = filter (not . isPrompt)
     isPrompt l =
         let s = T.strip l
          in s == ">>>" || s == "..." || s == ">>> " || s == "... "
-
-readLoop :: Handle -> TBQueue Text -> IO ()
-readLoop h ch = do
-    _ <-
-        try
-            ( forever $ do
-                eof <- hIsEOF h
-                if eof
-                    then atomically $ writeTBQueue ch eofText
-                    else hGetLine h >>= atomically . writeTBQueue ch . T.pack
-            ) ::
-            IO (Either SomeException ())
-    pure ()
-
-maxErrLines :: Int
-maxErrLines = 500
-
-errLoop :: Handle -> IORef [Text] -> IO ()
-errLoop h ref = do
-    _ <-
-        try
-            ( forever $ do
-                eof <- hIsEOF h
-                if eof
-                    then pure ()
-                    else do
-                        line <- hGetLine h
-                        -- Force the bounded prefix; lazy @take@ pins the tail.
-                        atomicModifyIORef' ref $ \ls ->
-                            let !ls' = take maxErrLines (T.pack line : ls) in (ls', ())
-            ) ::
-            IO (Either SomeException ())
-    pure ()
-
-eofText :: Text
-eofText = "---EOF---"

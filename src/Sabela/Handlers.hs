@@ -20,8 +20,10 @@ module Sabela.Handlers (
     -- * Haskell session management (also used by tests)
     installAndRestart,
     setupReplProject,
+    resolveLocalPackages,
     updateCellSource,
     killAllSessions,
+    shutdownAllSessions,
     reloadHaskellSession,
 
     -- * Re-exports from submodules
@@ -30,6 +32,7 @@ module Sabela.Handlers (
 
 import Control.Concurrent (forkIO)
 import Control.Monad (void, when)
+import Data.Foldable (find)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -44,22 +47,27 @@ import Sabela.Handlers.Lifecycle (
     installAndRestart,
     killAllSessions,
     reloadHaskellSession,
+    resolveLocalPackages,
     setupReplProject,
+    shutdownAllSessions,
  )
 import Sabela.Handlers.Plan (
     dispatchByLang,
     executeAffected,
     executeFullRestart,
+    executeRunAll,
     executeSingleCell,
  )
 import Sabela.Handlers.Shared
 import Sabela.Model (
     Cell (..),
+    CellType (..),
     Notebook (..),
     NotebookEvent (..),
     SessionStatus (..),
     cellLangOf,
  )
+import Sabela.Reactivity (cellStale, markDependentsDirty)
 import Sabela.State (App (..), getAIStore)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import ScriptHs.Parser (CabalMeta (..))
@@ -99,18 +107,35 @@ setupReactive app =
             , rnWidgetCell = handleWidgetCell app
             }
 
+{- | Apply an edit and run reactively — but only when the source really
+changed; an identical write (e.g. the run button's flush) is a no-op so
+clean cells are never re-executed.
+-}
 handleCellEdit :: App -> Int -> Text -> IO ()
 handleCellEdit app cid src = do
     debugLog app $ "[handler] handleCellEdit: cell " <> T.pack (show cid)
+    before <- readNotebook (appNotebook app)
+    let changed = case find (\c -> cellId c == cid) (nbCells before) of
+            Just c -> cellSource c /= src
+            Nothing -> False
     modifyNotebook (appNotebook app) $ updateCellSource cid src
-    nb <- readNotebook (appNotebook app)
-    gen <- bumpGeneration app
-    dispatchByLang app gen cid (cellLangOf cid nb) (executeAffected app gen cid)
+    when changed $ do
+        nb <- readNotebook (appNotebook app)
+        gen <- bumpGeneration app
+        dispatchByLang app gen cid (cellLangOf cid nb) (executeAffected app gen cid)
 
+{- | Update a cell's source. On a real change the cell AND its transitive
+dependents go dirty (so staleness survives solo runs); an identical
+write changes nothing.
+-}
 updateCellSource :: Int -> Text -> Notebook -> Notebook
-updateCellSource cid src nb =
-    nb{nbCells = map upd (nbCells nb)}
+updateCellSource cid src nb
+    | not changed = nb
+    | otherwise = markDependentsDirty cid nb{nbCells = map upd (nbCells nb)}
   where
+    changed = case find (\c -> cellId c == cid) (nbCells nb) of
+        Just c -> cellSource c /= src
+        Nothing -> False
     upd c
         | cellId c == cid = c{cellSource = src, cellDirty = True}
         | otherwise = c
@@ -121,21 +146,30 @@ handleWidgetCell app cid = do
     gen <- bumpGeneration app
     void $ forkIO $ executeAffected app gen cid
 
+{- | Run one cell — unless it is clean (unchanged since its last
+successful run), in which case the click is a no-op.
+-}
 handleRunCell :: App -> Int -> IO ()
 handleRunCell app cid = do
     debugLog app $ "[handler] handleRunCell: cell " <> T.pack (show cid)
     nb <- readNotebook (appNotebook app)
-    gen <- bumpGeneration app
-    dispatchByLang app gen cid (cellLangOf cid nb) $
-        void $
-            forkIO $
-                executeSingleCell app gen cid
+    let runnable = case find (\c -> cellId c == cid) (nbCells nb) of
+            Just c -> cellType c /= CodeCell || cellStale c
+            Nothing -> False
+    if not runnable
+        then debugLog app "[handler] handleRunCell: cell unchanged; skipping"
+        else do
+            gen <- bumpGeneration app
+            dispatchByLang app gen cid (cellLangOf cid nb) $
+                void $
+                    forkIO $
+                        executeSingleCell app gen cid
 
 handleRunAll :: App -> IO ()
 handleRunAll app = do
-    debugLog app "[handler] handleRunAll: fullRestart"
+    debugLog app "[handler] handleRunAll"
     gen <- bumpGeneration app
-    void $ forkIO $ executeFullRestart app gen
+    void $ forkIO $ executeRunAll app gen
 
 handleReset :: App -> IO ()
 handleReset app = do

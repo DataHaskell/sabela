@@ -1,61 +1,175 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-
-  /* dark — Catppuccin Mocha (default) */
-  --bg: #1e1e2e;
-  --bg-cell: #262637;
-  --bg-output: #1a1a28;
-  --bg-sidebar: #1a1a28;
-  --bg-panel: #181825;
-  --fg: #cdd6f4;
-  --fg-dim: #9399b2;
-  --fg-bright: #f5f5ff;
-  --accent: #89b4fa;
-  --accent-rgb: 137, 180, 250;
-  --accent-dim: #45475a;
-  --green: #a6e3a1;
-  --red: #f38ba8;
-  --yellow: #f9e2af;
-  --peach: #fab387;
-  --mauve: #cba6f7;
-  --border: #313244;
-  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --error-tooltip-bg: #2a1a1e;
-  --output-html-bg: #ffffff;
-  --output-html-fg: #1e1e2e;
+  --font-display: 'Fraunces', Georgia, serif;
   --radius: 8px;
   --sidebar-w: 240px;
   --panel-w: 320px;
-}
-:root[data-theme='light'] {
-  /* light — clean white with cool accent */
-  --bg: #ffffff;
-  --bg-cell: #ffffff;
-  --bg-output: #fafafa;
-  --bg-sidebar: #fafafa;
-  --bg-panel: #f5f5f5;
-  --fg: #0a0a0a;
-  --fg-dim: #71717a;
-  --fg-bright: #000000;
-  --accent: #0066ff;
-  --accent-rgb: 0, 102, 255;
-  --accent-dim: #e4e4e7;
-  --green: #16a34a;
-  --red: #dc2626;
-  --yellow: #ca8a04;
-  --peach: #ea580c;
-  --mauve: #7c3aed;
-  --border: #e4e4e7;
-  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.1);
-  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --error-tooltip-bg: #fef2f2;
+
+  /* default: Nord — Polar Night + Frost (frost-cyan accent) */
+  --bg: #2e3440;
+  --bg-cell: #3b4252;
+  --bg-output: #353c4a;
+  --bg-sidebar: #2b303b;
+  --bg-panel: #272c36;
+  --fg: #f7f9fc;
+  --fg-dim: #7b8696;
+  --fg-bright: #ffffff;
+  --accent: #88c0d0;
+  --accent-rgb: 136, 192, 208;
+  --accent-soft: #b8dde6;
+  --accent-dim: #434c5e;
+  --green: #a3be8c;
+  --red: #bf616a;
+  --yellow: #ebcb8b;
+  --peach: #d08770;
+  --mauve: #b48ead;
+  --border: #434c5e;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --error-tooltip-bg: #3b2b30;
   --output-html-bg: #ffffff;
-  --output-html-fg: #0a0a0a;
+  --output-html-fg: #2e3440;
 }
+
+/* Nord Light — soft near-white reading surface, cool grey chrome */
+:root[data-theme='nord-light'] {
+  --bg: #f8fafc;
+  --bg-cell: #fcfdfe;
+  --bg-output: #f1f4f8;
+  --bg-sidebar: #eef1f7;
+  --bg-panel: #eef1f7;
+  --fg: #2e3440;
+  --fg-dim: #4c566a;
+  --fg-bright: #2e3440;
+  --accent: #5e81ac;
+  --accent-rgb: 94, 129, 172;
+  --accent-soft: #d2ddec;
+  --accent-dim: #dde3ec;
+  --green: #5b8a5a;
+  --red: #b5535c;
+  --yellow: #b58a3c;
+  --peach: #cf7a55;
+  --mauve: #9d6f96;
+  --border: #e2e7f0;
+  --shadow-strong: 0 8px 32px rgba(46, 52, 64, 0.12);
+  --shadow-soft: 0 1px 3px rgba(46, 52, 64, 0.08);
+  --error-tooltip-bg: #f7e4e6;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
+/* Aurora Purple — Polar Night, Nord aurora purple accent */
+:root[data-theme='nord-aurora'] {
+  --bg: #2e3440;
+  --bg-cell: #3b4252;
+  --bg-output: #353c4a;
+  --bg-sidebar: #2b303b;
+  --bg-panel: #272c36;
+  --fg: #f7f9fc;
+  --fg-dim: #828ca0;
+  --fg-bright: #ffffff;
+  --accent: #b48ead;
+  --accent-rgb: 180, 142, 173;
+  --accent-soft: #ddc7d8;
+  --accent-dim: #434c5e;
+  --green: #a3be8c;
+  --red: #bf616a;
+  --yellow: #ebcb8b;
+  --peach: #d08770;
+  --mauve: #b48ead;
+  --border: #434c5e;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --error-tooltip-bg: #3b2b30;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
+/* Aurora Ember — Polar Night, Nord aurora orange accent */
+:root[data-theme='nord-ember'] {
+  --bg: #2e3440;
+  --bg-cell: #3b4252;
+  --bg-output: #353c4a;
+  --bg-sidebar: #2b303b;
+  --bg-panel: #272c36;
+  --fg: #f7f9fc;
+  --fg-dim: #828ca0;
+  --fg-bright: #ffffff;
+  --accent: #d08770;
+  --accent-rgb: 208, 135, 112;
+  --accent-soft: #f0d2c4;
+  --accent-dim: #434c5e;
+  --green: #a3be8c;
+  --red: #bf616a;
+  --yellow: #ebcb8b;
+  --peach: #d08770;
+  --mauve: #b48ead;
+  --border: #434c5e;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --error-tooltip-bg: #3b2b30;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
+/* VS Code Dark+ — the familiar editor palette (#1e1e1e ground, blue accent). */
+:root[data-theme='vscode'] {
+  --bg: #1e1e1e;
+  --bg-cell: #1e1e1e;
+  --bg-output: #181818;
+  --bg-sidebar: #252526;
+  --bg-panel: #252526;
+  --fg: #d4d4d4;
+  --fg-dim: #858585;
+  --fg-bright: #ffffff;
+  --accent: #3794ff;
+  --accent-rgb: 55, 148, 255;
+  --accent-soft: #6cb0ff;
+  --accent-dim: #094771;
+  --green: #6a9955;
+  --red: #f14c4c;
+  --yellow: #dcdcaa;
+  --peach: #ce9178;
+  --mauve: #c586c0;
+  --border: #333333;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --error-tooltip-bg: #5a1d1d;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #1e1e1e;
+}
+
+/* Warm Paper — warm light ground, Nord ink, terracotta + Aurora accents
+   (the shared gallery identity; the default). */
+:root[data-theme='warm'] {
+  --bg: #f7f3ec;
+  --bg-cell: #ffffff;
+  --bg-output: #f0eadf;
+  --bg-sidebar: #f0eadf;
+  --bg-panel: #f0eadf;
+  --fg: #2e3440;
+  --fg-dim: #6f6a5d;
+  --fg-bright: #1c2027;
+  --accent: #c2674a;
+  --accent-rgb: 194, 103, 74;
+  --accent-soft: #f0d8cb;
+  --accent-dim: #e7ddcf;
+  --green: #6f9355;
+  --red: #bf616a;
+  --yellow: #bb842c;
+  --peach: #c2674a;
+  --mauve: #9a6f96;
+  --border: #e7ddcf;
+  --shadow-strong: 0 8px 32px rgba(70, 52, 34, 0.14);
+  --shadow-soft: 0 1px 3px rgba(70, 52, 34, 0.07);
+  --error-tooltip-bg: #fbeae4;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #2e3440;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -87,8 +201,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-/* Faint film grain in the reading column (dark theme only — keeps the
-     warm ground from looking flat without muddying the cream paper). */
+/* Faint paper grain on the reading surface (Nord Light only — gives the
+     warm paper some tooth without muddying it). */
 body::before {
   content: '';
   position: fixed;
@@ -96,14 +210,12 @@ body::before {
   z-index: 0;
   pointer-events: none;
   display: none;
-  opacity: 0.45;
-  mix-blend-mode: soft-light;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
 }
-:root[data-theme='dark'] body::before {
-  display: block;
-}
+/* (paper grain intentionally off — Nord Light is a clean near-white) */
 .toolbar,
 .main-layout {
   position: relative;

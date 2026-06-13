@@ -7,6 +7,7 @@ module Sabela.Handlers.Shared (
     broadcast,
     updateAndBroadcast,
     broadcastCellError,
+    broadcastCellErrorWith,
     debugLog,
     isMimeLine,
     mkStreamingCallback,
@@ -92,12 +93,16 @@ applyResult r c
     | otherwise = c
 
 broadcastCellError :: App -> Int -> Text -> IO ()
-broadcastCellError app cid msg = do
-    let err = CellError{ceLine = Nothing, ceCol = Nothing, ceMessage = msg}
+broadcastCellError app cid msg =
+    broadcastCellErrorWith app cid msg [CellError Nothing Nothing msg]
+
+-- | Like 'broadcastCellError', with explicit (line-carrying) 'CellError's.
+broadcastCellErrorWith :: App -> Int -> Text -> [CellError] -> IO ()
+broadcastCellErrorWith app cid msg errs =
     updateAndBroadcast
         app
         (\nb -> nb{nbCells = map (clearCellOutputs cid msg) (nbCells nb)})
-        (EvCellResult cid [] (Just msg) [err])
+        (EvCellResult cid [] (Just msg) errs)
 
 clearCellOutputs :: Int -> Text -> Cell -> Cell
 clearCellOutputs targetCid errMsg c

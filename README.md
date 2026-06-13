@@ -199,6 +199,52 @@ near the top keeps the environment easy to read.
 For dependencies you want in every notebook, put the same directives in a
 `global.md` (by default `~/.sabela/global.md`).
 
+### Compiled cells (`-- compile`)
+
+Cells normally run interpreted in GHCi — instant, but 10–100× slower than
+native code for tight Haskell loops. Mark a cell **compiled** and its
+declarations are built into a generated module at `-O2` instead:
+
+````markdown
+```haskell
+-- compile
+trainEpoch :: Model -> [Batch] -> (Model, Double)
+trainEpoch m bs = ...
+```
+
+```haskell
+trainEpoch model batches   -- calls native -O2 code
+```
+````
+
+The mental model is one sentence: **a compiled cell defines things; it never
+runs things.** The rules:
+
+1. A compiled cell contains only what is legal at the top of a module:
+   imports, type signatures, bindings, `data`/`class`/`instance`
+   declarations. No bare expressions, no `x <- action`, no widgets or
+   `display*` calls — put those in an ordinary cell below.
+2. Downstream cells use compiled names directly; nothing to import.
+3. Duplicate top-level names across cells are an error (compiled definitions
+   cannot be shadowed), and a compiled cell cannot use a name defined in an
+   interpreted cell — pass the value as an argument instead.
+4. Editing a compiled cell recompiles (seconds, not milliseconds) and
+   re-runs its dependents. Editing interpreted cells never triggers a
+   compile, so tweak call sites freely.
+
+`-- compile: Training` names the generated module explicitly; cells sharing
+a name merge into one module (which also permits mutual recursion between
+them), and modules import each other automatically when one uses the
+other's names. Use the ⚡ button in a cell's actions to toggle the
+directive without typing it.
+
+Where the speedup comes from (and doesn't): pure Haskell loops gain
+10–300×; loops dominated by large native calls (e.g. big hasktorch
+matmuls) gain little, since the tensor math was already native. Keep the
+hot loop *inside* the compiled cell and return small, strict results — a
+compiled producer of a lazy list consumed by an interpreted `sum` keeps
+most of the slowness.
+
 ---
 
 ## 7. Rich output helpers

@@ -5,8 +5,13 @@ module Sabela.Deps (
     collectMetadataFromContent,
     mergedMeta,
     sabelaDefaultExts,
+    ProjectSig (..),
+    emptyProjectSig,
+    projectSig,
+    depsMatch,
 ) where
 
+import Data.List (sort, sortOn)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -16,6 +21,7 @@ import ScriptHs.Markdown (Segment (..), parseMarkdown)
 import ScriptHs.Parser (
     CabalMeta (..),
     ScriptFile (..),
+    SourceRepoPin (..),
     mergeMetas,
     parseScript,
  )
@@ -57,3 +63,51 @@ mergedMeta globalDeps meta =
         { metaDeps = S.toList (S.fromList (metaDeps meta) <> globalDeps)
         , metaExts = S.toList (S.fromList (metaExts meta) <> S.fromList sabelaDefaultExts)
         }
+
+{- | The rebuild-relevant repl-project inputs beyond dep names and extensions.
+Compared by the session-staleness check so directive changes (local package
+dirs, git pins, ghc-options) trigger a package-env rebuild.
+-}
+data ProjectSig = ProjectSig
+    { psLocalPackages :: [FilePath]
+    , psSourceRepos :: [SourceRepoPin]
+    , psGhcOptions :: [Text]
+    , psExtraLibDirs :: [Text]
+    , psExtraIncludeDirs :: [Text]
+    }
+    deriving (Eq, Show)
+
+emptyProjectSig :: ProjectSig
+emptyProjectSig = ProjectSig [] [] [] [] []
+
+{- | Canonical signature from resolved local package dirs + metadata: package
+dirs and git pins compare order-insensitively; ghc-options keep their order.
+-}
+projectSig :: [FilePath] -> CabalMeta -> ProjectSig
+projectSig localPkgs meta =
+    ProjectSig
+        { psLocalPackages = sort localPkgs
+        , psSourceRepos = sortOn pinKey (metaSourceRepos meta)
+        , psGhcOptions = metaGhcOptions meta
+        , psExtraLibDirs = sort (metaExtraLibDirs meta)
+        , psExtraIncludeDirs = sort (metaExtraIncludeDirs meta)
+        }
+  where
+    pinKey p = (srpLocation p, srpRef p, srpSubdir p)
+
+{- | Does an installed session state cover the notebook's metadata? Dep names
+use subset semantics (a dropped dep keeps the session); extensions and the
+project signature must match exactly.
+-}
+depsMatch ::
+    CabalMeta ->
+    Set Text ->
+    Set Text ->
+    Set Text ->
+    ProjectSig ->
+    ProjectSig ->
+    Bool
+depsMatch metas installed instExts globalDeps neededSig instSig =
+    S.fromList (metaDeps metas) `S.isSubsetOf` (installed `S.union` globalDeps)
+        && S.fromList (metaExts metas) == instExts
+        && neededSig == instSig

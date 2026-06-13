@@ -1,0 +1,3 @@
+-- Standalone project: stops cabal's upward project discovery from picking up
+-- the repo-root cabal.project (which pins sabela + ../scripths, not the hub).
+packages: .

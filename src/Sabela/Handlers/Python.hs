@@ -7,6 +7,7 @@ module Sabela.Handlers.Python (
     execPythonCell,
     executePythonCell,
     executePythonCells,
+    executeStalePythonCells,
     collectPythonDeps,
 ) where
 
@@ -44,6 +45,7 @@ import qualified System.IO
 import qualified System.Process
 
 import Sabela.Handlers.Shared
+import Sabela.Reactivity (cellStale)
 
 collectPythonDeps :: Notebook -> S.Set Text
 collectPythonDeps nb =
@@ -224,9 +226,13 @@ runSinglePythonCell app gen cid cell = do
 
 tryExecAndBroadcast :: App -> Int -> Int -> Cell -> IO ()
 tryExecAndBroadcast app gen cid cell = do
+    mSess <- getPythonSession (appSessions app)
     pyResult <-
         try (execPythonCell app cell) ::
             IO (Either SomeException (RunResult, [CellError]))
+    case pyResult of
+        Left _ -> forM_ mSess (handlePythonCrash app)
+        Right _ -> pure ()
     let (result, errs) = unwrapExecResult cid pyResult
     whenCurrentGen app gen $
         updateAndBroadcast
@@ -234,15 +240,37 @@ tryExecAndBroadcast app gen cid cell = do
             (\nb' -> nb'{nbCells = map (applyResult result) (nbCells nb')})
             (EvCellResult (rrCellId result) (rrOutputs result) (rrError result) errs)
 
+{- | Mirror of the GHCi crash handler: clear the slot only if it still
+holds the crashed backend, then tear it down (idempotent), so the next
+Python run respawns a fresh interpreter.
+-}
+handlePythonCrash :: App -> ST.SessionBackend -> IO ()
+handlePythonCrash app crashed = do
+    modifyPythonSession (appSessions app) $ \mSess ->
+        pure
+            ( case mSess of
+                Just s | ST.sbSessionId s == ST.sbSessionId crashed -> Nothing
+                other -> other
+            , ()
+            )
+    void (try (ST.sbClose crashed) :: IO (Either SomeException ()))
+
 unwrapExecResult ::
     Int -> Either SomeException (RunResult, [CellError]) -> (RunResult, [CellError])
 unwrapExecResult _ (Right r) = r
 unwrapExecResult cid (Left e) = (RunResult cid [] (Just (T.pack (show e))), [])
 
 executePythonCells :: App -> Int -> IO ()
-executePythonCells app gen = do
+executePythonCells = executePythonCellsWhere (const True)
+
+-- | Incremental run-all pass: only stale Python cells re-run.
+executeStalePythonCells :: App -> Int -> IO ()
+executeStalePythonCells = executePythonCellsWhere cellStale
+
+executePythonCellsWhere :: (Cell -> Bool) -> App -> Int -> IO ()
+executePythonCellsWhere keep app gen = do
     nb <- readNotebook (appNotebook app)
-    let pyCells = filter isPythonCodeCell (nbCells nb)
+    let pyCells = filter (\c -> isPythonCodeCell c && keep c) (nbCells nb)
     unless (null pyCells) $ do
         ok <- ensurePythonSessionAlive app
         when ok $ forM_ pyCells (execCellInSequence app gen)

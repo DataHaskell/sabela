@@ -12,4 +12,4 @@ let unsavedChanges = false;
 // clean cells let the server-supplied content win, so AI-driven edits to
 // cells the user didn't touch show up immediately.
 const dirtyCells = new Set();
-const AUTOSAVE_INTERVAL_MS = 30000;
+const AUTOSAVE_INTERVAL_MS = 10000;

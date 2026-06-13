@@ -1,14 +1,21 @@
 module Main (main) where
 
-import Control.Exception (finally)
-import Control.Monad (unless, when)
+import Control.Concurrent (myThreadId, throwTo)
+import Control.Exception (AsyncException (UserInterrupt), finally)
+import Control.Monad (unless, void, when)
+import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Maybe (isJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.Wai.Handler.Warp (run)
-import Sabela.Handlers (initGlobalEnv, initPreinstalledPackages, setupReactive)
+import Sabela.Handlers (
+    initGlobalEnv,
+    initPreinstalledPackages,
+    setupReactive,
+    shutdownAllSessions,
+ )
 import Sabela.Server (mkApp, newApp)
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
@@ -24,7 +31,15 @@ import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath (splitSearchPath, takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
+import System.Posix.Signals (
+    Handler (Catch, Ignore),
+    installHandler,
+    sigHUP,
+    sigINT,
+    sigTERM,
+ )
 import System.Process (getCurrentPid)
+import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
 import Data.Aeson (encode, object, (.=))
@@ -72,11 +87,31 @@ start port workDir globalFile pkgs = do
     case mAiToken of
         Just _ -> putStrLn "  /api/ai/* requires Authorization: Bearer <SABELA_AI_TOKEN>"
         Nothing -> pure ()
+    installShutdownHandlers
     run port (mkApp app rn)
         `finally` ( do
+                        shutdownAllSessions app
                         cleanupRegistry registryFile
-                        cleanupTmpDir app
+                        void (timeout 3000000 (cleanupTmpDir app))
                   )
+
+{- | SIGTERM/SIGHUP fire the same shutdown path as Ctrl-C so the
+'finally' cleanup (session teardown) always runs; once-guarded so a
+second signal cannot abort the cleanup. Inherited HUP-Ignore is kept.
+-}
+installShutdownHandlers :: IO ()
+installShutdownHandlers = do
+    mainTid <- myThreadId
+    fired <- newIORef False
+    let trigger = do
+            first <- atomicModifyIORef' fired (\b -> (True, not b))
+            when first (throwTo mainTid UserInterrupt)
+    _ <- installHandler sigTERM (Catch trigger) Nothing
+    _ <- installHandler sigINT (Catch trigger) Nothing
+    oldHup <- installHandler sigHUP (Catch trigger) Nothing
+    case oldHup of
+        Ignore -> void (installHandler sigHUP Ignore Nothing)
+        _ -> pure ()
 
 cleanupTmpDir :: App -> IO ()
 cleanupTmpDir app = do

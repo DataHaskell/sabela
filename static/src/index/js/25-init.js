@@ -3,6 +3,7 @@
   connectSSE();
   refreshFiles();
   loadExamples();
+  togglePanel('examples');
   try {
     const nb = await api('GET', 'notebook');
     render(nb);

@@ -12,6 +12,7 @@ module Sabela.Server.Run (
     runAllH,
     resetH,
     restartKernelH,
+    interruptKernelH,
     clearCellH,
 
     -- * IDE
@@ -50,7 +51,7 @@ import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.EventBus (subscribeBroadcast)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
-import Sabela.State.SessionManager (getHaskellSession)
+import Sabela.State.SessionManager (getHaskellSession, getPythonSession)
 import Sabela.State.WidgetStore (setWidget)
 
 ------------------------------------------------------------------------
@@ -100,6 +101,17 @@ resetH rn app = liftIO $ rnReset rn >> readNotebook (appNotebook app)
 
 restartKernelH :: ReactiveNotebook -> Handler NoContent
 restartKernelH rn = liftIO $ rnRestartKernel rn >> pure NoContent
+
+{- | Stop the running cell: busy-gated group SIGINT to every present
+backend, so an idle interrupt is a no-op. Takes no session lock.
+-}
+interruptKernelH :: App -> Handler NoContent
+interruptKernelH app = liftIO $ do
+    mHs <- getHaskellSession (appSessions app)
+    mapM_ ST.sbInterrupt mHs
+    mPy <- getPythonSession (appSessions app)
+    mapM_ ST.sbInterrupt mPy
+    pure NoContent
 
 clearCellH :: App -> Int -> Handler NoContent
 clearCellH app cid = liftIO $ do
