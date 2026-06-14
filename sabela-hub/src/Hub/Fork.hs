@@ -66,11 +66,16 @@ serveFork cfg gallery shares forker slug req respond
                                     </> T.unpack (sanitize forker)
                         createDirectoryIfMissing True dir
                         BS.writeFile (dir </> T.unpack name) src
-                        -- A browser form lands the user in their editor; the SPA
-                        -- fork (Accept: json) just gets the new notebook name.
+                        -- A browser form lands the user in their editor with the
+                        -- fork opened (?open=); the SPA / post-login resume fetch
+                        -- (Accept: json) just gets the new notebook name to load.
                         respond $
                             if wantsHtml req
-                                then responseLBS status303 [("Location", "/")] ""
+                                then
+                                    responseLBS
+                                        status303
+                                        [("Location", TE.encodeUtf8 ("/?open=" <> name))]
+                                        ""
                                 else jsonResponse status200 (object ["notebook" .= name])
   where
     notForkable = jsonError status404 "That notebook can't be forked."

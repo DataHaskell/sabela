@@ -22,7 +22,7 @@ async function saveNotebook() {
       const cm = editors[id];
       if (cm && cm.getValue() === val) dirtyCells.delete(parseInt(id));
     }
-    document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
+    setToolbarTitle(nb.nbTitle);
     flashSaved();
   } catch (e) {
     setStatus('Save failed: ' + e.message, 'error');

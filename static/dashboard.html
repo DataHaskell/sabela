@@ -17,16 +17,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/haskell.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/python.min.js"></script>
     <script>
-// Theme bootstrap — shared with editor via 'sabela-theme' localStorage key.
+// Theme bootstrap — shared with the editor via 'sabela-theme' localStorage key.
 (() => {
+  const KNOWN = ['warm', 'nord', 'nord-light', 'nord-aurora', 'nord-ember', 'vscode'];
   const stored = localStorage.getItem('sabela-theme');
-  const theme =
-    stored === 'light' || stored === 'dark'
-      ? stored
-      : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
-        ? 'light'
-        : 'dark';
-  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.theme = KNOWN.includes(stored) ? stored : 'warm';
   window.__sabelaThemePinned = !!stored;
 })();
     </script>
@@ -37,60 +32,163 @@
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-  /* light — clean white with cool accent */
-  --bg: #ffffff;
-  --bg-muted: #fafafa;
-  --bg-card: #ffffff;
-  --fg: #0a0a0a;
-  --fg-dim: #71717a;
-  --fg-heading: #000000;
-  --accent: #0066ff;
-  --accent-rgb: 0, 102, 255;
-  --accent-hover: #0052cc;
-  --border: #e4e4e7;
-  --border-light: #f4f4f5;
   --main-max-w: 760px;
   --radius: 8px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --err-border: #fecaca;
-  --err-bg: #fef2f2;
-  --err-fg: #991b1b;
-  --hl-keyword: #8839ef;
-  --hl-string: #40a02b;
-  --hl-number: #fe640b;
-  --hl-comment: #8c8fa1;
-  --hl-function: #1e66f5;
-  --hl-type: #df8e1d;
-  --hl-builtin: #d20f39;
-  --hl-operator: #04a5e5;
-  --hl-meta: #ea76cb;
+  /* default: Warm Paper (matches the editor + gallery) */
+  --bg: #f7f3ec;
+  --bg-muted: #f0eadf;
+  --bg-card: #ffffff;
+  --fg: #2e3440;
+  --fg-dim: #6f6a5d;
+  --fg-heading: #1c2027;
+  --accent: #c2674a;
+  --accent-rgb: 194, 103, 74;
+  --accent-hover: #a85539;
+  --border: #e7ddcf;
+  --border-light: #f0eadf;
+  --shadow: 0 1px 3px rgba(70, 52, 34, 0.08);
+  --err-border: #e8c4b8;
+  --err-bg: #f7e9e2;
+  --err-fg: #bf616a;
+  --hl-keyword: #9a6f96;
+  --hl-string: #6f9355;
+  --hl-number: #bb842c;
+  --hl-comment: #9a958a;
+  --hl-function: #c2674a;
+  --hl-type: #bb842c;
+  --hl-builtin: #bf616a;
+  --hl-operator: #4f8a99;
+  --hl-meta: #9a6f96;
 }
-:root[data-theme='dark'] {
-  /* dark — Catppuccin Mocha */
-  --bg: #1e1e2e;
-  --bg-muted: #262637;
-  --bg-card: #181825;
-  --fg: #cdd6f4;
-  --fg-dim: #9399b2;
-  --fg-heading: #f5f5ff;
-  --accent: #89b4fa;
-  --accent-rgb: 137, 180, 250;
-  --accent-hover: #a4c0fa;
-  --border: #313244;
-  --border-light: #262637;
+:root[data-theme='nord'] {
+  --bg: #2e3440;
+  --bg-muted: #353c4a;
+  --bg-card: #3b4252;
+  --fg: #eceff4;
+  --fg-dim: #9aa5b8;
+  --fg-heading: #ffffff;
+  --accent: #88c0d0;
+  --accent-rgb: 136, 192, 208;
+  --accent-hover: #8fbcbb;
+  --border: #434c5e;
+  --border-light: #3b4252;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   --err-border: #5a2730;
-  --err-bg: #2a1a1e;
-  --err-fg: #f38ba8;
-  --hl-keyword: #cba6f7;
-  --hl-string: #a6e3a1;
-  --hl-number: #fab387;
-  --hl-comment: #7f849c;
-  --hl-function: #89b4fa;
-  --hl-type: #f9e2af;
-  --hl-builtin: #f38ba8;
-  --hl-operator: #89dceb;
-  --hl-meta: #f5c2e7;
+  --err-bg: #3b2b30;
+  --err-fg: #bf616a;
+  --hl-keyword: #81a1c1;
+  --hl-string: #a3be8c;
+  --hl-number: #b48ead;
+  --hl-comment: #8b96ab;
+  --hl-function: #88c0d0;
+  --hl-type: #8fbcbb;
+  --hl-builtin: #bf616a;
+  --hl-operator: #81a1c1;
+  --hl-meta: #b48ead;
+}
+:root[data-theme='nord-aurora'] {
+  --bg: #2e3440;
+  --bg-muted: #353c4a;
+  --bg-card: #3b4252;
+  --fg: #eceff4;
+  --fg-dim: #9aa5b8;
+  --fg-heading: #ffffff;
+  --accent: #b48ead;
+  --accent-rgb: 180, 142, 173;
+  --accent-hover: #c4a0bd;
+  --border: #434c5e;
+  --border-light: #3b4252;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --err-border: #5a2730;
+  --err-bg: #3b2b30;
+  --err-fg: #bf616a;
+  --hl-keyword: #81a1c1;
+  --hl-string: #a3be8c;
+  --hl-number: #b48ead;
+  --hl-comment: #8b96ab;
+  --hl-function: #b48ead;
+  --hl-type: #8fbcbb;
+  --hl-builtin: #bf616a;
+  --hl-operator: #81a1c1;
+  --hl-meta: #b48ead;
+}
+:root[data-theme='nord-ember'] {
+  --bg: #2e3440;
+  --bg-muted: #353c4a;
+  --bg-card: #3b4252;
+  --fg: #eceff4;
+  --fg-dim: #9aa5b8;
+  --fg-heading: #ffffff;
+  --accent: #d08770;
+  --accent-rgb: 208, 135, 112;
+  --accent-hover: #dba08c;
+  --border: #434c5e;
+  --border-light: #3b4252;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --err-border: #5a2730;
+  --err-bg: #3b2b30;
+  --err-fg: #bf616a;
+  --hl-keyword: #81a1c1;
+  --hl-string: #a3be8c;
+  --hl-number: #d08770;
+  --hl-comment: #8b96ab;
+  --hl-function: #d08770;
+  --hl-type: #ebcb8b;
+  --hl-builtin: #bf616a;
+  --hl-operator: #81a1c1;
+  --hl-meta: #b48ead;
+}
+:root[data-theme='nord-light'] {
+  --bg: #f8fafc;
+  --bg-muted: #eef1f7;
+  --bg-card: #fcfdfe;
+  --fg: #2e3440;
+  --fg-dim: #4c566a;
+  --fg-heading: #2e3440;
+  --accent: #5e81ac;
+  --accent-rgb: 94, 129, 172;
+  --accent-hover: #4c6f9a;
+  --border: #e2e7f0;
+  --border-light: #eef1f7;
+  --shadow: 0 1px 3px rgba(46, 52, 64, 0.08);
+  --err-border: #e5b8bd;
+  --err-bg: #f7e4e6;
+  --err-fg: #b5535c;
+  --hl-keyword: #5e81ac;
+  --hl-string: #5b8a5a;
+  --hl-number: #9d6f96;
+  --hl-comment: #8b94a6;
+  --hl-function: #5e81ac;
+  --hl-type: #b58a3c;
+  --hl-builtin: #b5535c;
+  --hl-operator: #4c8a99;
+  --hl-meta: #9d6f96;
+}
+:root[data-theme='vscode'] {
+  --bg: #1e1e1e;
+  --bg-muted: #252526;
+  --bg-card: #1e1e1e;
+  --fg: #d4d4d4;
+  --fg-dim: #858585;
+  --fg-heading: #ffffff;
+  --accent: #3794ff;
+  --accent-rgb: 55, 148, 255;
+  --accent-hover: #5aa7ff;
+  --border: #333333;
+  --border-light: #2a2a2a;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --err-border: #5a1d1d;
+  --err-bg: #3b1818;
+  --err-fg: #f14c4c;
+  --hl-keyword: #569cd6;
+  --hl-string: #ce9178;
+  --hl-number: #b5cea8;
+  --hl-comment: #6a9955;
+  --hl-function: #dcdcaa;
+  --hl-type: #4ec9b0;
+  --hl-builtin: #4ec9b0;
+  --hl-operator: #d4d4d4;
+  --hl-meta: #569cd6;
 }
 /* ── Code blocks (notebook / tutorial mode) ─── */
 .dash-code {
@@ -199,6 +297,17 @@ body {
   border-bottom: 1px solid var(--border);
   backdrop-filter: saturate(120%) blur(6px);
 }
+/* Warm-lambda brand mark, matching the hub front page (terracotta λ, mono). */
+.db-brand {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--fg-heading);
+  white-space: nowrap;
+}
+.db-brand .lam {
+  color: #c2674a;
+}
 .dashboard-header h1 {
   font-family: var(--font-mono);
   font-size: 15px;
@@ -258,6 +367,63 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
   flex-shrink: 0;
+}
+
+/* Theme picker menu (same UX as the editor). */
+.theme-menu {
+  position: fixed;
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+.theme-menu.open {
+  display: flex;
+}
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-menu-item:hover {
+  background: var(--bg-muted);
+}
+.theme-menu-item.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+.theme-menu-item .sw {
+  width: 26px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.theme-menu-item .sw i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.theme-menu-item.active .nm::after {
+  content: ' ✓';
+  color: var(--accent);
 }
 /* ── Main content ──────────────────────────── */
 .dashboard-main {
@@ -669,6 +835,10 @@ body {
     </svg>
 
     <div class="dashboard-header">
+      <span class="db-brand">
+        <span class="lam">λ</span>
+        Sabela
+      </span>
       <h1 id="dashboard-title">Dashboard</h1>
       <div class="header-actions" id="header-actions">
         <a href="/" id="edit-link">Edit Notebook</a>
@@ -712,9 +882,21 @@ const autoPrint = _query.get('print') === '1';
 const HLJS_LANG = { Haskell: 'haskell', Python: 'python' };
 let notebookData = null;
 
-// ── Theme handling (shared with editor via 'sabela-theme' key) ──
+// ── Theme handling (the same picker as the editor; 'sabela-theme' key) ──
+const THEMES = [
+  { id: 'warm', name: 'Warm Paper', mode: 'light', bg: '#f7f3ec', accent: '#c2674a' },
+  { id: 'nord', name: 'Nord', mode: 'dark', bg: '#2e3440', accent: '#88c0d0' },
+  { id: 'nord-light', name: 'Nord Light', mode: 'light', bg: '#eceff4', accent: '#5e81ac' },
+  { id: 'nord-aurora', name: 'Aurora Purple', mode: 'dark', bg: '#2e3440', accent: '#b48ead' },
+  { id: 'nord-ember', name: 'Aurora Ember', mode: 'dark', bg: '#2e3440', accent: '#d08770' },
+  { id: 'vscode', name: 'VS Code Dark', mode: 'dark', bg: '#1e1e1e', accent: '#3794ff' },
+];
 function currentTheme() {
-  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const t = document.documentElement.dataset.theme;
+  return THEMES.some((x) => x.id === t) ? t : 'warm';
+}
+function cssVar(name, fallback) {
+  return (getComputedStyle(document.documentElement).getPropertyValue(name) || fallback).trim();
 }
 function applyTheme(theme, { persist = true } = {}) {
   document.documentElement.dataset.theme = theme;
@@ -722,9 +904,7 @@ function applyTheme(theme, { persist = true } = {}) {
     localStorage.setItem('sabela-theme', theme);
     window.__sabelaThemePinned = true;
   }
-  const iconUse = document.querySelector('#theme-icon use');
-  if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
-  // Re-render iframes with current theme colors
+  // Re-render iframes with the current theme colors.
   document.querySelectorAll('iframe[data-last-content]').forEach((f) => {
     if (!f.dataset.lastContent) return;
     if (f.dataset.staticFrame) {
@@ -740,26 +920,77 @@ function applyTheme(theme, { persist = true } = {}) {
       doc.close();
     } catch {}
   });
+  markActiveTheme();
 }
+function markActiveTheme() {
+  const cur = currentTheme();
+  document
+    .querySelectorAll('.theme-menu-item')
+    .forEach((el) => el.classList.toggle('active', el.dataset.theme === cur));
+}
+function buildThemeMenu() {
+  let menu = document.getElementById('theme-menu');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'theme-menu';
+  menu.className = 'theme-menu';
+  THEMES.forEach((t) => {
+    const item = document.createElement('button');
+    item.className = 'theme-menu-item';
+    item.dataset.theme = t.id;
+    item.innerHTML =
+      `<span class="sw" style="background:${t.bg}"><i style="background:${t.accent}"></i></span>` +
+      `<span class="nm">${t.name}</span>`;
+    item.onclick = () => {
+      applyTheme(t.id);
+      menu.classList.remove('open');
+    };
+    menu.appendChild(item);
+  });
+  document.body.appendChild(menu);
+  return menu;
+}
+function openThemePicker() {
+  const menu = buildThemeMenu();
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    const r = btn.getBoundingClientRect();
+    menu.style.top = r.bottom + 6 + 'px';
+    menu.style.right = window.innerWidth - r.right + 'px';
+  }
+  const open = menu.classList.toggle('open');
+  markActiveTheme();
+  if (open) {
+    setTimeout(() => {
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (!menu.contains(e.target) && e.target !== btn && !btn?.contains(e.target))
+            menu.classList.remove('open');
+        },
+        { once: true }
+      );
+    }, 0);
+  }
+}
+// The header button's onclick is toggleTheme(); keep the name, open the picker.
 function toggleTheme() {
-  applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+  openThemePicker();
 }
 function iframeContentStyle() {
-  const isDark = currentTheme() === 'dark';
-  const bg = isDark ? '#1e1e2e' : '#ffffff';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgHead = isDark ? '#f5f5ff' : '#000000';
-  const muted = isDark ? '#262637' : '#fafafa';
-  const border = isDark ? '#313244' : '#e4e4e7';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  const altRow = isDark ? 'rgba(137,180,250,0.05)' : 'rgba(0,102,255,0.04)';
+  const bg = cssVar('--bg-card', '#ffffff');
+  const fg = cssVar('--fg', '#0a0a0a');
+  const fgHead = cssVar('--fg-heading', '#000000');
+  const muted = cssVar('--bg-muted', '#fafafa');
+  const border = cssVar('--border', '#e4e4e7');
+  const accent = cssVar('--accent', '#0066ff');
+  const altRow = `rgba(${cssVar('--accent-rgb', '0,102,255')},0.05)`;
   return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:12px 16px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
 }
 function widgetIframeStyle() {
-  const isDark = currentTheme() === 'dark';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgDim = isDark ? '#9399b2' : '#71717a';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
+  const fg = cssVar('--fg', '#0a0a0a');
+  const fgDim = cssVar('--fg-dim', '#71717a');
+  const accent = cssVar('--accent', '#0066ff');
   return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:6px 12px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
 }
 // ── Static-export iframe: opaque-origin sandbox + in-document CSP ──
@@ -807,13 +1038,7 @@ window.addEventListener('message', (e) => {
     if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
   }
 });
-// Live-follow OS theme until the user pins a choice
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-    if (!window.__sabelaThemePinned) applyTheme(e.matches ? 'light' : 'dark', { persist: false });
-  });
-}
-// Initial sync (sets icon)
+// Initial sync (renders iframes with the active theme).
 applyTheme(currentTheme(), { persist: false });
 // ── Initialization ───────────────────────────────────────────────
 async function init() {

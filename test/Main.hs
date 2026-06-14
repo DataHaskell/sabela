@@ -16,7 +16,10 @@ import qualified Test.DepsMatchSpec as DepsMatchSpec
 import qualified Test.ExportSpec as ExportSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import Test.Hspec (hspec)
+import qualified Test.NotebookAnimSpec as NotebookAnimSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
+import qualified Test.NotebookFrpSpec as NotebookFrpSpec
+import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.OutputSpec as OutputSpec
 import qualified Test.ParseSpec as ParseSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
@@ -31,9 +34,14 @@ import qualified Test.UploadSpec as UploadSpec
 import qualified Test.UrlSpec as UrlSpec
 import qualified Test.UsageEventSpec as UsageEventSpec
 import qualified Test.UsageMergeSpec as UsageMergeSpec
+import qualified Test.WidgetsSpec as WidgetsSpec
 
 main :: IO ()
 main = hspec $ do
+    NotebookFrpSpec.spec
+    NotebookPictureSpec.spec
+    NotebookAnimSpec.spec
+    WidgetsSpec.spec
     SessionSpec.spec
     SessionLoopSpec.spec
     StaleRunSpec.spec

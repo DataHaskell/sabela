@@ -43,11 +43,5 @@ window.addEventListener('message', (e) => {
     if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
   }
 });
-// Live-follow OS theme until the user pins a choice
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-    if (!window.__sabelaThemePinned) applyTheme(e.matches ? 'light' : 'dark', { persist: false });
-  });
-}
-// Initial sync (sets icon)
+// Initial sync (renders iframes with the active theme).
 applyTheme(currentTheme(), { persist: false });

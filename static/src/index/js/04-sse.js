@@ -59,6 +59,22 @@ function handleSSE(ev) {
       else clearErrorMarkers(ev.cellId);
       pulseCell(ev.cellId);
       break;
+    case 'widget':
+      // Kernel→browser widget sync: forward the new value into the cell's
+      // output iframe(s) so the control reflects it without a full re-render.
+      document
+        .querySelectorAll(`.cell[data-id="${ev.cellId}"] .cell-output iframe`)
+        .forEach((f) => {
+          try {
+            f.contentWindow.postMessage(
+              { type: 'widgetUpdate', name: ev.name, value: ev.value },
+              '*'
+            );
+          } catch (_e) {
+            /* cross-origin or not ready; ignore */
+          }
+        });
+      break;
     case 'executionDone':
       setStatus('Done', '');
       document

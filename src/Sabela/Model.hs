@@ -123,6 +123,10 @@ data NotebookEvent
       EvCellCompiling Int
     | EvCellPartialOutput Int Text
     | EvCellResult Int [OutputItem] (Maybe Text) [CellError]
+    | {- | cellId, widget name, value: a widget's value changed (browser→kernel,
+      or set from Haskell), pushed so every open view reflects it.
+      -}
+      EvWidget Int Text Text
     | EvExecutionDone
     | EvSessionStatus SessionStatus
     | EvInstallLog Text
@@ -190,6 +194,13 @@ instance ToJSON NotebookEvent where
             , "outputs" .= outputs
             , "error" .= err
             , "errors" .= errs
+            ]
+    toJSON (EvWidget cid name value) =
+        object
+            [ "type" .= ("widget" :: Text)
+            , "cellId" .= cid
+            , "name" .= name
+            , "value" .= value
             ]
     toJSON EvExecutionDone =
         object ["type" .= ("executionDone" :: Text)]

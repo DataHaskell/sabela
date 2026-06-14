@@ -33,6 +33,8 @@ import Sabela.Api (errorJson)
 
 -- 'ToolOutcome' (and its smart constructors) is re-exported from
 -- 'Sabela.AI.Types' via the open import above; no explicit list needed.
+import Sabela.Deps (collectMetadataFromContent, mergedMeta)
+import Sabela.Notebook.Support (materializeSupport, supportPackageDir)
 import Sabela.Output (displayPrelude)
 import Sabela.PythonSession (newPythonSession, pythonBackend)
 import Sabela.Session (
@@ -45,6 +47,7 @@ import Sabela.Session.Process (
     ghciBackend,
     newSession,
  )
+import Sabela.Session.Project (setupReplProject)
 import Sabela.SessionTypes (CellLang (..), SessionBackend (..))
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
@@ -220,7 +223,15 @@ ensureScratchpad app store lang = do
                 createTempDirectory (envTmpDir (appEnv app)) "sabela-scratch"
             backend <- case lang of
                 Haskell -> do
-                    let projDir = envTmpDir (appEnv app) ++ "/repl-project"
+                    -- The scratchpad gets its OWN scaffolded project (separate
+                    -- dist-newstyle), so it works on a cold notebook (before any
+                    -- cell has materialised repl-project) and never contends with
+                    -- the live notebook session over the shared build dir.
+                    let workDir = envWorkDir (appEnv app)
+                        projDir = envTmpDir (appEnv app) ++ "/scratch-project"
+                        meta = mergedMeta (envGlobalDeps (appEnv app)) (collectMetadataFromContent "")
+                    _ <- materializeSupport workDir
+                    setupReplProject [supportPackageDir workDir] projDir meta
                     sess <- newSession (SessionConfig projDir spDir)
                     -- If GHCi/cabal dies during prelude injection, surface
                     -- the captured cabal/ghci stderr instead of the opaque

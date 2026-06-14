@@ -12,6 +12,8 @@ module Hub.Proxy (
 import Control.Concurrent.STM (newTVarIO)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
+import Data.Text (Text)
+import qualified Data.Text.Encoding as TE
 import Hub.Admin.Api (adminDispatch, requireAdmin)
 import Hub.Admin.Page (adminPage)
 import Hub.Auth (
@@ -38,7 +40,7 @@ import Hub.Session (
     SessionManager (..),
     lookupBySessionId,
  )
-import Hub.Share (ShareStore)
+import Hub.Share (ShareStore, validSlug)
 import Hub.Shares.Api (
     handleDeleteShare,
     handleListShares,
@@ -89,7 +91,7 @@ hubApp' sm store users gallery mgr states req respond =
         -- Fork into the caller's work dir (authed; the caller is allowlisted).
         ["_hub", "fork", slug]
             | requestMethod req == methodPost ->
-                requireSessionOrLogin sm req respond $ \sess ->
+                requireSessionOrForkLogin sm slug req respond $ \sess ->
                     let UserId email = sessionUserId sess
                      in serveFork cfg gallery store email slug req respond
         -- Admin: the server-rendered page, then the JSON curation endpoints.
@@ -115,24 +117,34 @@ hubApp' sm store users gallery mgr states req respond =
             respond (adminPage (hcAdminContact cfg))
 
 {- | Session gate for the Fork POST: a browser form with no session is sent to
-login (so the gallery Fork button degrades to "sign in"), while an API caller
-still gets JSON 401.
+login (so the gallery Fork button degrades to "sign in"), stashing the slug in a
+short-lived @sabela_fork@ cookie so the editor can finish the fork right after
+sign-in. An API caller still gets JSON 401. The cookie is set only for a valid
+slug, so it can't inject a forged @Set-Cookie@.
 -}
-requireSessionOrLogin ::
+requireSessionOrForkLogin ::
     SessionManager ->
+    Text ->
     Request ->
     (Response -> IO ResponseReceived) ->
     (Session -> IO ResponseReceived) ->
     IO ResponseReceived
-requireSessionOrLogin sm req respond k =
+requireSessionOrForkLogin sm slug req respond k =
     case extractSessionId req of
         Nothing -> noAuth
         Just sid -> lookupBySessionId sm sid >>= maybe noAuth k
   where
+    isBrowser =
+        maybe False ("text/html" `BS.isInfixOf`) (lookup hAccept (requestHeaders req))
+    loginLoc = ("Location", "/_hub/login")
+    forkCookie =
+        ( "Set-Cookie"
+        , "sabela_fork=" <> TE.encodeUtf8 slug <> "; Path=/; Max-Age=600; SameSite=Lax"
+        )
     noAuth
-        | maybe False ("text/html" `BS.isInfixOf`) (lookup hAccept (requestHeaders req)) =
-            respond (responseLBS status303 [("Location", "/_hub/login")] "")
-        | otherwise = respond (jsonError status401 "Not signed in.")
+        | not isBrowser = respond (jsonError status401 "Not signed in.")
+        | validSlug slug = respond (responseLBS status303 [loginLoc, forkCookie] "")
+        | otherwise = respond (responseLBS status303 [loginLoc] "")
 
 {- | Page-flavoured admin gate: 'requireAdmin' answers JSON 403, which would
 make @\/_hub\/admin@ enumerable, so the page instead falls back to 'loginPage'.

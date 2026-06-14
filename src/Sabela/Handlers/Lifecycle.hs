@@ -34,6 +34,10 @@ import qualified Data.Text as T
 import Sabela.Deps (ProjectSig, depsMatch, mergedMeta, projectSig)
 import Sabela.Handlers.Shared
 import Sabela.Model (NotebookEvent (..), SessionStatus (..))
+import Sabela.Notebook.Support (
+    materializeSupport,
+    supportPackageDir,
+ )
 import Sabela.Output (displayPrelude)
 import Sabela.Session (
     Session,
@@ -67,9 +71,9 @@ import Sabela.State.SessionManager (
     takeHaskellSession,
  )
 import ScriptHs.Parser (CabalMeta (..))
-import ScriptHs.Run (renderCabalFile, renderCabalProject)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath (isAbsolute, (</>))
+
+import Sabela.Session.Project (setupReplProject)
 
 -- | Runtime reset of the managed backends (notebook reset/restart).
 killAllSessions :: App -> IO ()
@@ -168,6 +172,7 @@ installDepsAndStartSession app _gen metas = do
                 (envLocalPackages (appEnv app))
                 merged
     setHaskellProjectSig (appDeps app) (projectSig localPkgs merged)
+    _ <- materializeSupport (envWorkDir (appEnv app))
     setupReplProject localPkgs projDir merged
     broadcast app (EvSessionStatus SStarting)
     killSession app
@@ -192,36 +197,11 @@ dirs pass through.
 -}
 resolveLocalPackages :: FilePath -> [FilePath] -> CabalMeta -> [FilePath]
 resolveLocalPackages workDir envLocals meta =
-    nub (envLocals ++ map resolve (metaPackages meta))
+    nub (supportPackageDir workDir : envLocals ++ map resolve (metaPackages meta))
   where
     resolve t =
         let p = T.unpack t
          in if isAbsolute p then p else workDir </> p
-
-{- | Write the throwaway repl project (regenerated each run) into @dir@. The @[]@
-to 'renderCabalFile' adds no extra local-package names to @build-depends@; local
-packages resolve through the @packages:@ stanza in the generated @cabal.project@.
--}
-setupReplProject :: [FilePath] -> FilePath -> CabalMeta -> IO ()
-setupReplProject localPkgs dir meta = do
-    createDirectoryIfMissing True dir
-    writeFile
-        (dir </> "cabal.project")
-        ( T.unpack
-            ( renderCabalProject
-                localPkgs
-                (metaSourceRepos meta)
-                (metaExtraLibDirs meta)
-                (metaExtraIncludeDirs meta)
-            )
-        )
-    ensureFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
-    writeFile (dir </> "sabela-repl.cabal") (renderCabalFile "sabela-repl" [] meta)
-
-ensureFile :: FilePath -> String -> IO ()
-ensureFile path content = do
-    exists <- doesFileExist path
-    unless exists $ writeFile path content
 
 startSessionWith :: App -> FilePath -> IO Bool
 startSessionWith app projDir = do

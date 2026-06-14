@@ -48,14 +48,14 @@ not — resets GHCi's interactive context, wiping every prompt binding; the
 caller must then escalate to re-running all interpreted cells.
 -}
 data CompileOutcome
-    = CompileNoSession
-    -- ^ No usable session; nothing was loaded, nothing was wiped.
-    | CompileNoChange
-    -- ^ Module set already loaded; no reload, prompt context intact.
-    | CompileReloaded
-    -- ^ Reload succeeded; the prompt context was wiped.
-    | CompileFailed
-    -- ^ Reload failed (or crashed); the prompt context was wiped.
+    = -- | No usable session; nothing was loaded, nothing was wiped.
+      CompileNoSession
+    | -- | Module set already loaded; no reload, prompt context intact.
+      CompileNoChange
+    | -- | Reload succeeded; the prompt context was wiped.
+      CompileReloaded
+    | -- | Reload failed (or crashed); the prompt context was wiped.
+      CompileFailed
     deriving (Eq, Show)
 
 {- | Compile the generated modules for @affectedCells@ (the plan's

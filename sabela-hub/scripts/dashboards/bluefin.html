@@ -1,0 +1,1477 @@
+<!doctype html>
+<!-- AUTO-GENERATED from static/src/dashboard/ — do not edit. Edit the sources there and run: node tools/build-frontend.mjs -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sabela Dashboard</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/haskell.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/python.min.js"></script>
+    <script>
+// Theme bootstrap — shared with the editor via 'sabela-theme' localStorage key.
+(() => {
+  const KNOWN = ['warm', 'nord', 'nord-light', 'nord-aurora', 'nord-ember', 'vscode'];
+  const stored = localStorage.getItem('sabela-theme');
+  document.documentElement.dataset.theme = KNOWN.includes(stored) ? stored : 'warm';
+  window.__sabelaThemePinned = !!stored;
+})();
+    </script>
+    <style>
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --main-max-w: 760px;
+  --radius: 8px;
+  /* default: Warm Paper (matches the editor + gallery) */
+  --bg: #f7f3ec;
+  --bg-muted: #f0eadf;
+  --bg-card: #ffffff;
+  --fg: #2e3440;
+  --fg-dim: #6f6a5d;
+  --fg-heading: #1c2027;
+  --accent: #c2674a;
+  --accent-rgb: 194, 103, 74;
+  --accent-hover: #a85539;
+  --border: #e7ddcf;
+  --border-light: #f0eadf;
+  --shadow: 0 1px 3px rgba(70, 52, 34, 0.08);
+  --err-border: #e8c4b8;
+  --err-bg: #f7e9e2;
+  --err-fg: #bf616a;
+  --hl-keyword: #9a6f96;
+  --hl-string: #6f9355;
+  --hl-number: #bb842c;
+  --hl-comment: #9a958a;
+  --hl-function: #c2674a;
+  --hl-type: #bb842c;
+  --hl-builtin: #bf616a;
+  --hl-operator: #4f8a99;
+  --hl-meta: #9a6f96;
+}
+:root[data-theme='nord'] {
+  --bg: #2e3440;
+  --bg-muted: #353c4a;
+  --bg-card: #3b4252;
+  --fg: #eceff4;
+  --fg-dim: #9aa5b8;
+  --fg-heading: #ffffff;
+  --accent: #88c0d0;
+  --accent-rgb: 136, 192, 208;
+  --accent-hover: #8fbcbb;
+  --border: #434c5e;
+  --border-light: #3b4252;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --err-border: #5a2730;
+  --err-bg: #3b2b30;
+  --err-fg: #bf616a;
+  --hl-keyword: #81a1c1;
+  --hl-string: #a3be8c;
+  --hl-number: #b48ead;
+  --hl-comment: #8b96ab;
+  --hl-function: #88c0d0;
+  --hl-type: #8fbcbb;
+  --hl-builtin: #bf616a;
+  --hl-operator: #81a1c1;
+  --hl-meta: #b48ead;
+}
+:root[data-theme='nord-aurora'] {
+  --bg: #2e3440;
+  --bg-muted: #353c4a;
+  --bg-card: #3b4252;
+  --fg: #eceff4;
+  --fg-dim: #9aa5b8;
+  --fg-heading: #ffffff;
+  --accent: #b48ead;
+  --accent-rgb: 180, 142, 173;
+  --accent-hover: #c4a0bd;
+  --border: #434c5e;
+  --border-light: #3b4252;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --err-border: #5a2730;
+  --err-bg: #3b2b30;
+  --err-fg: #bf616a;
+  --hl-keyword: #81a1c1;
+  --hl-string: #a3be8c;
+  --hl-number: #b48ead;
+  --hl-comment: #8b96ab;
+  --hl-function: #b48ead;
+  --hl-type: #8fbcbb;
+  --hl-builtin: #bf616a;
+  --hl-operator: #81a1c1;
+  --hl-meta: #b48ead;
+}
+:root[data-theme='nord-ember'] {
+  --bg: #2e3440;
+  --bg-muted: #353c4a;
+  --bg-card: #3b4252;
+  --fg: #eceff4;
+  --fg-dim: #9aa5b8;
+  --fg-heading: #ffffff;
+  --accent: #d08770;
+  --accent-rgb: 208, 135, 112;
+  --accent-hover: #dba08c;
+  --border: #434c5e;
+  --border-light: #3b4252;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --err-border: #5a2730;
+  --err-bg: #3b2b30;
+  --err-fg: #bf616a;
+  --hl-keyword: #81a1c1;
+  --hl-string: #a3be8c;
+  --hl-number: #d08770;
+  --hl-comment: #8b96ab;
+  --hl-function: #d08770;
+  --hl-type: #ebcb8b;
+  --hl-builtin: #bf616a;
+  --hl-operator: #81a1c1;
+  --hl-meta: #b48ead;
+}
+:root[data-theme='nord-light'] {
+  --bg: #f8fafc;
+  --bg-muted: #eef1f7;
+  --bg-card: #fcfdfe;
+  --fg: #2e3440;
+  --fg-dim: #4c566a;
+  --fg-heading: #2e3440;
+  --accent: #5e81ac;
+  --accent-rgb: 94, 129, 172;
+  --accent-hover: #4c6f9a;
+  --border: #e2e7f0;
+  --border-light: #eef1f7;
+  --shadow: 0 1px 3px rgba(46, 52, 64, 0.08);
+  --err-border: #e5b8bd;
+  --err-bg: #f7e4e6;
+  --err-fg: #b5535c;
+  --hl-keyword: #5e81ac;
+  --hl-string: #5b8a5a;
+  --hl-number: #9d6f96;
+  --hl-comment: #8b94a6;
+  --hl-function: #5e81ac;
+  --hl-type: #b58a3c;
+  --hl-builtin: #b5535c;
+  --hl-operator: #4c8a99;
+  --hl-meta: #9d6f96;
+}
+:root[data-theme='vscode'] {
+  --bg: #1e1e1e;
+  --bg-muted: #252526;
+  --bg-card: #1e1e1e;
+  --fg: #d4d4d4;
+  --fg-dim: #858585;
+  --fg-heading: #ffffff;
+  --accent: #3794ff;
+  --accent-rgb: 55, 148, 255;
+  --accent-hover: #5aa7ff;
+  --border: #333333;
+  --border-light: #2a2a2a;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --err-border: #5a1d1d;
+  --err-bg: #3b1818;
+  --err-fg: #f14c4c;
+  --hl-keyword: #569cd6;
+  --hl-string: #ce9178;
+  --hl-number: #b5cea8;
+  --hl-comment: #6a9955;
+  --hl-function: #dcdcaa;
+  --hl-type: #4ec9b0;
+  --hl-builtin: #4ec9b0;
+  --hl-operator: #d4d4d4;
+  --hl-meta: #569cd6;
+}
+/* ── Code blocks (notebook / tutorial mode) ─── */
+.dash-code {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  margin: 0 0 12px;
+  overflow-x: auto;
+}
+.dash-code pre {
+  margin: 0;
+  padding: 14px 16px;
+}
+.dash-code code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  display: block;
+  white-space: pre;
+  tab-size: 2;
+  color: var(--fg);
+}
+.hljs {
+  background: transparent;
+  color: var(--fg);
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-section,
+.hljs-doctag,
+.hljs-name {
+  color: var(--hl-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-meta .hljs-string,
+.hljs-char.escape_,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--hl-string);
+}
+.hljs-number,
+.hljs-literal {
+  color: var(--hl-number);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--hl-comment);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-function .hljs-title {
+  color: var(--hl-function);
+}
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-title.class_ {
+  color: var(--hl-type);
+}
+.hljs-built_in,
+.hljs-builtin-name {
+  color: var(--hl-builtin);
+}
+.hljs-operator,
+.hljs-punctuation {
+  color: var(--hl-operator);
+}
+.hljs-meta {
+  color: var(--hl-meta);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-variant-ligatures: none;
+  font-feature-settings:
+    'calt' 0,
+    'liga' 0;
+}
+html,
+body {
+  height: 100%;
+  overflow-x: hidden;
+}
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.65;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+/* ── Header ────────────────────────────────── */
+.dashboard-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: saturate(120%) blur(6px);
+}
+.dashboard-header h1 {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--fg-heading);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.header-actions a,
+.header-actions button {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+.header-actions a:hover,
+.header-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.header-actions .icon-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  color: var(--fg-dim);
+}
+.header-actions .icon-btn:hover {
+  background: var(--bg-muted);
+  color: var(--fg-heading);
+  border-color: transparent;
+}
+.icon-svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+/* Theme picker menu (same UX as the editor). */
+.theme-menu {
+  position: fixed;
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+.theme-menu.open {
+  display: flex;
+}
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-menu-item:hover {
+  background: var(--bg-muted);
+}
+.theme-menu-item.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+.theme-menu-item .sw {
+  width: 26px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.theme-menu-item .sw i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.theme-menu-item.active .nm::after {
+  content: ' ✓';
+  color: var(--accent);
+}
+/* ── Main content ──────────────────────────── */
+.dashboard-main {
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.dashboard-content {
+  width: 100%;
+  max-width: var(--main-max-w);
+}
+
+/* ── Sections (prose cells) ────────────────── */
+.dash-section {
+  margin-bottom: 24px;
+}
+.dash-section h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--fg-heading);
+  margin-bottom: 8px;
+}
+.dash-section h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg-heading);
+  margin-bottom: 6px;
+}
+.dash-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg-heading);
+  margin-bottom: 4px;
+}
+.dash-section p {
+  margin-bottom: 12px;
+}
+/* padding-left (not margin-left) so nested lists compound and markers
+     have room after the global "* { padding:0 }" reset. */
+.dash-section ul,
+.dash-section ol,
+.dash-output .mime-markdown ul,
+.dash-output .mime-markdown ol {
+  margin: 0 0 12px;
+  padding-left: 1.5em;
+}
+.dash-section li,
+.dash-output .mime-markdown li {
+  margin: 3px 0;
+}
+.dash-section li > ul,
+.dash-section li > ol,
+.dash-output .mime-markdown li > ul,
+.dash-output .mime-markdown li > ol {
+  margin: 3px 0 5px;
+}
+.dash-section ul,
+.dash-output .mime-markdown ul {
+  list-style: disc;
+}
+.dash-section ul ul,
+.dash-output .mime-markdown ul ul {
+  list-style: circle;
+}
+.dash-section ul ul ul,
+.dash-output .mime-markdown ul ul ul {
+  list-style: square;
+}
+.dash-section ol,
+.dash-output .mime-markdown ol {
+  list-style: decimal;
+}
+.dash-section a {
+  color: var(--accent);
+}
+.dash-section code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--bg-muted);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.dash-section pre {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--bg-muted);
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+/* ── Tables (prose + markdown outputs) ─────── */
+.dash-section table,
+.dash-output .mime-markdown table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  margin: 14px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 14px;
+  box-shadow: var(--shadow);
+  background: var(--bg-card);
+}
+.dash-section th,
+.dash-section td,
+.dash-output .mime-markdown th,
+.dash-output .mime-markdown td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-light);
+}
+.dash-section tr:last-child td,
+.dash-output .mime-markdown tr:last-child td {
+  border-bottom: none;
+}
+.dash-section th,
+.dash-output .mime-markdown th {
+  background: var(--bg-muted);
+  color: var(--fg-heading);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  border-bottom: 1px solid var(--border);
+}
+.dash-section tr:nth-child(even) td,
+.dash-output .mime-markdown tr:nth-child(even) td {
+  background: rgba(var(--accent-rgb), 0.04);
+}
+.dash-section tbody tr:hover td,
+.dash-output .mime-markdown tbody tr:hover td {
+  background: rgba(var(--accent-rgb), 0.08);
+}
+/* Right-align numeric-looking columns automatically isn't possible without JS;
+     leave default alignment but tighten cell typography. */
+.dash-section td,
+.dash-output .mime-markdown td {
+  font-variant-numeric: tabular-nums;
+}
+.dash-section blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 8px 16px;
+  color: var(--fg-dim);
+  margin-bottom: 12px;
+}
+/* ── Output cards ──────────────────────────── */
+.dash-output {
+  margin-bottom: 24px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.dash-output iframe {
+  width: 100%;
+  border: none;
+  display: block;
+  min-height: 60px;
+}
+.dash-output .mime-svg {
+  padding: 8px;
+}
+.dash-output .mime-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+.dash-output .mime-image img {
+  max-width: 100%;
+  display: block;
+}
+.dash-output .mime-json {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--bg-muted);
+  padding: 12px 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dash-output .mime-markdown {
+  padding: 16px;
+}
+.dash-output .mime-latex {
+  padding: 16px;
+  text-align: center;
+}
+.dash-output .mime-plain {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 12px 16px;
+  white-space: pre-wrap;
+}
+
+/* ── Inline widgets ────────────────────────── */
+.dash-widget {
+  margin-bottom: 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-muted);
+}
+.dash-widget iframe {
+  width: 100%;
+  border: none;
+  display: block;
+  height: 36px;
+}
+.dash-widget .static-widget {
+  font-size: 14px;
+  padding: 6px 12px;
+}
+.dash-widget .static-widget input[disabled],
+.dash-widget .static-widget select[disabled] {
+  opacity: 0.7;
+  cursor: default;
+}
+/* ── Error display ─────────────────────────── */
+.dash-error {
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--err-border);
+  border-radius: var(--radius);
+  background: var(--err-bg);
+  color: var(--err-fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+/* ── Status indicator ──────────────────────── */
+.dash-status {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  display: none;
+}
+.dash-status.visible {
+  display: block;
+}
+.dash-status.running {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Responsive ────────────────────────────── */
+@media (max-width: 768px) {
+  .dashboard-main {
+    padding: 16px;
+  }
+  .dashboard-content {
+    max-width: 100%;
+  }
+}
+/* ── Print / Save as PDF ───────────────────────
+     Force a light, ink-friendly page regardless of the on-screen theme, hide
+     the app chrome, and make tall outputs paginate cleanly. Content iframes are
+     swapped for inline .print-inline DOM by printToPdf() before this applies. */
+@media print {
+  :root,
+  :root[data-theme='dark'] {
+    --bg: #ffffff;
+    --bg-muted: #f6f6f6;
+    --bg-card: #ffffff;
+    --fg: #111111;
+    --fg-dim: #555555;
+    --fg-heading: #000000;
+    --accent: #0050d0;
+    --accent-rgb: 0, 80, 208;
+    --border: #cccccc;
+    --border-light: #e0e0e0;
+    --shadow: none;
+  }
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+  }
+  body {
+    font-size: 11pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    margin: 18mm 14mm;
+  }
+
+  /* Hide app chrome — only prose + outputs (and code, in notebook mode) print. */
+  .dashboard-header,
+  .dash-status {
+    display: none !important;
+  }
+  .dashboard-main {
+    padding: 0;
+    display: block;
+  }
+  .dashboard-content {
+    max-width: 100%;
+  }
+
+  * {
+    box-shadow: none !important;
+  }
+
+  /* Keep small blocks whole; let tall tables split with a repeating header. */
+  .dash-section,
+  .dash-code,
+  .dash-widget,
+  .dash-error,
+  .dash-output:not(:has(table)) {
+    break-inside: avoid;
+  }
+  .dash-output,
+  .print-inline {
+    break-inside: auto;
+  }
+  table {
+    break-inside: auto;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tr,
+  img,
+  svg {
+    break-inside: avoid;
+  }
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  /* Wrap long lines so nothing clips off the right edge of the page. */
+  .dash-code code,
+  .dash-output .mime-plain,
+  .dash-output .mime-json,
+  .print-inline pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Inlined HTML outputs: base typography + reuse the prose table styling. */
+  .print-inline {
+    font-size: 11pt;
+    line-height: 1.5;
+    padding: 4px 0;
+  }
+  .print-inline img {
+    max-width: 100%;
+  }
+  .print-inline table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    margin: 10px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 10pt;
+  }
+  .print-inline th,
+  .print-inline td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+  }
+  .print-inline tr:last-child td {
+    border-bottom: none;
+  }
+  .print-inline th {
+    background: var(--bg-muted);
+    color: var(--fg-heading);
+    font-weight: 600;
+  }
+  .print-inline tr:nth-child(even) td {
+    background: rgba(var(--accent-rgb), 0.05);
+  }
+}
+    </style>
+    <script>
+window.__SABELA_STATIC__ = {"nbCells":[{"cellDirty":false,"cellError":null,"cellId":0,"cellLang":"Haskell","cellOutputs":[],"cellSource":"# A tour of Bluefin\n\n[Bluefin](https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html)\nis an effect system where every effect is a *value* you hold, not a constraint\nsmeared across a monad. You get a *handle* from a `run*` function and pass it\nexplicitly into the operations that use it. Because handles are ordinary\narguments, you can have several effects of the same type in scope at once, and\nthe type checker stops an effect from escaping the block that introduced it (the\nsame trick `ST` uses to keep an `STRef` from leaking).\n\nThis notebook ports the examples from Tom Ellis's\n[`Bluefin` documentation](https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html)\nand makes every one of them runnable, so you can edit a value and watch the\nresult change. Fork it to experiment.","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":1,"cellLang":"Haskell","cellOutputs":[],"cellSource":"Everything below uses a handful of modules. `Eff es a` is a computation\nproducing an `a` whose available effects are tracked in the type-level set `es`.\n`runPureEff` discharges a computation that needs no `IO`. `Modify` is Bluefin's\nmutable cell (think `IORef`), `Exception` is its checked exception, and `Jump`\nis an early return.","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":2,"cellLang":"Haskell","cellOutputs":[],"cellSource":"-- cabal: build-depends: bluefin >= 0.6\n{-# LANGUAGE TypeOperators #-}\nimport Bluefin.Eff (Eff, runPureEff, (:&), (:>))\nimport Bluefin.Capability.Modify (Modify, evalModify, get, put, modify)\nimport Bluefin.Exception (Exception, try, throw)\nimport Bluefin.Jump (Jump, withJump, jumpTo)\nimport Control.Monad (when)\nimport Data.Foldable (for_)\nimport Text.Read (readMaybe)\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":3,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n## Mutable state, but pure\n\n`evalModify` hands your block a `Modify` handle initialised to a starting value.\nThrough it you `get`, `put`, and `modify` the cell. It reads imperatively, yet\nthe whole thing reduces to a pure value: nothing here touches `IO`.\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":4,"cellLang":"Haskell","cellOutputs":[],"cellSource":"-- If n < 10 then add 10 to it, otherwise leave it unchanged.\nexample1 :: Int -> Int\nexample1 n = runPureEff $\n  evalModify n $ \\sn -> do\n    n' <- get sn\n    when (n' < 10) $ modify sn (+ 10)\n    get sn\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":5,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":6,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"15\n"}],"cellSource":"example1 5\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":7,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":8,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"12\n"}],"cellSource":"example1 12\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":9,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n## Several effects of the same type\n\nBecause a handle is just a value, you can keep two `Modify` cells straight at\nonce. No newtype tagging, no lifting: `sm` and `sn` are independent.\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":10,"cellLang":"Haskell","cellOutputs":[],"cellSource":"-- Compare two values and add 10 to the smaller.\nexample2 :: (Int, Int) -> (Int, Int)\nexample2 (m, n) = runPureEff $\n  evalModify m $ \\sm ->\n    evalModify n $ \\sn -> do\n      n' <- get sn\n      m' <- get sm\n      if n' < m' then modify sn (+ 10) else modify sm (+ 10)\n      (,) <$> get sm <*> get sn\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":11,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":12,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"(15,10)\n"}],"cellSource":"example2 (5, 10)\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":13,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":14,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"(30,13)\n"}],"cellSource":"example2 (30, 3)\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":15,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n## Exceptions that cannot escape\n\n`try` introduces an `Exception` handle and runs your block, returning an\n`Either`. Inside, `throw` short-circuits to the matching `try`. The handle is\nscoped, so every `throw` is guaranteed to be caught by the `try` that made it.\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":16,"cellLang":"Haskell","cellOutputs":[],"cellSource":"example3 :: Int -> Either String Int\nexample3 n = runPureEff $\n  try $ \\ex ->\n    evalModify (0 :: Int) $ \\total -> do\n      for_ [1 .. n] $ \\i -> do\n        soFar <- get total\n        when (soFar > 20) $ throw ex (\"Became too big: \" ++ show soFar)\n        put total (soFar + i)\n      get total\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":17,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":18,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"Right 10\n"}],"cellSource":"example3 4\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":19,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":20,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"Left \"Became too big: 21\"\n"}],"cellSource":"example3 10\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":21,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n## Effect scoping is enforced by the type checker\n\nThe phantom scope on a handle keeps `runPureEff` sound. This version only uses\nthe cell inside its block, so it is well scoped:\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":22,"cellLang":"Haskell","cellOutputs":[],"cellSource":"correctlyScoped :: Int\ncorrectlyScoped = runPureEff $ do\n  r <- evalModify 0 $ \\st -> do\n    for_ [1 .. 10] $ \\i -> modify st (+ i)\n    get st\n  pure (r * 20)\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":23,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":24,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"1100\n"}],"cellSource":"correctlyScoped\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":25,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\nReturning the handle and using it after its block is a *compile error*, not a\nruntime bug. The scope variable would escape, so Bluefin rejects it, exactly as\n`runST` rejects a leaked `STRef`:\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":"<interactive>:1475:10: error: [GHC-46956]\n    • Couldn't match type ‘e0’ with ‘e’\n      Expected: (Integer,\n                 bluefin-internal-0.6.0.0:Bluefin.Internal.State Integer e0)\n        Actual: (Integer, Modify Integer e)\n        because type variable ‘e’ would escape its scope\n      This (rigid, skolem) type variable is bound by\n        a type expected by the context:\n          forall (e :: bluefin-internal-0.6.0.0:Bluefin.Internal.Effects).\n          Modify Integer e\n          -> Eff\n               (e :& es)\n               (Integer,\n                bluefin-internal-0.6.0.0:Bluefin.Internal.State Integer e0)\n        at <interactive>:(1472,33)-(1475,16)\n    • In the first argument of ‘pure’, namely ‘(r, st)’\n      In a stmt of a 'do' block: pure (r, st)\n      In the expression:\n        do for_ [1 .. 10] $ \\ i -> modify st (+ i)\n           r <- get st\n           pure (r, st)\n    • Relevant bindings include\n        st :: Modify Integer e (bound at <interactive>:1472:34)\n\n<interactive>:1476:3: error: [GHC-39999]\n    • Ambiguous type variable ‘e0’ arising from a use of ‘modify’\n      prevents the constraint ‘(e0\n                                bluefin-internal-0.6.0.0:Bluefin.Internal.<: es)’ from being solved.\n      Relevant bindings include\n        st :: bluefin-internal-0.6.0.0:Bluefin.Internal.State Integer e0\n          (bound at <interactive>:1472:11)\n        incorrectlyScoped :: Eff es Integer (bound at <interactive>:1471:1)\n      Probable fix: use a type annotation to specify what ‘e0’ should be.\n      Potentially matching instance:\n        instance e :> e\n          -- Defined in ‘bluefin-internal-0.6.0.0:Bluefin.Internal’\n        ...plus one instance involving out-of-scope types\n        (use -fprint-potential-instances to see them all)\n    • In a stmt of a 'do' block: modify st (* 20)\n      In the expression:\n        do (total, st) <- evalModify 0 $ \\ st -> do ...\n           modify st (* 20)\n           get st\n      In an equation for ‘incorrectlyScoped’:\n          incorrectlyScoped\n            = do (total, st) <- evalModify 0 $ \\ st -> ...\n                 modify st (* 20)\n                 get st","cellId":26,"cellLang":"Haskell","cellOutputs":[],"cellSource":"incorrectlyScoped :: Eff es Integer\nincorrectlyScoped = do\n  (total, st) <- evalModify 0 $ \\st -> do\n    for_ [1 .. 10] $ \\i -> modify st (+ i)\n    r <- get st\n    pure (r, st)\n  modify st (* 20)   -- using st out here ...\n  get st\n\n-- error: Couldn't match type 'e0' with 'e'\n--   because the type variable 'e' would escape its scope\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":27,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n## Three effects at once: state, early return, and exceptions\n\nThe documentation's headline example reads numbers from stdin, summing them\nuntil it sees a `0` and bailing out on anything unparseable. stdin is awkward in\na notebook, so here it folds over a list of \"typed lines\" instead. The shape is\nidentical: `Modify` accumulates the total, `Jump` is the early return when we\nhit `0`, and `Exception` reports a line that will not parse.\n\nEach `run*`/handler nests a new scope, and its handle is only valid *inside*\nthat box. `throw ex` unwinds out to the `try` that owns `ex`; `jumpTo break`\nexits just the loop. Nothing leaks outward:\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":28,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/html","oiOutput":"<svg viewBox='0 0 560 250' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'><rect x='6' y='6' width='548' height='238' rx='14' fill='#faf7f1' stroke='#2e3440' stroke-width='1.5'/><text x='20' y='28' font-size='13' font-weight='700' fill='#2e3440'>runPureEff<\/text><rect x='26' y='40' width='508' height='196' rx='12' fill='#ffffff' stroke='#bf616a' stroke-width='1.5'/><text x='40' y='62' font-size='13' font-weight='700' fill='#bf616a'>try  \\ex -&gt;<\/text><rect x='48' y='74' width='470' height='150' rx='10' fill='#faf7f1' stroke='#4c9a8f' stroke-width='1.5'/><text x='62' y='96' font-size='13' font-weight='700' fill='#3f7d74'>evalModify 0  \\total -&gt;<\/text><rect x='70' y='108' width='430' height='102' rx='8' fill='#ffffff' stroke='#d9a441' stroke-width='1.5'/><text x='84' y='130' font-size='13' font-weight='700' fill='#b8860b'>withJump  \\break -&gt;<\/text><text x='92' y='158' font-size='13' font-family='monospace' fill='#bf616a'>throw ex msg<\/text><text x='240' y='158' font-size='12' fill='#6f6a5d'>unwinds out to try<\/text><text x='92' y='180' font-size='13' font-family='monospace' fill='#b8860b'>jumpTo break<\/text><text x='240' y='180' font-size='12' fill='#6f6a5d'>exits just the loop<\/text><text x='92' y='202' font-size='13' font-family='monospace' fill='#3f7d74'>modify total (+ n)<\/text><\/svg>\n"}],"cellSource":"displayHtml $ concat\n  [ \"<svg viewBox='0 0 560 250' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'>\"\n  , \"<rect x='6' y='6' width='548' height='238' rx='14' fill='#faf7f1' stroke='#2e3440' stroke-width='1.5'/>\"\n  , \"<text x='20' y='28' font-size='13' font-weight='700' fill='#2e3440'>runPureEff<\/text>\"\n  , \"<rect x='26' y='40' width='508' height='196' rx='12' fill='#ffffff' stroke='#bf616a' stroke-width='1.5'/>\"\n  , \"<text x='40' y='62' font-size='13' font-weight='700' fill='#bf616a'>try  \\\\ex -&gt;<\/text>\"\n  , \"<rect x='48' y='74' width='470' height='150' rx='10' fill='#faf7f1' stroke='#4c9a8f' stroke-width='1.5'/>\"\n  , \"<text x='62' y='96' font-size='13' font-weight='700' fill='#3f7d74'>evalModify 0  \\\\total -&gt;<\/text>\"\n  , \"<rect x='70' y='108' width='430' height='102' rx='8' fill='#ffffff' stroke='#d9a441' stroke-width='1.5'/>\"\n  , \"<text x='84' y='130' font-size='13' font-weight='700' fill='#b8860b'>withJump  \\\\break -&gt;<\/text>\"\n  , \"<text x='92' y='158' font-size='13' font-family='monospace' fill='#bf616a'>throw ex msg<\/text>\"\n  , \"<text x='240' y='158' font-size='12' fill='#6f6a5d'>unwinds out to try<\/text>\"\n  , \"<text x='92' y='180' font-size='13' font-family='monospace' fill='#b8860b'>jumpTo break<\/text>\"\n  , \"<text x='240' y='180' font-size='12' fill='#6f6a5d'>exits just the loop<\/text>\"\n  , \"<text x='92' y='202' font-size='13' font-family='monospace' fill='#3f7d74'>modify total (+ n)<\/text>\"\n  , \"<\/svg>\"\n  ]\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":29,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":30,"cellLang":"Haskell","cellOutputs":[],"cellSource":"sumUntilZero :: [String] -> Either String Int\nsumUntilZero inputs = runPureEff $\n  try $ \\ex ->\n    evalModify (0 :: Int) $ \\total -> do\n      withJump $ \\break ->\n        for_ inputs $ \\line ->\n          case readMaybe line of\n            Nothing -> throw ex (\"Couldn't read: \" ++ line)\n            Just 0 -> jumpTo break\n            Just n -> modify total (+ n)\n      get total\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":31,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\nSumming until the `0` (everything after it is ignored):\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":32,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"Right 6\n"}],"cellSource":"sumUntilZero [\"1\", \"2\", \"3\", \"0\", \"99\"]\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":33,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\nNo `0`, so every number counts:\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":34,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"Right 15\n"}],"cellSource":"sumUntilZero [\"4\", \"5\", \"6\"]\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":35,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\nAn unparseable line throws, and `try` turns it into a `Left`:\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":36,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"Left \"Couldn't read: oops\"\n"}],"cellSource":"sumUntilZero [\"10\", \"20\", \"oops\", \"5\"]\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":37,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\nWe can watch it run. The strip below replays the fold step by step: each box is\none input, teal boxes accumulate the running total, and the amber box is where\n`jumpTo break` ends it early (everything after the `0` is never visited).\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":38,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/html","oiOutput":"<svg viewBox='0 0 472 104' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'><rect x='16' y='28' width='94' height='58' rx='9' fill='#e6f2ef' stroke='#3f7d74' stroke-width='1.5'/><text x='63' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>1<\/text><text x='63' y='76' text-anchor='middle' font-size='11' fill='#3f7d74'>total 1<\/text><rect x='126' y='28' width='94' height='58' rx='9' fill='#e6f2ef' stroke='#3f7d74' stroke-width='1.5'/><text x='173' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>2<\/text><text x='173' y='76' text-anchor='middle' font-size='11' fill='#3f7d74'>total 3<\/text><rect x='236' y='28' width='94' height='58' rx='9' fill='#e6f2ef' stroke='#3f7d74' stroke-width='1.5'/><text x='283' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>3<\/text><text x='283' y='76' text-anchor='middle' font-size='11' fill='#3f7d74'>total 6<\/text><rect x='346' y='28' width='94' height='58' rx='9' fill='#fbf0d8' stroke='#b8860b' stroke-width='1.5'/><text x='393' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>0<\/text><text x='393' y='76' text-anchor='middle' font-size='11' fill='#b8860b'>break<\/text><\/svg>\n"}],"cellSource":"data Step = Add Int Int | Stop | Bad String\n\nrunTrace :: [String] -> [Step]\nrunTrace = go 0\n  where\n    go _ [] = []\n    go acc (s : ss) = case readMaybe s :: Maybe Int of\n      Nothing -> [Bad s]\n      Just 0 -> [Stop]\n      Just n -> Add n (acc + n) : go (acc + n) ss\n\ntraceSvg :: [String] -> String\ntraceSvg inputs =\n  let steps = zip [0 :: Int ..] (runTrace inputs)\n      box (i, st) =\n        let x = 16 + i * 110\n            (fill, stroke, top, bot) = case st of\n              Add n t -> (\"#e6f2ef\", \"#3f7d74\", show n, \"total \" ++ show t)\n              Stop -> (\"#fbf0d8\", \"#b8860b\", \"0\", \"break\")\n              Bad s -> (\"#f7e0e0\", \"#bf616a\", s, \"throws\")\n         in concat\n              [ \"<rect x='\", show x, \"' y='28' width='94' height='58' rx='9' fill='\", fill, \"' stroke='\", stroke, \"' stroke-width='1.5'/>\"\n              , \"<text x='\", show (x + 47), \"' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>\", top, \"<\/text>\"\n              , \"<text x='\", show (x + 47), \"' y='76' text-anchor='middle' font-size='11' fill='\", stroke, \"'>\", bot, \"<\/text>\"\n              ]\n      ww = 32 + length steps * 110\n   in concat $\n        [\"<svg viewBox='0 0 \", show ww, \" 104' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'>\"]\n          ++ map box steps\n          ++ [\"<\/svg>\"]\n\ndisplayHtml (traceSvg [\"1\", \"2\", \"3\", \"0\", \"99\"])\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":39,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\nThe same function over real input is just `runEff $ \\io -> ...` with\n`effIO io getLine` in place of the list, threading the same three handles.\n\n## Putting it together\n\nA larger example combining two `Modify` cells with an early exit via an\n`Exception`: count positives and negatives in a list, but bail out the moment a\nzero appears.\n\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":40,"cellLang":"Haskell","cellOutputs":[],"cellSource":"countPositivesNegatives :: [Int] -> String\ncountPositivesNegatives is = runPureEff $\n  evalModify (0 :: Int) $ \\positives -> do\n    r <- try $ \\ex ->\n      evalModify (0 :: Int) $ \\negatives -> do\n        for_ is $ \\i ->\n          case compare i 0 of\n            GT -> modify positives (+ 1)\n            EQ -> throw ex ()\n            LT -> modify negatives (+ 1)\n        p <- get positives\n        n <- get negatives\n        pure (\"Positives: \" ++ show p ++ \", negatives: \" ++ show n)\n    case r of\n      Right msg -> pure msg\n      Left () -> do\n        p <- get positives\n        pure (\"We saw a zero, but before it there were \" ++ show p ++ \" positives\")\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":41,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":42,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"\"Positives: 3, negatives: 2\"\n"}],"cellSource":"countPositivesNegatives [1, -2, 3, -4, 5]\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":43,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\n","cellType":"ProseCell"},{"cellDirty":false,"cellError":null,"cellId":44,"cellLang":"Haskell","cellOutputs":[{"oiMime":"text/plain","oiOutput":"\"We saw a zero, but before it there were 2 positives\"\n"}],"cellSource":"countPositivesNegatives [1, 2, 0, 3, -1]\n","cellType":"CodeCell"},{"cellDirty":false,"cellError":null,"cellId":45,"cellLang":"Haskell","cellOutputs":[],"cellSource":"\nRead Bluefin top to bottom and the shape never changes: every effect arrives as\nan explicit handle, scoped by the `run*` that introduced it, and ordinary\nfunctions move those handles around. The full reference, with comparisons to\nother effect systems, is in the\n[`Bluefin` documentation](https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html).\n","cellType":"ProseCell"}],"nbTitle":"examples/bluefin.md"};
+window.__SABELA_RENDER_MODE__ = "notebook";
+window.__SABELA_MARKDOWN__ = "# A tour of Bluefin\n\n[Bluefin](https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html)\nis an effect system where every effect is a *value* you hold, not a constraint\nsmeared across a monad. You get a *handle* from a `run*` function and pass it\nexplicitly into the operations that use it. Because handles are ordinary\narguments, you can have several effects of the same type in scope at once, and\nthe type checker stops an effect from escaping the block that introduced it (the\nsame trick `ST` uses to keep an `STRef` from leaking).\n\nThis notebook ports the examples from Tom Ellis's\n[`Bluefin` documentation](https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html)\nand makes every one of them runnable, so you can edit a value and watch the\nresult change. Fork it to experiment.\n\n<!-- sabela:cell -->\n\nEverything below uses a handful of modules. `Eff es a` is a computation\nproducing an `a` whose available effects are tracked in the type-level set `es`.\n`runPureEff` discharges a computation that needs no `IO`. `Modify` is Bluefin's\nmutable cell (think `IORef`), `Exception` is its checked exception, and `Jump`\nis an early return.\n```haskell\n-- cabal: build-depends: bluefin >= 0.6\n{-# LANGUAGE TypeOperators #-}\nimport Bluefin.Eff (Eff, runPureEff, (:&), (:>))\nimport Bluefin.Capability.Modify (Modify, evalModify, get, put, modify)\nimport Bluefin.Exception (Exception, try, throw)\nimport Bluefin.Jump (Jump, withJump, jumpTo)\nimport Control.Monad (when)\nimport Data.Foldable (for_)\nimport Text.Read (readMaybe)\n```\n\n## Mutable state, but pure\n\n`evalModify` hands your block a `Modify` handle initialised to a starting value.\nThrough it you `get`, `put`, and `modify` the cell. It reads imperatively, yet\nthe whole thing reduces to a pure value: nothing here touches `IO`.\n\n```haskell\n-- If n < 10 then add 10 to it, otherwise leave it unchanged.\nexample1 :: Int -> Int\nexample1 n = runPureEff $\n  evalModify n $ \\sn -> do\n    n' <- get sn\n    when (n' < 10) $ modify sn (+ 10)\n    get sn\n```\n\n```haskell\nexample1 5\n```\n\n> <!-- scripths:mime text/plain -->\n> 15\n\n```haskell\nexample1 12\n```\n\n> <!-- scripths:mime text/plain -->\n> 12\n\n## Several effects of the same type\n\nBecause a handle is just a value, you can keep two `Modify` cells straight at\nonce. No newtype tagging, no lifting: `sm` and `sn` are independent.\n\n```haskell\n-- Compare two values and add 10 to the smaller.\nexample2 :: (Int, Int) -> (Int, Int)\nexample2 (m, n) = runPureEff $\n  evalModify m $ \\sm ->\n    evalModify n $ \\sn -> do\n      n' <- get sn\n      m' <- get sm\n      if n' < m' then modify sn (+ 10) else modify sm (+ 10)\n      (,) <$> get sm <*> get sn\n```\n\n```haskell\nexample2 (5, 10)\n```\n\n> <!-- scripths:mime text/plain -->\n> (15,10)\n\n```haskell\nexample2 (30, 3)\n```\n\n> <!-- scripths:mime text/plain -->\n> (30,13)\n\n## Exceptions that cannot escape\n\n`try` introduces an `Exception` handle and runs your block, returning an\n`Either`. Inside, `throw` short-circuits to the matching `try`. The handle is\nscoped, so every `throw` is guaranteed to be caught by the `try` that made it.\n\n```haskell\nexample3 :: Int -> Either String Int\nexample3 n = runPureEff $\n  try $ \\ex ->\n    evalModify (0 :: Int) $ \\total -> do\n      for_ [1 .. n] $ \\i -> do\n        soFar <- get total\n        when (soFar > 20) $ throw ex (\"Became too big: \" ++ show soFar)\n        put total (soFar + i)\n      get total\n```\n\n```haskell\nexample3 4\n```\n\n> <!-- scripths:mime text/plain -->\n> Right 10\n\n```haskell\nexample3 10\n```\n\n> <!-- scripths:mime text/plain -->\n> Left \"Became too big: 21\"\n\n## Effect scoping is enforced by the type checker\n\nThe phantom scope on a handle keeps `runPureEff` sound. This version only uses\nthe cell inside its block, so it is well scoped:\n\n```haskell\ncorrectlyScoped :: Int\ncorrectlyScoped = runPureEff $ do\n  r <- evalModify 0 $ \\st -> do\n    for_ [1 .. 10] $ \\i -> modify st (+ i)\n    get st\n  pure (r * 20)\n```\n\n```haskell\ncorrectlyScoped\n```\n\n> <!-- scripths:mime text/plain -->\n> 1100\n\nReturning the handle and using it after its block is a *compile error*, not a\nruntime bug. The scope variable would escape, so Bluefin rejects it, exactly as\n`runST` rejects a leaked `STRef`:\n\n```haskell\nincorrectlyScoped :: Eff es Integer\nincorrectlyScoped = do\n  (total, st) <- evalModify 0 $ \\st -> do\n    for_ [1 .. 10] $ \\i -> modify st (+ i)\n    r <- get st\n    pure (r, st)\n  modify st (* 20)   -- using st out here ...\n  get st\n\n-- error: Couldn't match type 'e0' with 'e'\n--   because the type variable 'e' would escape its scope\n```\n\n## Three effects at once: state, early return, and exceptions\n\nThe documentation's headline example reads numbers from stdin, summing them\nuntil it sees a `0` and bailing out on anything unparseable. stdin is awkward in\na notebook, so here it folds over a list of \"typed lines\" instead. The shape is\nidentical: `Modify` accumulates the total, `Jump` is the early return when we\nhit `0`, and `Exception` reports a line that will not parse.\n\nEach `run*`/handler nests a new scope, and its handle is only valid *inside*\nthat box. `throw ex` unwinds out to the `try` that owns `ex`; `jumpTo break`\nexits just the loop. Nothing leaks outward:\n\n```haskell\ndisplayHtml $ concat\n  [ \"<svg viewBox='0 0 560 250' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'>\"\n  , \"<rect x='6' y='6' width='548' height='238' rx='14' fill='#faf7f1' stroke='#2e3440' stroke-width='1.5'/>\"\n  , \"<text x='20' y='28' font-size='13' font-weight='700' fill='#2e3440'>runPureEff<\/text>\"\n  , \"<rect x='26' y='40' width='508' height='196' rx='12' fill='#ffffff' stroke='#bf616a' stroke-width='1.5'/>\"\n  , \"<text x='40' y='62' font-size='13' font-weight='700' fill='#bf616a'>try  \\\\ex -&gt;<\/text>\"\n  , \"<rect x='48' y='74' width='470' height='150' rx='10' fill='#faf7f1' stroke='#4c9a8f' stroke-width='1.5'/>\"\n  , \"<text x='62' y='96' font-size='13' font-weight='700' fill='#3f7d74'>evalModify 0  \\\\total -&gt;<\/text>\"\n  , \"<rect x='70' y='108' width='430' height='102' rx='8' fill='#ffffff' stroke='#d9a441' stroke-width='1.5'/>\"\n  , \"<text x='84' y='130' font-size='13' font-weight='700' fill='#b8860b'>withJump  \\\\break -&gt;<\/text>\"\n  , \"<text x='92' y='158' font-size='13' font-family='monospace' fill='#bf616a'>throw ex msg<\/text>\"\n  , \"<text x='240' y='158' font-size='12' fill='#6f6a5d'>unwinds out to try<\/text>\"\n  , \"<text x='92' y='180' font-size='13' font-family='monospace' fill='#b8860b'>jumpTo break<\/text>\"\n  , \"<text x='240' y='180' font-size='12' fill='#6f6a5d'>exits just the loop<\/text>\"\n  , \"<text x='92' y='202' font-size='13' font-family='monospace' fill='#3f7d74'>modify total (+ n)<\/text>\"\n  , \"<\/svg>\"\n  ]\n```\n\n> <!-- scripths:mime text/html -->\n> <svg viewBox='0 0 560 250' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'><rect x='6' y='6' width='548' height='238' rx='14' fill='#faf7f1' stroke='#2e3440' stroke-width='1.5'/><text x='20' y='28' font-size='13' font-weight='700' fill='#2e3440'>runPureEff<\/text><rect x='26' y='40' width='508' height='196' rx='12' fill='#ffffff' stroke='#bf616a' stroke-width='1.5'/><text x='40' y='62' font-size='13' font-weight='700' fill='#bf616a'>try  \\ex -&gt;<\/text><rect x='48' y='74' width='470' height='150' rx='10' fill='#faf7f1' stroke='#4c9a8f' stroke-width='1.5'/><text x='62' y='96' font-size='13' font-weight='700' fill='#3f7d74'>evalModify 0  \\total -&gt;<\/text><rect x='70' y='108' width='430' height='102' rx='8' fill='#ffffff' stroke='#d9a441' stroke-width='1.5'/><text x='84' y='130' font-size='13' font-weight='700' fill='#b8860b'>withJump  \\break -&gt;<\/text><text x='92' y='158' font-size='13' font-family='monospace' fill='#bf616a'>throw ex msg<\/text><text x='240' y='158' font-size='12' fill='#6f6a5d'>unwinds out to try<\/text><text x='92' y='180' font-size='13' font-family='monospace' fill='#b8860b'>jumpTo break<\/text><text x='240' y='180' font-size='12' fill='#6f6a5d'>exits just the loop<\/text><text x='92' y='202' font-size='13' font-family='monospace' fill='#3f7d74'>modify total (+ n)<\/text><\/svg>\n\n```haskell\nsumUntilZero :: [String] -> Either String Int\nsumUntilZero inputs = runPureEff $\n  try $ \\ex ->\n    evalModify (0 :: Int) $ \\total -> do\n      withJump $ \\break ->\n        for_ inputs $ \\line ->\n          case readMaybe line of\n            Nothing -> throw ex (\"Couldn't read: \" ++ line)\n            Just 0 -> jumpTo break\n            Just n -> modify total (+ n)\n      get total\n```\n\nSumming until the `0` (everything after it is ignored):\n\n```haskell\nsumUntilZero [\"1\", \"2\", \"3\", \"0\", \"99\"]\n```\n\n> <!-- scripths:mime text/plain -->\n> Right 6\n\nNo `0`, so every number counts:\n\n```haskell\nsumUntilZero [\"4\", \"5\", \"6\"]\n```\n\n> <!-- scripths:mime text/plain -->\n> Right 15\n\nAn unparseable line throws, and `try` turns it into a `Left`:\n\n```haskell\nsumUntilZero [\"10\", \"20\", \"oops\", \"5\"]\n```\n\n> <!-- scripths:mime text/plain -->\n> Left \"Couldn't read: oops\"\n\nWe can watch it run. The strip below replays the fold step by step: each box is\none input, teal boxes accumulate the running total, and the amber box is where\n`jumpTo break` ends it early (everything after the `0` is never visited).\n\n```haskell\ndata Step = Add Int Int | Stop | Bad String\n\nrunTrace :: [String] -> [Step]\nrunTrace = go 0\n  where\n    go _ [] = []\n    go acc (s : ss) = case readMaybe s :: Maybe Int of\n      Nothing -> [Bad s]\n      Just 0 -> [Stop]\n      Just n -> Add n (acc + n) : go (acc + n) ss\n\ntraceSvg :: [String] -> String\ntraceSvg inputs =\n  let steps = zip [0 :: Int ..] (runTrace inputs)\n      box (i, st) =\n        let x = 16 + i * 110\n            (fill, stroke, top, bot) = case st of\n              Add n t -> (\"#e6f2ef\", \"#3f7d74\", show n, \"total \" ++ show t)\n              Stop -> (\"#fbf0d8\", \"#b8860b\", \"0\", \"break\")\n              Bad s -> (\"#f7e0e0\", \"#bf616a\", s, \"throws\")\n         in concat\n              [ \"<rect x='\", show x, \"' y='28' width='94' height='58' rx='9' fill='\", fill, \"' stroke='\", stroke, \"' stroke-width='1.5'/>\"\n              , \"<text x='\", show (x + 47), \"' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>\", top, \"<\/text>\"\n              , \"<text x='\", show (x + 47), \"' y='76' text-anchor='middle' font-size='11' fill='\", stroke, \"'>\", bot, \"<\/text>\"\n              ]\n      ww = 32 + length steps * 110\n   in concat $\n        [\"<svg viewBox='0 0 \", show ww, \" 104' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'>\"]\n          ++ map box steps\n          ++ [\"<\/svg>\"]\n\ndisplayHtml (traceSvg [\"1\", \"2\", \"3\", \"0\", \"99\"])\n```\n\n> <!-- scripths:mime text/html -->\n> <svg viewBox='0 0 472 104' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'><rect x='16' y='28' width='94' height='58' rx='9' fill='#e6f2ef' stroke='#3f7d74' stroke-width='1.5'/><text x='63' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>1<\/text><text x='63' y='76' text-anchor='middle' font-size='11' fill='#3f7d74'>total 1<\/text><rect x='126' y='28' width='94' height='58' rx='9' fill='#e6f2ef' stroke='#3f7d74' stroke-width='1.5'/><text x='173' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>2<\/text><text x='173' y='76' text-anchor='middle' font-size='11' fill='#3f7d74'>total 3<\/text><rect x='236' y='28' width='94' height='58' rx='9' fill='#e6f2ef' stroke='#3f7d74' stroke-width='1.5'/><text x='283' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>3<\/text><text x='283' y='76' text-anchor='middle' font-size='11' fill='#3f7d74'>total 6<\/text><rect x='346' y='28' width='94' height='58' rx='9' fill='#fbf0d8' stroke='#b8860b' stroke-width='1.5'/><text x='393' y='56' text-anchor='middle' font-size='17' font-family='monospace' fill='#2e3440'>0<\/text><text x='393' y='76' text-anchor='middle' font-size='11' fill='#b8860b'>break<\/text><\/svg>\n\nThe same function over real input is just `runEff $ \\io -> ...` with\n`effIO io getLine` in place of the list, threading the same three handles.\n\n## Putting it together\n\nA larger example combining two `Modify` cells with an early exit via an\n`Exception`: count positives and negatives in a list, but bail out the moment a\nzero appears.\n\n```haskell\ncountPositivesNegatives :: [Int] -> String\ncountPositivesNegatives is = runPureEff $\n  evalModify (0 :: Int) $ \\positives -> do\n    r <- try $ \\ex ->\n      evalModify (0 :: Int) $ \\negatives -> do\n        for_ is $ \\i ->\n          case compare i 0 of\n            GT -> modify positives (+ 1)\n            EQ -> throw ex ()\n            LT -> modify negatives (+ 1)\n        p <- get positives\n        n <- get negatives\n        pure (\"Positives: \" ++ show p ++ \", negatives: \" ++ show n)\n    case r of\n      Right msg -> pure msg\n      Left () -> do\n        p <- get positives\n        pure (\"We saw a zero, but before it there were \" ++ show p ++ \" positives\")\n```\n\n```haskell\ncountPositivesNegatives [1, -2, 3, -4, 5]\n```\n\n> <!-- scripths:mime text/plain -->\n> \"Positives: 3, negatives: 2\"\n\n```haskell\ncountPositivesNegatives [1, 2, 0, 3, -1]\n```\n\n> <!-- scripths:mime text/plain -->\n> \"We saw a zero, but before it there were 2 positives\"\n\nRead Bluefin top to bottom and the shape never changes: every effect arrives as\nan explicit handle, scoped by the `run*` that introduced it, and ordinary\nfunctions move those handles around. The full reference, with comparisons to\nother effect systems, is in the\n[`Bluefin` documentation](https://hackage.haskell.org/package/bluefin-0.6.0.0/docs/Bluefin.html).\n";
+    </script>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-sun" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" />
+          <line x1="12" y1="2" x2="12" y2="4" />
+          <line x1="12" y1="20" x2="12" y2="22" />
+          <line x1="4.93" y1="4.93" x2="6.34" y2="6.34" />
+          <line x1="17.66" y1="17.66" x2="19.07" y2="19.07" />
+          <line x1="2" y1="12" x2="4" y2="12" />
+          <line x1="20" y1="12" x2="22" y2="12" />
+          <line x1="4.93" y1="19.07" x2="6.34" y2="17.66" />
+          <line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
+        </symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <div class="dashboard-header">
+      <h1 id="dashboard-title">Dashboard</h1>
+      <div class="header-actions" id="header-actions">
+        <a href="/" id="edit-link">Edit Notebook</a>
+        <button onclick="exportDashboard()" id="export-btn">Export HTML</button>
+        <button
+          onclick="printToPdf()"
+          id="pdf-btn"
+          title='Print this page to PDF — use your browser&apos;s "Save as PDF" destination'
+        >
+          Save as PDF
+        </button>
+        <button
+          class="icon-btn"
+          id="theme-toggle"
+          onclick="toggleTheme()"
+          title="Toggle light/dark theme"
+          aria-label="Toggle theme"
+        >
+          <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
+        </button>
+      </div>
+    </div>
+
+    <main class="dashboard-main">
+      <div class="dashboard-content" id="main-content"></div>
+    </main>
+
+    <div class="dash-status" id="status-indicator"></div>
+
+    <script>
+const isStatic = !!window.__SABELA_STATIC__;
+const _query = new URLSearchParams(location.search);
+// 'notebook' (tutorial) mode shows each code cell's source; 'dashboard'
+// (default) shows only prose + outputs. Static shares pin the mode via the
+// injected flag; the live editor can request notebook mode with ?mode=notebook.
+const renderMode =
+  window.__SABELA_RENDER_MODE__ || (_query.get('mode') === 'notebook' ? 'notebook' : 'dashboard');
+// ?print=1 — open straight into the browser print dialog (used by the editor's
+// "Save as PDF" menu items, which open this page in a new tab).
+const autoPrint = _query.get('print') === '1';
+const HLJS_LANG = { Haskell: 'haskell', Python: 'python' };
+let notebookData = null;
+
+// ── Theme handling (the same picker as the editor; 'sabela-theme' key) ──
+const THEMES = [
+  { id: 'warm', name: 'Warm Paper', mode: 'light', bg: '#f7f3ec', accent: '#c2674a' },
+  { id: 'nord', name: 'Nord', mode: 'dark', bg: '#2e3440', accent: '#88c0d0' },
+  { id: 'nord-light', name: 'Nord Light', mode: 'light', bg: '#eceff4', accent: '#5e81ac' },
+  { id: 'nord-aurora', name: 'Aurora Purple', mode: 'dark', bg: '#2e3440', accent: '#b48ead' },
+  { id: 'nord-ember', name: 'Aurora Ember', mode: 'dark', bg: '#2e3440', accent: '#d08770' },
+  { id: 'vscode', name: 'VS Code Dark', mode: 'dark', bg: '#1e1e1e', accent: '#3794ff' },
+];
+function currentTheme() {
+  const t = document.documentElement.dataset.theme;
+  return THEMES.some((x) => x.id === t) ? t : 'warm';
+}
+function cssVar(name, fallback) {
+  return (getComputedStyle(document.documentElement).getPropertyValue(name) || fallback).trim();
+}
+function applyTheme(theme, { persist = true } = {}) {
+  document.documentElement.dataset.theme = theme;
+  if (persist) {
+    localStorage.setItem('sabela-theme', theme);
+    window.__sabelaThemePinned = true;
+  }
+  // Re-render iframes with the current theme colors.
+  document.querySelectorAll('iframe[data-last-content]').forEach((f) => {
+    if (!f.dataset.lastContent) return;
+    if (f.dataset.staticFrame) {
+      f.srcdoc = staticSrcdoc(f.dataset.lastContent, f.dataset.iframeKind || 'content', f.id);
+      return;
+    }
+    try {
+      const doc = f.contentDocument || f.contentWindow?.document;
+      if (!doc) return;
+      doc.open();
+      const style = f.dataset.iframeKind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
+      doc.write(style + f.dataset.lastContent);
+      doc.close();
+    } catch {}
+  });
+  markActiveTheme();
+}
+function markActiveTheme() {
+  const cur = currentTheme();
+  document
+    .querySelectorAll('.theme-menu-item')
+    .forEach((el) => el.classList.toggle('active', el.dataset.theme === cur));
+}
+function buildThemeMenu() {
+  let menu = document.getElementById('theme-menu');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'theme-menu';
+  menu.className = 'theme-menu';
+  THEMES.forEach((t) => {
+    const item = document.createElement('button');
+    item.className = 'theme-menu-item';
+    item.dataset.theme = t.id;
+    item.innerHTML =
+      `<span class="sw" style="background:${t.bg}"><i style="background:${t.accent}"></i></span>` +
+      `<span class="nm">${t.name}</span>`;
+    item.onclick = () => {
+      applyTheme(t.id);
+      menu.classList.remove('open');
+    };
+    menu.appendChild(item);
+  });
+  document.body.appendChild(menu);
+  return menu;
+}
+function openThemePicker() {
+  const menu = buildThemeMenu();
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    const r = btn.getBoundingClientRect();
+    menu.style.top = r.bottom + 6 + 'px';
+    menu.style.right = window.innerWidth - r.right + 'px';
+  }
+  const open = menu.classList.toggle('open');
+  markActiveTheme();
+  if (open) {
+    setTimeout(() => {
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (!menu.contains(e.target) && e.target !== btn && !btn?.contains(e.target))
+            menu.classList.remove('open');
+        },
+        { once: true }
+      );
+    }, 0);
+  }
+}
+// The header button's onclick is toggleTheme(); keep the name, open the picker.
+function toggleTheme() {
+  openThemePicker();
+}
+function iframeContentStyle() {
+  const bg = cssVar('--bg-card', '#ffffff');
+  const fg = cssVar('--fg', '#0a0a0a');
+  const fgHead = cssVar('--fg-heading', '#000000');
+  const muted = cssVar('--bg-muted', '#fafafa');
+  const border = cssVar('--border', '#e4e4e7');
+  const accent = cssVar('--accent', '#0066ff');
+  const altRow = `rgba(${cssVar('--accent-rgb', '0,102,255')},0.05)`;
+  return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:12px 16px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
+}
+function widgetIframeStyle() {
+  const fg = cssVar('--fg', '#0a0a0a');
+  const fgDim = cssVar('--fg-dim', '#71717a');
+  const accent = cssVar('--accent', '#0066ff');
+  return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:6px 12px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
+}
+// ── Static-export iframe: opaque-origin sandbox + in-document CSP ──
+// In a shared/offline export we still run a script-drawn widget so its plot
+// renders, but sandbox='allow-scripts' (NO allow-same-origin) gives the frame an
+// opaque origin that cannot read this page (the embedded notebook JSON), cookies,
+// or storage; the meta-CSP allows charting libs from trusted CDNs (cdnjs,
+// jsdelivr) but keeps connect-src closed, so a plot can draw yet can't
+// exfiltrate the page. 'unsafe-eval' is required because Vega compiles its
+// dataflow expressions at runtime via the Function() constructor; it adds
+// little risk here since 'unsafe-inline' already runs arbitrary script and the
+// opaque origin + closed connect-src block any reads or exfiltration. Because
+// the frame is cross-origin we cannot read its height, so it reports its own
+// via postMessage.
+const STATIC_CSP =
+  "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'\">";
+let __staticFrameSeq = 0;
+function staticSrcdoc(content, kind, id) {
+  const style = kind === 'widget' ? widgetIframeStyle() : iframeContentStyle();
+  const reporter =
+    '<scr' +
+    "ipt>(function(){function r(){try{parent.postMessage({__sabelaH:document.documentElement.scrollHeight,__sabelaId:'" +
+    id +
+    "'},'*')}catch(e){}}requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" +
+    'ipt>';
+  return STATIC_CSP + style + content + reporter;
+}
+function mountStaticFrame(container, content, kind) {
+  const id = 'sframe' + __staticFrameSeq++;
+  const iframe = document.createElement('iframe');
+  iframe.id = id;
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  if (kind === 'widget') iframe.style.pointerEvents = 'none';
+  iframe.style.height = (kind === 'widget' ? 60 : 80) + 'px';
+  iframe.dataset.iframeKind = kind;
+  iframe.dataset.lastContent = content;
+  iframe.dataset.staticFrame = '1';
+  iframe.srcdoc = staticSrcdoc(content, kind, id);
+  container.appendChild(iframe);
+}
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (d && typeof d.__sabelaH === 'number' && d.__sabelaId) {
+    const el = document.getElementById(d.__sabelaId);
+    if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
+  }
+});
+// Initial sync (renders iframes with the active theme).
+applyTheme(currentTheme(), { persist: false });
+// ── Initialization ───────────────────────────────────────────────
+async function init() {
+  if (isStatic) {
+    notebookData = window.__SABELA_STATIC__;
+    document.getElementById('edit-link').style.display = 'none';
+    document.getElementById('export-btn').style.display = 'none';
+  } else {
+    const resp = await fetch('/api/notebook');
+    notebookData = await resp.json();
+  }
+  renderDashboard(notebookData);
+  if (renderMode === 'notebook') setupDownloadMd();
+  if (!isStatic) connectSSE();
+  // Opened with ?print=1 — let layout settle (iframes report heights, fonts
+  // load), then drop straight into the print dialog.
+  if (autoPrint) requestAnimationFrame(() => setTimeout(printToPdf, 300));
+}
+
+// In notebook (tutorial) mode, offer the notebook source for download so a
+// reader can upload it into their own Sabela workspace and run it.
+function setupDownloadMd() {
+  const md = window.__SABELA_MARKDOWN__;
+  const actions = document.getElementById('header-actions');
+  if (!md || !actions || document.getElementById('dl-md-btn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'dl-md-btn';
+  btn.textContent = 'Download .md';
+  btn.title = 'Download the notebook source — upload it into your own Sabela workspace to run it';
+  btn.addEventListener('click', () => {
+    const title = (notebookData && notebookData.nbTitle) || 'notebook.md';
+    const name = /\.md$/.test(title) ? title.split('/').pop() : 'notebook.md';
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 0);
+  });
+  actions.insertBefore(btn, actions.firstChild);
+}
+// ── Print to PDF ─────────────────────────────────────────────────
+// Browsers print an <iframe> as one atomic box: a tall frame is clipped at the
+// page edge, not paginated. Content outputs (e.g. dataframe tables) live in
+// iframes, so before printing we swap each one for inline, script-stripped DOM
+// that flows across pages. SVG/markdown/image/JSON/plain outputs are already
+// inline and need no help; short widget iframes are left as-is.
+
+// Strip <script> elements and on*= handlers, then return the safe HTML. Inlining
+// runs in this page's origin (unlike the sandboxed iframe), so for untrusted
+// static shares this prevents the output HTML from executing.
+function sanitizeForPrint(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  tpl.content.querySelectorAll('script').forEach((s) => s.remove());
+  tpl.content.querySelectorAll('*').forEach((el) => {
+    for (const attr of [...el.attributes]) {
+      if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
+    }
+  });
+  return tpl.innerHTML;
+}
+
+// Replace each content iframe with an inline .print-inline div; return undo fns.
+function inlineContentFramesForPrint() {
+  const frames = [...document.querySelectorAll('iframe[data-last-content]')].filter(
+    (f) => f.dataset.iframeKind !== 'widget'
+  );
+  const restore = [];
+  for (const f of frames) {
+    const div = document.createElement('div');
+    div.className = 'print-inline';
+    div.innerHTML = sanitizeForPrint(f.dataset.lastContent || '');
+    f.style.display = 'none';
+    f.parentNode.insertBefore(div, f);
+    restore.push(() => {
+      div.remove();
+      f.style.display = '';
+    });
+  }
+  return restore;
+}
+
+function printToPdf() {
+  const restore = inlineContentFramesForPrint();
+  const cleanup = () => {
+    restore.forEach((r) => r());
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  requestAnimationFrame(() => window.print());
+}
+// ── Render dashboard ─────────────────────────────────────────────
+function renderDashboard(nb) {
+  document.getElementById('dashboard-title').textContent = formatTitle(nb.nbTitle);
+  document.title = formatTitle(nb.nbTitle) + ' — Sabela Dashboard';
+
+  const main = document.getElementById('main-content');
+  main.innerHTML = '';
+
+  const cells = nb.nbCells || [];
+  for (const cell of cells) {
+    renderCellOutputs(main, cell, null);
+  }
+}
+
+// Render KaTeX inside a markdown source before handing to marked, so
+// $...$ / $$...$$ blocks survive marked's underscore/star handling.
+// Safe no-op if katex isn't available.
+function renderMarkdownWithMath(src) {
+  let s = src || '';
+  if (typeof katex !== 'undefined') {
+    s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => {
+      try {
+        return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false });
+      } catch (_e) {
+        return _;
+      }
+    });
+    s = s.replace(/(^|[^\\$])\$([^\$\n]+?)\$(?!\d)/g, (_, pre, tex) => {
+      try {
+        return pre + katex.renderToString(tex, { displayMode: false, throwOnError: false });
+      } catch (_e) {
+        return _;
+      }
+    });
+  }
+  return marked.parse(s);
+}
+
+// ── Render a single cell's outputs into the container ────────────
+function renderCellOutputs(container, cell, insertBefore) {
+  if (cell.cellType === 'ProseCell') {
+    const section = document.createElement('div');
+    section.className = 'dash-section';
+    section.dataset.cellId = cell.cellId;
+    section.innerHTML = renderMarkdownWithMath(cell.cellSource || '');
+    section.querySelectorAll('table').forEach((t) => {
+      const w = document.createElement('div');
+      w.style.overflowX = 'auto';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
+    container.insertBefore(section, insertBefore);
+    return;
+  }
+
+  // CodeCell — in notebook (tutorial) mode, show the source above its outputs.
+  if (renderMode === 'notebook' && (cell.cellSource || '').trim()) {
+    const codeWrap = document.createElement('div');
+    codeWrap.className = 'dash-code';
+    codeWrap.dataset.cellId = cell.cellId;
+    const pre = document.createElement('pre');
+    const codeEl = document.createElement('code');
+    codeEl.className = 'hljs';
+    const src = cell.cellSource || '';
+    const hl = HLJS_LANG[cell.cellLang || 'Haskell'];
+    if (hl && window.hljs && hljs.getLanguage(hl)) {
+      codeEl.innerHTML = hljs.highlight(src, { language: hl }).value;
+    } else {
+      codeEl.textContent = src;
+    }
+    pre.appendChild(codeEl);
+    codeWrap.appendChild(pre);
+    container.insertBefore(codeWrap, insertBefore);
+  }
+
+  // CodeCell — render all outputs inline in order
+  const outputs = cell.cellOutputs || [];
+  const merged = mergeHtmlOutputs(outputs);
+  for (const o of merged) {
+    if (!o.oiOutput || !o.oiOutput.trim()) continue;
+    const isWidget = classifyOutput(o) === 'widget';
+    const card = document.createElement('div');
+    card.className = isWidget ? 'dash-widget' : 'dash-output';
+    card.dataset.cellId = cell.cellId;
+
+    if (isWidget) {
+      renderWidgetOutput(card, o, cell.cellId);
+    } else {
+      renderOutput(card, o.oiOutput, o.oiMime);
+    }
+    container.insertBefore(card, insertBefore);
+  }
+
+  // Show errors
+  if (cell.cellError && cell.cellError.trim()) {
+    const errEl = document.createElement('div');
+    errEl.className = 'dash-error';
+    errEl.dataset.cellId = cell.cellId;
+    errEl.textContent = cell.cellError;
+    container.insertBefore(errEl, insertBefore);
+  }
+}
+
+// ── Output classification ────────────────────────────────────────
+function classifyOutput(item) {
+  if (
+    item.oiMime === 'text/html' &&
+    item.oiOutput &&
+    item.oiOutput.includes('parent.postMessage')
+  ) {
+    return 'widget';
+  }
+  return 'content';
+}
+
+// ── Merge consecutive HTML outputs (non-widget only) ─────────────
+function mergeHtmlOutputs(outputs) {
+  const merged = [];
+  for (const o of outputs) {
+    const isWidget = classifyOutput(o) === 'widget';
+    const last = merged[merged.length - 1];
+    if (
+      !isWidget &&
+      o.oiMime === 'text/html' &&
+      last &&
+      last.oiMime === 'text/html' &&
+      classifyOutput(last) !== 'widget'
+    ) {
+      last.oiOutput += '\n' + o.oiOutput;
+    } else {
+      merged.push({ oiMime: o.oiMime, oiOutput: o.oiOutput });
+    }
+  }
+  return merged;
+}
+// ── Render a content output ──────────────────────────────────────
+function renderOutput(container, content, mime) {
+  if (mime === 'text/html') {
+    if (isStatic) {
+      mountStaticFrame(container, content, 'content');
+      return;
+    }
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    iframe.style.visibility = 'hidden';
+    container.appendChild(iframe);
+    requestAnimationFrame(() => {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+      iframe.dataset.lastContent = content;
+      doc.open();
+      iframe.onload = () => {
+        iframe.style.height = Math.max(60, doc.body.scrollHeight + 20) + 'px';
+        iframe.style.visibility = '';
+      };
+      doc.write(iframeContentStyle() + content);
+      doc.close();
+    });
+  } else if (mime === 'text/markdown') {
+    const div = document.createElement('div');
+    div.className = 'mime-markdown';
+    div.innerHTML = renderMarkdownWithMath(content);
+    div.querySelectorAll('table').forEach((t) => {
+      const w = document.createElement('div');
+      w.style.overflowX = 'auto';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
+    container.appendChild(div);
+  } else if (mime === 'image/svg+xml') {
+    const div = document.createElement('div');
+    div.className = 'mime-svg';
+    div.innerHTML = content;
+    container.appendChild(div);
+  } else if (mime.startsWith('image/') && mime.includes('base64')) {
+    const div = document.createElement('div');
+    div.className = 'mime-image';
+    const mimeClean = mime.replace(';base64', '');
+    div.innerHTML = '<img src="data:' + mimeClean + ';base64,' + content.trim() + '" />';
+    container.appendChild(div);
+  } else if (mime === 'application/json') {
+    const div = document.createElement('div');
+    div.className = 'mime-json';
+    try {
+      div.textContent = JSON.stringify(JSON.parse(content), null, 2);
+    } catch {
+      div.textContent = content;
+    }
+    container.appendChild(div);
+  } else if (mime === 'text/latex') {
+    const div = document.createElement('div');
+    div.className = 'mime-latex';
+    try {
+      katex.render(content, div, { displayMode: true, throwOnError: false });
+    } catch {
+      div.textContent = content;
+    }
+    container.appendChild(div);
+  } else {
+    const div = document.createElement('div');
+    div.className = 'mime-plain';
+    div.textContent = content;
+    container.appendChild(div);
+  }
+}
+
+// ── Render widget inline ─────────────────────────────────────────
+function renderWidgetOutput(container, output, cellId) {
+  if (isStatic) {
+    // Script-drawn widgets (e.g. the scatter <canvas>) need their script to run to
+    // render at all — do it in the opaque-origin, network-dead sandbox (see
+    // mountStaticFrame), inert via pointer-events:none. Form controls have no such
+    // need and stay as greyed-out, script-stripped placeholders.
+    if (/<canvas|<script/i.test(output.oiOutput)) {
+      mountStaticFrame(container, output.oiOutput, 'widget');
+      return;
+    }
+    const wrapper = document.createElement('div');
+    wrapper.className = 'static-widget';
+    let cleaned = output.oiOutput
+      .replace(/\s*on\w+="[^"]*"/g, '')
+      .replace(/<(input|select|button)/gi, '<$1 disabled');
+    wrapper.innerHTML = cleaned;
+    container.appendChild(wrapper);
+    return;
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  iframe.style.visibility = 'hidden';
+  container.appendChild(iframe);
+
+  requestAnimationFrame(() => {
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+    iframe.dataset.lastContent = output.oiOutput;
+    iframe.dataset.iframeKind = 'widget';
+    doc.open();
+    iframe.onload = () => {
+      iframe.style.height = Math.max(32, doc.body.scrollHeight) + 'px';
+      iframe.style.visibility = '';
+    };
+    doc.write(widgetIframeStyle() + output.oiOutput);
+    doc.close();
+  });
+}
+// ── SSE (live mode only) ─────────────────────────────────────────
+function connectSSE() {
+  const evtSource = new EventSource('/api/events');
+  evtSource.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    switch (ev.type) {
+      case 'cellUpdating':
+        showStatus('Running...', true);
+        break;
+      case 'cellResult':
+        updateDashboardCell(ev.cellId, ev.outputs || [], ev.error);
+        break;
+      case 'executionDone':
+        hideStatus();
+        break;
+      case 'sessionStatus':
+        if (ev.message === 'ready') hideStatus();
+        else showStatus(ev.message, true);
+        break;
+    }
+  };
+  evtSource.onerror = () => {
+    showStatus('Disconnected', false);
+  };
+}
+
+// ── Update a cell in the dashboard ───────────────────────────────
+function updateDashboardCell(cellId, outputs, error) {
+  if (!notebookData) return;
+  const cell = (notebookData.nbCells || []).find((c) => c.cellId === cellId);
+  if (!cell) return;
+
+  cell.cellOutputs = outputs;
+  cell.cellError = error || null;
+
+  // Remove only this cell's existing DOM nodes
+  const main = document.getElementById('main-content');
+  main.querySelectorAll(`[data-cell-id="${cellId}"]`).forEach((el) => el.remove());
+
+  // Find the next cell's first DOM node to insert before
+  const cells = notebookData.nbCells;
+  const cellIndex = cells.indexOf(cell);
+  let insertBefore = null;
+  for (let j = cellIndex + 1; j < cells.length; j++) {
+    const nextNode = main.querySelector(`[data-cell-id="${cells[j].cellId}"]`);
+    if (nextNode) {
+      insertBefore = nextNode;
+      break;
+    }
+  }
+
+  // Re-render just this cell
+  renderCellOutputs(main, cell, insertBefore);
+}
+
+// ── Widget postMessage bridge (live mode) ────────────────────────
+const _widgetTimers = new Map();
+window.addEventListener('message', (e) => {
+  if (isStatic) return;
+  const d = e.data;
+  if (d && d.type === 'widget') {
+    const key = d.cellId + ':' + d.name;
+    clearTimeout(_widgetTimers.get(key));
+    _widgetTimers.set(
+      key,
+      setTimeout(() => {
+        _widgetTimers.delete(key);
+        fetch('/api/widget', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wuCellId: d.cellId, wuName: d.name, wuValue: d.value }),
+        });
+      }, 300)
+    );
+  }
+});
+
+// ── Status indicator ─────────────────────────────────────────────
+function showStatus(msg, running) {
+  const el = document.getElementById('status-indicator');
+  el.textContent = msg;
+  el.className = 'dash-status visible' + (running ? ' running' : '');
+}
+function hideStatus() {
+  document.getElementById('status-indicator').className = 'dash-status';
+}
+
+// ── Export button (live mode) ────────────────────────────────────
+function exportDashboard() {
+  window.open('/api/export/dashboard', '_blank');
+}
+
+// ── Title formatting ─────────────────────────────────────────────
+function formatTitle(path) {
+  if (!path) return 'Dashboard';
+  const name = path
+    .split('/')
+    .pop()
+    .replace(/\.[^/.]+$/, '');
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// ── Go ───────────────────────────────────────────────────────────
+init();
+    </script>
+  </body>
+</html>

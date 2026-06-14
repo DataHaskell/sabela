@@ -94,6 +94,11 @@ spec = describe "Sabela.Api wire shapes" $ do
         it "EvCellCompiling emits type cellCompiling with a bare cellId" $ do
             evField "type" (EvCellCompiling 4) `shouldBe` Just (String "cellCompiling")
             evField "cellId" (EvCellCompiling 4) `shouldBe` Just (Number 4)
+        it "EvWidget emits type widget with cellId, name, value (kernel→browser sync)" $ do
+            evField "type" (EvWidget 5 "amp" "42") `shouldBe` Just (String "widget")
+            evField "cellId" (EvWidget 5 "amp" "42") `shouldBe` Just (Number 5)
+            evField "name" (EvWidget 5 "amp" "42") `shouldBe` Just (String "amp")
+            evField "value" (EvWidget 5 "amp" "42") `shouldBe` Just (String "42")
         it "EvChatDone (TurnId 42) emits turnId as a bare integer" $
             evField "turnId" (EvChatDone (TurnId 42)) `shouldBe` Just (Number 42)
         it "EvChatError with Just (TurnId 7) emits turnId 7" $

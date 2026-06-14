@@ -1,12 +1,7 @@
-// Theme bootstrap — shared with editor via 'sabela-theme' localStorage key.
+// Theme bootstrap — shared with the editor via 'sabela-theme' localStorage key.
 (() => {
+  const KNOWN = ['warm', 'nord', 'nord-light', 'nord-aurora', 'nord-ember', 'vscode'];
   const stored = localStorage.getItem('sabela-theme');
-  const theme =
-    stored === 'light' || stored === 'dark'
-      ? stored
-      : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
-        ? 'light'
-        : 'dark';
-  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.theme = KNOWN.includes(stored) ? stored : 'warm';
   window.__sabelaThemePinned = !!stored;
 })();

@@ -93,7 +93,9 @@ planCompiledModules posMap allCode =
             , Just dir <- [compiledDirective c]
             ]
         violations =
-            M.fromListWith (++) (concatMap (cellViolations posMap defMap candidates) candidates)
+            M.fromListWith
+                (++)
+                (concatMap (cellViolations posMap defMap candidates) candidates)
         valid = [cm | cm@(c, _) <- candidates, not (M.member (cellId c) violations)]
         cellModule = M.fromList [(cellId c, m) | (c, m) <- valid]
         modDeps = moduleDeps defMap cellModule valid
@@ -122,7 +124,11 @@ cellViolations posMap defMap candidates (c, modName) =
     (_, numbered) = parseScriptNumbered (cellSource c)
     (_, uses) = Topo.cellNames (cellSource c)
     nameErrs =
-        [ planError ("invalid module name '" <> modName <> "' — use dot-separated capitalized segments, e.g. 'Training.Core'")
+        [ planError
+            ( "invalid module name '"
+                <> modName
+                <> "' — use dot-separated capitalized segments, e.g. 'Training.Core'"
+            )
         | not (isValidModuleName modName)
         ]
     declErrs =
@@ -130,7 +136,8 @@ cellViolations posMap defMap candidates (c, modName) =
         | i <- checkCompilable numbered
         ]
     bridgeErrs =
-        [ planError "compiled cells cannot use bridge values (_bridge_*) — they exist only at the prompt; read them in an interpreted cell and pass the result as an argument"
+        [ planError
+            "compiled cells cannot use bridge values (_bridge_*) — they exist only at the prompt; read them in an interpreted cell and pass the result as an argument"
         | any ("_bridge_" `T.isPrefixOf`) (S.toList uses)
         ]
     interpErrs =
@@ -195,7 +202,11 @@ moduleCycleViolations _posMap _cellModule modDeps valid =
     cyclicModules deps =
         let mods = M.keys deps
             shrink ms =
-                let leaves = [m | m <- S.toList ms, S.null (S.intersection ms (M.findWithDefault S.empty m deps))]
+                let leaves =
+                        [ m
+                        | m <- S.toList ms
+                        , S.null (S.intersection ms (M.findWithDefault S.empty m deps))
+                        ]
                  in if null leaves then ms else shrink (ms `S.difference` S.fromList leaves)
          in shrink (S.fromList mods)
 

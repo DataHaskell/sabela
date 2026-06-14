@@ -81,16 +81,18 @@ spec = do
                 nb' = updateCellSource 0 "x = 2" nb
             map cellDirty (nbCells nb') `shouldBe` [True]
             map cellSource (nbCells nb') `shouldBe` ["x = 2"]
-        it "marks transitive dependents dirty too, so a solo run of the\
-           \ root cannot strand them" $ do
-            let nb =
-                    nbOf
-                        [ mkCell 0 "x = 1"
-                        , mkCell 1 "y = x + 1"
-                        , mkCell 2 "a = 42"
-                        ]
-                nb' = updateCellSource 0 "x = 2" nb
-            map cellDirty (nbCells nb') `shouldBe` [True, True, False]
+        it
+            "marks transitive dependents dirty too, so a solo run of the\
+            \ root cannot strand them"
+            $ do
+                let nb =
+                        nbOf
+                            [ mkCell 0 "x = 1"
+                            , mkCell 1 "y = x + 1"
+                            , mkCell 2 "a = 42"
+                            ]
+                    nb' = updateCellSource 0 "x = 2" nb
+                map cellDirty (nbCells nb') `shouldBe` [True, True, False]
         it "marks nothing on an identical write" $ do
             let nb = nbOf [mkCell 0 "x = 1", mkCell 1 "y = x + 1"]
                 nb' = updateCellSource 0 "x = 1" nb

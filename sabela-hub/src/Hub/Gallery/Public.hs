@@ -24,6 +24,8 @@ import Network.HTTP.Types
 import Network.Wai
 import Text.Read (readMaybe)
 
+import Data.Char (isAsciiLower, isDigit)
+import Data.List (find)
 import Hub.Gallery (
     GalleryStore,
     cvMembers,
@@ -39,7 +41,13 @@ import Hub.Gallery.Render (
     renderCollectionReader,
     renderGallery,
  )
-import Hub.Share (ShareStore, lookupShareSource, validSlug)
+import Hub.Share (
+    Share (..),
+    ShareStore,
+    listAllShares,
+    lookupShareSource,
+    validSlug,
+ )
 import Hub.Types (HubConfig (..))
 
 -- | Build the render chrome (origin / contact / repo) from config.
@@ -162,13 +170,27 @@ serveSource gallery shares slug respond = do
         then respond notFound
         else do
             msrc <- lookupShareSource shares slug
+            title <-
+                maybe "" shareTitle . find ((== slug) . shareSlug) <$> listAllShares shares
+            let disp = "attachment; filename=\"" <> downloadName title <> "\""
             respond $ case msrc of
                 Just src ->
                     responseLBS
                         status200
                         [ ("Content-Type", "text/markdown; charset=utf-8")
-                        , ("Content-Disposition", "attachment; filename=\"sabela-notebook.md\"")
+                        , ("Content-Disposition", TE.encodeUtf8 disp)
                         , ("X-Content-Type-Options", "nosniff")
                         ]
                         (BL.fromStrict src)
                 Nothing -> notFound
+
+{- | A download filename from a notebook title: lowercased, non-alphanumerics
+collapsed to hyphens, capped, @.md@ appended (falls back to @sabela-notebook@).
+-}
+downloadName :: Text -> Text
+downloadName title =
+    let mapped =
+            T.map (\c -> if isAsciiLower c || isDigit c then c else '-') (T.toLower title)
+        collapsed = T.intercalate "-" (filter (not . T.null) (T.splitOn "-" mapped))
+        capped = T.dropWhileEnd (== '-') (T.take 60 collapsed)
+     in (if T.null capped then "sabela-notebook" else capped) <> ".md"

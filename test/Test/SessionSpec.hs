@@ -122,18 +122,24 @@ withTimeout usec action = do
 spec :: Spec
 spec = do
     describe "resolveLocalPackages" $ do
+        -- The sticky sabela-notebook support package is always prepended so
+        -- every notebook can @import Sabela.Notebook.*@.
+        let support = "/work/.sabela/sabela-notebook"
+        it "always prepends the sticky support package dir" $
+            resolveLocalPackages "/work" [] emptyMeta
+                `shouldBe` [support]
         it "passes absolute notebook package dirs through unchanged" $
             resolveLocalPackages "/work" [] emptyMeta{metaPackages = ["/abs/pkg"]}
-                `shouldBe` ["/abs/pkg"]
+                `shouldBe` [support, "/abs/pkg"]
         it "resolves relative notebook dirs against the working dir" $
             resolveLocalPackages "/work" [] emptyMeta{metaPackages = ["../sibling"]}
-                `shouldBe` ["/work/../sibling"]
+                `shouldBe` [support, "/work/../sibling"]
         it "keeps operator overlays first and dedupes against notebook dirs" $
             resolveLocalPackages
                 "/work"
                 ["/op/over"]
                 emptyMeta{metaPackages = ["/abs/pkg", "/op/over"]}
-                `shouldBe` ["/op/over", "/abs/pkg"]
+                `shouldBe` [support, "/op/over", "/abs/pkg"]
 
     describe "error buffer helpers" $ do
         it "resetErrorBuffer clears, readErrorBuffer returns lines in original order" $ do

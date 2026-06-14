@@ -79,6 +79,11 @@
   white-space: nowrap;
   max-width: 200px;
 }
+/* The warm-lambda brand mark, matching the hub front page (terracotta λ, mono). */
+.toolbar-title .lam {
+  color: #c2674a;
+  font-family: var(--font-mono);
+}
 .toolbar button,
 .toolbar .tbtn {
   font-family: var(--font-mono);

@@ -188,5 +188,6 @@ setCellLangH app cid lang = liftIO $ do
 setWidgetH :: App -> ReactiveNotebook -> WidgetUpdate -> Handler NoContent
 setWidgetH app rn (WidgetUpdate cid name val) = liftIO $ do
     setWidget (appWidgets app) cid name val
+    broadcast app (EvWidget cid name val)
     rnWidgetCell rn cid
     pure NoContent

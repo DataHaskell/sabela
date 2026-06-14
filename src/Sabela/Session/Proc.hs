@@ -37,7 +37,13 @@ import System.IO (
     mkTextEncoding,
  )
 import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Signals (Signal, sigINT, sigKILL, sigTERM, signalProcessGroup)
+import System.Posix.Signals (
+    Signal,
+    sigINT,
+    sigKILL,
+    sigTERM,
+    signalProcessGroup,
+ )
 import System.Posix.Types (ProcessGroupID)
 import System.Process (
     CreateProcess (create_group, cwd, std_err, std_in, std_out),

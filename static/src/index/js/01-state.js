@@ -13,3 +13,11 @@ let unsavedChanges = false;
 // cells the user didn't touch show up immediately.
 const dirtyCells = new Set();
 const AUTOSAVE_INTERVAL_MS = 10000;
+
+// Set the toolbar title: the warm-lambda brand mark followed by the notebook
+// title (appended as a text node, so titles are never interpreted as HTML).
+function setToolbarTitle(title) {
+  const el = document.getElementById('toolbar-title');
+  el.innerHTML = '<span class="lam">λ</span> ';
+  el.append(title);
+}

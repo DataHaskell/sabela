@@ -1,7 +1,7 @@
 // ── Render notebook ──────────────────────────────────────────────
 function render(nb) {
   notebook = nb;
-  document.getElementById('toolbar-title').textContent = 'λ ' + nb.nbTitle;
+  setToolbarTitle(nb.nbTitle);
   const container = document.getElementById('notebook');
 
   // Staggered entrance — first render only, so reactive re-renders don't replay it.

@@ -3,6 +3,7 @@
 module Test.ProxySpec (spec) where
 
 import Control.Exception (SomeException, try)
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Lazy.Char8 as LC8
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as Map
@@ -125,6 +126,19 @@ spec = describe "Proxy" $ do
             resp <- runSession (request req) app
             simpleStatus resp `shouldBe` status401
 
+        it "signed-out browser fork redirects to login and stashes the fork cookie" $ do
+            app <- makeApp
+            let req =
+                    (setPath defaultRequest "/_hub/fork/ab12")
+                        { requestMethod = methodPost
+                        , requestHeaders = [(hAccept, "text/html")]
+                        }
+            resp <- runSession (request req) app
+            simpleStatus resp `shouldBe` status303
+            lookup hLocation (simpleHeaders resp) `shouldBe` Just "/_hub/login"
+            C8.unpack (maybe "" id (lookup "Set-Cookie" (simpleHeaders resp)))
+                `shouldSatisfy` isInfixOf "sabela_fork=ab12"
+
         it "forks a public notebook into the caller's work dir" $ do
             base <- getTemporaryDirectory
             let root = base </> "sabela-fork-test"
@@ -147,6 +161,28 @@ spec = describe "Proxy" $ do
             -- the source landed in the forker's (user@x → user_x) work dir
             files <- listDirectory (root </> "users" </> "user_x")
             length (filter (isInfixOf "forked-") files) `shouldBe` 1
+
+        it "signed-in browser fork redirects to the editor opening the fork" $ do
+            base <- getTemporaryDirectory
+            let root = base </> "sabela-fork-test-open"
+            _ <- try (removeDirectoryRecursive root) :: IO (Either SomeException ())
+            (app, store, gallery) <- makeAppForkable root
+            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            writeShareSource store "ab12" "# Iris"
+            addFeatured gallery "ab12"
+            let req =
+                    (setPath defaultRequest "/_hub/fork/ab12")
+                        { requestMethod = methodPost
+                        , requestHeaders =
+                            [ ("Cookie", "_sabela_session=usersid")
+                            , ("Origin", "http://localhost:8080")
+                            , (hAccept, "text/html")
+                            ]
+                        }
+            resp <- runSession (request req) app
+            simpleStatus resp `shouldBe` status303
+            C8.unpack (maybe "" id (lookup hLocation (simpleHeaders resp)))
+                `shouldSatisfy` isInfixOf "/?open=forked-"
 
         it "rejects a cross-origin fork (403)" $ do
             base <- getTemporaryDirectory
