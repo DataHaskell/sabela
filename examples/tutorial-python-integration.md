@@ -1,296 +1,234 @@
-# Tutorial: Python Integration in Sabela
+# Haskell and Python in one notebook
 
-This tutorial covers Python cells in Sabela — from basic execution to building polyglot data science pipelines that combine Haskell's type safety with Python's ML ecosystem.
+Most data work ends up split across two languages. The shape of the data, the
+rules it obeys, the transformations that must stay correct, all of that is a good
+fit for Haskell and its types. The plotting, the quick numerical work, and the
+machine-learning libraries live in Python. Moving between the two usually means
+files on disk, a serialisation format, and a script to glue them together.
 
-## Prerequisites
+Sabela runs both in the same document. A Haskell cell and a Python cell sit in
+one notebook, each in its own process, and values cross between them over a small
+bridge. This notebook works through that, ending with a Haskell data type whose
+values are drawn by matplotlib.
 
-Python 3 must be on your PATH. Verify with `python3 --version`.
+Python 3 needs to be on the path. Everything else is declared in the cells.
 
-Install any libraries you plan to use (pandas, scikit-learn, etc.) into your system or virtualenv:
+## A Python cell
 
-    pip install pandas scikit-learn matplotlib numpy
-
-## Creating a Python cell
-
-Click the language dropdown in any code cell's gutter and select **py**. The cell border turns yellow and you get Python syntax highlighting.
-
-## Basic execution
-
-
-```python
-print("Hello from Python!")
-```
-
-> <!-- sabela:mime text/plain -->
-> Hello from Python!
-
-
-Python cells run in a persistent REPL — variables defined in one cell are available in cells below.
-
+A code cell runs Haskell by default. To make it a Python cell, pick **py** from
+the language dropdown in the cell's gutter. The border turns yellow and the cell
+runs against a Python interpreter instead.
 
 ```python
-x = 42
-y = [1, 2, 3]
-print(f"x = {x}, y = {y}")
+print("Hello from Python")
 ```
 
-> <!-- sabela:mime text/plain -->
-> x = 42, y = [1, 2, 3]
-
-
+The interpreter stays alive between cells, so anything bound in one cell is in
+scope in the cells below it, the same way a Haskell binding is.
 
 ```python
-# This cell can see x and y from above
-print(f"x * 2 = {x * 2}")
-print(f"sum(y) = {sum(y)}")
+greeting = "from the same session"
+numbers = [1, 2, 3, 4]
 ```
-
-> <!-- sabela:mime text/plain -->
-> x * 2 = 84
-> sum(y) = 6
-
-
-## Multiline code
-
-Functions, classes, loops, and all Python constructs work naturally:
-
 
 ```python
-def fibonacci(n):
-    a, b = 0, 1
-    for _ in range(n):
-        a, b = b, a + b
-    return a
-
-for i in range(10):
-    print(f"fib({i}) = {fibonacci(i)}")
+print(greeting)
+print("sum:", sum(numbers))
 ```
 
-> <!-- sabela:mime text/plain -->
-> fib(0) = 0
-> fib(1) = 1
-> fib(2) = 1
-> fib(3) = 2
-> fib(4) = 3
-> fib(5) = 5
-> fib(6) = 8
-> fib(7) = 13
-> fib(8) = 21
-> fib(9) = 34
+## Drawing with matplotlib
 
+A Python cell can return rich output, not just text. The helpers `displayHtml`,
+`displayMarkdown`, `displaySvg`, and `displayImage` each emit a value the notebook
+renders inline. For matplotlib the one to reach for is `displayImage`, which takes
+a MIME type and base64 data, so a figure is saved to a buffer and handed over as a
+PNG.
 
-## Rich output
-
-Python cells support the same MIME output as Haskell cells:
-
+The first cell sets up matplotlib and a small helper. The `# pip:` lines declare
+the packages; Sabela installs them into a private virtual environment the first
+time the cell runs, so there is nothing to install by hand.
 
 ```python
-# HTML output
-displayHtml("<h3 style='color: #89b4fa'>Styled heading</h3><p>This is <b>rich</b> HTML output.</p>")
+# pip: matplotlib
+# pip: numpy
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import base64, io
+
+
+def show_plot(fig=None):
+    fig = fig or plt.gcf()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=110)
+    buf.seek(0)
+    displayImage("image/png", base64.b64encode(buf.read()).decode())
+    plt.close(fig)
 ```
 
-> <!-- sabela:mime text/html -->
-> <h3 style='color: #89b4fa'>Styled heading</h3><p>This is <b>rich</b> HTML output.</p>
-
-
+With that in place, a plot is ordinary matplotlib followed by `show_plot`.
 
 ```python
-# Markdown output
-displayMarkdown("""
-| Language | Role |
-|----------|------|
-| Haskell  | Compute |
-| Lean     | Verify  |
-| Python   | Analyze |
-""")
+x = np.linspace(0, 4 * np.pi, 200)
+fig, ax = plt.subplots(figsize=(7, 3))
+ax.plot(x, np.sin(x), label="sin", color="#c2674a")
+ax.plot(x, np.cos(x), label="cos", color="#6083b0")
+ax.set_title("A first figure")
+ax.legend()
+ax.grid(True, alpha=0.25)
+show_plot(fig)
 ```
 
-> <!-- sabela:mime text/markdown -->
-> 
-> | Language | Role |
-> |----------|------|
-> | Haskell  | Compute |
-> | Lean     | Verify  |
-> | Python   | Analyze |
+## Passing a value across
 
-
-
-```python
-# JSON output
-import json
-displayJson(json.dumps({"status": "ok", "languages": ["Haskell", "Lean4", "Python"]}, indent=2))
-```
-
-> <!-- sabela:mime application/json -->
-> {
->   "status": "ok",
->   "languages": [
->     "Haskell",
->     "Lean4",
->     "Python"
->   ]
-> }
-
-
-## Receiving data from Haskell
-
-When a Haskell cell exports a value with `exportBridge`, it becomes available as a Python string variable.
-
-**Haskell cell:**
+The bridge is the part that makes this one notebook rather than two. A Haskell
+cell exports a value with `exportBridge`, giving it a name. Below, the same value
+is waiting in a Python variable with a `_bridge_` prefix.
 
 ```haskell
--- cabal: build-depends: text
-:set -XOverloadedStrings
-
-let names = ["Alice", "Bob", "Carol"] :: [String]
+let names = ["Tariro", "Farai", "Chipo"] :: [String]
 exportBridge "names" (show names)
 ```
 
-
-**Python cell (below the Haskell cell):**
+Bridge values always arrive as strings, so the receiving side parses them. A
+Haskell list printed with `show` reads cleanly with Python's `ast.literal_eval`.
 
 ```python
-# The bridge value arrives as a string
-print(f"Raw bridge value: {_bridge_names}")
-
-# For Haskell `show` format, ast.literal_eval can parse it
 import ast
+
 names = ast.literal_eval(_bridge_names)
-print(f"Parsed list: {names}")
-print(f"First name: {names[0]}")
+print("received", len(names), "names")
+print("first:", names[0])
 ```
 
-> <!-- sabela:mime text/plain -->
-> Raw bridge value: ["Alice","Bob","Carol"]
-> Parsed list: ['Alice', 'Bob', 'Carol']
-> First name: Alice
+That is enough for lists and numbers. For anything with structure, it is worth
+sending JSON.
 
+## A Haskell type, plotted in Python
 
-## Sending data to Haskell
+Here is the point of the whole exercise. Model the data in Haskell with a proper
+type, then let Python draw it.
 
-Python can export values back to Haskell using `exportBridge`:
+The type below is a record for a city, with a field whose type is itself a small
+sum type for the climate. Deriving `Generic` lets Aeson encode any value of these
+types to JSON without a hand-written instance. A nullary constructor like
+`Temperate` encodes as the string `"Temperate"`, which is exactly what the Python
+side will key its colours on.
 
+```haskell
+-- cabal: build-depends: aeson, bytestring
+:set -XDeriveGeneric
+
+import GHC.Generics (Generic)
+import Data.Aeson (ToJSON, encode)
+import qualified Data.ByteString.Lazy.Char8 as BL
+
+data Climate = Tropical | Temperate | Arid | Continental
+  deriving (Show, Eq, Generic)
+
+instance ToJSON Climate
+
+data City = City
+  { cityName :: String
+  , population :: Double
+  , avgTempC :: Double
+  , climate :: Climate
+  }
+  deriving (Show, Generic)
+
+instance ToJSON City
+```
+
+The values are plain Haskell. Encoding the list gives one line of JSON, which the
+bridge carries across as a string.
+
+```haskell
+let cities =
+      [ City "Harare" 1.5 18.5 Temperate
+      , City "Cairo" 9.5 22.1 Arid
+      , City "Lagos" 15.4 27.0 Tropical
+      , City "Nairobi" 4.4 19.0 Temperate
+      , City "London" 9.0 11.8 Continental
+      , City "Mumbai" 20.7 27.2 Tropical
+      , City "Cape Town" 4.6 16.9 Temperate
+      , City "Dubai" 3.6 28.0 Arid
+      ]
+
+exportBridge "cities" (BL.unpack (encode cities))
+putStrLn ("encoded " ++ show (length cities) ++ " cities")
+```
+
+On the Python side the JSON becomes a list of dictionaries. The record fields are
+the keys, and `climate` is the constructor name as a string, so it can index a
+palette directly. Each city is a point placed by temperature and population and
+coloured by its climate.
 
 ```python
 import json
 
-result = {"accuracy": 0.95, "model": "gradient_boosting"}
-exportBridge("model_info", json.dumps(result))
+cities = json.loads(_bridge_cities)
+
+palette = {
+    "Tropical": "#c2674a",
+    "Temperate": "#6f9355",
+    "Arid": "#d8a657",
+    "Continental": "#6083b0",
+}
+
+fig, ax = plt.subplots(figsize=(7.5, 4.5))
+for c in cities:
+    ax.scatter(
+        c["avgTempC"], c["population"],
+        s=140, color=palette[c["climate"]],
+        edgecolor="#33312e", zorder=3,
+    )
+    ax.annotate(
+        c["cityName"], (c["avgTempC"], c["population"]),
+        xytext=(7, 4), textcoords="offset points", fontsize=9,
+    )
+
+for label, colour in palette.items():
+    ax.scatter([], [], color=colour, edgecolor="#33312e", label=label)
+ax.legend(title="climate", loc="upper left")
+ax.set_xlabel("average temperature (degC)")
+ax.set_ylabel("population (millions)")
+ax.set_title("Cities by climate, modelled in Haskell")
+ax.grid(True, alpha=0.25)
+show_plot(fig)
 ```
 
+The colours and the legend come straight from the `Climate` constructors. Add a
+case to the sum type in Haskell, give it a colour in the palette, and the plot
+follows.
 
-**Haskell cell (below the Python cell):**
+## Sending results back
+
+The bridge runs both ways. A Python cell can export a value, and a Haskell cell
+below it reads it under the same `_bridge_` name. JSON is the natural carrier.
+
+```python
+import json
+
+summary = {"count": len(cities), "hottest": max(cities, key=lambda c: c["avgTempC"])["cityName"]}
+exportBridge("summary", json.dumps(summary))
+```
 
 ```haskell
-putStrLn $ "From Python: " ++ _bridge_model_info
+putStrLn ("Python sent: " ++ _bridge_summary)
 ```
 
-> <!-- sabela:mime text/plain -->
-> From Python: {"accuracy": 0.95, "model": "gradient_boosting"}
+## How it runs
 
+Each language runs in its own subprocess. They share no memory; the only thing
+that crosses is whatever you send over the bridge, and it always crosses as a
+string, so the receiving side decides how to read it. CSV from a dataframe goes
+through `pandas.read_csv(io.StringIO(...))`, a `show`-printed Haskell value
+through `ast.literal_eval`, and JSON through `json.loads`.
 
-## The DataFrame pattern
-
-The most common use case: analyze data in Haskell, train models in Python.
-
-**Step 1: Haskell prepares data**
-
-
-```haskell
--- cabal: build-depends: dataframe
-:set -XOverloadedStrings
-
-import qualified DataFrame as D
-
-df <- D.readCsv "./examples/data/housing.csv"
-import qualified Data.Text as T
-
-let sample = D.take 200 df
-exportBridge "data" (T.unpack (D.toCsv sample))
-
-putStrLn $ "Exported " ++ show (D.nRows sample) ++ " rows (sampled from " ++ show (D.nRows df) ++ ")"
-```
-
-> <!-- sabela:mime text/plain -->
-> Exported 200 rows (sampled from 20640)
-
-
-**Step 2: Python loads and trains**
-
-
-```python
-# pip: pandas
-import pandas as pd
-import io
-
-df = pd.read_csv(io.StringIO(_bridge_data))
-print(f"Loaded {len(df)} rows, {len(df.columns)} columns")
-print(df.head())
-```
-
-> <!-- sabela:mime text/plain -->
-> Loaded 200 rows, 10 columns
->    longitude  latitude  ...  median_house_value  ocean_proximity
-> 0    -122.23     37.88  ...            452600.0         NEAR BAY
-> 1    -122.22     37.86  ...            358500.0         NEAR BAY
-> 2    -122.24     37.85  ...            352100.0         NEAR BAY
-> 3    -122.25     37.85  ...            341300.0         NEAR BAY
-> 4    -122.25     37.85  ...            342200.0         NEAR BAY
-> 
-> [5 rows x 10 columns]
-
-
-## Tips for the bridge
-
-- **CSV strings** (from `D.toCsv`): Use `pd.read_csv(io.StringIO(bridge_var))`
-- **Haskell `show` format** (like `[1,2,3]`): Use Python's `ast.literal_eval()` to parse
-- **JSON strings**: Use `json.loads(bridge_var)`
-- Bridge values are always **strings** — parse them in the target language
-
-## Execution model
-
-- Python cells run top-to-bottom in document order (like a Jupyter notebook)
-- Variables persist across cells in the same session
-- The session starts automatically on the first Python cell execution
-- `Reset` kills all sessions (Haskell, Lean, and Python)
-- Each language runs in its own subprocess — they don't share memory, only the bridge
-
-## Error handling
-
-Python errors show as cell errors with the full traceback:
-
-
-```python
-# This will show a traceback in the cell output
-1 / 0
-```
-
-
-## Imports and packages
-
-Use any installed Python package. There's no dependency resolution like Haskell's `-- cabal:` comments — manage your Python packages with pip as usual.
-
-
-```python
-import numpy as np
-print(f"NumPy {np.__version__}")
-print(f"Random matrix:\n{np.random.randn(3, 3).round(2)}")
-```
-
-> <!-- sabela:mime text/plain -->
-> NumPy 2.4.4
-> Random matrix:
-> [[ 0.68  0.13  1.  ]
->  [ 1.62 -0.81 -1.55]
->  [-0.44  1.96 -0.64]]
-
-
-## Execution order across languages
-
-When you click "Run All":
-
-1. **Haskell cells** run first (in dependency order)
-2. **Lean cells** run second (full document sent to LSP)
-3. **Python cells** run third (top-to-bottom)
-
-This means Haskell exports are available to both Lean and Python. Lean exports are available to Python (and to Haskell cells that reference them — those are re-run automatically).
+When you run the whole notebook, Haskell cells run first in dependency order, then
+Lean, then Python top to bottom. That ordering is why a Haskell value is ready by
+the time a Python cell asks for it. Sessions persist until you reset them, so the
+Python interpreter keeps its state between runs the same way the Haskell session
+does.
