@@ -22,6 +22,7 @@ import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.OutputSpec as OutputSpec
 import qualified Test.ParseSpec as ParseSpec
+import qualified Test.PlatformSpec as PlatformSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
@@ -54,6 +55,7 @@ main = hspec $ do
     DepsMatchSpec.spec
     NotebookExportSpec.spec
     ParseSpec.spec
+    PlatformSpec.spec
     OutputSpec.spec
     PreinstalledSpec.spec
     ProseRoundTripSpec.spec

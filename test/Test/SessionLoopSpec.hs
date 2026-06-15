@@ -183,15 +183,19 @@ spec = do
 
     describe "session process group" $ do
         it "interruptGroup reaches the spawned group" $ do
-            ps <-
-                withSpawnedSession
-                    (sessionProcessSpec Nothing (proc "sleep" ["30"]))
-                    pure
-            threadDelay 100_000
-            interruptGroup ps
-            code <- withTimeout 5_000_000 (waitForProcess (psProc ps))
-            destroySession ps
-            code `shouldNotBe` ExitSuccess
+            sleep <- findExecutable "sleep"
+            case sleep of
+                Nothing -> pendingWith "sleep not found on PATH"
+                Just _ -> do
+                    ps <-
+                        withSpawnedSession
+                            (sessionProcessSpec Nothing (proc "sleep" ["30"]))
+                            pure
+                    threadDelay 100_000
+                    interruptGroup ps
+                    code <- withTimeout 5_000_000 (waitForProcess (psProc ps))
+                    destroySession ps
+                    code `shouldNotBe` ExitSuccess
         it "destroySession kills grandchildren, not just the direct child" $ do
             pgrep <- findExecutable "pgrep"
             case pgrep of
@@ -212,13 +216,17 @@ spec = do
                     (code, words out) `shouldSatisfy` \(c, pids) ->
                         c /= ExitSuccess || null pids
         it "destroySession is idempotent and safe after the leader exited" $ do
-            ps <-
-                withSpawnedSession
-                    (sessionProcessSpec Nothing (proc "true" []))
-                    pure
-            withTimeout 5_000_000 (waitUntilExited ps)
-            withTimeout 10_000_000 (destroySession ps)
-            withTimeout 10_000_000 (destroySession ps)
+            true <- findExecutable "true"
+            case true of
+                Nothing -> pendingWith "true not found on PATH"
+                Just _ -> do
+                    ps <-
+                        withSpawnedSession
+                            (sessionProcessSpec Nothing (proc "true" []))
+                            pure
+                    withTimeout 5_000_000 (waitUntilExited ps)
+                    withTimeout 10_000_000 (destroySession ps)
+                    withTimeout 10_000_000 (destroySession ps)
 
     describe "integration: interrupt" $
         it "stops a running cell; idle interrupts no-op; session stays usable" $ do

@@ -176,24 +176,35 @@ interruptGroup ps = withMVar (psKillLock ps) $ \_ -> do
 -- | Pre-registration failure path: forcibly kill the leftover tree, reap.
 rawKill :: ProcessHandle -> IO ()
 rawKill ph = uninterruptibleMask_ $ do
+    rawKillTree ph
+    quiet (void (waitForProcess ph))
+
 #if defined(mingw32_HOST_OS)
-    quiet (terminateProcess ph)
+-- | Windows has no process group to signal: terminate the handle.
+rawKillTree :: ProcessHandle -> IO ()
+rawKillTree ph = quiet (terminateProcess ph)
 #else
+-- | POSIX: group-KILL by the live handle's pid (the group leader).
+rawKillTree :: ProcessHandle -> IO ()
+rawKillTree ph = do
     mPid <- getPid ph
     forM_ mPid $ \pid -> quiet (signalProcessGroup sigKILL pid)
 #endif
-    quiet (void (waitForProcess ph))
 
-{- | Graceful, forcible, and interrupt signals to a session's tree. POSIX
-sends the signal to the leader's process group; Windows terminates the
-process (TerminateProcess) or sends Ctrl-Break to its group.
+#if defined(mingw32_HOST_OS)
+{- | Graceful, forcible, and interrupt signals to a session's tree.
+Windows has no process-group signals: TERM and KILL both terminate the
+process (TerminateProcess) and INT sends Ctrl-Break to its group.
 -}
 termGroupQuiet, killGroupQuiet, intGroupQuiet :: ProcSession -> IO ()
-#if defined(mingw32_HOST_OS)
 termGroupQuiet ps = quiet (terminateProcess (psProc ps))
 killGroupQuiet ps = quiet (terminateProcess (psProc ps))
 intGroupQuiet ps = quiet (interruptProcessGroupOf (psProc ps))
 #else
+{- | Graceful, forcible, and interrupt signals to a session's tree. POSIX
+sends the signal to the leader's process group.
+-}
+termGroupQuiet, killGroupQuiet, intGroupQuiet :: ProcSession -> IO ()
 termGroupQuiet = signalGroupQuiet sigTERM
 killGroupQuiet = signalGroupQuiet sigKILL
 intGroupQuiet = signalGroupQuiet sigINT

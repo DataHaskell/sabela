@@ -19,6 +19,7 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Sabela.Platform (systemPython, venvPythonPath)
 import Sabela.Session.Drain (
     DrainResult (..),
     discardUntilMarker,
@@ -60,11 +61,11 @@ newPythonSession mVenvDir workDir = do
         pure sess
 
 findPython :: Maybe FilePath -> FilePath -> IO FilePath
-findPython (Just venvDir) _ = pure (venvDir </> "bin" </> "python3")
+findPython (Just venvDir) _ = pure (venvPythonPath venvDir)
 findPython Nothing workDir = do
-    let venvPython = workDir </> ".venv" </> "bin" </> "python3"
+    let venvPython = venvPythonPath (workDir </> ".venv")
     hasVenv <- doesFileExist venvPython
-    pure $ if hasVenv then venvPython else "python3"
+    pure $ if hasVenv then venvPython else systemPython
 
 buildPythonState :: FilePath -> ProcSession -> IO PythonSession
 buildPythonState workDir ps = do

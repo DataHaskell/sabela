@@ -15,20 +15,20 @@ This deliberately mirrors how @scatter.js@ is embedded
 ('Sabela.Output.Scatter'). The north star is a published, versioned
 @sabela-notebook@ package; until then this on-disk copy is the canonical one.
 -}
-module Sabela.Notebook.Support
-    ( supportPackageName
-    , supportPackageDir
-    , materializeSupport
-    ) where
+module Sabela.Notebook.Support (
+    supportPackageName,
+    supportPackageDir,
+    materializeSupport,
+) where
 
 import Control.Monad (forM_, when)
 import qualified Data.ByteString as BS
 import Data.FileEmbed (embedDir, makeRelativeToProject)
-import System.Directory
-    ( createDirectoryIfMissing
-    , doesFileExist
-    )
 import Data.List (isSuffixOf)
+import System.Directory (
+    createDirectoryIfMissing,
+    doesFileExist,
+ )
 import System.FilePath (takeDirectory, (</>))
 
 {- | The embedded support-package tree, as @(relativePath, contents)@ pairs taken

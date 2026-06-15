@@ -31,6 +31,7 @@ import Sabela.Model (
     textToMime,
  )
 import Sabela.Output (parseMimeOutputs)
+import Sabela.Platform (systemPython, venvPipPath)
 import Sabela.PythonSession (PythonSession, newPythonSession, pythonBackend)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
@@ -102,13 +103,13 @@ ensureVenv app venvDir = do
         broadcast app (EvInstallLog "Creating Python virtual environment...")
         void $
             System.Process.readCreateProcess
-                (System.Process.proc "python3" ["-m", "venv", venvDir])
+                (System.Process.proc systemPython ["-m", "venv", venvDir])
                 ""
 
 pipInstall :: App -> FilePath -> S.Set Text -> IO Bool
 pipInstall app venvDir deps = do
     broadcast app (EvInstallLog "Installing Python packages...")
-    let pip = venvDir </> "bin" </> "pip"
+    let pip = venvPipPath venvDir
         args = "install" : "--quiet" : map T.unpack (S.toList deps)
     result <- try (runAndLog app pip args) :: IO (Either SomeException ())
     case result of
@@ -221,7 +222,13 @@ runSinglePythonCell app gen cid cell = do
     ok <- ensurePythonSessionAlive app
     if not ok
         then
-            broadcastCellError app cid "Python session not available. Is 'python3' on PATH?"
+            broadcastCellError
+                app
+                cid
+                ( "Python session not available. Is '"
+                    <> T.pack systemPython
+                    <> "' on PATH?"
+                )
         else tryExecAndBroadcast app gen cid cell
 
 tryExecAndBroadcast :: App -> Int -> Int -> Cell -> IO ()
