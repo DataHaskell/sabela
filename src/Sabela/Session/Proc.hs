@@ -1,6 +1,14 @@
+{-# LANGUAGE CPP #-}
+
 {- | Process-group lifecycle for interpreter subprocesses: masked spawn
 into a registry, group signalling, and the single 'destroySession'
 teardown chokepoint every kill path must route through.
+
+The group-signalling leaves ('termGroupQuiet', 'killGroupQuiet',
+'intGroupQuiet', 'rawKill') are the only platform-specific pieces: on
+POSIX they signal the leader's process group; on Windows they act on the
+process handle via the portable @process@ API (TerminateProcess and a
+Ctrl-Break sent to the group). Everything above them is shared.
 -}
 module Sabela.Session.Proc (
     ProcSession (..),
@@ -37,13 +45,6 @@ import System.IO (
     mkTextEncoding,
  )
 import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Signals (
-    Signal,
-    sigINT,
-    sigKILL,
-    sigTERM,
-    signalProcessGroup,
- )
 import System.Posix.Types (ProcessGroupID)
 import System.Process (
     CreateProcess (create_group, cwd, std_err, std_in, std_out),
@@ -55,6 +56,18 @@ import System.Process (
     waitForProcess,
  )
 import System.Timeout (timeout)
+
+#if defined(mingw32_HOST_OS)
+import System.Process (interruptProcessGroupOf, terminateProcess)
+#else
+import System.Posix.Signals (
+    Signal,
+    sigINT,
+    sigKILL,
+    sigTERM,
+    signalProcessGroup,
+ )
+#endif
 
 {- | A spawned interpreter process: handles, its process group (captured
 once at spawn, while the leader is alive), the output queue its reader
@@ -137,9 +150,9 @@ destroySession ps = withMVar (psKillLock ps) $ \_ -> do
         case exited of
             Just _ -> pure ()
             Nothing -> do
-                signalGroupQuiet sigTERM ps
+                termGroupQuiet ps
                 waitGrace gracePolls
-                signalGroupQuiet sigKILL ps
+                killGroupQuiet ps
         quiet (void (waitForProcess (psProc ps)))
         registryRemove (psId ps)
     waitGrace :: Int -> IO ()
@@ -158,18 +171,37 @@ interruptGroup ps = withMVar (psKillLock ps) $ \_ -> do
     exited <- getProcessExitCode (psProc ps)
     case exited of
         Just _ -> pure ()
-        Nothing -> signalGroupQuiet sigINT ps
+        Nothing -> intGroupQuiet ps
 
--- | Pre-registration failure path: group-KILL by the live handle, reap.
+-- | Pre-registration failure path: forcibly kill the leftover tree, reap.
 rawKill :: ProcessHandle -> IO ()
 rawKill ph = uninterruptibleMask_ $ do
+#if defined(mingw32_HOST_OS)
+    quiet (terminateProcess ph)
+#else
     mPid <- getPid ph
     forM_ mPid $ \pid -> quiet (signalProcessGroup sigKILL pid)
+#endif
     quiet (void (waitForProcess ph))
+
+{- | Graceful, forcible, and interrupt signals to a session's tree. POSIX
+sends the signal to the leader's process group; Windows terminates the
+process (TerminateProcess) or sends Ctrl-Break to its group.
+-}
+termGroupQuiet, killGroupQuiet, intGroupQuiet :: ProcSession -> IO ()
+#if defined(mingw32_HOST_OS)
+termGroupQuiet ps = quiet (terminateProcess (psProc ps))
+killGroupQuiet ps = quiet (terminateProcess (psProc ps))
+intGroupQuiet ps = quiet (interruptProcessGroupOf (psProc ps))
+#else
+termGroupQuiet = signalGroupQuiet sigTERM
+killGroupQuiet = signalGroupQuiet sigKILL
+intGroupQuiet = signalGroupQuiet sigINT
 
 signalGroupQuiet :: Signal -> ProcSession -> IO ()
 signalGroupQuiet sig ps =
     forM_ (psPgid ps) $ \pgid -> quiet (signalProcessGroup sig pgid)
+#endif
 
 closeQuiet :: Handle -> IO ()
 closeQuiet h = void (timeout closeTimeoutUs (quiet (hClose h)))

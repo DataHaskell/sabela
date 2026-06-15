@@ -1,9 +1,9 @@
+{-# LANGUAGE CPP #-}
+
 module Main (main) where
 
-import Control.Concurrent (myThreadId, throwTo)
-import Control.Exception (AsyncException (UserInterrupt), finally)
+import Control.Exception (finally)
 import Control.Monad (unless, void, when)
-import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Maybe (isJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -31,6 +31,14 @@ import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath (splitSearchPath, takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
+import System.Process (getCurrentPid)
+import System.Timeout (timeout)
+import Text.Read (readMaybe)
+
+#if !defined(mingw32_HOST_OS)
+import Control.Concurrent (myThreadId, throwTo)
+import Control.Exception (AsyncException (UserInterrupt))
+import Data.IORef (atomicModifyIORef', newIORef)
 import System.Posix.Signals (
     Handler (Catch, Ignore),
     installHandler,
@@ -38,9 +46,7 @@ import System.Posix.Signals (
     sigINT,
     sigTERM,
  )
-import System.Process (getCurrentPid)
-import System.Timeout (timeout)
-import Text.Read (readMaybe)
+#endif
 
 import Data.Aeson (encode, object, (.=))
 import qualified Data.ByteString.Lazy as LBS

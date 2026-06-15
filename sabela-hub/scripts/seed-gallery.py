@@ -34,9 +34,13 @@ CURATION = [
         # positionally to this list, in document order.
         "assets": {
             "base": "https://raw.githubusercontent.com/joe-warren/sabela/0b87c7bc183323cc38db5e5a2f20a500473a425a/waterfall/",
+            # Document order (the committed GLBs are named per a different run, so
+            # the list is ordered by shape, identified from each model's geometry):
+            # cylinder, scaled, rotated, cross, 3D-cross, cube, sphere,
+            # rounded-cube, final shape.
             "models": [
-                "271686", "396714", "469117", "492778", "559254",
-                "563306", "747853", "795000", "796533",
+                "563306", "271686", "795000", "796533", "492778",
+                "747853", "396714", "469117", "559254",
             ],
         },
     },

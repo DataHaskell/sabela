@@ -29,20 +29,20 @@ watch.
 
 ## The north star
 
+Everything in this notebook comes from one import, so start with it.
+
+```haskell
+import Sabela.Notebook
+```
+
 Here is the destination: a blue circle that slides up and down, in one line.
 
 ```haskell
 animate 3 (\t -> fill blue (circle (150, 150 + 80 * sin t) 30))
 ```
 
-It will not run yet, because nothing has been imported. The rest of the notebook
-works out what `animate`, `time`, and a picture are. Import first.
-
-```haskell
-import Sabela.Notebook
-```
-
-The circle above moves now. Behaviours, pictures, animation, in that order.
+That one line leans on `animate`, `time`, and a picture. The rest of the notebook
+works out what each of them means. Behaviours, pictures, animation, in that order.
 
 ## 1. Behaviours: values that flow with time
 
