@@ -4,6 +4,7 @@ module Sabela.SessionTypes where
 
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
+import Data.Time (UTCTime)
 import Data.Unique (Unique)
 import GHC.Generics (Generic)
 
@@ -20,6 +21,16 @@ data SessionBackend = SessionBackend
     -- ^ Kill and restart the backend, returning a fresh handle.
     , sbInterrupt :: IO ()
     -- ^ Abort the running cell (group SIGINT); no-op when idle.
+    , sbBusy :: IO Bool
+    {- ^ Lock-free: is a cell or query currently running? Answers even
+    while the run-lock is held, so a driver can tell busy from wedged.
+    -}
+    , sbSessionGen :: IO Int
+    -- ^ Generation tag of the live backend; changes on restart/reset.
+    , sbRequestStale :: UTCTime -> IO Bool
+    {- ^ Was a request stamped at this instant stale — issued before the
+    kernel's last interrupt? Pure 'False' for backends without the filter.
+    -}
     , sbQueryComplete :: Text -> IO [Text]
     -- ^ Completion query (GHCi :complete).
     , sbQueryType :: Text -> IO Text

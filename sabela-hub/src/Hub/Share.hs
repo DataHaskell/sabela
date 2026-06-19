@@ -48,6 +48,7 @@ import System.Directory (
  )
 import System.FilePath ((</>))
 
+import Hub.Banner (spliceBanner)
 import Hub.Meta (parseMeta, sanitizeLine, writeMetaLine)
 import Hub.Types (ExportMode, exportModeText, isLowerHex, parseExportMode)
 
@@ -78,12 +79,16 @@ newShareStore dir = do
     cache <- newTVarIO (Map.fromList [(shareSlug s, s) | s <- shares])
     pure ShareStore{ssBaseDir = dir, ssCache = cache}
 
--- | Store the snapshot HTML + metadata and cache the share.
+{- | Store the snapshot HTML (with the fork banner spliced in) + metadata and
+cache the share.
+-}
 publishShare :: ShareStore -> Share -> Text -> IO ()
 publishShare store share html = do
     let dir = ssBaseDir store </> T.unpack (shareSlug share)
     createDirectoryIfMissing True dir
-    BS.writeFile (dir </> "index.html") (TE.encodeUtf8 html)
+    BS.writeFile
+        (dir </> "index.html")
+        (spliceBanner (shareSlug share) (TE.encodeUtf8 html))
     BS.writeFile (dir </> "meta") (TE.encodeUtf8 (metaText share))
     atomically $ modifyTVar' (ssCache store) (Map.insert (shareSlug share) share)
 

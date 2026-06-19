@@ -8,6 +8,7 @@ that make a cell uncompilable. The IO side lives in
 -}
 module Sabela.Compiled (
     defaultModuleName,
+    objectCodeOptions,
     compiledDirective,
     isCompiledCell,
     CompilePlan (..),
@@ -19,7 +20,7 @@ module Sabela.Compiled (
 ) where
 
 import qualified Data.Map.Strict as M
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (isJust)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -45,6 +46,16 @@ import ScriptHs.Parser (
 -- | Where bare @-- compile@ cells land.
 defaultModuleName :: Text
 defaultModuleName = "SabelaCompiled"
+
+{- | Per-module GHC options that compile a generated @-- compile@ module to
+native @-O2@ object code. The repl prompt itself runs interpreted (the global
+@-fobject-code@ was dropped from 'Sabela.Session.Process.ghciArgs' so a plain
+notebook starts fast — incident K); each compiled module opts back into object
+code here, keeping compiled cells native-fast while the session stays cheap.
+-}
+objectCodeOptions :: Text
+objectCodeOptions =
+    "{-# OPTIONS_GHC -fobject-code -O2 -fexpose-all-unfoldings #-}"
 
 compiledDirective :: Cell -> Maybe CompileDirective
 compiledDirective = scriptCompile . fst . parseScriptNumbered . cellSource
@@ -225,7 +236,7 @@ renderModules modDeps valid =
             imports =
                 ["import " <> dep | dep <- S.toAscList (M.findWithDefault S.empty m modDeps)]
             chunks = map toChunk cellsOf
-         in renderCompiledModule m exts imports chunks
+         in objectCodeOptions <> "\n" <> renderCompiledModule m exts imports chunks
     cellExts = metaExts . scriptMeta . fst . parseScriptNumbered . cellSource
     toChunk c =
         CellChunk

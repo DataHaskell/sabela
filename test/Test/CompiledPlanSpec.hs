@@ -63,6 +63,16 @@ spec = describe "Sabela.Compiled" $ do
             -- the decl is on line 2 of the cell (after the directive line)
             src `shouldSatisfy` hasInfix "{-# LINE 2 \"sabela-cell-9\" #-}"
 
+        it "module source compiles to native object code per-module" $ do
+            let p = planCompiledModules M.empty [mkCell 9 "-- compile\nf x = x + 1"]
+                src = cpModules p M.! defaultModuleName
+            -- the session repl runs interpreted (case 26/incident K); each
+            -- compiled module opts itself into -O2 object code so the prompt
+            -- stays cheap to start while compiled cells stay native-fast.
+            src `shouldSatisfy` hasInfix "{-# OPTIONS_GHC -fobject-code"
+            src `shouldSatisfy` hasInfix "-O2"
+            src `shouldSatisfy` hasInfix "-fexpose-all-unfoldings"
+
         it "cross-module use generates an import edge and import line" $ do
             let p =
                     planCompiledModules

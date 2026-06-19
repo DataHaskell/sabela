@@ -34,6 +34,7 @@ import Sabela.Session (
     Session (..),
     SessionConfig (..),
     getMarker,
+    mkSessionConfig,
     readErrorBuffer,
     resetErrorBuffer,
     runBlock,
@@ -54,6 +55,11 @@ import Sabela.Session.Reader (
     enqueueEof,
     enqueueLine,
     newOutQueue,
+ )
+import Sabela.Session.Timeout (
+    defaultTimeoutConfig,
+    tcExecutionUs,
+    tcResyncUs,
  )
 
 {- | A dummy Session safe for functions that only use the queue, error
@@ -91,13 +97,20 @@ dummySession q errRef ctrRef cfg = do
             , sessConfig = cfg
             , sessErrCallback = cbRef
             , sessBusy = busy
+            , sessNonce = 4242
             }
 
 push :: OutQueue -> Text -> IO ()
 push q t = atomically (enqueueLine q (T.length t) t)
 
 defaultCfg :: SessionConfig
-defaultCfg = SessionConfig{scProjectDir = ".", scWorkDir = "."}
+defaultCfg =
+    SessionConfig
+        { scProjectDir = "."
+        , scWorkDir = "."
+        , scExecutionTimeoutUs = tcExecutionUs defaultTimeoutConfig
+        , scResyncTimeoutUs = tcResyncUs defaultTimeoutConfig
+        }
 
 emptyMeta :: CabalMeta
 emptyMeta =
@@ -236,7 +249,7 @@ spec = do
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
                     setupReplProject [] dir emptyMeta
-                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 60_000_000 (newSession cfg)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess "1 + 1")
                     withTimeout 10_000_000 (closeSession sess)
@@ -250,7 +263,7 @@ spec = do
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
                     setupReplProject [] dir emptyMeta
-                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 60_000_000 (newSession cfg)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess "let x = 1\nx + \"a\"")
                     withTimeout 10_000_000 (closeSession sess)
@@ -264,7 +277,7 @@ spec = do
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
                     setupReplProject [] dir emptyMeta
-                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    cfg <- mkSessionConfig dir dir
                     sess1 <- withTimeout 60_000_000 (newSession cfg)
                     sess2 <- withTimeout 60_000_000 (resetSession sess1)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess2 "2 + 3")
@@ -279,7 +292,7 @@ spec = do
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
                     setupReplProject [] dir emptyMeta
-                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 60_000_000 (newSession cfg)
                     -- mirror a dataframe cell's default-extensions so the prelude
                     -- is type-checked under OverloadedStrings (catches ambiguous

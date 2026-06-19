@@ -33,6 +33,11 @@ import Sabela.Session.Proc (
     withSpawnedSession,
  )
 import Sabela.Session.Reader (OutQueue, errLoop, mkMarkerText)
+import Sabela.Session.Timeout (
+    TimeoutConfig (..),
+    readTimeoutConfig,
+    timedOutMessage,
+ )
 import qualified Sabela.SessionTypes as ST
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
@@ -49,6 +54,8 @@ data PythonSession = PythonSession
     , pyCounter :: IORef Int
     , pyWorkDir :: FilePath
     , pyBusy :: IORef Bool
+    , pyTimeout :: TimeoutConfig
+    -- ^ Execution/resync budget, read from @SABELA_CELL_TIMEOUT_SECONDS@.
     }
 
 newPythonSession :: Maybe FilePath -> FilePath -> IO PythonSession
@@ -74,6 +81,7 @@ buildPythonState workDir ps = do
     counter <- newIORef 0
     busy <- newIORef False
     cbRef <- newIORef (\_ -> pure ())
+    tc <- readTimeoutConfig
     _ <- forkIO $ errLoop (psStderr ps) errBuf cbRef
     pure
         PythonSession
@@ -83,6 +91,7 @@ buildPythonState workDir ps = do
             , pyCounter = counter
             , pyWorkDir = workDir
             , pyBusy = busy
+            , pyTimeout = tc
             }
 
 initializePython :: PythonSession -> IO ()
@@ -123,6 +132,9 @@ pythonBackend sess =
             closePythonSession sess
             pythonBackend <$> newPythonSession Nothing (pyWorkDir sess)
         , ST.sbInterrupt = interruptIfBusy sess
+        , ST.sbBusy = pure False
+        , ST.sbSessionGen = pure 0
+        , ST.sbRequestStale = \_ -> pure False
         , ST.sbQueryComplete = \_ -> pure []
         , ST.sbQueryType = \_ -> pure ""
         , ST.sbQueryInfo = \_ -> pure ""
@@ -139,9 +151,9 @@ interruptIfBusy sess = do
 runBlock :: PythonSession -> Text -> IO (Text, Text)
 runBlock sess block = runBlockStreaming sess block (\_ -> pure ())
 
-executionTimeoutUs, resyncTimeoutUs :: Int
-executionTimeoutUs = 120 * 1000000
-resyncTimeoutUs = 5 * 1000000
+executionTimeoutUs, resyncTimeoutUs :: PythonSession -> Int
+executionTimeoutUs = tcExecutionUs . pyTimeout
+resyncTimeoutUs = tcResyncUs . pyTimeout
 
 {- | Run a cell. On timeout: group SIGINT (KeyboardInterrupt), resync on
 a fresh marker, destroy if the interpreter stays silent — identical
@@ -152,7 +164,7 @@ runBlockStreaming sess block onLine = withMVar (pyLock sess) $ \_ -> do
     resetErrorBuffer sess
     mk <- getMarker sess
     mResult <-
-        timeout executionTimeoutUs $ do
+        timeout (executionTimeoutUs sess) $ do
             execViaFile sess block
             placeMarker sess mk
             bracket_ (setBusy sess True) (setBusy sess False) $
@@ -172,7 +184,7 @@ finishRun sess Nothing = do
     interruptGroup (pyProcSess sess)
     mk2 <- getMarker sess
     synced <-
-        timeout resyncTimeoutUs $ do
+        timeout (resyncTimeoutUs sess) $ do
             placeMarker sess mk2
             discardUntilMarker (queue sess) (markerTextOf mk2)
     case synced of
@@ -180,9 +192,7 @@ finishRun sess Nothing = do
             errLines <- readErrorBuffer sess
             pure
                 ( ""
-                , errLines
-                    <> "\n*** Execution timed out after 120 seconds; \
-                       \computation interrupted ***"
+                , errLines <> timedOutMessage (executionTimeoutUs sess)
                 )
         _ -> do
             destroySession (pyProcSess sess)

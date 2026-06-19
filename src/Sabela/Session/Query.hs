@@ -61,8 +61,13 @@ queryBrowse sess mname = runQueryCommand sess (QueryBrowse mname)
 queryDoc :: Session -> Text -> IO Text
 queryDoc sess name = runQueryCommand sess (QueryDoc name)
 
+{- | Serialise on 'sessQueryLock', not the cell run-lock: a query then
+never blocks at the lock level behind a draining cell (the busy gate stays
+admission control). The query lock still prevents query/query interleave,
+which would corrupt GHCi's shared stdin/stdout stream (case 20).
+-}
 runQueryCommand :: Session -> QueryCommand -> IO Text
-runQueryCommand sess cmd = withMVar (sessLock sess) $ \_ -> do
+runQueryCommand sess cmd = withMVar (sessQueryLock sess) $ \_ -> do
     resetErrorBuffer sess
     mk <- getMarker sess
     sendRaw sess $ T.unpack $ toText cmd

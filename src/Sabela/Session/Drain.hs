@@ -19,6 +19,7 @@ import qualified Data.Text as T
 import Sabela.Session.Reader (
     OutQueue,
     dequeueLine,
+    markerNonceBase,
     markerNumberIn,
  )
 
@@ -54,7 +55,8 @@ drainUntilMarker q mk onLine = go [] 0 False
                     onLine line
                     go (line : acc) (sz + T.length line) truncated
     isStale line = case (markerNumberIn line, target) of
-        (Just m, Just t) -> m < t
+        (Just m, Just t) ->
+            m `div` markerNonceBase == t `div` markerNonceBase && m < t
         _ -> False
     render acc truncated =
         let body = T.strip (T.unlines (reverse acc))

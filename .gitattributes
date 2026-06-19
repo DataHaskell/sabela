@@ -1,0 +1,4 @@
+# Golden export fixtures must check out byte-identical on every platform
+# (no CRLF autoconversion), so the cross-platform export golden test
+# (Test.ExportGoldenSpec) compares like-for-like on the Windows CI runner.
+test/golden/** -text

@@ -10,6 +10,7 @@ import Hub.Ecs (cliEcsBackend)
 import Hub.Gallery (newGalleryStore)
 import Hub.Proxy (hubApp)
 import Hub.Reaper (startReaper, sweepOrphans)
+import Hub.Republish (republishBanners)
 import Hub.Session (newSessionManager, reattachSessions)
 import Hub.Share (newShareStore)
 import Hub.Types
@@ -18,10 +19,48 @@ import qualified Network.HTTP.Client as HC
 import qualified Network.HTTP.Client.TLS as TLS
 import qualified Network.Wai.Handler.Warp as Warp
 import System.Directory (doesFileExist)
+import System.Environment (getArgs, lookupEnv)
+import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
 main :: IO ()
 main = do
+    args <- getArgs
+    case args of
+        ("republish-banners" : rest) -> runRepublish rest
+        _ -> runServer
+
+{- | @sabela-hub republish-banners [SHARES_DIR]@: backfill the fork banner into
+existing snapshots. The dir defaults to @$HUB_SHARES_DIR@. Runs standalone — no
+OAuth config required — so it is safe to invoke as a one-shot migration.
+-}
+runRepublish :: [String] -> IO ()
+runRepublish rest = do
+    mdir <- case rest of
+        (d : _) -> pure (Just d)
+        [] -> lookupEnv "HUB_SHARES_DIR"
+    case mdir of
+        Nothing -> do
+            hPutStrLn
+                stderr
+                "usage: sabela-hub republish-banners [SHARES_DIR] (or set HUB_SHARES_DIR)"
+            exitFailure
+        Just dir -> do
+            results <- republishBanners dir
+            let changed = length (filter snd results)
+            hPutStrLn stderr $
+                "[hub] republish-banners: "
+                    ++ show changed
+                    ++ " updated, "
+                    ++ show (length results - changed)
+                    ++ " already current ("
+                    ++ show (length results)
+                    ++ " shares in "
+                    ++ dir
+                    ++ ")"
+
+runServer :: IO ()
+runServer = do
     cfg <- loadConfig
     validateConfig cfg
     mgr <- HC.newManager TLS.tlsManagerSettings

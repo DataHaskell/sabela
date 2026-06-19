@@ -1,0 +1,46 @@
+# Hand-written (not haskell-ci-generated): builds sabela on Windows and runs
+# the test suite, so output-rendering regressions that only bite on Windows
+# — locale (non-UTF-8 codepage) encoding, CRLF translation, path handling —
+# are caught in CI. The render-focused checks live in Test.RenderSpec.
+name: Windows
+on:
+  - push
+  - pull_request
+  - merge_group
+jobs:
+  windows-test:
+    name: Windows - build + render tests (GHC ${{ matrix.ghc }})
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        ghc: ['9.10.3']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up GHC and cabal
+        id: setup
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ matrix.ghc }}
+          cabal-version: 'latest'
+      - name: Configure
+        run: cabal configure --enable-tests --disable-benchmarks --test-show-details=direct
+      - name: Freeze
+        run: cabal freeze
+      - name: Cache cabal store + build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal', 'cabal.project', 'cabal.project.freeze') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.ghc }}-
+      - name: Build dependencies
+        run: cabal build sabela:sabela-test --only-dependencies
+      - name: Build test suite
+        run: cabal build sabela:sabela-test
+      # Runs the full suite; Test.RenderSpec specifically pins UTF-8 /
+      # newline / on-disk rendering correctness on the Windows codepage.
+      - name: Run tests
+        run: cabal test sabela:sabela-test

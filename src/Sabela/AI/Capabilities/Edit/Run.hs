@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -22,6 +23,7 @@ import Control.Concurrent.STM (atomically, readTChan)
 import Data.Aeson (Value, object, (.=))
 import Data.Maybe (isNothing)
 import Data.Text (Text)
+import Data.Time (UTCTime, getCurrentTime)
 import System.Timeout (timeout)
 
 import Sabela.AI.Capabilities.Util (compactMaybeText, compactOutputs, fieldInt)
@@ -31,6 +33,7 @@ import Sabela.Anthropic.Types (CancelToken, isCancelled)
 import Sabela.Api (errorJson)
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model
+import qualified Sabela.SessionTypes as ST
 import Sabela.State
 
 {- | Run a single cell via the reactive notebook, compact the result, and
@@ -91,6 +94,7 @@ executeCell ::
     CancelToken ->
     IO (Either Text ExecutionResult)
 executeCell app rn cid cancelTok = do
+    reqTime <- getCurrentTime
     resultVar <- newEmptyMVar
     listenerThread <- forkIO $ do
         chan <- subscribeBroadcast (appEvents app)
@@ -106,8 +110,16 @@ executeCell app rn cid cancelTok = do
     mResult <- timeout 130000000 (takeMVar resultVar)
     killThread listenerThread
     cancelled <- isCancelled cancelTok
-    if cancelled
-        then pure (Left "Cancelled")
-        else case mResult of
+    stale <- requestStale app reqTime
+    if
+        | cancelled -> pure (Left "Cancelled")
+        | stale -> pure (Left "Request superseded by a kernel interrupt")
+        | otherwise -> case mResult of
             Nothing -> pure (Left "Cell execution timed out (>120s)")
             Just r -> pure (Right r)
+
+-- | Did the Haskell kernel interrupt after this request was stamped?
+requestStale :: App -> UTCTime -> IO Bool
+requestStale app reqTime =
+    getHaskellSession (appSessions app)
+        >>= maybe (pure False) (`ST.sbRequestStale` reqTime)

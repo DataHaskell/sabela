@@ -5,7 +5,7 @@ Sibling of "Sabela.AI.Capabilities.Tools.Notebook".
 -}
 module Sabela.AI.Capabilities.Tools.Query (queryTools) where
 
-import Data.Aeson (object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.Text (Text)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), mkTool)
 import Sabela.Anthropic.Types (ToolDef)
@@ -97,4 +97,24 @@ queryTools =
             , "required" .= (["handle_id", "op"] :: [Text])
             ]
         )
+    , mkTool
+        KernelStatus
+        "Lock-free kernel status. Always answers, even while a cell holds the run-lock, so you can tell \"busy\" (a slow cell) from \"wedged\" (the server is unresponsive) without blocking. Returns whether the kernel is alive, whether it is running, and a session generation tag."
+        noArgs
+    , mkTool
+        Interrupt
+        "Abort the cell the Haskell kernel is currently running (group SIGINT). No-op when the kernel is idle. Use this when a cell is stuck before reaching for kernel_restart."
+        noArgs
+    , mkTool
+        KernelRestart
+        "Restart the Haskell kernel asynchronously. Returns immediately; poll kernel_status until the kernel is alive and idle again. Use when the kernel is wedged and interrupt did not free it."
+        noArgs
+    , mkTool
+        ExportNotebook
+        "Return every cell's id, position, type, language, and source in one call, so a full notebook sync is a single request rather than N read_cell round-trips."
+        noArgs
     ]
+
+-- | Schema for a tool that takes no arguments.
+noArgs :: Value
+noArgs = object ["type" .= ("object" :: Text), "properties" .= object []]

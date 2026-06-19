@@ -88,5 +88,11 @@ for f in index attribution tags; do
   push_file "$STAGE/gallery/$f" "$GALLERY_REMOTE/$f"
 done
 
-echo "Done. Curated gallery reseeded on $IID. Restart the hub to reload it:"
+# seed-gallery.py writes raw exports with no fork banner, so the pushes above
+# strip the banner that the publish/republish path adds. Re-splice it in place
+# (idempotent, byte-exact) so a reseed never silently drops the fork button.
+echo "=== re-splicing fork banners ==="
+ssm_run "docker exec sabela-hub /opt/bin/sabela-hub republish-banners $SHARES_REMOTE 2>&1"
+
+echo "Done. Curated gallery reseeded + banners re-spliced on $IID. Restart the hub to reload it:"
 echo "  ./infra/box.sh restart"

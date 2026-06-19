@@ -15,7 +15,9 @@ module Sabela.Session.Proc (
     sessionProcessSpec,
     withSpawnedSession,
     destroySession,
+    escalateKill,
     interruptGroup,
+    forceKillGroup,
     killLeftoverSessions,
     configureSessionHandles,
 ) where
@@ -151,17 +153,51 @@ destroySession ps = withMVar (psKillLock ps) $ \_ -> do
             Just _ -> pure ()
             Nothing -> do
                 termGroupQuiet ps
-                waitGrace gracePolls
+                waitGraceFor ps gracePolls
                 killGroupQuiet ps
         quiet (void (waitForProcess (psProc ps)))
         registryRemove (psId ps)
-    waitGrace :: Int -> IO ()
-    waitGrace 0 = pure ()
-    waitGrace n = do
+
+{- | The staged kill ladder behind the cell-timeout watchdog (P1
+watchdog-respawn, stress cases 7–10, 13, 17). Escalates through the
+portable group wrappers — INT → grace → TERM → grace → KILL — advancing a
+rung only when the previous one was ignored, so a SIGINT-responsive
+computation exits on the first rung while a signal-ignoring one is still
+reaped by the final KILL.
+
+On POSIX this is a true 3-rung INT/TERM/KILL ladder; on Windows it
+collapses to 2 effective rungs (Ctrl-Break, then TerminateProcess, since
+TERM≡KILL there). Probes under the kill-lock so a reaped (possibly
+recycled) pgid is never signalled. The leader is not reaped here — the
+caller respawns; 'destroySession' is the reaping chokepoint.
+-}
+escalateKill :: ProcSession -> IO ()
+escalateKill ps = withMVar (psKillLock ps) $ \_ ->
+    rung intGroupQuiet $
+        rung termGroupQuiet $
+            rung killGroupQuiet (pure ())
+  where
+    rung :: (ProcSession -> IO ()) -> IO () -> IO ()
+    rung signal next = do
         exited <- getProcessExitCode (psProc ps)
         case exited of
             Just _ -> pure ()
-            Nothing -> threadDelay gracePollUs >> waitGrace (n - 1)
+            Nothing -> do
+                signal ps
+                waitGraceFor ps gracePolls
+                next
+
+{- | Poll the leader for up to @n@ grace ticks, stopping early once it has
+exited. Shared by the teardown chokepoint and the escalation ladder so
+both wait on the same budget between rungs.
+-}
+waitGraceFor :: ProcSession -> Int -> IO ()
+waitGraceFor _ 0 = pure ()
+waitGraceFor ps n = do
+    exited <- getProcessExitCode (psProc ps)
+    case exited of
+        Just _ -> pure ()
+        Nothing -> threadDelay gracePollUs >> waitGraceFor ps (n - 1)
 
 {- | SIGINT the session's group to abort the current evaluation. Probes
 under the kill-lock so a reaped (possibly recycled) pgid is never hit.
@@ -172,6 +208,18 @@ interruptGroup ps = withMVar (psKillLock ps) $ \_ -> do
     case exited of
         Just _ -> pure ()
         Nothing -> intGroupQuiet ps
+
+{- | Forcibly KILL the session's group, for the orphan safeguard
+('Sabela.Session.ParentPoller'): when the server is gone the poller runs
+this once. Probes under the kill-lock so a reaped (possibly recycled) pgid
+is never hit, and routes through the portable 'killGroupQuiet' wrapper.
+-}
+forceKillGroup :: ProcSession -> IO ()
+forceKillGroup ps = withMVar (psKillLock ps) $ \_ -> do
+    exited <- getProcessExitCode (psProc ps)
+    case exited of
+        Just _ -> pure ()
+        Nothing -> killGroupQuiet ps
 
 -- | Pre-registration failure path: forcibly kill the leftover tree, reap.
 rawKill :: ProcessHandle -> IO ()

@@ -38,7 +38,7 @@ import Sabela.Notebook.Support (materializeSupport, supportPackageDir)
 import Sabela.Output (displayPrelude)
 import Sabela.PythonSession (newPythonSession, pythonBackend)
 import Sabela.Session (
-    SessionConfig (..),
+    mkSessionConfig,
     readErrorBuffer,
     runBlock,
  )
@@ -232,7 +232,8 @@ ensureScratchpad app store lang = do
                         meta = mergedMeta (envGlobalDeps (appEnv app)) (collectMetadataFromContent "")
                     _ <- materializeSupport workDir
                     setupReplProject [supportPackageDir workDir] projDir meta
-                    sess <- newSession (SessionConfig projDir spDir)
+                    cfg <- mkSessionConfig projDir spDir
+                    sess <- newSession cfg
                     -- If GHCi/cabal dies during prelude injection, surface
                     -- the captured cabal/ghci stderr instead of the opaque
                     -- "GHCi process exited with ExitFailure 1" so callers can

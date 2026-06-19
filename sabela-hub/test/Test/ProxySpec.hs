@@ -113,10 +113,17 @@ spec = describe "Proxy" $ do
             lookup hContentType (simpleHeaders resp)
                 `shouldBe` Just "text/markdown; charset=utf-8"
 
-        it "refuses to download a non-public slug (404)" $ do
+        it "downloads a non-featured share's source (public-by-URL)" $ do
             (app, store, _) <- makeAppFull
             publishShare store (mkShare "ab12") "<h1>x</h1>"
-            writeShareSource store "ab12" "# secret-ish source"
+            writeShareSource store "ab12" "# just shared\nplot iris"
+            resp <- runSession (request (setPath defaultRequest "/_hub/source/ab12")) app
+            simpleStatus resp `shouldBe` status200
+            LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "plot iris"
+
+        it "404s a download when no source is stored (legacy/unknown slug)" $ do
+            (app, store, _) <- makeAppFull
+            publishShare store (mkShare "ab12") "<h1>x</h1>"
             resp <- runSession (request (setPath defaultRequest "/_hub/source/ab12")) app
             simpleStatus resp `shouldBe` status404
 
@@ -159,6 +166,26 @@ spec = describe "Proxy" $ do
             simpleStatus resp `shouldBe` status200
             LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "forked-"
             -- the source landed in the forker's (user@x → user_x) work dir
+            files <- listDirectory (root </> "users" </> "user_x")
+            length (filter (isInfixOf "forked-") files) `shouldBe` 1
+
+        it "forks a non-featured share (any stored source is forkable)" $ do
+            base <- getTemporaryDirectory
+            let root = base </> "sabela-fork-test-unfeatured"
+            _ <- try (removeDirectoryRecursive root) :: IO (Either SomeException ())
+            (app, store, _) <- makeAppForkable root
+            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            writeShareSource store "ab12" "# just shared"
+            let req =
+                    (setPath defaultRequest "/_hub/fork/ab12")
+                        { requestMethod = methodPost
+                        , requestHeaders =
+                            [ ("Cookie", "_sabela_session=usersid")
+                            , ("Origin", "http://localhost:8080")
+                            ]
+                        }
+            resp <- runSession (request req) app
+            simpleStatus resp `shouldBe` status200
             files <- listDirectory (root </> "users" </> "user_x")
             length (filter (isInfixOf "forked-") files) `shouldBe` 1
 

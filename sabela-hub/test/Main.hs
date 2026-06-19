@@ -3,6 +3,7 @@ module Main where
 import qualified Test.AdminApiSpec
 import qualified Test.AllowlistSpec
 import qualified Test.AuthSpec
+import qualified Test.BannerSpec
 import qualified Test.DockerSpec
 import qualified Test.GalleryRenderSpec
 import qualified Test.GallerySpec
@@ -19,6 +20,7 @@ main = hspec $ do
     Test.AuthSpec.spec
     Test.GallerySpec.spec
     Test.GalleryRenderSpec.spec
+    Test.BannerSpec.spec
     Test.AdminApiSpec.spec
     Test.DockerSpec.spec
     Test.ShareSpec.spec

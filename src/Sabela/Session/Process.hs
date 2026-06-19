@@ -15,11 +15,17 @@ module Sabela.Session.Process (
     -- * Backend adapter
     ghciBackend,
 
+    -- * Generation
+    firstSessionGen,
+    bumpSessionGen,
+
     -- * Building blocks (exposed for tests)
     ghciArgs,
     rtsGhcOptions,
     ghciProcessSpec,
     buildSessionState,
+    buildSessionStateGen,
+    mkSessionNonce,
     initializeGhci,
     startupErrorMessage,
     clearGhciPrompt,
@@ -30,18 +36,22 @@ import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newMVar)
 import Control.Exception (SomeException, try)
 import Control.Monad (void)
-import Data.IORef (newIORef)
+import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Sabela.Session (
     Session (..),
     SessionConfig (..),
     getMarker,
     interruptIfBusy,
+    isBusy,
+    isRequestStale,
     markerText,
     placeMarker,
     readErrorBuffer,
+    readSessionGen,
     runBlock,
     runBlockStreaming,
     sendRaw,
@@ -50,6 +60,7 @@ import Sabela.Session (
     sessStdin,
  )
 import Sabela.Session.Drain (DrainResult (..), drainUntilMarker)
+import Sabela.Session.ParentPoller (spawnParentPoller)
 import Sabela.Session.Proc (
     ProcSession (..),
     destroySession,
@@ -76,12 +87,31 @@ newSession :: SessionConfig -> IO Session
 newSession cfg = newSessionStreaming cfg (\_ -> pure ())
 
 newSessionStreaming :: SessionConfig -> (Text -> IO ()) -> IO Session
-newSessionStreaming cfg onStartupLine = do
+newSessionStreaming = newSessionGen firstSessionGen
+
+{- | Spawn a session tagged with an explicit generation. 'resetSession'
+threads the next generation through here so a restart's backend reports a
+strictly-higher tag than the one it replaced (stress case 36).
+-}
+newSessionGen :: Int -> SessionConfig -> (Text -> IO ()) -> IO Session
+newSessionGen gen cfg onStartupLine = do
     spec <- ghciProcessSpec cfg
     withSpawnedSession spec $ \ps -> do
-        sess <- buildSessionState cfg ps onStartupLine
+        sess <- buildSessionStateGen gen cfg ps onStartupLine
         initializeGhci sess onStartupLine
+        mapM_ spawnParentPoller (psPgid ps)
         pure sess
+
+{- | The generation every freshly-spawned (un-restarted) session is born
+with; each 'resetSession' seeds the next one strictly above it.
+-}
+firstSessionGen :: Int
+firstSessionGen = 1
+
+-- | Advance and return the session's generation tag.
+bumpSessionGen :: Session -> IO Int
+bumpSessionGen sess =
+    atomicModifyIORef' (sessionGen sess) (\g -> (g + 1, g + 1))
 
 -- | The @cabal repl@ spec, in its own process group with piped handles.
 ghciProcessSpec :: SessionConfig -> IO CreateProcess
@@ -93,10 +123,13 @@ ghciProcessSpec cfg = do
         args = ghciArgs cfg (rtsGhcOptions mCaps mHeap) ++ compilerArgs
     pure (sessionProcessSpec (Just (scWorkDir cfg)) (proc "cabal" args))
 
-{- | Repl args. Loaded modules (the compile-mode generated ones) build as
-@-O2@ object code; @-odir@\/@-hidir@ are pinned absolute so the @:cd@ at init
-cannot orphan the cache, and @-fexpose-all-unfoldings@ lets hot functions
-inline across generated module boundaries.
+{- | Repl args. The prompt runs **interpreted** (byte-code) so a plain
+notebook — and every restart — starts fast (incident K / stress case 26): the
+unconditional @-fobject-code -O2 -fexpose-all-unfoldings@ that forced the whole
+session into object code is gone. Each @-- compile@ module opts itself back
+into @-O2@ object code via a per-module @OPTIONS_GHC@ pragma
+('Sabela.Compiled.objectCodeOptions'). @-odir@\/@-hidir@ stay pinned absolute
+so the @:cd@ at init cannot orphan those modules' @.o@\/@.hi@ cache.
 -}
 ghciArgs :: SessionConfig -> String -> [String]
 ghciArgs cfg rtsOpts =
@@ -104,13 +137,8 @@ ghciArgs cfg rtsOpts =
     , "exe:main"
     , "--project-dir=" ++ scProjectDir cfg
     , "-v1"
-    , "--repl-options=-fobject-code -O2 -fexpose-all-unfoldings"
-        ++ " -odir "
-        ++ objDir
-        ++ " -hidir "
-        ++ objDir
+    , "--repl-options=-odir " ++ objDir ++ " -hidir " ++ objDir
     , "--ghc-options=" ++ rtsOpts
-    , "-O2"
     ]
   where
     objDir = scProjectDir cfg </> "ghci-objs"
@@ -132,23 +160,50 @@ buildSessionState ::
     ProcSession ->
     (Text -> IO ()) ->
     IO Session
-buildSessionState cfg ps onStderrLine = do
+buildSessionState = buildSessionStateGen firstSessionGen
+
+-- | 'buildSessionState' tagged with an explicit generation.
+buildSessionStateGen ::
+    Int ->
+    SessionConfig ->
+    ProcSession ->
+    (Text -> IO ()) ->
+    IO Session
+buildSessionStateGen genTag cfg ps onStderrLine = do
     lock <- newMVar ()
+    queryLock <- newMVar ()
     errBuf <- newIORef []
     counter <- newIORef 0
     cbRef <- newIORef onStderrLine
     busy <- newIORef False
+    nonce <- mkSessionNonce
+    lastInt <- newIORef Nothing
+    gen <- newIORef genTag
     _ <- forkIO $ errLoop (psStderr ps) errBuf cbRef
     pure
         Session
             { sessProcSess = ps
             , sessLock = lock
+            , sessQueryLock = queryLock
             , sessErrBuf = errBuf
             , sessCounter = counter
             , sessConfig = cfg
             , sessErrCallback = cbRef
             , sessBusy = busy
+            , sessNonce = nonce
+            , sessLastInterruptTime = lastInt
+            , sessionGen = gen
             }
+
+{- | A 12-digit per-session nonce derived from the wall-clock picoseconds, kept
+in a fixed digit band so every marker number is the same width. It seeds the
+high digits of each marker so notebook output cannot forge the live boundary.
+-}
+mkSessionNonce :: IO Int
+mkSessionNonce = do
+    t <- getPOSIXTime
+    let ps = round (t * 1e12) :: Integer
+    pure (fromIntegral (ps `mod` 900000000000 + 100000000000))
 
 initializeGhci :: Session -> (Text -> IO ()) -> IO ()
 initializeGhci sess onLine = do
@@ -182,10 +237,15 @@ startupErrSettleUs = 200000
 clearGhciPrompt :: Session -> IO ()
 clearGhciPrompt sess = mapM_ (sendRaw sess) [":set prompt \"\"", ":set prompt-cont \"\""]
 
+{- | Kill and respawn the kernel, seeding the replacement with a strictly
+higher generation than the session it replaces so a client can detect the
+restart and discard any result tagged with the older generation.
+-}
 resetSession :: Session -> IO Session
 resetSession sess = do
+    prevGen <- readSessionGen sess
     closeSession sess
-    newSession (sessConfig sess)
+    newSessionGen (prevGen + 1) (sessConfig sess) (\_ -> pure ())
 
 {- | Polite close: @:quit@, a short grace, then the 'destroySession'
 chokepoint — which also reclaims handles, queue, and registry entry
@@ -224,6 +284,9 @@ ghciBackend sess =
         , ST.sbClose = closeSession sess
         , ST.sbReset = ghciBackend <$> resetSession sess
         , ST.sbInterrupt = interruptIfBusy sess
+        , ST.sbBusy = isBusy sess
+        , ST.sbSessionGen = readSessionGen sess
+        , ST.sbRequestStale = isRequestStale sess
         , ST.sbQueryComplete = queryComplete sess
         , ST.sbQueryType = queryType sess
         , ST.sbQueryInfo = queryInfo sess

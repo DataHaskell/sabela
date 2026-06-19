@@ -37,6 +37,8 @@ library
                       Hub.Auth,
                       Hub.Shares.Api,
                       Hub.Reaper,
+                      Hub.Banner,
+                      Hub.Republish,
                       Hub.Share
     build-depends:    base >= 4 && < 5,
                       aeson >= 2 && < 3,
@@ -86,6 +88,7 @@ test-suite sabela-hub-test
                       Test.UsersSpec,
                       Test.GallerySpec,
                       Test.GalleryRenderSpec,
+                      Test.BannerSpec,
                       Test.AdminApiSpec
     build-depends:    base >= 4 && < 5,
                       sabela-hub,

@@ -8,22 +8,30 @@ bloat the server, and teardown reclaims the whole process group.
 module Test.SessionLoopSpec (spec) where
 
 import Control.Concurrent (
+    MVar,
     forkIO,
     newEmptyMVar,
     putMVar,
     takeMVar,
     threadDelay,
+    tryReadMVar,
+    tryTakeMVar,
  )
-import Control.Concurrent.STM (atomically)
+import Control.Concurrent.STM (atomically, readTVarIO)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import qualified Data.Text as T
 import Sabela.Handlers (setupReplProject)
 import Sabela.Session (
-    SessionConfig (..),
     interruptIfBusy,
+    mkSessionConfig,
     runBlock,
+ )
+import Sabela.Session.Drain (
+    DrainResult (..),
+    drainUntilMarker,
+    runAccumCapBytes,
  )
 import Sabela.Session.Proc (
     ProcSession (..),
@@ -40,7 +48,9 @@ import Sabela.Session.Reader (
     enqueueEof,
     enqueueLine,
     errLoop,
+    mkMarkerText,
     newOutQueue,
+    queueBytesCap,
     readLoop,
     scanDiscarded,
  )
@@ -181,6 +191,51 @@ spec = do
             lns <- popAll q
             length lns `shouldBe` 63
 
+    describe "bounded output queue (stress cases 2,3)" $ do
+        it "blocks the producer once the byte budget is exhausted" $ do
+            q <- newOutQueue
+            let chunk = queueBytesCap `div` 8
+            done <- newEmptyMVar
+            _ <- forkIO $ do
+                mapM_
+                    (atomically . enqueueLine q chunk . T.pack . show)
+                    [1 .. 12 :: Int]
+                putMVar done ()
+            threadDelay 200_000
+            -- 8 chunks fill the budget; the 9th enqueue must still be blocked,
+            -- so the producer cannot have finished and the queue stays bounded.
+            tryTakeMVar done `shouldReturn` Nothing
+            used <- readTVarIO (oqBytes q)
+            used `shouldSatisfy` (<= queueBytesCap)
+            -- draining credits bytes back, unblocking the producer to completion.
+            withTimeout 5_000_000 (drainWhilePending q done)
+            withTimeout 2_000_000 (takeMVar done)
+
+        it "caps drainUntilMarker accumulation, emits the notice, streams all" $ do
+            q <- newOutQueue
+            let mk = mkMarkerText 700_003
+                lineLen = 1024 * 1024
+                lineCount = (runAccumCapBytes `div` lineLen) + 5
+                body = T.replicate lineLen "x"
+            seen <- newIORef (0 :: Int)
+            _ <- forkIO $ do
+                mapM_
+                    (\_ -> atomically (enqueueLine q lineLen body))
+                    [1 .. lineCount]
+                atomically (enqueueLine q (T.length mk) mk)
+                atomically (enqueueEof q)
+            res <-
+                withTimeout
+                    30_000_000
+                    (drainUntilMarker q mk (\_ -> modifyIORef' seen (+ 1)))
+            case res of
+                DrainOk out ->
+                    out
+                        `shouldSatisfy` T.isSuffixOf "[output truncated by sabela]"
+                DrainEof _ -> expectationFailure "ended at EOF, not the marker"
+            -- every kept line is streamed to onLine even past the accum cap.
+            readIORef seen `shouldReturn` lineCount
+
     describe "session process group" $ do
         it "interruptGroup reaches the spawned group" $ do
             sleep <- findExecutable "sleep"
@@ -235,7 +290,7 @@ spec = do
                 Nothing -> pendingWith "cabal not found on PATH"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
                     setupReplProject [] dir emptyMeta
-                    let cfg = SessionConfig{scProjectDir = dir, scWorkDir = dir}
+                    cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 120_000_000 (newSession cfg)
                     interruptIfBusy sess
                     done <- newEmptyMVar
@@ -253,6 +308,20 @@ spec = do
                     withTimeout 15_000_000 (closeSession sess)
                     err `shouldSatisfy` T.isInfixOf "Interrupted"
                     T.strip out2 `shouldBe` "42"
+
+-- Pop lines (crediting the byte budget back) until the blocked producer,
+-- observed via the peek-only MVar, has finished enqueuing.
+drainWhilePending :: OutQueue -> MVar () -> IO ()
+drainWhilePending q done = go
+  where
+    go = do
+        finished <- tryReadMVar done
+        case finished of
+            Just () -> pure ()
+            Nothing -> do
+                _ <- atomically (dequeueLine q)
+                threadDelay 1_000
+                go
 
 waitUntilExited :: ProcSession -> IO ()
 waitUntilExited ps = do

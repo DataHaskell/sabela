@@ -86,14 +86,14 @@ hubApp' sm store users gallery mgr states req respond =
         ["sitemap.xml"] -> serveSitemap cfg gallery store respond
         ["c", cid] -> serveCollection cfg gallery store cid respond
         ["c", cid, n] -> serveCollectionReader cfg gallery store cid n respond
-        -- Download a public notebook's source markdown (no auth; public-gated).
-        ["_hub", "source", slug] -> serveSource gallery store slug respond
+        -- Download a share's source markdown (no auth; any stored source).
+        ["_hub", "source", slug] -> serveSource store slug respond
         -- Fork into the caller's work dir (authed; the caller is allowlisted).
         ["_hub", "fork", slug]
             | requestMethod req == methodPost ->
                 requireSessionOrForkLogin sm slug req respond $ \sess ->
                     let UserId email = sessionUserId sess
-                     in serveFork cfg gallery store email slug req respond
+                     in serveFork cfg store email slug req respond
         -- Admin: the server-rendered page, then the JSON curation endpoints.
         ["_hub", "admin"] -> adminPageRoute
         ("_hub" : "admin" : _) -> adminDispatch sm users gallery store req respond

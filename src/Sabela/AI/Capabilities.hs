@@ -19,6 +19,7 @@ module Sabela.AI.Capabilities (
 
     -- * Tool execution
     executeTool,
+    admissionBlocked,
 
     -- * Edit lifecycle
     acceptEdit,
@@ -37,6 +38,13 @@ import Sabela.AI.Capabilities.Edit (
     execProposeEdit,
     execReplaceCellSource,
     executeCell,
+ )
+import Sabela.AI.Capabilities.Kernel (
+    execExportNotebook,
+    execInterrupt,
+    execKernelRestart,
+    execKernelStatus,
+    haskellKernelBusy,
  )
 import Sabela.AI.Capabilities.Notebook (
     execFindCells,
@@ -90,11 +98,15 @@ executeTool app store rn cancelTok toolName input =
         Nothing -> case parseToolName toolName of
             Nothing -> pure (errOutcome (errorJson ("Unknown tool: " <> toolName)))
             Just tool -> do
-                eResult <- try (runTool tool)
-                case eResult of
-                    Left (e :: SomeException) ->
-                        pure (errOutcome (errorJson (T.pack (show e))))
-                    Right r -> pure r
+                mBlocked <- admissionBlocked app tool
+                case mBlocked of
+                    Just busy -> pure busy
+                    Nothing -> do
+                        eResult <- try (runTool tool)
+                        case eResult of
+                            Left (e :: SomeException) ->
+                                pure (errOutcome (errorJson (T.pack (show e))))
+                            Right r -> pure r
   where
     runTool :: ToolName -> IO ToolOutcome
     runTool = \case
@@ -111,6 +123,46 @@ executeTool app store rn cancelTok toolName input =
         GhciQuery -> execGhciQuery app input
         ApiReference -> execApiReference input
         ExploreResult -> execExploreResult store input
+        KernelStatus -> execKernelStatus app
+        Interrupt -> execInterrupt app
+        KernelRestart -> execKernelRestart rn
+        ExportNotebook -> execExportNotebook app input
+
+{- | Admission control: a tool that needs the GHCi kernel is refused with a
+busy outcome while a cell or query is already running, so the agent reads
+'kernel_status'/'interrupt'/'kernel_restart' instead of stacking a second
+request behind the run-lock. Lock-free tools (status/interrupt/restart) and
+notebook-only tools are never blocked.
+-}
+admissionBlocked :: App -> ToolName -> IO (Maybe ToolOutcome)
+admissionBlocked app tool
+    | needsKernel tool = do
+        busy <- haskellKernelBusy app
+        pure $
+            if busy
+                then Just (errOutcome busyOutcome)
+                else Nothing
+    | otherwise = pure Nothing
+  where
+    busyOutcome =
+        errorJsonWith
+            "The Haskell kernel is busy running another cell."
+            [ "busy" .= True
+            , "hint"
+                .= ( "Call kernel_status to see if it is still running, or \
+                     \interrupt / kernel_restart to free it." ::
+                        Text
+                   )
+            ]
+
+-- | Tools that issue work to the GHCi kernel and so must wait on it.
+needsKernel :: ToolName -> Bool
+needsKernel = \case
+    ExecuteCell -> True
+    ReplaceCellSource -> True
+    InsertCell -> True
+    GhciQuery -> True
+    _ -> False
 
 {- | Return the parse-error hint planted by the orchestrator when a streamed
 tool_use JSON couldn't be decoded. Dispatch fails fast in that case rather

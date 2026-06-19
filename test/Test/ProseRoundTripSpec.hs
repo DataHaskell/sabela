@@ -62,6 +62,12 @@ spec = describe "markdown + MIME round trip" $ do
             `shouldBe` ["Just one"]
         T.isInfixOf "sabela:cell" md `shouldBe` False
 
+    it "inserts no spurious prose cell between two adjacent code cells" $
+        roundTrip [code "x = 1", code "y = 2"]
+            `shouldBe` [ CodeBlock "haskell" "x = 1\n" Nothing
+                       , CodeBlock "haskell" "y = 2\n" Nothing
+                       ]
+
     it "preserves an empty cell between two prose cells" $
         proseTexts (roundTrip [prose "A", prose "", prose "B"])
             `shouldBe` ["A", "", "B"]

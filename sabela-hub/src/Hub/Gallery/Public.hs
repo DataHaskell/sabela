@@ -30,7 +30,6 @@ import Hub.Gallery (
     GalleryStore,
     cvMembers,
     listGallery,
-    publicSlugs,
     resolveCollection,
     validTag,
  )
@@ -154,19 +153,17 @@ serveSitemap cfg gallery shares respond = do
             [("Content-Type", "application/xml; charset=utf-8")]
             (renderSitemap (chromeFrom cfg) items)
 
-{- | Download: serve a public notebook's source markdown as an attachment.
-Unauthenticated, so the **public-slug** check (featured or a collection member)
-is the only gate (F2) — a non-public or unknown slug 404s.
+{- | Download: serve a notebook's source markdown as an attachment. A share is
+already public-by-URL at @\/s\/<slug>@, so the only gate is that a stored source
+exists — an unknown slug or a legacy share without @source.md@ 404s.
 -}
 serveSource ::
-    GalleryStore ->
     ShareStore ->
     Text ->
     (Response -> IO ResponseReceived) ->
     IO ResponseReceived
-serveSource gallery shares slug respond = do
-    pub <- publicSlugs gallery
-    if not (validSlug slug) || slug `notElem` pub
+serveSource shares slug respond =
+    if not (validSlug slug)
         then respond notFound
         else do
             msrc <- lookupShareSource shares slug

@@ -201,7 +201,10 @@ cellsToSegments (c : cs)
     | otherwise = cellToSegment c : cellsToSegments cs
 
 {- | Invert 'cellsToSegments' on load: split any 'Prose' segment that
-contains boundary-marker lines back into one segment per cell.
+contains boundary-marker lines back into one segment per cell. A
+whitespace-only prose run with no marker is the blank line(s) between two
+code fences, not a cell, so it is dropped rather than surfaced as a spurious
+empty prose cell.
 -}
 splitProseSegments :: [Segment] -> [Segment]
 splitProseSegments = concatMap expand
@@ -209,6 +212,7 @@ splitProseSegments = concatMap expand
     expand (Prose t)
         | any isMarker (T.lines t) =
             map (Prose . T.strip . T.unlines) (chunk (T.lines t))
+        | T.null (T.strip t) = []
         | otherwise = [Prose t]
     expand other = [other]
     isMarker l = T.strip l == proseMarker

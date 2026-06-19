@@ -26,6 +26,7 @@ module Sabela.Session.Reader (
     markerSuffix,
     mkMarkerText,
     markerNumberIn,
+    markerNonceBase,
 
     -- * Limits
     lineCapBytes,
@@ -251,6 +252,13 @@ markerPrefixBS = TE.encodeUtf8 markerPrefix
 
 mkMarkerText :: Int -> Text
 mkMarkerText n = markerPrefix <> T.pack (show n) <> markerSuffix
+
+{- | Multiplier separating a session's per-run counter from its nonce in a
+marker number: @nonce * markerNonceBase + run@. The nonce occupies the high
+digits, so notebook output cannot forge a live marker without knowing it.
+-}
+markerNonceBase :: Int
+markerNonceBase = 100000
 
 {- | The number of the first well-formed marker in a line; lines with a
 marker prefix but no parsable @n---@ tail are ordinary output.

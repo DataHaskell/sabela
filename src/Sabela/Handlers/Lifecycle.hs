@@ -41,8 +41,8 @@ import Sabela.Notebook.Support (
 import Sabela.Output (displayPrelude)
 import Sabela.Session (
     Session,
-    SessionConfig (..),
     clearErrCallback,
+    mkSessionConfig,
     readErrorBuffer,
     runBlock,
  )
@@ -207,8 +207,8 @@ startSessionWith :: App -> FilePath -> IO Bool
 startSessionWith app projDir = do
     clearCompiledModules app
     debugLog app "[handler] Injecting display prelude"
-    let cfg = SessionConfig{scProjectDir = projDir, scWorkDir = envWorkDir (appEnv app)}
-        onLine t = unless (T.null t) $ broadcast app (EvInstallLog t)
+    cfg <- mkSessionConfig projDir (envWorkDir (appEnv app))
+    let onLine t = unless (T.null t) $ broadcast app (EvInstallLog t)
         locals = envLocalPackages (appEnv app)
     unless (null locals) $
         broadcast
