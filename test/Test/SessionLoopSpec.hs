@@ -236,7 +236,6 @@ spec = do
             -- every kept line is streamed to onLine even past the accum cap.
             readIORef seen `shouldReturn` lineCount
 
-
 -- Pop lines (crediting the byte budget back) until the blocked producer,
 -- observed via the peek-only MVar, has finished enqueuing.
 drainWhilePending :: OutQueue -> MVar () -> IO ()
@@ -250,4 +249,3 @@ drainWhilePending q done = go
                 _ <- atomically (dequeueLine q)
                 threadDelay 1_000
                 go
-

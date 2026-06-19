@@ -247,4 +247,3 @@ spec = do
             displayPrelude `shouldSatisfy` T.isInfixOf "scatterSelectWith ::"
         it "uses balanced :{ / :} multiline blocks" $
             T.count ":{" displayPrelude `shouldBe` T.count ":}" displayPrelude
-

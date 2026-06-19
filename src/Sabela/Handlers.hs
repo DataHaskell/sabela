@@ -24,7 +24,7 @@ module Sabela.Handlers (
     updateCellSource,
     killAllSessions,
     shutdownAllSessions,
-    reloadHaskellSession,
+    killSessionAsync,
 
     -- * Re-exports from submodules
     module Sabela.Handlers.Shared,
@@ -46,7 +46,7 @@ import Sabela.Deps (collectMetadataFromContent)
 import Sabela.Handlers.Lifecycle (
     installAndRestart,
     killAllSessions,
-    reloadHaskellSession,
+    killSessionAsync,
     resolveLocalPackages,
     setupReplProject,
     shutdownAllSessions,

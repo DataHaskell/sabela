@@ -40,6 +40,7 @@ import qualified Test.SessionLiveSpec as SessionLiveSpec
 import qualified Test.SessionLoopSpec as SessionLoopSpec
 import qualified Test.SessionSpec as SessionSpec
 import qualified Test.StaleRunSpec as StaleRunSpec
+import qualified Test.SwitchNotebookSpec as SwitchNotebookSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
 import qualified Test.ToolParseSpec as ToolParseSpec
 import qualified Test.TopoSpec as TopoSpec
@@ -61,6 +62,7 @@ main = do
         SessionLoopSpec.spec
         SessionLiveSpec.spec
         StaleRunSpec.spec
+        SwitchNotebookSpec.spec
         TopoSpec.spec
         CompiledPlanSpec.spec
         CompileEscalationSpec.spec

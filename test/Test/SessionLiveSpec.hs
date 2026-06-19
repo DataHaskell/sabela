@@ -16,6 +16,7 @@ import Control.Concurrent (
  )
 import qualified Data.Text as T
 import Sabela.Handlers (setupReplProject)
+import Sabela.Output (displayPrelude)
 import Sabela.Session (interruptIfBusy, mkSessionConfig, runBlock)
 import Sabela.Session.Proc (
     ProcSession (..),
@@ -24,7 +25,6 @@ import Sabela.Session.Proc (
     sessionProcessSpec,
     withSpawnedSession,
  )
-import Sabela.Output (displayPrelude)
 import Sabela.Session.Process (closeSession, newSession, resetSession)
 import ScriptHs.Parser (CabalMeta (..))
 import System.Directory (findExecutable)

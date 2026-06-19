@@ -34,7 +34,6 @@ module Sabela.Server.Notebook (
     langTag,
 ) where
 
-import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (modifyMVar)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
@@ -58,7 +57,7 @@ import Sabela.Api
 import Sabela.Handlers (
     ReactiveNotebook (..),
     insertCellAt,
-    reloadHaskellSession,
+    killSessionAsync,
     updateCellSource,
  )
 import Sabela.Handlers.Shared (bumpGeneration)
@@ -97,9 +96,11 @@ loadNotebookH app _rn (LoadRequest path) = liftIO $ do
                     (segmentToCell (appNotebook app))
                     (splitProseSegments (parseMarkdown raw))
             let nb = Notebook (T.pack path) cells
-            -- Cancel any in-flight execution and reclaim GHCi memory via :reload
+            -- Cancel in-flight execution and tear down the live session: it
+            -- holds the previous notebook's bindings, so the next run must
+            -- rebuild against this notebook rather than reuse a stale session.
             void $ bumpGeneration app
-            void $ forkIO $ reloadHaskellSession app
+            killSessionAsync app
             modifyNotebook (appNotebook app) (const nb)
             broadcastNotebook app
             pure nb

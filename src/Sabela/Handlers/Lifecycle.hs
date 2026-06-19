@@ -10,8 +10,8 @@ module Sabela.Handlers.Lifecycle (
     -- * Top-level lifecycle
     killAllSessions,
     shutdownAllSessions,
-    reloadHaskellSession,
     killSession,
+    killSessionAsync,
     ensureSessionAlive,
     sessionMetaMatches,
     installAndRestart,
@@ -23,7 +23,7 @@ module Sabela.Handlers.Lifecycle (
     resolveLocalPackages,
 ) where
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void)
 import Data.List (nub)
@@ -89,20 +89,6 @@ shutdownAllSessions app = do
     forceResetAllSessions (appSessions app)
     killLeftoverSessions
 
-reloadHaskellSession :: App -> IO ()
-reloadHaskellSession app = do
-    debugLog app "[handler] reloadHaskellSession: :reload"
-    mSess <- getHaskellSession (appSessions app)
-    forM_ mSess $ \backend -> do
-        result <- try (ST.sbRunBlock backend ":reload")
-        case result of
-            Left (e :: SomeException) ->
-                handleKernelCrash
-                    app
-                    backend
-                    ("Kernel crashed during :reload: " <> T.pack (show e))
-            Right _ -> pure ()
-
 {- | Swap the slot out first, then close outside the manager MVar so
 session queries never stall behind a multi-second teardown.
 -}
@@ -111,6 +97,17 @@ killSession app = do
     mSess <- takeHaskellSession (appSessions app)
     forM_ mSess $ \s ->
         void (try (ST.sbClose s) :: IO (Either SomeException ()))
+
+{- | Detach the live session from the slot at once, then close it off-thread.
+Used on a notebook switch so the next run rebuilds against the newly-loaded
+notebook rather than silently reusing the previous notebook's session, without
+blocking the load response on GHCi teardown.
+-}
+killSessionAsync :: App -> IO ()
+killSessionAsync app = do
+    mSess <- takeHaskellSession (appSessions app)
+    forM_ mSess $ \s ->
+        void $ forkIO (void (try (ST.sbClose s) :: IO (Either SomeException ())))
 
 ensureSessionAlive :: App -> Int -> CabalMeta -> IO Bool
 ensureSessionAlive app gen metas = do
