@@ -119,7 +119,9 @@ spawnRegistered spec = do
         q <- newOutQueue
         klock <- newMVar ()
         uid <- newUnique
-        let ps = ProcSession uid ph pgid klock hIn hOut hErr q
+        -- getPid is Maybe CPid on POSIX but Maybe Word32 on Windows; coerce to
+        -- the field's ProcessGroupID so the spawn typechecks on both.
+        let ps = ProcSession uid ph (fmap fromIntegral pgid) klock hIn hOut hErr q
         registryInsert ps
         pure ps
     flip onException (destroySession ps) $ do

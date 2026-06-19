@@ -93,41 +93,14 @@ module Sabela.Notebook.Picture (
 ) where
 
 import Data.List (intercalate)
-
-{- | A point on the canvas, @(x, y)@ — @x@ rightward, @y@ downward, from the
-top-left corner.
--}
-type Point = (Double, Double)
-
-{- | A drawing. Build one from shapes and combine pictures with @'<>'@; the empty
-picture is 'mempty'. A picture is just a description — nothing is drawn until you
-call 'picture'.
--}
-data Picture
-    = Blank
-    | Prim Shape
-    | Over Picture Picture
-    | Attr [(String, String)] Picture
-    | Raw String
-
--- | Combine two pictures by drawing the second on top of the first.
-instance Semigroup Picture where
-    Blank <> q = q
-    p <> Blank = p
-    p <> q = Over p q
-
--- | The empty picture draws nothing.
-instance Monoid Picture where
-    mempty = Blank
-
-data Shape
-    = Circle Point Double
-    | Rectangle Point Double Double
-    | Line Point Point
-    | Polyline [Point]
-    | Polygon [Point]
-    | PathD String
-    | Label Point String
+import Sabela.Notebook.Picture.Internal (
+    Canvas (..),
+    Picture (..),
+    Point,
+    Shape (..),
+    num,
+ )
+import Sabela.Notebook.Picture.Svg (renderSvg, svgBody)
 
 -- | A circle, given its centre and radius.
 circle :: Point -> Double -> Picture
@@ -243,83 +216,9 @@ lineChart (Canvas w h) pts
     scaled = [(sx x, sy y) | (x, y) <- pts]
     axes = line (m, m) (m, h - m) <> line (m, h - m) (w - m, h - m)
 
--- | A drawing area of the given width and height (in canvas units).
-data Canvas = Canvas
-    { canvasWidth :: Double
-    , canvasHeight :: Double
-    }
-
 -- | The default 300×300 canvas used by 'picture'.
 defaultCanvas :: Canvas
 defaultCanvas = Canvas 300 300
-
-{- | Render a picture to a standalone SVG string on a given canvas.
-
-The body is built by 'svgBody', which is a /monoid homomorphism/: the drawing of
-@a '<>' b@ is exactly the drawing of @a@ followed by the drawing of @b@. The
-@\<svg\>@ wrapper is added once around the whole thing.
--}
-renderSvg :: Canvas -> Picture -> String
-renderSvg (Canvas w h) p =
-    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\""
-        ++ num w
-        ++ "\" height=\""
-        ++ num h
-        ++ "\" viewBox=\"0 0 "
-        ++ num w
-        ++ " "
-        ++ num h
-        ++ "\">"
-        ++ svgBody p
-        ++ "</svg>"
-
-{- | The structural rendering of a picture's contents (no @\<svg\>@ wrapper).
-Styling and transforms become nested @\<g\>@ groups, so inner styles win via
-SVG's normal inheritance.
--}
-svgBody :: Picture -> String
-svgBody Blank = ""
-svgBody (Prim s) = shapeSvg s
-svgBody (Over a b) = svgBody a ++ svgBody b
-svgBody (Raw s) = s
-svgBody (Attr as p) = "<g" ++ concatMap attr as ++ ">" ++ svgBody p ++ "</g>"
-
-attr :: (String, String) -> String
-attr (k, v) = " " ++ k ++ "=\"" ++ v ++ "\""
-
-shapeSvg :: Shape -> String
-shapeSvg (Circle (x, y) r) =
-    "<circle cx=\"" ++ num x ++ "\" cy=\"" ++ num y ++ "\" r=\"" ++ num r ++ "\"/>"
-shapeSvg (Rectangle (x, y) w h) =
-    "<rect x=\""
-        ++ num x
-        ++ "\" y=\""
-        ++ num y
-        ++ "\" width=\""
-        ++ num w
-        ++ "\" height=\""
-        ++ num h
-        ++ "\"/>"
-shapeSvg (Line (x1, y1) (x2, y2)) =
-    "<line x1=\""
-        ++ num x1
-        ++ "\" y1=\""
-        ++ num y1
-        ++ "\" x2=\""
-        ++ num x2
-        ++ "\" y2=\""
-        ++ num y2
-        ++ "\" stroke=\"black\"/>"
-shapeSvg (Polyline ps) =
-    "<polyline points=\"" ++ pointList ps ++ "\" fill=\"none\" stroke=\"black\"/>"
-shapeSvg (Polygon ps) =
-    "<polygon points=\"" ++ pointList ps ++ "\"/>"
-shapeSvg (PathD d) = "<path d=\"" ++ d ++ "\"/>"
-shapeSvg (Label (x, y) s) =
-    "<text x=\"" ++ num x ++ "\" y=\"" ++ num y ++ "\">" ++ s ++ "</text>"
-
-pointList :: [Point] -> String
-pointList = unwords . map (\(x, y) -> num x ++ "," ++ num y)
 
 {- | Show a picture in the notebook on the default 300×300 canvas.
 
@@ -333,11 +232,3 @@ pictureOn :: Canvas -> Picture -> IO ()
 pictureOn cv p = do
     putStrLn "<!-- MIME:image/svg+xml -->"
     putStrLn (renderSvg cv p)
-
--- | Format a number for SVG: whole numbers lose their trailing @.0@.
-num :: Double -> String
-num x
-    | x == fromIntegral r = show r
-    | otherwise = show x
-  where
-    r = round x :: Integer

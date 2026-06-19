@@ -82,6 +82,8 @@ test-suite sabela-hub-test
                       Test.AuthSpec,
                       Test.SessionSpec,
                       Test.ReaperSpec,
+                      Test.ProxyHelpers,
+                      Test.ProxyRoutesSpec,
                       Test.ProxySpec,
                       Test.DockerSpec,
                       Test.ShareSpec,

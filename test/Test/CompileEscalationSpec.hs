@@ -150,7 +150,7 @@ spec = describe "compile-reload escalation" $ do
             -- Every interpreted cell ran, after the load, in plan order.
             let runs = [hits src ts | src <- ["a = 1", "b = step 2", "c = a + 1"]]
             map length runs `shouldBe` [1, 1, 1]
-            let [[ia], [ib], [ic]] = runs
+            [[ia], [ib], [ic]] <- pure runs
             ia `shouldSatisfy` (> head loads)
             ib `shouldSatisfy` (> ia)
             ic `shouldSatisfy` (> ib)
@@ -187,7 +187,7 @@ spec = describe "compile-reload escalation" $ do
             hits "b = step 2" ts `shouldBe` []
             -- The blocked dependent carries an error, so it stays stale.
             nb' <- readNotebook (appNotebook app)
-            let Just blocked = lookup 3 [(cellId c, c) | c <- nbCells nb']
+            Just blocked <- pure (lookup 3 [(cellId c, c) | c <- nbCells nb'])
             cellError blocked `shouldSatisfy` (/= Nothing)
 
 cpModulesOf :: ExecutionPlan -> M.Map Text Text

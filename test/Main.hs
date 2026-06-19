@@ -36,6 +36,7 @@ import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.RenderSpec as RenderSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
 import qualified Test.SessionGenSpec as SessionGenSpec
+import qualified Test.SessionLiveSpec as SessionLiveSpec
 import qualified Test.SessionLoopSpec as SessionLoopSpec
 import qualified Test.SessionSpec as SessionSpec
 import qualified Test.StaleRunSpec as StaleRunSpec
@@ -58,6 +59,7 @@ main = do
         WidgetsSpec.spec
         SessionSpec.spec
         SessionLoopSpec.spec
+        SessionLiveSpec.spec
         StaleRunSpec.spec
         TopoSpec.spec
         CompiledPlanSpec.spec

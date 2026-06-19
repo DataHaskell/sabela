@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+{- HLINT ignore "Use fewer imports" -}
 import Control.Exception (finally)
 import Control.Monad (unless, void, when)
 import Data.Maybe (isJust)

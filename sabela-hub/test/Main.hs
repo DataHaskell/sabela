@@ -8,6 +8,7 @@ import qualified Test.DockerSpec
 import qualified Test.GalleryRenderSpec
 import qualified Test.GallerySpec
 import Test.Hspec
+import qualified Test.ProxyRoutesSpec
 import qualified Test.ProxySpec
 import qualified Test.ReaperSpec
 import qualified Test.SessionSpec
@@ -28,3 +29,4 @@ main = hspec $ do
     Test.SessionSpec.spec
     Test.ReaperSpec.spec
     Test.ProxySpec.spec
+    Test.ProxyRoutesSpec.spec

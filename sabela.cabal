@@ -20,7 +20,9 @@ extra-source-files: static/index.html, static/dashboard.html, static/slideshow.h
                     static/notebook/sabela-notebook/src/Sabela/Notebook/Behavior.hs,
                     static/notebook/sabela-notebook/src/Sabela/Notebook/Event.hs,
                     static/notebook/sabela-notebook/src/Sabela/Notebook/Frp.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Picture.hs
+                    static/notebook/sabela-notebook/src/Sabela/Notebook/Picture.hs,
+                    static/notebook/sabela-notebook/src/Sabela/Notebook/Picture/Internal.hs,
+                    static/notebook/sabela-notebook/src/Sabela/Notebook/Picture/Svg.hs
 
 common warnings
     ghc-options: -Wall
@@ -182,11 +184,14 @@ test-suite sabela-test
                       Sabela.Notebook.Event,
                       Sabela.Notebook.Frp,
                       Sabela.Notebook.Picture,
+                      Sabela.Notebook.Picture.Internal,
+                      Sabela.Notebook.Picture.Svg,
                       Test.NotebookAnimSpec,
                       Test.NotebookFrpSpec,
                       Test.NotebookPictureSpec,
                       Test.SessionSpec,
                       Test.SessionLoopSpec,
+                      Test.SessionLiveSpec,
                       Test.StaleRunSpec,
                       Test.TopoSpec,
                       Test.TopoSpec.Helpers,

@@ -55,6 +55,7 @@ import Control.Concurrent.STM (
 import Control.Exception (SomeException, finally, try)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
+import Data.Char (isDigit)
 import Data.IORef (IORef, atomicModifyIORef', readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -222,7 +223,7 @@ scanDiscarded emit win =
             | BS.null rest -> pure (BS.takeEnd (BS.length markerPrefixBS - 1) win)
             | otherwise -> do
                 let afterPfx = BS.drop (BS.length markerPrefixBS) rest
-                    (digits, afterD) = BC.span (\c -> c >= '0' && c <= '9') afterPfx
+                    (digits, afterD) = BC.span isDigit afterPfx
                 if BS.null digits
                     then
                         if BS.null afterD
@@ -267,7 +268,7 @@ markerNumberIn :: Text -> Maybe Int
 markerNumberIn line = do
     let (_, rest) = T.breakOn markerPrefix line
     afterPfx <- T.stripPrefix markerPrefix rest
-    let (digits, afterD) = T.span (\c -> c >= '0' && c <= '9') afterPfx
+    let (digits, afterD) = T.span isDigit afterPfx
     if not (T.null digits)
         && T.length digits <= 19
         && markerSuffix `T.isPrefixOf` afterD

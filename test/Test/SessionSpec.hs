@@ -73,10 +73,13 @@ dummySession ::
     IO Session
 dummySession q errRef ctrRef cfg = do
     lock <- newMVar ()
+    qlock <- newMVar ()
     cbRef <- newIORef (\_ -> pure ())
     klock <- newMVar ()
     uid <- newUnique
     busy <- newIORef False
+    lastInt <- newIORef Nothing
+    gen <- newIORef 1
     let ps =
             ProcSession
                 { psId = uid
@@ -92,12 +95,15 @@ dummySession q errRef ctrRef cfg = do
         Session
             { sessProcSess = ps
             , sessLock = lock
+            , sessQueryLock = qlock
             , sessErrBuf = errRef
             , sessCounter = ctrRef
             , sessConfig = cfg
             , sessErrCallback = cbRef
             , sessBusy = busy
             , sessNonce = 4242
+            , sessLastInterruptTime = lastInt
+            , sessionGen = gen
             }
 
 push :: OutQueue -> Text -> IO ()
@@ -242,88 +248,3 @@ spec = do
         it "uses balanced :{ / :} multiline blocks" $
             T.count ":{" displayPrelude `shouldBe` T.count ":}" displayPrelude
 
-    describe "integration: ghci-backed session" $ do
-        it "newSession/runBlock returns stdout and empty stderr for a simple expression" $ do
-            cabal <- findExecutable "cabal"
-            case cabal of
-                Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
-                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
-                    cfg <- mkSessionConfig dir dir
-                    sess <- withTimeout 60_000_000 (newSession cfg)
-                    (out, err) <- withTimeout 10_000_000 (runBlock sess "1 + 1")
-                    withTimeout 10_000_000 (closeSession sess)
-
-                    T.strip out `shouldBe` "2"
-                    T.strip err `shouldBe` ""
-
-        it "captures errors into stderr" $ do
-            cabal <- findExecutable "cabal"
-            case cabal of
-                Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
-                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
-                    cfg <- mkSessionConfig dir dir
-                    sess <- withTimeout 60_000_000 (newSession cfg)
-                    (out, err) <- withTimeout 10_000_000 (runBlock sess "let x = 1\nx + \"a\"")
-                    withTimeout 10_000_000 (closeSession sess)
-
-                    let combined = T.toLower (out <> "\n" <> err)
-                    combined `shouldSatisfy` T.isInfixOf "error"
-
-        it "resetSession yields a working new session" $ do
-            cabal <- findExecutable "cabal"
-            case cabal of
-                Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
-                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
-                    cfg <- mkSessionConfig dir dir
-                    sess1 <- withTimeout 60_000_000 (newSession cfg)
-                    sess2 <- withTimeout 60_000_000 (resetSession sess1)
-                    (out, err) <- withTimeout 10_000_000 (runBlock sess2 "2 + 3")
-                    withTimeout 10_000_000 (closeSession sess2)
-
-                    T.strip out `shouldBe` "5"
-                    T.strip err `shouldBe` ""
-
-        it "scatterSelect renders a canvas and round-trips its selection" $ do
-            cabal <- findExecutable "cabal"
-            case cabal of
-                Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
-                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
-                    cfg <- mkSessionConfig dir dir
-                    sess <- withTimeout 60_000_000 (newSession cfg)
-                    -- mirror a dataframe cell's default-extensions so the prelude
-                    -- is type-checked under OverloadedStrings (catches ambiguous
-                    -- IsString literals that a bare session would let through)
-                    _ <-
-                        withTimeout 10_000_000 $
-                            runBlock
-                                sess
-                                ":set -XOverloadedStrings -XTypeApplications -XScopedTypeVariables"
-                    _ <- withTimeout 30_000_000 (runBlock sess displayPrelude)
-                    (selOut, _) <-
-                        withTimeout 20_000_000 $
-                            runBlock
-                                sess
-                                "writeIORef _sabelaWidgetRef [(\"s\",\"[0,2]\")] >> (sample (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0),(5.0,6.0)]) >>= print)"
-                    (htmlOut, _) <-
-                        withTimeout 20_000_000 $
-                            runBlock
-                                sess
-                                "display (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0)]) >> return ()"
-                    (optOut, _) <-
-                        withTimeout 20_000_000 $
-                            runBlock
-                                sess
-                                "render (scatterSelectWith \"s\" (defScatter {soTitle = \"MyTitle\", soColorBy = [1,2,3]}) [(1.0,2.0),(3.0,4.0),(5.0,6.0)])"
-                    withTimeout 10_000_000 (closeSession sess)
-
-                    T.strip selOut `shouldBe` "[0,2]"
-                    htmlOut `shouldSatisfy` T.isInfixOf "text/html"
-                    htmlOut `shouldSatisfy` T.isInfixOf "<canvas"
-                    htmlOut `shouldSatisfy` T.isInfixOf "parent.postMessage"
-                    -- granite-style options thread into the canvas: title + color-by data
-                    optOut `shouldSatisfy` T.isInfixOf "MyTitle"
-                    optOut `shouldSatisfy` T.isInfixOf "cval:[1.0,2.0,3.0"

@@ -197,14 +197,14 @@ spec = describe "Sabela.Compiled" $ do
             let (perCell, loose) = parseCompiledErrors sampleErr
             M.keys perCell `shouldBe` [12]
             loose `shouldBe` []
-            let [ce] = perCell M.! 12
+            [ce] <- pure (perCell M.! 12)
             ceLine ce `shouldBe` Just 4
             ceCol ce `shouldBe` Just 7
             ceMessage ce `shouldSatisfy` hasInfix "Couldn't match"
 
         it "scrubs the tag from the message" $ do
             let (perCell, _) = parseCompiledErrors sampleErr
-                [ce] = perCell M.! 12
+            [ce] <- pure (perCell M.! 12)
             ceMessage ce `shouldSatisfy` hasInfix "line 4:7:"
             ceMessage ce `shouldSatisfy` (not . hasInfix "sabela-cell-12")
 
