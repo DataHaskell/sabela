@@ -11,7 +11,9 @@ function setStatus(text, cls) {
   const el = document.getElementById('status');
   el.textContent = text;
   el.className = 'status ' + (cls || '');
-  if (!cls || cls !== 'running')
+  // 'running' and 'compiling' are in-progress signals: leave them up until a
+  // later event replaces them. Everything else self-clears.
+  if (cls !== 'running' && cls !== 'compiling')
     setTimeout(() => {
       if (el.textContent === text) el.textContent = '';
     }, 4000);

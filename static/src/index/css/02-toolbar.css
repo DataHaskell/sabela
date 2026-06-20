@@ -217,6 +217,9 @@
 .status.running {
   color: var(--yellow);
 }
+.status.compiling {
+  color: var(--mauve);
+}
 .status.error {
   color: var(--red);
 }

@@ -53,7 +53,7 @@ import Sabela.Session.Process (
     newSessionStreaming,
  )
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), clearCompiledModules)
+import Sabela.State (App (..), clearCompiledModules, withBuilding)
 import Sabela.State.DependencyTracker (
     getHaskellDeps,
     getHaskellExts,
@@ -158,7 +158,7 @@ installAndRestart app gen metas = do
         else installDepsAndStartSession app gen metas
 
 installDepsAndStartSession :: App -> Int -> CabalMeta -> IO Bool
-installDepsAndStartSession app _gen metas = do
+installDepsAndStartSession app _gen metas = withBuilding app $ do
     broadcastDepsStatus app metas
     setHaskellExts (appDeps app) (S.fromList (metaExts metas))
     let projDir = envTmpDir (appEnv app) </> "repl-project"

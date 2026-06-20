@@ -16,6 +16,7 @@ module Sabela.AI.Capabilities.Kernel (
 import Control.Concurrent (forkIO)
 import Control.Monad (void)
 import Data.Aeson (Value, object, (.=))
+import Data.IORef (readIORef)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 
@@ -41,11 +42,13 @@ execKernelStatus app = do
     mSess <- getHaskellSession (appSessions app)
     busy <- maybe (pure False) ST.sbBusy mSess
     gen <- maybe (pure 0) ST.sbSessionGen mSess
+    compiling <- readIORef (appBuilding app)
     pure $
         okOutcome $
             object
                 [ "kernel" .= (if isJust mSess then ("alive" :: Text) else "absent")
                 , "running" .= busy
+                , "compiling" .= compiling
                 , "sessionGen" .= gen
                 ]
 

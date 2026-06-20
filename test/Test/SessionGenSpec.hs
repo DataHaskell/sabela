@@ -27,7 +27,7 @@ import Sabela.Session.Proc (ProcSession (..))
 import Sabela.Session.Process (bumpSessionGen, firstSessionGen)
 import Sabela.Session.Reader (newOutQueue)
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..))
+import Sabela.State (App (..), setBuilding)
 import Sabela.State.SessionManager (setHaskellSession)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
@@ -157,12 +157,24 @@ spec = do
             field "running" v `shouldBe` Just (Bool False)
             field "sessionGen" v `shouldBe` Just (Number 0)
 
-        it "the kernel_status object carries exactly the three documented keys" $ do
+        it "reports a compiling axis, false at rest" $ do
+            v <- statusWith False 3
+            field "compiling" v `shouldBe` Just (Bool False)
+
+        it "compiling axis is independent of running — raised by off-lock builds" $ do
+            app <- newApp "." Set.empty Nothing Nothing []
+            setBuilding app True
+            v <- toolOutcomeValue <$> execKernelStatus app
+            field "compiling" v `shouldBe` Just (Bool True)
+            field "running" v `shouldBe` Just (Bool False)
+
+        it "the kernel_status object carries exactly the four documented keys" $ do
             v <- statusWith True 1
             v
                 `shouldBe` object
                     [ "kernel" .= ("alive" :: Text)
                     , "running" .= True
+                    , "compiling" .= False
                     , "sessionGen" .= (1 :: Int)
                     ]
   where

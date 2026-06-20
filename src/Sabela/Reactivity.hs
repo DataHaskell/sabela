@@ -3,6 +3,7 @@
 module Sabela.Reactivity (
     ExecutionPlan (..),
     cellStale,
+    runAllNeedsRun,
     computeExecutionPlan,
     markDependentsDirty,
     markAllInterpretedDirty,
@@ -59,6 +60,19 @@ computeFullExecutionPlan = computePlanCore Nothing
 -- | Stale = edited since its last run, or its last run errored.
 cellStale :: Cell -> Bool
 cellStale c = cellDirty c || isJust (cellError c)
+
+{- | Whether a run-all must actually execute. It is a no-op when a session
+build/restart is already in flight (so repeated run-all clicks can't stack
+restarts and back the kernel up) or when the session is ready and no cell is
+stale (the notebook is already current). A not-ready session always runs (it
+needs the cold-start). Keeps an accidental double-press from re-executing an
+unchanged notebook.
+-}
+runAllNeedsRun :: Bool -> Bool -> [Cell] -> Notebook -> Bool
+runAllNeedsRun building ready allCode nb
+    | building = False
+    | not ready = True
+    | otherwise = not (null (epCellsToRun (computeStaleExecutionPlan allCode nb)))
 
 {- | Plan for an incremental run-all: only stale cells and their
 transitive dependents run, in dependency order; clean cells keep their

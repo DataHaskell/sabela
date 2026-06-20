@@ -38,7 +38,7 @@ import Sabela.Model (
     OutputItem (..),
  )
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), clearCompiledModules)
+import Sabela.State (App (..), clearCompiledModules, withBuilding)
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.SessionManager (getHaskellSession)
 import qualified Sabela.Topo as Topo
@@ -93,7 +93,7 @@ compileChanged ::
     M.Map Text Text ->
     S.Set Text ->
     IO CompileOutcome
-compileChanged app gen backend cplan affectedCells changed orphans = do
+compileChanged app gen backend cplan affectedCells changed orphans = withBuilding app $ do
     let projDir = envTmpDir (appEnv app) </> "repl-project"
     forM_ (M.toList changed) $ \(name, src) -> do
         let path = projDir </> moduleFilePath name

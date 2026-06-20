@@ -13,6 +13,7 @@ module Sabela.Handlers.Plan (
     executeSingleCell,
     executeFullRestart,
     executeRunAll,
+    isSessionUpToDate,
 
     -- * Sub-pieces (exposed for the entry-points module and tests)
     rerunBridgeCells,

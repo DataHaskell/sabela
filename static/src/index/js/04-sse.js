@@ -46,7 +46,7 @@ function handleSSE(ev) {
       clearPartialOutput(ev.cellId);
       const cEl = document.querySelector(`.cell[data-id="${ev.cellId}"]`);
       if (cEl) cEl.classList.add('compiling');
-      setStatus(`Compiling cell ${ev.cellId}...`, 'running');
+      setStatus(`Compiling cell ${ev.cellId}...`, 'compiling');
       break;
     }
     case 'cellPartialOutput':
@@ -82,9 +82,10 @@ function handleSSE(ev) {
         .forEach((el) => el.classList.remove('running'));
       updateStopButton();
       break;
-    case 'sessionStatus':
-      setStatus(ev.message, 'running');
-      if (ev.message === 'starting session' || ev.message.startsWith('installing:')) {
+    case 'sessionStatus': {
+      const building = ev.message === 'starting session' || ev.message.startsWith('installing:');
+      setStatus(ev.message, building ? 'compiling' : 'running');
+      if (building) {
         openBuildModal('Building…');
       } else if (ev.message === 'ready') {
         hideCrashBanner();
@@ -102,6 +103,7 @@ function handleSSE(ev) {
         t.className = 'build-modal-title err';
       }
       break;
+    }
     case 'installLog':
       appendBuildLog(ev.line);
       break;

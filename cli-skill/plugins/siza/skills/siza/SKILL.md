@@ -12,6 +12,8 @@ The user has a Sabela notebook open in their browser. You are pairing with them:
 
 **Every notebook operation goes through `${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh`.** Do not `curl` `/api/cell/*`, `/api/load`, `/api/notebook`, or any non-`/api/ai/*` endpoint, and do not `ps aux` looking for the server. Raw endpoints bypass the AI bridge: they skip the browser-refresh broadcast, skip optimistic-concurrency checks on cell hashes, and skip large-output handle stashing. If `siza-tool.sh` doesn't expose what you need, tell the user — don't reach around it. **One sanctioned exception:** setting widget state (slider/dropdown/lasso) via `POST /api/widget`, since siza has no widget-set tool — see [Driving widgets](#driving-widgets) below. It still needs user sign-off before you `curl` it.
 
+**Never edit the notebook's `.md` file directly with file tools (Write/Edit/sed).** The live session the user is looking at is the source of truth; editing the file on disk diverges from it, skips validation (the cell never runs), and skips the browser broadcast. Make every cell change through siza (`insert_cell`/`replace_cell_source`/`delete_cell`) so it is applied, auto-run, and visible. Saving the session back to disk is the user's action in the browser, not a file you write.
+
 ## Discovery
 
 ```bash
@@ -58,6 +60,54 @@ ${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh insert_cell \
 # 6. Read execution.ok in the response. If false, fix in place with replace_cell_source
 #    using the hash returned by insert_cell — never delete + re-insert.
 ```
+
+## Always write clear, notebook-friendly code
+
+A notebook is a document a human reads top to bottom, not a script. Every cell you
+write or edit must be legible on its own. This is not optional polish; dense,
+mixed-concern cells make the notebook hostile to read.
+
+- **Separate logic from display.** Pure computation (parsing, aggregation, models,
+  ranking) goes in its own cells; rendering (tables, charts, `displayMarkdown`,
+  widgets) goes in separate cells that call it. A cell that mixes a dense fold with the
+  SVG that draws it is unreadable. This mirrors the library-vs-view split.
+- **One concept per cell.** Split a long cell that does several things into focused
+  cells, each with a single responsibility and a one-line prose lead-in saying what
+  question it answers. Never paste a whole subsystem into one cell.
+- **Readable, modular code.** Name things for what they are (`pathsBefore`, `growthFor`),
+  not `rp'`/`mb'`/`gp`/`ks`. Extract helpers and a type alias or two; do not cram nested
+  logic into one expression the reader must hold in their head. A short top-level comment
+  states intent.
+- **Top-level bindings, not `do let`.** Write a cell's values as top-level definitions
+  (`totalDelta = pTotal new - pTotal base`, `topRegressors = take 12 regressors`), not
+  stuffed into a `do let … ` block. A `do let` forces every binding into one indented wall
+  and pushes you to keep cramming; flat top-level bindings each stand alone and read in
+  order. Reserve a trailing `do` for the actual effects (the `display*`/`showTable` calls).
+  Top-level names are global (reactivity-tracked, can't collide across cells), so name them
+  descriptively — never generic `top`/`lead`/`nm`.
+- **Shallow `where`/`let`.** Keep local bindings to one level of nesting and at most three
+  per clause. The moment a `where` grows a nested `let` (a second level) or a fourth
+  binding, lift that inner computation to its own top-level (or `-- compile`) helper,
+  parameterised over what it needs. Deeply nested local scopes are the hardest notebook
+  code to read.
+- **Narrate.** Put prose between cells that makes a claim the next cell substantiates.
+  Hide setup (parsers, helpers) under a collapsed "Setup" heading; surface the results.
+- **Keep heavy work off the default path.** A cell that walks a large structure and is
+  slow should not run on every load: gate it behind an on-demand helper (`drill "name"`)
+  or compute only what the visible result needs.
+- **Compile heavy pure logic.** A tree walk or fold over a large structure in an
+  *interpreted* cell can exceed the cell timeout and wedge the kernel. Put pure heavy
+  functions in a `-- compile:` cell (native `-O2`) and call them from interpreted cells.
+  A pure function can be compiled even when its arguments are interpreted runtime values:
+  parameterise it over those values instead of closing over them (e.g. take `before`,
+  `after` as `Prof` arguments rather than referencing the interpreted `base`/`new`).
+  internal steps silently; it doesn't call them out as special sections. Drop headings like
+  "Ruling out the false leads — renames" or "Excluding the pseudo-centres": the technique is
+  built in, so describe what the reader sees in the result, not the implementation's
+  housekeeping. Prose narrates findings, not the algorithm's defensive steps.
+- **Prose style.** Plain and detached, in the user's voice. No em dashes (use a colon or
+  parens instead). No marketing or sales tone. No "X, not Y" / "rather than" contrasts.
+  Headings are informative and gentle, not reveals ("What grew", not "The answer").
 
 ## Which mutation tool?
 
@@ -150,10 +200,12 @@ There is **one** GHCi kernel per notebook behind a single run-lock with no admis
 
 - **NEVER run `execute_cell` (or any mutation) concurrently.** Issue one, wait for its response, then the next. In-flight requests queue **server-side**; the client `curl` gives up at 60 s but the **server keeps processing the backlog**, so the queue outlives every timeout.
 - **A timeout is not a failure and not a cancel.** When `execute_cell` returns a `curl` timeout, the cell is very likely still running (a cold `-O2` compile or a >60 s computation easily exceeds the curl ceiling). **STOP. DO NOT retry** — each retry adds another job to the queue and makes the wedge worse. Wait for the kernel to drain by polling the **lock-free** endpoints (`kernel_status`, `siza-tool.sh list_cells`, or `/api/ai/health`); they answer even while a cell holds the lock, which is how you tell "busy" from "wedged".
-- **Never attribute warm-up to the cell — the #1 way to measure wrong.** The *first* `execute_cell` after a (re)start, a `-- compile:` edit, or a `-- cabal:` edit blocks on the kernel cold-start **and** the `-O2` project compile (often 1–3 min) *before your cell even runs*, so its elapsed time is startup, not the cell. Do **not** benchmark or judge a cell from a cold call, and do not call a one-line cell "slow" because the first run took 130 s. **Warm the kernel first:** run a trivial cell (or poll `kernel_status` until `{kernel: alive, running: false}` with a *stable* `sessionGen`), *then* time the cell you care about. If you must drive cells programmatically, warm once and measure second — never measure the warm-up.
+- **Never attribute warm-up to the cell — the #1 way to measure wrong.** The *first* `execute_cell` after a (re)start, a `-- compile:` edit, or a `-- cabal:` edit blocks on the kernel cold-start **and** the `-O2` project compile (often 1–3 min) *before your cell even runs*, so its elapsed time is startup, not the cell. Do **not** benchmark or judge a cell from a cold call, and do not call a one-line cell "slow" because the first run took 130 s. **Warm the kernel first:** run a trivial cell (or poll `kernel_status` until `{kernel: alive, running: false, compiling: false}` with a *stable* `sessionGen` — `compiling: true` means it is still building, so `running: false` alone is not idle), *then* time the cell you care about. If you must drive cells programmatically, warm once and measure second — never measure the warm-up.
 - **Beware the Bash auto-background trap.** Long-running commands get auto-backgrounded, so an impatient retry of a slow loop (e.g. a per-cell read/sync loop) launches a *second concurrent* loop — several pile up and flood the queue. Killing the client (`pkill`/`Ctrl-C`) does **NOT** cancel the server-side work already queued. **Never retry a backgrounded siza loop** — let the first finish.
 - **Heavy exploration goes in the `scratchpad`,** never a long `execute_cell` against the live kernel — a blocking or long cell wedges the *whole* notebook for the user too.
-- **Recovery tools exist over the bridge:** `kernel_status` (lock-free — `{kernel: alive|absent, running, sessionGen}`), `interrupt`, `kernel_restart`, `export_notebook`. Use `kernel_status` to tell *warming/busy* from *wedged*; `interrupt` clears a runaway cell; `kernel_restart` gives a fresh kernel. If the kernel stays unresponsive **after** `kernel_restart`, only a **server-process restart by the user** recovers it (a fresh server also resets the cell timeout, configurable via `SABELA_CELL_TIMEOUT_SECONDS`).
+- **Recovery tools exist over the bridge:** `kernel_status` (lock-free — `{kernel: alive|absent, running, compiling, sessionGen}`), `interrupt`, `kernel_restart`, `export_notebook`. Use `kernel_status` to tell *warming/busy* from *wedged*; `interrupt` clears a runaway cell; `kernel_restart` gives a fresh kernel. If the kernel stays unresponsive **after** `kernel_restart`, only a **server-process restart by the user** recovers it (a fresh server also resets the cell timeout, configurable via `SABELA_CELL_TIMEOUT_SECONDS`).
+- **`running` and `compiling` are two separate axes — read both.** `running` is the run-lock (a cell or query executing); `compiling` is off-lock build work: a cabal-env install, a cold-start GHCi spawn, or a `-- compile:` module build. **`running: false` does NOT mean idle.** A cold start or a compile shows `{running: false, compiling: true}` for 1–3 min while a slow `execute_cell` appears to "hang" — that is the kernel *building*, not wedged: keep polling, do not retry or restart. Only `{running: false, compiling: false}` with a stable `sessionGen` is genuinely idle. A call that never returns while **both** are false (and `sessionGen` is unchanged) is the real wedge.
+- **Editing a `-- compile` cell wipes the whole interpreted context.** The recompile does a `:load` that clears *every* prompt binding (not just the edited module's dependents) — `base`, the analysis bindings, the chart helpers, all of it. After it, re-warm the interpreted chain **in notebook order** (params → load → analysis → helpers → displays), not just the cells the flags mark dirty: running them out of order gives transient `Variable not in scope` (a helper that references a not-yet-loaded binding), and the dependency tracker re-dirties downstream on each out-of-order run. A browser **Run All** is the clean re-warm. So batch `-- compile` edits, and verify a compiled-fn change by *timing it in a scratch cell* (the recompile wipe means a downstream `execute_cell` can also be measuring cold re-warm, not the function).
 
 ### After a `-- cabal:` change or a restart
 

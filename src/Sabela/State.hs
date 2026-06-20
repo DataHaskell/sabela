@@ -4,6 +4,8 @@ module Sabela.State (
     App (..),
     newApp,
     clearCompiledModules,
+    setBuilding,
+    withBuilding,
     getAIStore,
     setAIStore,
     configureAI,
@@ -30,6 +32,7 @@ import Control.Concurrent.MVar (
     newMVar,
     readMVar,
  )
+import Control.Exception (bracket_)
 import Data.Aeson (Value (..), eitherDecodeStrict, encode, object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
@@ -89,11 +92,28 @@ data App = App
     {- ^ Per-session handle stores for external CLI clients, keyed by
     the @X-Sabela-Session@ header. Created lazily on first request.
     -}
+    , appBuilding :: IORef Bool
+    {- ^ True while the kernel is doing off-lock build work — installing a
+    cabal env, spawning/cold-starting GHCi, or compiling a @-- compile@
+    module. Distinct from the run-lock @running@ axis so a driver can tell a
+    cold start from a hung cell ('kernel_status' surfaces it as @compiling@).
+    -}
     }
 
 -- | Forget which compiled modules the live session has loaded.
 clearCompiledModules :: App -> IO ()
 clearCompiledModules app = writeIORef (appCompiledModules app) M.empty
+
+-- | Flip the off-lock build flag (see 'appBuilding').
+setBuilding :: App -> Bool -> IO ()
+setBuilding app = writeIORef (appBuilding app)
+
+{- | Run an action with the build flag raised, lowering it again even on
+exception. Wrap cabal-env installs, cold starts, and @-- compile@ builds so
+'kernel_status' reports @compiling@ while they run.
+-}
+withBuilding :: App -> IO a -> IO a
+withBuilding app = bracket_ (setBuilding app True) (setBuilding app False)
 
 -- | Read the current AI store (if configured).
 getAIStore :: App -> IO (Maybe AIStore)
@@ -228,6 +248,7 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
         <*> pure mHttpMgr
         <*> pure mAiToken
         <*> pure cliSessionsVar
+        <*> newIORef False
 
 -- | Resolve API key + saved model. Env ANTHROPIC_API_KEY wins for the key.
 resolveConfig :: FilePath -> IO (Maybe String, Maybe Text)

@@ -39,6 +39,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
+import Data.IORef (readIORef)
 import qualified Sabela.AI.Store as AI
 import qualified Sabela.AI.Types as AI
 import qualified Sabela.Anthropic.Types as AI (cancel)
@@ -57,6 +58,7 @@ import Sabela.Handlers.Plan (
     executeFullRestart,
     executeRunAll,
     executeSingleCell,
+    isSessionUpToDate,
  )
 import Sabela.Handlers.Shared
 import Sabela.Model (
@@ -67,7 +69,12 @@ import Sabela.Model (
     SessionStatus (..),
     cellLangOf,
  )
-import Sabela.Reactivity (cellStale, markDependentsDirty)
+import Sabela.Reactivity (
+    cellStale,
+    haskellCodeCells,
+    markDependentsDirty,
+    runAllNeedsRun,
+ )
 import Sabela.State (App (..), getAIStore)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import ScriptHs.Parser (CabalMeta (..))
@@ -168,8 +175,17 @@ handleRunCell app cid = do
 handleRunAll :: App -> IO ()
 handleRunAll app = do
     debugLog app "[handler] handleRunAll"
-    gen <- bumpGeneration app
-    void $ forkIO $ executeRunAll app gen
+    nb <- readNotebook (appNotebook app)
+    building <- readIORef (appBuilding app)
+    ready <- isSessionUpToDate app nb
+    if not (runAllNeedsRun building ready (haskellCodeCells nb) nb)
+        then
+            debugLog
+                app
+                "[handler] handleRunAll: nothing to run (clean, or a build is in flight); skipping"
+        else do
+            gen <- bumpGeneration app
+            void $ forkIO $ executeRunAll app gen
 
 handleReset :: App -> IO ()
 handleReset app = do

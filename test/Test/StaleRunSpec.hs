@@ -12,6 +12,8 @@ import Sabela.Reactivity (
     ExecutionPlan (..),
     cellStale,
     computeStaleExecutionPlan,
+    haskellCodeCells,
+    runAllNeedsRun,
  )
 import Test.Hspec
 import Test.TopoSpec.Helpers (mkCell)
@@ -70,6 +72,18 @@ spec = do
                 , mkCell 2 "z = x + y"
                 ]
                 `shouldBe` [0, 1, 2]
+
+    describe "runAllNeedsRun (idempotent run-all)" $ do
+        let needs building ready cells =
+                runAllNeedsRun building ready (haskellCodeCells (nbOf cells)) (nbOf cells)
+        it "skips when a build/restart is already in flight (no restart thrash)" $
+            needs True False [dirty (mkCell 0 "x = 1")] `shouldBe` False
+        it "runs when the session is not ready (cold start needed)" $
+            needs False False [mkCell 0 "x = 1"] `shouldBe` True
+        it "skips a ready session with no stale cell (unchanged notebook)" $
+            needs False True [mkCell 0 "x = 1", mkCell 1 "y = x + 1"] `shouldBe` False
+        it "runs a ready session that has a stale cell" $
+            needs False True [dirty (mkCell 0 "x = 1")] `shouldBe` True
 
     describe "updateCellSource" $ do
         it "keeps a cell clean when the source is unchanged" $ do

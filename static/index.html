@@ -482,6 +482,9 @@ body::before {
 .status.running {
   color: var(--yellow);
 }
+.status.compiling {
+  color: var(--mauve);
+}
 .status.error {
   color: var(--red);
 }
@@ -3128,7 +3131,9 @@ function setStatus(text, cls) {
   const el = document.getElementById('status');
   el.textContent = text;
   el.className = 'status ' + (cls || '');
-  if (!cls || cls !== 'running')
+  // 'running' and 'compiling' are in-progress signals: leave them up until a
+  // later event replaces them. Everything else self-clears.
+  if (cls !== 'running' && cls !== 'compiling')
     setTimeout(() => {
       if (el.textContent === text) el.textContent = '';
     }, 4000);
@@ -3235,7 +3240,7 @@ function handleSSE(ev) {
       clearPartialOutput(ev.cellId);
       const cEl = document.querySelector(`.cell[data-id="${ev.cellId}"]`);
       if (cEl) cEl.classList.add('compiling');
-      setStatus(`Compiling cell ${ev.cellId}...`, 'running');
+      setStatus(`Compiling cell ${ev.cellId}...`, 'compiling');
       break;
     }
     case 'cellPartialOutput':
@@ -3271,9 +3276,10 @@ function handleSSE(ev) {
         .forEach((el) => el.classList.remove('running'));
       updateStopButton();
       break;
-    case 'sessionStatus':
-      setStatus(ev.message, 'running');
-      if (ev.message === 'starting session' || ev.message.startsWith('installing:')) {
+    case 'sessionStatus': {
+      const building = ev.message === 'starting session' || ev.message.startsWith('installing:');
+      setStatus(ev.message, building ? 'compiling' : 'running');
+      if (building) {
         openBuildModal('Building…');
       } else if (ev.message === 'ready') {
         hideCrashBanner();
@@ -3291,6 +3297,7 @@ function handleSSE(ev) {
         t.className = 'build-modal-title err';
       }
       break;
+    }
     case 'installLog':
       appendBuildLog(ev.line);
       break;
@@ -5154,6 +5161,29 @@ function renderCodeCell(cell, cellNum) {
     editors[cell.cellId] = cm;
   });
   return div;
+}
+
+function toggleCellCollapse(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  const btn = el.querySelector('.collapse-btn');
+  const setBtnIcon = (id) => {
+    if (btn) btn.innerHTML = `<svg class="icon-svg small"><use href="#${id}"/></svg>`;
+  };
+  if (collapsedCells.has(cellId)) {
+    collapsedCells.delete(cellId);
+    el.classList.remove('collapsed');
+    setBtnIcon('i-chev-down');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    // A CodeMirror mounted while its .cell-editor was display:none lays out at
+    // 0 height; refresh on reveal or the expanded cell looks blank.
+    if (editors[cellId]) requestAnimationFrame(() => editors[cellId].refresh());
+  } else {
+    collapsedCells.add(cellId);
+    el.classList.add('collapsed');
+    setBtnIcon('i-chev-right');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
 }
 
 // Directory of the currently open notebook (relative to the work dir).

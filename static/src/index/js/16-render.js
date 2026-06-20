@@ -175,4 +175,27 @@ function renderCodeCell(cell, cellNum) {
   return div;
 }
 
+function toggleCellCollapse(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  const btn = el.querySelector('.collapse-btn');
+  const setBtnIcon = (id) => {
+    if (btn) btn.innerHTML = `<svg class="icon-svg small"><use href="#${id}"/></svg>`;
+  };
+  if (collapsedCells.has(cellId)) {
+    collapsedCells.delete(cellId);
+    el.classList.remove('collapsed');
+    setBtnIcon('i-chev-down');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    // A CodeMirror mounted while its .cell-editor was display:none lays out at
+    // 0 height; refresh on reveal or the expanded cell looks blank.
+    if (editors[cellId]) requestAnimationFrame(() => editors[cellId].refresh());
+  } else {
+    collapsedCells.add(cellId);
+    el.classList.add('collapsed');
+    setBtnIcon('i-chev-right');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
 // Directory of the currently open notebook (relative to the work dir).
