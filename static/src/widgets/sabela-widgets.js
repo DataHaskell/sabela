@@ -40,7 +40,10 @@ window.addEventListener('message', function (e) {
   var c = _sabelaControls[d.name];
   if (!c) return;
   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
-  else c.el.value = d.value;
+  else {
+    c.el.value = d.value;
+    if (c.el._sabelaFit) c.el._sabelaFit();
+  }
 });
 
 function sabelaSlider(cfg) {
@@ -84,9 +87,16 @@ function sabelaTextInput(cfg) {
   var el = document.createElement('input');
   el.type = 'text';
   el.value = cfg.value;
+  // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+  var fit = function () {
+    el.size = Math.max(10, Math.min(80, el.value.length + 1));
+  };
+  fit();
   el.addEventListener('input', function () {
+    fit();
     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
   });
+  el._sabelaFit = fit;
   _sabelaMount(cfg, el, 'text');
 }
 

@@ -230,6 +230,7 @@ test-suite sabela-test
                       Test.AdmissionSpec,
                       Test.MarkerSpec,
                       Test.RenderSpec,
+                      Test.ReplProjectSpec,
                       Test.ExportGoldenSpec,
                       Test.ConfigurableTimeoutSpec,
                       Test.InterruptTimestampFilterSpec,

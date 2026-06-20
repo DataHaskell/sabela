@@ -34,6 +34,7 @@ import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.RenderSpec as RenderSpec
+import qualified Test.ReplProjectSpec as ReplProjectSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
 import qualified Test.SessionGenSpec as SessionGenSpec
 import qualified Test.SessionLiveSpec as SessionLiveSpec
@@ -94,6 +95,7 @@ main = do
         AdmissionSpec.spec
         MarkerSpec.spec
         RenderSpec.spec
+        ReplProjectSpec.spec
         ExportGoldenSpec.spec
         ConfigurableTimeoutSpec.spec
         InterruptTimestampFilterSpec.spec
