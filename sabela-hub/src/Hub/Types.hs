@@ -188,6 +188,11 @@ data HubConfig = HubConfig
     , hcTaskConfig :: TaskConfig
     , hcDockerConfig :: DockerConfig
     , hcIdleTimeout :: NominalDiffTime
+    , hcCliTokenTtl :: NominalDiffTime
+    {- ^ Lifetime of a @siza login@ CLI token (@HUB_CLI_TOKEN_TTL_MIN@,
+    default 8h). The token is bound to the approving browser session and
+    dies with it; this caps it independently so a stale token can't linger.
+    -}
     , hcBackendPort :: Int
     , hcGoogleClientId :: Text
     , hcGoogleClientSecret :: Text

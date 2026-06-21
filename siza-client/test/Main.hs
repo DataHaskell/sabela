@@ -2,6 +2,7 @@ module Main (main) where
 
 import Test.CrossSeamSpec (crossSeamSpec)
 import Test.Hspec
+import Test.HubTokenSpec (hubTokenSpec)
 import Test.LanguageSpec (
     annotateSpec,
     contractSpec,
@@ -9,6 +10,7 @@ import Test.LanguageSpec (
     securitySpec,
  )
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
+import Test.TransportSpec (transportSpec)
 
 main :: IO ()
 main = hspec $ do
@@ -20,3 +22,5 @@ main = hspec $ do
     chainSpec
     retroSpec
     crossSeamSpec
+    transportSpec
+    hubTokenSpec

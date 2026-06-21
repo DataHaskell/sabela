@@ -17,6 +17,7 @@ loadConfig = do
     port <- envInt "HUB_PORT" 8080
     backendPort <- envInt "HUB_BACKEND_PORT" 3000
     idleMin <- envInt "HUB_IDLE_TIMEOUT_MIN" 30
+    cliTokenMin <- envInt "HUB_CLI_TOKEN_TTL_MIN" 480
     cluster <- envText "HUB_ECS_CLUSTER" "sabela"
     taskDef <- envText "HUB_ECS_TASK_DEF" "sabela"
     subnets <- envText "HUB_ECS_SUBNETS" ""
@@ -48,6 +49,7 @@ loadConfig = do
                     }
             , hcDockerConfig = dockerCfg
             , hcIdleTimeout = fromIntegral (idleMin * 60 :: Int)
+            , hcCliTokenTtl = fromIntegral (cliTokenMin * 60 :: Int)
             , hcBackendPort = backendPort
             , hcGoogleClientId = clientId
             , hcGoogleClientSecret = clientSecret

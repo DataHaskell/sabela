@@ -69,6 +69,7 @@ testConfig =
                 , dcNamePrefix = "sabela-user-"
                 }
         , hcIdleTimeout = 1800
+        , hcCliTokenTtl = 28800
         , hcBackendPort = 3000
         , hcGoogleClientId = "test-client-id"
         , hcGoogleClientSecret = "test-client-secret"

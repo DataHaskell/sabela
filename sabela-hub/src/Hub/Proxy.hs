@@ -25,6 +25,15 @@ import Hub.Auth (
     logoutResponse,
     requireSession,
  )
+import Hub.CliAuth (
+    CliAuth,
+    cliAuthPage,
+    handleCliApprove,
+    handleCliPoll,
+    handleCliStart,
+    newCliAuth,
+    resolveCliToken,
+ )
 import Hub.Fork (serveFork)
 import Hub.Gallery (GalleryStore)
 import Hub.Gallery.Public (
@@ -65,7 +74,8 @@ hubApp ::
     IO Application
 hubApp sm store users gallery mgr = do
     states <- newTVarIO Map.empty
-    pure $ hubApp' sm store users gallery mgr states
+    cliAuth <- newCliAuth (smConfig sm)
+    pure $ hubApp' sm store users gallery mgr states cliAuth
 
 {- | Top-level routing. Static-share, public-gallery, and admin routes match
 first on the split 'pathInfo'; everything else (auth, health, the authed proxy,
@@ -78,10 +88,21 @@ hubApp' ::
     GalleryStore ->
     HC.Manager ->
     PendingStates ->
+    CliAuth ->
     Application
-hubApp' sm store users gallery mgr states req respond =
+hubApp' sm store users gallery mgr states cliAuth req respond =
     case pathInfo req of
         ["s", slug] -> serveShare store slug respond
+        -- siza CLI device-authorization flow.
+        ["_hub", "cli-auth"] -> cliAuthPage cliAuth req respond
+        ["_hub", "cli-auth", "start"]
+            | requestMethod req == methodPost -> handleCliStart cliAuth req respond
+        ["_hub", "cli-auth", "poll"]
+            | requestMethod req == methodPost -> handleCliPoll cliAuth req respond
+        ["_hub", "cli-auth", "approve"]
+            | requestMethod req == methodPost ->
+                requireSession sm req respond $ \_ ->
+                    handleCliApprove cliAuth req respond
         -- Cacheable static assets (no auth): the in-browser WASM runtime.
         ["_hub", "assets", name] ->
             serveAsset (T.unpack (hcAssetsDir cfg)) name respond
@@ -112,7 +133,7 @@ hubApp' sm store users gallery mgr states req respond =
             | requestMethod req == methodDelete ->
                 requireSession sm req respond $ \sess ->
                     handleDeleteShare store sess slug respond
-        _ -> hubDispatch sm store gallery mgr states req respond
+        _ -> hubDispatch sm store gallery mgr states cliAuth req respond
   where
     cfg = smConfig sm
     -- The page must not be enumerable: an authed non-admin (or anyone) falls to
@@ -164,14 +185,27 @@ requireAdminPage ::
 requireAdminPage sm users req respond k =
     requireAdmin sm users req (const (respond loginPage)) (const k)
 
+{- | Resolve a request to its session: the @_sabela_session@ cookie first, then
+a @siza login@ CLI token presented as @Authorization: Bearer@. The cookie wins
+when both are present, so a browser tab is never affected by a stale token.
+-}
+resolveSession :: SessionManager -> CliAuth -> Request -> IO (Maybe Session)
+resolveSession sm cliAuth req =
+    case extractSessionId req of
+        Just sid -> lookupBySessionId sm sid
+        Nothing -> do
+            mSid <- resolveCliToken cliAuth req
+            maybe (pure Nothing) (lookupBySessionId sm) mSid
+
 hubDispatch ::
     SessionManager ->
     ShareStore ->
     GalleryStore ->
     HC.Manager ->
     PendingStates ->
+    CliAuth ->
     Application
-hubDispatch sm store gallery mgr states req respond =
+hubDispatch sm store gallery mgr states cliAuth req respond =
     let path = rawPathInfo req
         cfg = smConfig sm
      in case path of
@@ -183,20 +217,17 @@ hubDispatch sm store gallery mgr states req respond =
                 handleOAuthCallback sm mgr states cfg req respond
             "/_hub/logout" ->
                 respond (logoutResponse req)
-            _ ->
-                case extractSessionId req of
+            _ -> do
+                mSess <- resolveSession sm cliAuth req
+                case mSess of
                     Nothing -> anonymous
-                    Just sid -> do
-                        mSess <- lookupBySessionId sm sid
-                        case mSess of
-                            Nothing -> anonymous
-                            Just sess ->
-                                case sessionState sess of
-                                    SReady ip ->
-                                        proxyWithRetry mgr (hcBackendPort cfg) ip req respond
-                                    SStarting ->
-                                        respond startingPage
-                                    SStopping -> anonymous
+                    Just sess ->
+                        case sessionState sess of
+                            SReady ip ->
+                                proxyWithRetry mgr (hcBackendPort cfg) ip req respond
+                            SStarting ->
+                                respond startingPage
+                            SStopping -> anonymous
   where
     -- The gallery is the public homepage: an anonymous root request renders it;
     -- any other unmatched anonymous path keeps the login page (scope the gallery

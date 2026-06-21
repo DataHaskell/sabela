@@ -72,6 +72,18 @@ spec =
             LC8.unpack (simpleBody resp)
                 `shouldSatisfy` isInfixOf "github.com/DataHaskell/sabela"
 
+        it "serves /gallery for a logged-in user (not the proxied notebook)" $ do
+            app <- makeAppSess
+            let req =
+                    (setPath defaultRequest "/gallery")
+                        { requestHeaders = [("Cookie", "_sabela_session=usersid")]
+                        }
+            resp <- runSession (request req) app
+            simpleStatus resp `shouldBe` status200
+            LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "/_hub/login"
+            LC8.unpack (simpleBody resp)
+                `shouldNotSatisfy` isInfixOf "Starting your notebook environment"
+
         it "405s an admin route method mismatch (not a proxied 200)" $ do
             app <- makeApp
             resp <- runSession (request (setPath defaultRequest "/_hub/admin/feature")) app

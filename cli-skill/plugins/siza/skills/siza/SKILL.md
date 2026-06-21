@@ -27,7 +27,20 @@ ${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza annotate <cell_id> [--source]   #
 ${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza await-idle [SECONDS]   # block until the kernel settles to idle (re-loops past timedOut)
 ```
 
-`siza discover` lists each `~/.local/state/sabela/servers/<port>.json` that responds to `/api/ai/health`. Every subcommand reads the same env vars, so you don't pass URLs around: `SABELA_URL` short-circuits discovery; `SABELA_AI_TOKEN` is the bearer token when `authRequired: true`; `SABELA_SESSION` is the `X-Sabela-Session` header (defaults to a per-terminal id; isolates `explore_result` handles between clients). `$SIZA_BIN` overrides where the shim finds the binary; otherwise it resolves `cabal list-bin exe:siza` from the repo root (build it once with `cabal build exe:siza`).
+`siza discover` lists each `~/.local/state/sabela/servers/<port>.json` that responds to `/api/ai/health`. Every subcommand reads the same env vars, so you don't pass URLs around: `SABELA_URL` short-circuits discovery; `SABELA_AI_TOKEN` is the bearer token when `authRequired: true`; `SABELA_SESSION` is the `X-Sabela-Session` header (defaults to a per-terminal id; isolates `explore_result` handles between clients). For an online notebook behind the hub, `siza login` handles auth — see [Hub-hosted notebooks](#hub-hosted-notebooks). `$SIZA_BIN` overrides where the shim finds the binary; otherwise it resolves `cabal list-bin exe:siza` from the repo root (build it once with `cabal build exe:siza`).
+
+### Hub-hosted notebooks
+
+To drive a notebook running online behind the hub (e.g. `https://sabela.datahaskell.com`) instead of `localhost:3000`, run `siza login` once. It opens the hub's authorize page in the browser; the user (already signed into the hub there) clicks **Approve**, and the hub mints a **short-lived token** bound to that browser session. siza saves it locally and sends it as the bearer on every `/api/ai/*` call. The hub recognises the token at its boundary and strips `Authorization` before forwarding, so the backend stays no-auth.
+
+```bash
+export SABELA_URL="https://sabela.datahaskell.com"
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza login        # browser-approved; saves a short-lived token
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza tool list_cells
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza logout       # forget the saved token
+```
+
+`siza login [HUB_URL]` defaults the URL to `$SABELA_URL`. Setting `SABELA_URL` also makes `discover` probe the hub directly (the local registry is empty for online notebooks), and `newConn` auto-attaches the saved token whenever it targets that hub. `X-Sabela-Session` is **not** stripped by the proxy, so per-terminal session isolation still works through the hub. The non-localhost warning on stderr is expected here. The token expires on its own (hub `HUB_CLI_TOKEN_TTL_MIN`, default 8h) and dies with the browser session it was approved from — when calls start returning the login redirect or siza prints `saved hub token expired`, run `siza login` again.
 
 For `siza tool`, `<json_input>` defaults to `{}` if omitted. Output is pretty JSON on stdout. Exit code is non-zero when the tool returns `isError: true`. Pass `--strict` to a mutating `tool` (or to `check`) to **block** on a denied capability instead of only advising.
 

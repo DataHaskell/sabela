@@ -36,13 +36,16 @@ import Network.HTTP.Client.TLS (newTlsManager)
 import Network.HTTP.Types.Header (Header)
 import Sabela.AI.Capabilities.ToolName (ToolName, toolWireName)
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.HubToken (TokenStatus (..), statusForUrl)
 import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
 
 -- | Process-level configuration read once from the environment.
 data Env = Env
     { envSabelaUrl :: Maybe Text
     , envToken :: Maybe Text
     , envSession :: Text
+    , envCookie :: Maybe Text
     }
     deriving (Show)
 
@@ -52,25 +55,59 @@ data Conn = Conn
     , connEnv :: Env
     }
 
-{- | Read @SABELA_URL@/@SABELA_AI_TOKEN@/@SABELA_SESSION@ exactly as the
-bash scripts did; the session defaults to a stable per-terminal id.
+{- | Read @SABELA_URL@/@SABELA_AI_TOKEN@/@SABELA_SESSION@/@SABELA_COOKIE@.
+The session defaults to a stable per-terminal id. @SABELA_COOKIE@ carries the
+hub's @_sabela_session@ OAuth cookie for driving a notebook hosted behind the
+hub (e.g. sabela.datahaskell.com), where the bearer token never reaches the
+backend.
 -}
 resolveEnv :: IO Env
 resolveEnv = do
     murl <- nonEmpty <$> lookupEnv "SABELA_URL"
     mtok <- nonEmpty <$> lookupEnv "SABELA_AI_TOKEN"
     msess <- nonEmpty <$> lookupEnv "SABELA_SESSION"
+    mcookie <- nonEmpty <$> lookupEnv "SABELA_COOKIE"
     hostName <- fromMaybe "host" . nonEmpty <$> lookupEnv "HOSTNAME"
     ppid <- fromMaybe "0" . nonEmpty <$> lookupEnv "PPID"
     let session = fromMaybe ("siza-" <> hostName <> "-" <> ppid) msess
-    pure Env{envSabelaUrl = murl, envToken = mtok, envSession = session}
+    pure
+        Env
+            { envSabelaUrl = murl
+            , envToken = mtok
+            , envSession = session
+            , envCookie = mcookie
+            }
   where
     nonEmpty = fmap T.pack . (>>= \s -> if null s then Nothing else Just s)
 
 newConn :: IO Conn
-newConn = Conn <$> newTlsManager <*> resolveEnv
+newConn = do
+    mgr <- newTlsManager
+    env <- resolveEnv >>= attachHubToken
+    pure (Conn mgr env)
 
--- | Common request headers: content type, session, and optional bearer token.
+{- | Attach a saved @siza login@ token as the bearer when the target is a hub
+('SABELA_URL') and no explicit 'SABELA_AI_TOKEN' was given. An expired token
+for that hub prints a hint; an explicit token always wins.
+-}
+attachHubToken :: Env -> IO Env
+attachHubToken env
+    | Just _ <- envToken env = pure env
+    | Just url <- envSabelaUrl env = do
+        st <- statusForUrl url
+        case st of
+            Valid t -> pure env{envToken = Just t}
+            Expired -> do
+                hPutStrLn stderr "siza: saved hub token expired; run 'siza login' to refresh."
+                pure env
+            NoToken -> pure env
+    | otherwise = pure env
+
+{- | Common request headers: content type, session, an optional bearer token
+(localhost trust model), and an optional @Cookie:@ (hub trust model). The hub
+strips @Authorization@ but not @X-Sabela-Session@, so the session header always
+flows through; the cookie is what authenticates a hub-hosted notebook.
+-}
 aiHeaders :: Env -> [Header]
 aiHeaders env =
     ("content-type", "application/json")
@@ -79,6 +116,7 @@ aiHeaders env =
             []
             (\t -> [("Authorization", "Bearer " <> TE.encodeUtf8 t)])
             (envToken env)
+            <> maybe [] (\c -> [("Cookie", TE.encodeUtf8 c)]) (envCookie env)
 
 {- | @GET base/api/ai/health@. 'Nothing' if the server is unreachable or the
 body is not the expected JSON object; 2-second timeout, like the bash probe.

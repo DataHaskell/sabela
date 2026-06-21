@@ -42,10 +42,11 @@ import Siza.Language (
     dgSeverity,
     renderDiagnostic,
  )
+import Siza.Login (runLogin, runLogout)
 import Siza.Preflight (preflight, vettedSource)
 import Siza.Provenance (Preflight (Preflight))
 import Siza.Security (Policy, advisoryPolicy, scanSource, strictPolicy)
-import Siza.Transport (Conn, callTool, getHealth, newConn)
+import Siza.Transport (Conn, Env (..), callTool, connEnv, getHealth, newConn)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hPutStrLn, stderr)
 
@@ -67,6 +68,8 @@ data Command
     | Annotate Int Bool
     | Retro RetroTarget
     | Await Int
+    | Login (Maybe Text)
+    | Logout
     deriving (Show)
 
 -- | The full parser, with @--help@ and per-subcommand help.
@@ -98,7 +101,24 @@ subcommands =
         , Await <$> awaitBudgetParser
         , "Block until idle: siza await-idle [SECONDS]."
         )
+    , ("login", loginParser, "Authorize against a hub: siza login [HUB_URL].")
+    , ("logout", pure Logout, "Forget the saved hub token.")
     ]
+
+{- | @siza login [HUB_URL]@: run the browser-approved device flow against the
+hub and save a short-lived token. The URL defaults to @SABELA_URL@.
+-}
+loginParser :: Parser Command
+loginParser =
+    Login
+        <$> optional
+            ( T.pack
+                <$> argument
+                    str
+                    ( metavar "HUB_URL"
+                        <> help "Hub origin (default: $SABELA_URL), e.g. https://sabela.datahaskell.com"
+                    )
+            )
 
 {- | @siza annotate CELL_ID [--source]@: read the cell, infer types for its
 unsigned top-level binds from the live session, and print a report (or, with
@@ -168,6 +188,12 @@ runCommand :: Command -> IO ()
 runCommand = \case
     Check src policy -> runCheck src policy
     Retro target -> runRetro target
+    Logout -> runLogout
+    Login mUrl -> withConn $ \conn ->
+        case mUrl <|> envSabelaUrl (connEnv conn) of
+            Just url -> runLogin conn url
+            Nothing ->
+                hPutStrLn stderr "siza: provide a HUB_URL or set SABELA_URL." >> exitFailure
     Await budget ->
         withConn $ \conn -> withFirstServer conn $ \srv ->
             runAwaitIdle conn (srvBaseUrl srv) budget
