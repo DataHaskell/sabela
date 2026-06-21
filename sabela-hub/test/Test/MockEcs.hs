@@ -77,6 +77,7 @@ testConfig =
         , hcAllowlistFile = Nothing
         , hcUsersDir = "/tmp/sabela-test-users"
         , hcGalleryDir = "/tmp/sabela-test-gallery"
+        , hcAssetsDir = "/tmp/sabela-test-assets"
         , hcBootstrapAdmin = Nothing
         , hcAdminContact = Just "admin@datahaskell.com"
         }

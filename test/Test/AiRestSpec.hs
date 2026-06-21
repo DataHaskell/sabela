@@ -7,6 +7,8 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Handles (
+    HandleRef (..),
+    Output (..),
     lookupHandle,
     newHandleStore,
     storeLargeResult,
@@ -52,7 +54,7 @@ spec = do
                         | i <- [1 :: Int .. 100]
                         ]
             -- Stash one handle in A only.
-            Right (hidA, _, _, _) <- storeLargeResult storeA big
+            Stashed (HandleRef hidA _ _ _) <- storeLargeResult storeA big
             hitInA <- isPresent <$> lookupHandle storeA hidA
             -- B must not see hidA (independent namespaces).
             hitInB <- isPresent <$> lookupHandle storeB hidA

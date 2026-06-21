@@ -7,7 +7,10 @@ import qualified Test.AiHandlesSpec as AiHandlesSpec
 import qualified Test.AiHistorySpec as AiHistorySpec
 import qualified Test.AiRestSpec as AiRestSpec
 import qualified Test.ApiWireSpec as ApiWireSpec
+import qualified Test.AtomicAdmissionSpec as AtomicAdmissionSpec
+import qualified Test.AwaitIdleSpec as AwaitIdleSpec
 import qualified Test.CacheControlSpec as CacheControlSpec
+import qualified Test.CellResultWireSpec as CellResultWireSpec
 import qualified Test.ClassifyErrorSpec as ClassifyErrorSpec
 import qualified Test.CompactResultSpec as CompactResultSpec
 import qualified Test.CompileEscalationSpec as CompileEscalationSpec
@@ -21,17 +24,20 @@ import qualified Test.ExportSpec as ExportSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import Test.Hspec (hspec)
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
+import qualified Test.KernelStateWireSpec as KernelStateWireSpec
 import qualified Test.MarkerSpec as MarkerSpec
 import qualified Test.NotebookAnimSpec as NotebookAnimSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.OrphanSpec as OrphanSpec
+import qualified Test.OutputChokepointWireSpec as OutputChokepointWireSpec
 import qualified Test.OutputSpec as OutputSpec
 import qualified Test.ParseSpec as ParseSpec
 import qualified Test.PlatformSpec as PlatformSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
+import qualified Test.ProvenanceWireSpec as ProvenanceWireSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.RenderSpec as RenderSpec
 import qualified Test.ReplProjectSpec as ReplProjectSpec
@@ -40,9 +46,11 @@ import qualified Test.SessionGenSpec as SessionGenSpec
 import qualified Test.SessionLiveSpec as SessionLiveSpec
 import qualified Test.SessionLoopSpec as SessionLoopSpec
 import qualified Test.SessionSpec as SessionSpec
+import qualified Test.SizaContractWireSpec as SizaContractWireSpec
 import qualified Test.StaleRunSpec as StaleRunSpec
 import qualified Test.SwitchNotebookSpec as SwitchNotebookSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
+import qualified Test.ToolOutcomeWireSpec as ToolOutcomeWireSpec
 import qualified Test.ToolParseSpec as ToolParseSpec
 import qualified Test.TopoSpec as TopoSpec
 import qualified Test.UploadSpec as UploadSpec
@@ -84,6 +92,7 @@ main = do
         AiRestSpec.spec
         CacheControlSpec.spec
         CompactResultSpec.spec
+        OutputChokepointWireSpec.spec
         CycleMsgSpec.spec
         ScratchpadRenderSpec.spec
         ToolParseSpec.spec
@@ -92,7 +101,14 @@ main = do
         UsageEventSpec.spec
         UsageMergeSpec.spec
         ApiWireSpec.spec
+        SizaContractWireSpec.spec
+        CellResultWireSpec.spec
         AdmissionSpec.spec
+        AtomicAdmissionSpec.spec
+        AwaitIdleSpec.spec
+        KernelStateWireSpec.spec
+        ToolOutcomeWireSpec.spec
+        ProvenanceWireSpec.spec
         MarkerSpec.spec
         RenderSpec.spec
         ReplProjectSpec.spec

@@ -29,6 +29,9 @@ module Sabela.AI.Store (
     getScratchpad,
     setScratchpad,
     clearScratchpad,
+
+    -- * Kernel admission gate
+    admitKernel,
 ) where
 
 import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, readMVar)
@@ -60,6 +63,7 @@ import Sabela.Anthropic.Types (
     Role (..),
     Usage (..),
  )
+import Sabela.Session (Admission, admit)
 import Sabela.SessionTypes (SessionBackend (..))
 
 data AIStore = AIStore
@@ -78,6 +82,14 @@ data AIStore = AIStore
     , aiHttpManager :: Manager
     , aiUsage :: IORef Usage
     , aiHandles :: HandleStore
+    , aiAdmission :: MVar ()
+    {- ^ The AI kernel-admission gate. A single 'admit' (one 'tryTakeMVar')
+    folds the busy decision and the hold into one step, so two AI tool
+    callers can't both pass a busy check and stack behind the run-lock
+    (the §1.4 TOCTOU). Held for the whole kernel-needing tool run.
+    -}
+    , aiAdmissionHolder :: IORef (Maybe Int)
+    -- ^ Candidate id of the caller currently holding 'aiAdmission'.
     }
 
 newAIStore :: AnthropicConfig -> Manager -> IO AIStore
@@ -94,6 +106,8 @@ newAIStore cfg mgr =
         <*> pure mgr
         <*> newIORef (Usage 0 0 Nothing Nothing)
         <*> newHandleStore
+        <*> newMVar ()
+        <*> newIORef Nothing
 
 -- | Read the current Anthropic config.
 getAIConfig :: AIStore -> IO AnthropicConfig
@@ -240,6 +254,18 @@ revertAllPendingEdits store = atomically $ do
         case status of
             Pending -> writeTVar (aeStatus edit) Reverted
             _ -> pure ()
+
+------------------------------------------------------------------------
+-- Kernel admission gate
+------------------------------------------------------------------------
+
+{- | Atomically admit a kernel-needing tool through the AI gate: a SINGLE
+'tryTakeMVar' decides busy and acquires in one step. The gate is held for the
+whole @act@ and released on completion or exception. @candidate@ is recorded
+as the holder, so a bounced caller's 'Busy' reports who holds the slot.
+-}
+admitKernel :: AIStore -> Int -> IO a -> IO (Admission a)
+admitKernel store = admit (aiAdmission store) (aiAdmissionHolder store)
 
 ------------------------------------------------------------------------
 -- Scratchpad

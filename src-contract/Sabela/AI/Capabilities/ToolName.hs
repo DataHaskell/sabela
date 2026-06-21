@@ -44,6 +44,7 @@ data ToolName
     | KernelStatus
     | Interrupt
     | KernelRestart
+    | AwaitIdle
     | ExportNotebook
     deriving (Show, Eq)
 
@@ -65,6 +66,7 @@ parseToolName = \case
     "kernel_status" -> Just KernelStatus
     "interrupt" -> Just Interrupt
     "kernel_restart" -> Just KernelRestart
+    "await_idle" -> Just AwaitIdle
     "export_notebook" -> Just ExportNotebook
     _ -> Nothing
 
@@ -90,6 +92,7 @@ toolWireName = \case
     KernelStatus -> "kernel_status"
     Interrupt -> "interrupt"
     KernelRestart -> "kernel_restart"
+    AwaitIdle -> "await_idle"
     ExportNotebook -> "export_notebook"
 
 {- | Build a 'ToolDef' from a typed 'ToolName'. The wire-name string sent

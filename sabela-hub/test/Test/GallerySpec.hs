@@ -48,7 +48,7 @@ mkShare slug title =
         }
 
 publish :: ShareStore -> Text -> IO ()
-publish ss slug = publishShare ss (mkShare slug ("title-" <> slug)) "<h1>x</h1>"
+publish ss slug = publishShare ss (mkShare slug ("title-" <> slug)) "<h1>x</h1>" Nothing
 
 -- | Slugs of the top-level featured shares a feed resolves to, in order.
 feedShareSlugs :: [GalleryItem] -> [Text]

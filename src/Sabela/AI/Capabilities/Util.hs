@@ -15,18 +15,19 @@ module Sabela.AI.Capabilities.Util (
     parseCellType,
 
     -- * Output compaction
+    inlineOrStash,
     compactOutputs,
     compactMaybeText,
 ) where
 
-import Data.Aeson (ToJSON (..), Value (..), object, (.=))
+import Data.Aeson (ToJSON (..), Value (..))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 
-import Sabela.AI.Handles (storeLargeResult, summarizeForLLM)
+import Sabela.AI.Handles (Output (..), storeLargeResult)
 import Sabela.AI.Store
-import Sabela.Model (CellType (..), OutputItem (..), mimeIndicator)
+import Sabela.Model (CellType (..), MimeType (..), OutputItem (..))
 import qualified Sabela.SessionTypes as ST
 
 field :: Text -> Value -> Maybe Value
@@ -62,32 +63,27 @@ parseCellType "CodeCell" = Just CodeCell
 parseCellType "ProseCell" = Just ProseCell
 parseCellType _ = Nothing
 
+{- | The single inline-or-stash chokepoint. Both 'compactOutputs' and
+'compactMaybeText' route through this so their inline shapes stop diverging:
+'storeLargeResult' decides inline vs stash, and the supplied 'MimeType'
+re-tags the inline placeholder so the wire @{mime,output}@ carries the real
+MIME.
+-}
+inlineOrStash :: AIStore -> MimeType -> Text -> IO Output
+inlineOrStash store mime text = do
+    out <- storeLargeResult (aiHandles store) text
+    pure $ case out of
+        Inline _ cleaned -> Inline mime cleaned
+        stashed -> stashed
+
 -- | Render outputs compactly: large individual outputs are swapped for a handle.
 compactOutputs :: AIStore -> [OutputItem] -> IO Value
 compactOutputs store items = do
     compacted <- mapM compactOne items
     pure (toJSON compacted)
   where
-    compactOne oi = do
-        r <- storeLargeResult (aiHandles store) (oiOutput oi)
-        case r of
-            Left cleaned ->
-                pure $
-                    object
-                        [ "mime" .= mimeIndicator (oiMime oi)
-                        , "output" .= cleaned
-                        ]
-            Right (hid, summary, nLines, nBytes) ->
-                pure $
-                    object
-                        [ "mime" .= mimeIndicator (oiMime oi)
-                        , "large" .= summarizeForLLM hid summary nLines nBytes
-                        ]
+    compactOne oi = toJSON <$> inlineOrStash store (oiMime oi) (oiOutput oi)
 
 compactMaybeText :: AIStore -> Maybe Text -> IO Value
 compactMaybeText _ Nothing = pure Null
-compactMaybeText store (Just t) = do
-    r <- storeLargeResult (aiHandles store) t
-    pure $ case r of
-        Left cleaned -> String cleaned
-        Right (hid, summary, nLines, nBytes) -> summarizeForLLM hid summary nLines nBytes
+compactMaybeText store (Just t) = toJSON <$> inlineOrStash store MimePlain t

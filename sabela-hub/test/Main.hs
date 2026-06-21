@@ -11,6 +11,7 @@ import Test.Hspec
 import qualified Test.ProxyRoutesSpec
 import qualified Test.ProxySpec
 import qualified Test.ReaperSpec
+import qualified Test.RunnerSpec
 import qualified Test.SessionSpec
 import qualified Test.ShareSpec
 import qualified Test.UsersSpec
@@ -22,6 +23,7 @@ main = hspec $ do
     Test.GallerySpec.spec
     Test.GalleryRenderSpec.spec
     Test.BannerSpec.spec
+    Test.RunnerSpec.spec
     Test.AdminApiSpec.spec
     Test.DockerSpec.spec
     Test.ShareSpec.spec

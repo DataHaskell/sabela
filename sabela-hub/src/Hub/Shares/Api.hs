@@ -6,6 +6,7 @@ the authed @\/_hub\/{publish,shares,shares\/<slug>}@ JSON endpoints.
 -}
 module Hub.Shares.Api (
     serveShare,
+    serveAsset,
     handlePublish,
     handleListShares,
     handleDeleteShare,
@@ -18,7 +19,9 @@ module Hub.Shares.Api (
 import Control.Exception (SomeException, try)
 import Data.Aeson (Value, decode, object, toJSON, withObject, (.:), (.=))
 import Data.Aeson.Types (parseMaybe)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
+import Data.Char (isAlphaNum)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -38,12 +41,13 @@ import Hub.Share (
     sanitizeTitle,
     scrubSecrets,
     shareHeaders,
-    writeShareSource,
  )
 import Hub.Types
 import qualified Network.HTTP.Client as HC
 import Network.HTTP.Types
 import Network.Wai
+import System.Directory (doesFileExist)
+import System.FilePath (takeExtension, (</>))
 
 {- | Serve a published share at @\/s\/<slug>@ with no auth and no backend.
 'lookupShareHtml' rejects non-slug input, so a crafted slug cannot traverse out
@@ -62,6 +66,63 @@ serveShare store slug respond = do
                     status404
                     [(hContentType, "text/html; charset=utf-8")]
                     (BL.fromStrict (TE.encodeUtf8 shareNotFoundHtml))
+
+{- | Serve a cacheable static asset at @\/_hub\/assets\/<file>@ from the configured
+assets dir. The filename is validated to a flat @name.ext@ shape ('safeAssetName'
+rejects @\/@, @.@, and @..@), so a crafted name cannot traverse out of the assets
+dir. Unknown or missing files 404. Long @Cache-Control@; the runtime is meant to
+be content-hashed by the bundler.
+-}
+serveAsset ::
+    FilePath -> Text -> (Response -> IO ResponseReceived) -> IO ResponseReceived
+serveAsset assetsDir name respond
+    | not (safeAssetName name) = respond assetNotFound
+    | otherwise = do
+        let f = assetsDir </> T.unpack name
+        e <- doesFileExist f
+        if not e
+            then respond assetNotFound
+            else do
+                bytes <- BS.readFile f
+                respond $
+                    responseLBS status200 (assetHeaders f) (BL.fromStrict bytes)
+
+assetNotFound :: Response
+assetNotFound =
+    responseLBS status404 [(hContentType, "text/plain; charset=utf-8")] "Not found"
+
+{- | A safe asset filename is a non-empty @name.ext@ of ASCII alphanumerics,
+@-@, @_@, and @.@, with no leading dot and no @..@. This is the path-traversal
+guard for @\/_hub\/assets\/<file>@.
+-}
+safeAssetName :: Text -> Bool
+safeAssetName name =
+    not (T.null name)
+        && T.all ok name
+        && not (T.isPrefixOf "." name)
+        && not (T.isInfixOf ".." name)
+  where
+    ok c = isAlphaNum c || c == '-' || c == '_' || c == '.'
+
+{- | Content-Type by extension plus a one-year immutable @Cache-Control@; the
+served assets are content-hashed, so a stale cache can never shadow an update.
+-}
+assetHeaders :: FilePath -> [Header]
+assetHeaders f =
+    [ (hContentType, ctype)
+    , ("Cache-Control", "public, max-age=31536000, immutable")
+    , ("X-Content-Type-Options", "nosniff")
+    ]
+  where
+    ctype = case takeExtension f of
+        ".html" -> "text/html; charset=utf-8"
+        ".js" -> "text/javascript; charset=utf-8"
+        ".mjs" -> "text/javascript; charset=utf-8"
+        ".wasm" -> "application/wasm"
+        ".css" -> "text/css; charset=utf-8"
+        ".json" -> "application/json; charset=utf-8"
+        ".map" -> "application/json; charset=utf-8"
+        _ -> "application/octet-stream"
 
 {- | Validate the publish @?mode=@ against the allowlist; an absent or unknown
 mode falls back to 'ExpDashboard'. The mode is passed straight through to the
@@ -145,7 +206,7 @@ handlePublish sm store mgr sess req respond = do
                                         , shareTitle = title
                                         }
                                     html
-                                maybe (pure ()) (writeShareSource store slug) mSrc
+                                    mSrc
                                 logHub $ email <> " published " <> exportModeText mode <> " /s/" <> slug
                                 respond . jsonResponse status200 $
                                     object ["slug" .= slug, "url" .= ("/s/" <> slug)]

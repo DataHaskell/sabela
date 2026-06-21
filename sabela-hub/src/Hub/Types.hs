@@ -204,6 +204,10 @@ data HubConfig = HubConfig
     -- ^ Host directory for the user-role store (@HUB_USERS_DIR@).
     , hcGalleryDir :: Text
     -- ^ Host directory for the curated gallery index (@HUB_GALLERY_DIR@).
+    , hcAssetsDir :: Text
+    {- ^ Host directory for cacheable static assets served at
+    @\/_hub\/assets\/<file>@ (@HUB_ASSETS_DIR@); the WASM runtime lives here.
+    -}
     , hcBootstrapAdmin :: Maybe Text
     {- ^ Email ensured-admin at hydrate (@HUB_BOOTSTRAP_ADMIN@); without it and
     with no admin on disk the admin surface is inert.

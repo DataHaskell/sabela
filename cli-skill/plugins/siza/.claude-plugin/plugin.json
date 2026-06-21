@@ -1,5 +1,5 @@
 {
   "name": "siza",
-  "description": "Sabela notebook pairing skill — list, read, run, edit cells in a running Sabela via REST.",
-  "version": "0.1.0"
+  "description": "Sabela notebook pairing skill — a typed compiled client (list, read, run, edit cells; pre-flight parse + security scan; provenance) over the Sabela AI bridge.",
+  "version": "0.2.0"
 }

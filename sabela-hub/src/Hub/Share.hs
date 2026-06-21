@@ -35,7 +35,7 @@ import qualified Data.ByteString as BS
 import Data.List (find)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -50,6 +50,7 @@ import System.FilePath ((</>))
 
 import Hub.Banner (spliceBanner)
 import Hub.Meta (parseMeta, sanitizeLine, writeMetaLine)
+import Hub.Runner (spliceRunner)
 import Hub.Types (ExportMode, exportModeText, isLowerHex, parseExportMode)
 
 data Share = Share
@@ -79,18 +80,28 @@ newShareStore dir = do
     cache <- newTVarIO (Map.fromList [(shareSlug s, s) | s <- shares])
     pure ShareStore{ssBaseDir = dir, ssCache = cache}
 
-{- | Store the snapshot HTML (with the fork banner spliced in) + metadata and
-cache the share.
+{- | Store the snapshot HTML (with the fork banner and the WASM runner spliced
+in) + metadata and cache the share. The optional scrubbed source markdown is
+both embedded into the page (the runner's data island) and written beside the
+export as @source.md@ (for Download/Fork). A share with no source still gets the
+banner; the runner island simply carries an empty source.
 -}
-publishShare :: ShareStore -> Share -> Text -> IO ()
-publishShare store share html = do
+publishShare :: ShareStore -> Share -> Text -> Maybe Text -> IO ()
+publishShare store share html mSrc = do
     let dir = ssBaseDir store </> T.unpack (shareSlug share)
+        slug = shareSlug share
+        src = fromMaybe "" mSrc
     createDirectoryIfMissing True dir
     BS.writeFile
         (dir </> "index.html")
-        (spliceBanner (shareSlug share) (TE.encodeUtf8 html))
+        ( spliceRunner
+            slug
+            src
+            (spliceBanner slug (TE.encodeUtf8 html))
+        )
     BS.writeFile (dir </> "meta") (TE.encodeUtf8 (metaText share))
-    atomically $ modifyTVar' (ssCache store) (Map.insert (shareSlug share) share)
+    maybe (pure ()) (writeShareSource store slug) mSrc
+    atomically $ modifyTVar' (ssCache store) (Map.insert slug share)
 
 {- | The stored HTML for a slug, or 'Nothing'. Rejects non-slug input so a
 crafted @\/s\/<slug>@ cannot traverse out of the base dir.

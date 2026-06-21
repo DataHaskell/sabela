@@ -15,18 +15,21 @@ module Sabela.AI.Capabilities.Edit.Run (
     autoExecuteAfterMutation,
     execExecuteCell,
     executeCell,
+    abortCancelled,
+    abortSuperseded,
+    abortTimedOut,
 ) where
 
 import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM (atomically, readTChan)
-import Data.Aeson (Value, object, (.=))
-import Data.Maybe (isNothing)
+import Data.Aeson (Value, toJSON, (.=))
 import Data.Text (Text)
 import Data.Time (UTCTime, getCurrentTime)
 import System.Timeout (timeout)
 
-import Sabela.AI.Capabilities.Util (compactMaybeText, compactOutputs, fieldInt)
+import Sabela.AI.Capabilities.Util (fieldInt)
+import Sabela.AI.CellResult (mergeToolOk, toCellResult)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, isCancelled)
@@ -36,56 +39,41 @@ import Sabela.Model
 import qualified Sabela.SessionTypes as ST
 import Sabela.State
 
-{- | Run a single cell via the reactive notebook, compact the result, and
-return a JSON summary suitable for embedding in a mutation-tool response.
-Errors are surfaced; large outputs/errors are routed through the handle store.
+{- | Run a single cell via the reactive notebook and return the typed
+'CellResult' JSON for embedding as the mutation-tool @execution@ summary.
+The outcome sum (Succeeded/Raised/Rejected/Aborted) and the @ok@ boolean
+ride on the same value the @execute_cell@ tool emits.
+
+@_store@ is the (currently unused) carrier for the staged Output chokepoint:
+per redesign §1.3 cell outputs route through @inlineOrStash@ behind the MV
+slice, so @crOutputs@ inline raw here for now. The in-browser chat is still
+bounded by 'Sabela.AI.Orchestrator.Compact'; the REST bridge ('aiToolH') is
+deliberately un-stashed on this path until that slice lands.
 -}
 autoExecuteAfterMutation ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Int -> IO Value
-autoExecuteAfterMutation app store rn cancelTok cid = do
+autoExecuteAfterMutation app _store rn cancelTok cid = do
     res <- executeCell app rn cid cancelTok
-    case res of
-        Left err ->
-            pure $
-                object
-                    [ "ran" .= True
-                    , "ok" .= False
-                    , "error" .= err
-                    ]
-        Right er -> do
-            outputsField <- compactOutputs store (erOutputs er)
-            errorField <- compactMaybeText store (erError er)
-            let ok = null (erErrors er) && isNothing (erError er)
-            pure $
-                object
-                    [ "ran" .= True
-                    , "ok" .= ok
-                    , "outputs" .= outputsField
-                    , "error" .= errorField
-                    , "errors" .= erErrors er
-                    ]
+    pure (toJSON (toCellResult res (resultOutputs res)))
 
+{- | @execute_cell@. @_store@ is the staged Output-chokepoint carrier — see
+'autoExecuteAfterMutation'; @crOutputs@ inline raw on this path for now.
+-}
 execExecuteCell ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Value -> IO ToolOutcome
-execExecuteCell app store rn cancelTok input = do
+execExecuteCell app _store rn cancelTok input = do
     let mcid = fieldInt "cell_id" input
     case mcid of
         Nothing -> pure (errOutcome (errorJson "cell_id required"))
         Just cid -> do
             result <- executeCell app rn cid cancelTok
-            case result of
-                Left err -> pure (errOutcome (errorJson err))
-                Right er -> do
-                    outputsField <- compactOutputs store (erOutputs er)
-                    errorField <- compactMaybeText store (erError er)
-                    pure $
-                        okOutcome $
-                            object
-                                [ "outputs" .= outputsField
-                                , "error" .= errorField
-                                , "errors" .= erErrors er
-                                , "cellId" .= cid
-                                ]
+            let cr = toCellResult result (resultOutputs result)
+            pure (mergeToolOk cr ["cellId" .= cid])
+
+-- | Outputs an @executeCell@ result carried; @[]@ for an abort 'Left'.
+resultOutputs :: Either Text ExecutionResult -> [OutputItem]
+resultOutputs (Left _) = []
+resultOutputs (Right er) = erOutputs er
 
 executeCell ::
     App ->
@@ -112,11 +100,19 @@ executeCell app rn cid cancelTok = do
     cancelled <- isCancelled cancelTok
     stale <- requestStale app reqTime
     if
-        | cancelled -> pure (Left "Cancelled")
-        | stale -> pure (Left "Request superseded by a kernel interrupt")
+        | cancelled -> pure (Left abortCancelled)
+        | stale -> pure (Left abortSuperseded)
         | otherwise -> case mResult of
-            Nothing -> pure (Left "Cell execution timed out (>120s)")
+            Nothing -> pure (Left abortTimedOut)
             Just r -> pure (Right r)
+
+{- | The three @executeCell@ @Left@ strings, named so 'Sabela.AI.CellResult'
+and its tests map the real producer output, not a re-typed literal.
+-}
+abortCancelled, abortSuperseded, abortTimedOut :: Text
+abortCancelled = "Cancelled"
+abortSuperseded = "Request superseded by a kernel interrupt"
+abortTimedOut = "Cell execution timed out (>120s)"
 
 -- | Did the Haskell kernel interrupt after this request was stamped?
 requestStale :: App -> UTCTime -> IO Bool

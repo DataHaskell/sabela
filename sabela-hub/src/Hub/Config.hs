@@ -29,6 +29,7 @@ loadConfig = do
     allowlistFile <- lookupEnv "HUB_ALLOWLIST_FILE"
     usersDir <- envText "HUB_USERS_DIR" "/mnt/sabela/users"
     galleryDir' <- envText "HUB_GALLERY_DIR" "/mnt/sabela/gallery"
+    assetsDir <- envText "HUB_ASSETS_DIR" "static"
     bootstrapAdmin <- fmap T.pack <$> lookupEnv "HUB_BOOTSTRAP_ADMIN"
     adminContact <- fmap T.pack <$> lookupEnv "HUB_ADMIN_CONTACT"
     backendKind <- envBackend "HUB_BACKEND" BackendDocker
@@ -55,6 +56,7 @@ loadConfig = do
             , hcAllowlistFile = allowlistFile
             , hcUsersDir = usersDir
             , hcGalleryDir = galleryDir'
+            , hcAssetsDir = assetsDir
             , hcBootstrapAdmin = bootstrapAdmin
             , hcAdminContact = adminContact
             }

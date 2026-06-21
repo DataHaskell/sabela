@@ -4,6 +4,8 @@
 
 module Sabela.AI.Handles (
     HandleId (..),
+    HandleRef (..),
+    Output (..),
     LargeResult (..),
     HandleStore,
     newHandleStore,
@@ -36,9 +38,12 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
-
-newtype HandleId = HandleId Text
-    deriving (Show, Eq, Ord)
+import Sabela.AI.Output (
+    HandleId (..),
+    HandleRef (..),
+    Output (..),
+ )
+import Sabela.Model (MimeType (..))
 
 data LargeResult = LargeResult
     { lrLines :: [Text]
@@ -64,22 +69,19 @@ largeThresholdBytes = 4096
 summaryPreviewLines :: Int
 summaryPreviewLines = 20
 
-{- | Inspect a raw tool output. If it's small, return the cleaned text inline.
-If it's large, store the cleaned body under a fresh handle and return a
-summary + handle id that the LLM can drill into via @explore_result@.
+{- | Inspect a raw tool output. If it's small, return the cleaned text as an
+'Inline' 'Output' (with a placeholder 'MimePlain' the caller re-tags). If it's
+large, stash the cleaned body under a fresh handle and return a 'Stashed'
+'HandleRef' the LLM can drill into via @explore_result@.
 -}
-storeLargeResult ::
-    HandleStore ->
-    Text ->
-    -- | @Left cleaned@ when inline-sized; @Right (hid, summary, nLines, nBytes)@ when large.
-    IO (Either Text (HandleId, Text, Int, Int))
+storeLargeResult :: HandleStore -> Text -> IO Output
 storeLargeResult store raw = do
     let cleaned = cleanOutput raw
         ls = T.lines cleaned
         nLines = length ls
         nBytes = T.length cleaned
     if nLines <= largeThresholdLines && nBytes <= largeThresholdBytes
-        then pure (Left cleaned)
+        then pure (Inline MimePlain cleaned)
         else do
             n <- atomicModifyIORef' (hsCounter store) (\i -> (i + 1, i))
             let hid = HandleId (T.pack ("lr_" ++ show n))
@@ -92,7 +94,7 @@ storeLargeResult store raw = do
                 summary = T.intercalate "\n" previewLines <> suffix
             atomically $
                 modifyTVar' (hsMap store) (M.insert hid (LargeResult ls nLines nBytes))
-            pure (Right (hid, summary, nLines, nBytes))
+            pure (Stashed (HandleRef hid summary nLines nBytes))
 
 lookupHandle :: HandleStore -> HandleId -> IO (Maybe LargeResult)
 lookupHandle store hid = M.lookup hid <$> readTVarIO (hsMap store)

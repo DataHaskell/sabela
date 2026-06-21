@@ -34,12 +34,14 @@ import qualified Data.Text as T
 import Servant (Handler, NoContent (..))
 
 import Sabela.AI.Capabilities (acceptEdit, chatTools, executeTool, revertEdit)
+import Sabela.AI.Capabilities.Kernel (kernelStateBefore)
 import Sabela.AI.Doc (defaultDocOpts, renderNotebookDoc)
 import Sabela.AI.Orchestrator (
     handleCancelTurn,
     handleChatMessage,
     handleClearChat,
  )
+import Sabela.AI.Provenance (Actor (..), recordToolCall)
 import Sabela.AI.Store (getAIConfig)
 import qualified Sabela.AI.Store as AIStore
 import Sabela.AI.Types (EditId (..), toolOutcomeIsError, toolOutcomeValue)
@@ -235,7 +237,17 @@ aiToolH app rn mSession body = liftIO $ do
                     hs <- resolveCliHandleStore app sid
                     pure store{AIStore.aiHandles = hs}
             cancelTok <- newCancelToken
+            (kBefore, gen) <- kernelStateBefore app
             outcome <- executeTool app storeForCall rn cancelTok name input
+            recordToolCall
+                (envWorkDir (appEnv app))
+                mSession
+                Agent
+                name
+                input
+                outcome
+                kBefore
+                gen
             pure $
                 object
                     [ "isError" .= toolOutcomeIsError outcome

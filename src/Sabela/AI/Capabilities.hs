@@ -19,7 +19,7 @@ module Sabela.AI.Capabilities (
 
     -- * Tool execution
     executeTool,
-    admissionBlocked,
+    needsKernel,
 
     -- * Edit lifecycle
     acceptEdit,
@@ -28,6 +28,7 @@ module Sabela.AI.Capabilities (
 
 import Control.Exception (SomeException, try)
 import Data.Aeson (Value (..), (.=))
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -40,6 +41,7 @@ import Sabela.AI.Capabilities.Edit (
     executeCell,
  )
 import Sabela.AI.Capabilities.Kernel (
+    execAwaitIdle,
     execExportNotebook,
     execInterrupt,
     execKernelRestart,
@@ -60,13 +62,14 @@ import Sabela.AI.Capabilities.Query (
 import Sabela.AI.Capabilities.Scratchpad (execScratchpadGuarded)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), parseToolName)
 import Sabela.AI.Capabilities.Tools (chatTools)
-import Sabela.AI.Capabilities.Util (field)
+import Sabela.AI.Capabilities.Util (field, fieldInt)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, newCancelToken)
 import Sabela.Api (errorJson, errorJsonWith)
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model
+import Sabela.Session (Admission (..))
 import Sabela.State
 
 ------------------------------------------------------------------------
@@ -97,17 +100,38 @@ executeTool app store rn cancelTok toolName input =
                 )
         Nothing -> case parseToolName toolName of
             Nothing -> pure (errOutcome (errorJson ("Unknown tool: " <> toolName)))
-            Just tool -> do
-                mBlocked <- admissionBlocked app tool
-                case mBlocked of
-                    Just busy -> pure busy
-                    Nothing -> do
-                        eResult <- try (runTool tool)
-                        case eResult of
-                            Left (e :: SomeException) ->
-                                pure (errOutcome (errorJson (T.pack (show e))))
-                            Right r -> pure r
+            Just tool -> dispatch tool
   where
+    {- Kernel-needing tools take the AI admission gate atomically (one
+    'tryTakeMVar'): the busy decision and the hold are a single step, so two
+    AI callers can't both observe \"not busy\" and stack behind the run-lock
+    (§1.4 TOCTOU). Inside the held gate we still bounce if the kernel is busy
+    with non-AI work (a browser run holding 'sbBusy') — the legacy bounce,
+    preserved. Lock-free tools (status/interrupt/restart) bypass the gate. -}
+    dispatch :: ToolName -> IO ToolOutcome
+    dispatch tool
+        | needsKernel tool =
+            admitKernel store (admissionCandidate input) (kernelGuarded tool)
+                >>= \case
+                    Busy{} -> pure (errOutcome busyOutcome)
+                    Ran r -> pure r
+        | otherwise = guarded tool
+
+    {- Within the held AI gate: a non-AI run (browser/widget) may still hold
+    the kernel run-lock, so bounce on 'haskellKernelBusy' rather than block. -}
+    kernelGuarded :: ToolName -> IO ToolOutcome
+    kernelGuarded tool = do
+        busy <- haskellKernelBusy app
+        if busy then pure (errOutcome busyOutcome) else guarded tool
+
+    guarded :: ToolName -> IO ToolOutcome
+    guarded tool = do
+        eResult <- try (runTool tool)
+        case eResult of
+            Left (e :: SomeException) ->
+                pure (errOutcome (errorJson (T.pack (show e))))
+            Right r -> pure r
+
     runTool :: ToolName -> IO ToolOutcome
     runTool = \case
         ListCells -> execListCells app
@@ -126,34 +150,27 @@ executeTool app store rn cancelTok toolName input =
         KernelStatus -> execKernelStatus app
         Interrupt -> execInterrupt app
         KernelRestart -> execKernelRestart rn
+        AwaitIdle -> execAwaitIdle app
         ExportNotebook -> execExportNotebook app input
 
-{- | Admission control: a tool that needs the GHCi kernel is refused with a
-busy outcome while a cell or query is already running, so the agent reads
-'kernel_status'/'interrupt'/'kernel_restart' instead of stacking a second
-request behind the run-lock. Lock-free tools (status/interrupt/restart) and
-notebook-only tools are never blocked.
+-- | The busy wire shape returned by the live atomic admission gate.
+busyOutcome :: Value
+busyOutcome =
+    errorJsonWith
+        "The Haskell kernel is busy running another cell."
+        [ "busy" .= True
+        , "hint"
+            .= ( "Call kernel_status to see if it is still running, or \
+                 \interrupt / kernel_restart to free it." ::
+                    Text
+               )
+        ]
+
+{- | Candidate id recorded as the admission holder: the tool's @cell_id@ when
+present (so a bounced caller's @running@ names the cell), else a sentinel.
 -}
-admissionBlocked :: App -> ToolName -> IO (Maybe ToolOutcome)
-admissionBlocked app tool
-    | needsKernel tool = do
-        busy <- haskellKernelBusy app
-        pure $
-            if busy
-                then Just (errOutcome busyOutcome)
-                else Nothing
-    | otherwise = pure Nothing
-  where
-    busyOutcome =
-        errorJsonWith
-            "The Haskell kernel is busy running another cell."
-            [ "busy" .= True
-            , "hint"
-                .= ( "Call kernel_status to see if it is still running, or \
-                     \interrupt / kernel_restart to free it." ::
-                        Text
-                   )
-            ]
+admissionCandidate :: Value -> Int
+admissionCandidate input = fromMaybe 0 (fieldInt "cell_id" input)
 
 -- | Tools that issue work to the GHCi kernel and so must wait on it.
 needsKernel :: ToolName -> Bool

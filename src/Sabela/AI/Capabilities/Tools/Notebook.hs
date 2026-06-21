@@ -67,7 +67,7 @@ notebookTools =
         )
     , mkTool
         ReplaceCellSource
-        "Replace the source of a cell you own and AUTO-RUN it. Use this for iterating on cells you inserted yourself — no user approval round-trip. For Haskell code cells the tool response includes an `execution` field {ran, ok, outputs, error, errors}; read it before moving on. Pass expected_hash to detect drift. For user-authored changes that deserve review, use propose_edit instead."
+        "Replace the source of a cell you own and AUTO-RUN it. Use this for iterating on cells you inserted yourself — no user approval round-trip. For Haskell code cells the tool response includes a typed `execution` CellResult {outcome, outputs, warnings, ok}; read `execution.ok` (and `outcome.tag` for the reason) before moving on. Pass expected_hash to detect drift. For user-authored changes that deserve review, use propose_edit instead."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"
@@ -172,7 +172,7 @@ notebookTools =
         )
     , mkTool
         ExecuteCell
-        "Execute a cell and wait for its result. Returns the outputs and any errors."
+        "Execute a cell and wait for its result. Returns a typed CellResult {outcome, outputs, warnings, ok}; read `ok` (and `outcome.tag` for the reason) to act on it."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"

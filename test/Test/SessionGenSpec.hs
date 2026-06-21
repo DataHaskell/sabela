@@ -12,7 +12,7 @@ fresh, strictly-higher generation on restart. Pure logic over a dummy
 module Test.SessionGenSpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.IORef (newIORef, readIORef)
@@ -139,43 +139,41 @@ spec = do
             g `shouldBe` firstSessionGen + 3
 
     describe "two-axis kernel_status wire shape (stress cases 35, 36)" $ do
-        it "reports kernel alive, running, and sessionGen" $ do
+        it "reports an executing state and ksGen when busy" $ do
             v <- statusWith True 7
-            field "kernel" v `shouldBe` Just (String "alive")
-            field "running" v `shouldBe` Just (Bool True)
-            field "sessionGen" v `shouldBe` Just (Number 7)
+            statePath "state" v `shouldBe` Just (String "executing")
+            field "ksGen" v `shouldBe` Just (Number 7)
 
-        it "running axis is independent of the generation axis" $ do
+        it "the activity axis is independent of the generation axis" $ do
             v <- statusWith False 3
-            field "running" v `shouldBe` Just (Bool False)
-            field "sessionGen" v `shouldBe` Just (Number 3)
+            statePath "state" v `shouldBe` Just (String "idle")
+            field "ksGen" v `shouldBe` Just (Number 3)
 
-        it "absent kernel reports gen 0, not alive" $ do
+        it "absent kernel reports cold gen 0, not alive" $ do
             app <- newApp "." Set.empty Nothing Nothing []
             v <- toolOutcomeValue <$> execKernelStatus app
-            field "kernel" v `shouldBe` Just (String "absent")
-            field "running" v `shouldBe` Just (Bool False)
-            field "sessionGen" v `shouldBe` Just (Number 0)
+            statePath "state" v `shouldBe` Just (String "cold")
+            field "ksGen" v `shouldBe` Just (Number 0)
 
-        it "reports a compiling axis, false at rest" $ do
+        it "is idle at rest, not building" $ do
             v <- statusWith False 3
-            field "compiling" v `shouldBe` Just (Bool False)
+            statePath "building" v `shouldBe` Just (Bool False)
 
-        it "compiling axis is independent of running — raised by off-lock builds" $ do
+        it "building axis is independent of executing — raised by off-lock builds" $ do
             app <- newApp "." Set.empty Nothing Nothing []
+            backend <- fakeBackend False 3
+            setHaskellSession (appSessions app) (Just backend)
             setBuilding app True
             v <- toolOutcomeValue <$> execKernelStatus app
-            field "compiling" v `shouldBe` Just (Bool True)
-            field "running" v `shouldBe` Just (Bool False)
+            statePath "state" v `shouldBe` Just (String "building")
 
-        it "the kernel_status object carries exactly the four documented keys" $ do
+        it "emits only the typed keys — the four legacy keys are gone" $ do
             v <- statusWith True 1
-            v
-                `shouldBe` object
-                    [ "kernel" .= ("alive" :: Text)
-                    , "running" .= True
-                    , "compiling" .= False
-                    , "sessionGen" .= (1 :: Int)
-                    ]
+            statePath "state" v `shouldBe` Just (String "executing")
+            field "ksGen" v `shouldBe` Just (Number 1)
+            mapM_
+                (\k -> field k v `shouldBe` Nothing)
+                ["kernel", "running", "compiling", "sessionGen"]
   where
     shouldReturnVal act expected = act >>= (`shouldBe` expected)
+    statePath k v = field "state" v >>= field k

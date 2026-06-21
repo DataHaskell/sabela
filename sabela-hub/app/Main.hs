@@ -10,7 +10,7 @@ import Hub.Ecs (cliEcsBackend)
 import Hub.Gallery (newGalleryStore)
 import Hub.Proxy (hubApp)
 import Hub.Reaper (startReaper, sweepOrphans)
-import Hub.Republish (republishBanners)
+import Hub.Republish (republishBanners, republishRunners)
 import Hub.Session (newSessionManager, reattachSessions)
 import Hub.Share (newShareStore)
 import Hub.Types
@@ -27,15 +27,20 @@ main :: IO ()
 main = do
     args <- getArgs
     case args of
-        ("republish-banners" : rest) -> runRepublish rest
+        ("republish-banners" : rest) ->
+            runRepublish "republish-banners" republishBanners rest
+        ("republish-runners" : rest) ->
+            runRepublish "republish-runners" republishRunners rest
         _ -> runServer
 
-{- | @sabela-hub republish-banners [SHARES_DIR]@: backfill the fork banner into
-existing snapshots. The dir defaults to @$HUB_SHARES_DIR@. Runs standalone — no
-OAuth config required — so it is safe to invoke as a one-shot migration.
+{- | @sabela-hub \<cmd\> [SHARES_DIR]@: backfill a spliced fragment into existing
+snapshots (the fork banner or the WASM runner). The dir defaults to
+@$HUB_SHARES_DIR@. Runs standalone — no OAuth config required — so it is safe to
+invoke as a one-shot migration.
 -}
-runRepublish :: [String] -> IO ()
-runRepublish rest = do
+runRepublish ::
+    String -> (FilePath -> IO [(a, Bool)]) -> [String] -> IO ()
+runRepublish cmd backfill rest = do
     mdir <- case rest of
         (d : _) -> pure (Just d)
         [] -> lookupEnv "HUB_SHARES_DIR"
@@ -43,13 +48,15 @@ runRepublish rest = do
         Nothing -> do
             hPutStrLn
                 stderr
-                "usage: sabela-hub republish-banners [SHARES_DIR] (or set HUB_SHARES_DIR)"
+                ("usage: sabela-hub " ++ cmd ++ " [SHARES_DIR] (or set HUB_SHARES_DIR)")
             exitFailure
         Just dir -> do
-            results <- republishBanners dir
+            results <- backfill dir
             let changed = length (filter snd results)
             hPutStrLn stderr $
-                "[hub] republish-banners: "
+                "[hub] "
+                    ++ cmd
+                    ++ ": "
                     ++ show changed
                     ++ " updated, "
                     ++ show (length results - changed)

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# siza — thin shim that locates the compiled siza-client binary and execs it.
+#
+# Resolution order:
+#   1. $SIZA_BIN     — an explicit path to the built binary (most reliable).
+#   2. $SABELA_REPO  — your sabela checkout; resolved via `cabal list-bin`.
+#   3. in-repo guess — when this script runs from its source checkout.
+# Carries no logic; every decision lives in the Haskell client. If you build
+# with non-default flags (e.g. -O2), set $SIZA_BIN to that exact binary.
+
+set -euo pipefail
+
+if [ -n "${SIZA_BIN:-}" ]; then
+    exec "$SIZA_BIN" "$@"
+fi
+
+locate() {
+    local dir="$1"
+    [ -n "$dir" ] || return 1
+    (cd "$dir" 2>/dev/null && cabal list-bin exe:siza 2>/dev/null)
+}
+
+bin=""
+if [ -n "${SABELA_REPO:-}" ]; then
+    bin="$(locate "$SABELA_REPO" || true)"
+fi
+if [ -z "$bin" ]; then
+    # In a dev checkout, the repo root is six levels up from this script.
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    bin="$(locate "$script_dir/../../../../../.." || true)"
+fi
+
+if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+    echo "siza: cannot locate the siza binary." >&2
+    echo "  Set \$SIZA_BIN to the built binary, or \$SABELA_REPO to your sabela" >&2
+    echo "  checkout, and run 'cabal build exe:siza' there." >&2
+    exit 127
+fi
+
+exec "$bin" "$@"

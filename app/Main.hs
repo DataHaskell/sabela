@@ -11,6 +11,7 @@ import qualified Data.Text as T
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.Wai.Handler.Warp (run)
+import Sabela.AI.Provenance (stateBase)
 import Sabela.Handlers (
     initGlobalEnv,
     initPreinstalledPackages,
@@ -138,8 +139,8 @@ cleanupTmpDir app = do
 -- | Write a discovery registry file so local CLI clients can auto-find us.
 writeDiscoveryRegistry :: Int -> FilePath -> Maybe T.Text -> IO FilePath
 writeDiscoveryRegistry port workDir mToken = do
-    home <- getHomeDirectory
-    let regDir = home </> ".local" </> "state" </> "sabela" </> "servers"
+    base <- stateBase
+    let regDir = base </> "sabela" </> "servers"
         regFile = regDir </> (show port ++ ".json")
     createDirectoryIfMissing True regDir
     pid <- getCurrentPid

@@ -9,11 +9,11 @@ help: ## Show available targets
 		| sort \
 		| awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-frontend: ## Rebuild the embedded HTML (static/*.html) from the static/src/ partials
+frontend: ## Rebuild the embedded HTML (static/*.html) + the WASM-run bundle (static/sabela-wasm-run.js) from static/src/
 	node tools/build-frontend.mjs
 	@echo "Now rebuild sabela (cabal build) so the embedded pages pick up changes."
 
-frontend-check: ## Fail if any static/*.html is stale vs its static/src/ partials
+frontend-check: ## Fail if any static/*.html or the WASM-run bundle is stale vs its static/src/ partials
 	node tools/build-frontend.mjs --check
 
 api-reference: ## Regenerate data/api-reference.txt from dataframe/granite (rerun when those packages change)

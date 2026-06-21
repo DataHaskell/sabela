@@ -79,7 +79,7 @@ spec =
 
         it "downloads a featured notebook's source (.md)" $ do
             (app, store, gallery) <- makeAppFull
-            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            publishShare store (mkShare "ab12") "<h1>x</h1>" Nothing
             writeShareSource store "ab12" "# Iris\nplot iris"
             addFeatured gallery "ab12"
             resp <- runSession (request (setPath defaultRequest "/_hub/source/ab12")) app
@@ -90,7 +90,7 @@ spec =
 
         it "downloads a non-featured share's source (public-by-URL)" $ do
             (app, store, _) <- makeAppFull
-            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            publishShare store (mkShare "ab12") "<h1>x</h1>" Nothing
             writeShareSource store "ab12" "# just shared\nplot iris"
             resp <- runSession (request (setPath defaultRequest "/_hub/source/ab12")) app
             simpleStatus resp `shouldBe` status200
@@ -98,7 +98,7 @@ spec =
 
         it "404s a download when no source is stored (legacy/unknown slug)" $ do
             (app, store, _) <- makeAppFull
-            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            publishShare store (mkShare "ab12") "<h1>x</h1>" Nothing
             resp <- runSession (request (setPath defaultRequest "/_hub/source/ab12")) app
             simpleStatus resp `shouldBe` status404
 
@@ -126,7 +126,7 @@ spec =
             let root = base </> "sabela-fork-test"
             _ <- try (removeDirectoryRecursive root) :: IO (Either SomeException ())
             (app, store, gallery) <- makeAppForkable root
-            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            publishShare store (mkShare "ab12") "<h1>x</h1>" Nothing
             writeShareSource store "ab12" "# Iris\nplot iris"
             addFeatured gallery "ab12"
             let req =
@@ -149,7 +149,7 @@ spec =
             let root = base </> "sabela-fork-test-unfeatured"
             _ <- try (removeDirectoryRecursive root) :: IO (Either SomeException ())
             (app, store, _) <- makeAppForkable root
-            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            publishShare store (mkShare "ab12") "<h1>x</h1>" Nothing
             writeShareSource store "ab12" "# just shared"
             let req =
                     (setPath defaultRequest "/_hub/fork/ab12")
@@ -169,7 +169,7 @@ spec =
             let root = base </> "sabela-fork-test-open"
             _ <- try (removeDirectoryRecursive root) :: IO (Either SomeException ())
             (app, store, gallery) <- makeAppForkable root
-            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            publishShare store (mkShare "ab12") "<h1>x</h1>" Nothing
             writeShareSource store "ab12" "# Iris"
             addFeatured gallery "ab12"
             let req =
@@ -189,7 +189,7 @@ spec =
         it "rejects a cross-origin fork (403)" $ do
             base <- getTemporaryDirectory
             (app, store, gallery) <- makeAppForkable (base </> "sabela-fork-test2")
-            publishShare store (mkShare "ab12") "<h1>x</h1>"
+            publishShare store (mkShare "ab12") "<h1>x</h1>" Nothing
             writeShareSource store "ab12" "# Iris"
             addFeatured gallery "ab12"
             let req =
@@ -223,7 +223,7 @@ spec =
 
         it "serves a published share at /s/<slug> with hardened headers" $ do
             (app, store) <- makeAppWithStore
-            publishShare store (mkShare "abc123") "<h1>shared dash</h1>"
+            publishShare store (mkShare "abc123") "<h1>shared dash</h1>" Nothing
             let req =
                     defaultRequest
                         { rawPathInfo = "/s/abc123"

@@ -99,7 +99,7 @@ queryTools =
         )
     , mkTool
         KernelStatus
-        "Lock-free kernel status. Always answers, even while a cell holds the run-lock, so you can tell \"busy\" (a slow cell) from \"wedged\" (the server is unresponsive) without blocking. Returns whether the kernel is alive, whether it is running, and a session generation tag."
+        "Lock-free kernel status. Always answers, even while a cell holds the run-lock, so you can tell \"busy\" (a slow cell) from \"wedged\" (the server is unresponsive) without blocking. Returns a typed `state` tag (cold | idle | executing | building) plus `ksGen` (the restart counter) and `ebGeneration` (the edit/run fence)."
         noArgs
     , mkTool
         Interrupt
@@ -108,6 +108,10 @@ queryTools =
     , mkTool
         KernelRestart
         "Restart the Haskell kernel asynchronously. Returns immediately; poll kernel_status until the kernel is alive and idle again. Use when the kernel is wedged and interrupt did not free it."
+        noArgs
+    , mkTool
+        AwaitIdle
+        "Block until the running cascade finishes (a bounded ~45s long-poll on the execution-done fence, not a running==false sample). Returns immediately when the kernel is already idle. The reply carries a `waited` tag (settled | idle | timedOut | kernelDead) and a fresh kernel `status`; re-call while `waited` is timedOut and re-check the kernel when it is kernelDead. Cheaper than spinning on kernel_status."
         noArgs
     , mkTool
         ExportNotebook

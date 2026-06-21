@@ -1,0 +1,99 @@
+cabal-version:      3.0
+name:               siza-client
+version:            0.1.0.0
+synopsis:           Compiled Haskell client for the Sabela AI tool surface.
+description:        Typed CLI + library that drives a running Sabela notebook
+                    over /api/ai/*, with a client-side pre-flight (parse +
+                    security) pipeline. Replaces siza-discover.sh/siza-tool.sh.
+build-type:         Simple
+license:            MIT
+author:             DataHaskell
+maintainer:         mschavinda@gmail.com
+category:           Development
+
+common warnings
+    ghc-options: -Wall
+
+-- R3-1 shipped the transport core (Discover/Transport/Cli). R3-2 adds the
+-- pre-flight parse seam (Language/Lang.Haskell/Preflight). R3-3 adds the
+-- capability security scan (Security). R3-4 adds the annotate :type pull.
+library
+    import:           warnings
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase
+    exposed-modules:  Siza.Discover
+                      Siza.Transport
+                      Siza.Cli
+                      Siza.Language
+                      Siza.Lang.Haskell
+                      Siza.Preflight
+                      Siza.Security
+                      Siza.Annotate
+                      Siza.Cli.Annotate
+                      Siza.Cli.Await
+                      Siza.Cli.Provenance
+                      Siza.Cli.Retro
+                      Siza.Provenance
+                      Siza.Provenance.Event
+                      Siza.Provenance.Log
+                      Siza.Retro
+    build-depends:    base >= 4 && < 5
+                      -- the contract sub-library: typed wire DTOs + AST parser
+                      -- reuse, without the server's warp/servant/process drag
+                    , sabela:sabela-contract
+                      -- transport (already in-project; server uses the same)
+                    , http-client >= 0.7 && < 0.10
+                    , http-client-tls >= 0.3 && < 0.4
+                    , http-types >= 0.12 && < 0.13
+                    , aeson >= 0.11.0.0 && < 3
+                    , bytestring >= 0.10 && < 0.13
+                    , text >= 1.2 && < 3
+                    , containers >= 0.6.7 && < 0.9
+                    , directory >= 1.3 && < 1.4
+                    , filepath >= 1.4 && < 1.6
+                      -- provenance log timestamps (UTCTime)
+                    , time >= 1.9 && < 2
+                      -- opt-in hash-chain over the provenance log (SHA-256);
+                      -- already in the build plan via http-client-tls/tls
+                    , crypton >= 0.30 && < 2
+                      -- typed CLI surface
+                    , optparse-applicative >= 0.17 && < 0.20
+                      -- parse-with-location: the SAME parser Sabela.Parse
+                      -- uses, pinned to the SAME bounds so they stay lockstep
+                    , ghc-lib-parser >= 9.6 && < 9.20
+                    , ghc-lib-parser-ex >= 9.6 && < 9.20
+
+executable siza
+    import:           warnings
+    hs-source-dirs:   app
+    main-is:          Main.hs
+    default-language: Haskell2010
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    build-depends:    base >= 4 && < 5
+                    , siza-client
+
+-- Run EXPLICITLY by target
+-- (cabal test siza-client:test:siza-client-test), never `cabal test all`.
+test-suite siza-client-test
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    other-modules:    Test.Fixtures
+                      Test.LanguageSpec
+                      Test.ProvenanceSpec
+                      Test.CrossSeamSpec
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings
+    build-depends:    base >= 4 && < 5
+                    , siza-client
+                    , sabela:sabela-contract
+                    , hspec >= 2 && < 3
+                    , aeson >= 0.11.0.0 && < 3
+                    , bytestring >= 0.10 && < 0.13
+                    , text >= 1.2 && < 3
+                    , containers >= 0.6.7 && < 0.9
+                    , directory >= 1.3 && < 1.4
+                    , filepath >= 1.4 && < 1.6
+                    , time >= 1.9 && < 2

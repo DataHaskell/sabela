@@ -10,111 +10,39 @@ The user has a Sabela notebook open in their browser. You are pairing with them:
 
 ## Hard rule
 
-**Every notebook operation goes through `${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh`.** Do not `curl` `/api/cell/*`, `/api/load`, `/api/notebook`, or any non-`/api/ai/*` endpoint, and do not `ps aux` looking for the server. Raw endpoints bypass the AI bridge: they skip the browser-refresh broadcast, skip optimistic-concurrency checks on cell hashes, and skip large-output handle stashing. If `siza-tool.sh` doesn't expose what you need, tell the user — don't reach around it. **One sanctioned exception:** setting widget state (slider/dropdown/lasso) via `POST /api/widget`, since siza has no widget-set tool — see [Driving widgets](#driving-widgets) below. It still needs user sign-off before you `curl` it.
+**Every notebook operation goes through `${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza`.** Do not `curl` `/api/cell/*`, `/api/load`, `/api/notebook`, or any non-`/api/ai/*` endpoint, and do not `ps aux` looking for the server. Raw endpoints bypass the AI bridge: they skip the browser-refresh broadcast, skip optimistic-concurrency checks on cell hashes, and skip large-output handle stashing. If `siza` doesn't expose what you need, tell the user — don't reach around it. **One sanctioned exception:** setting widget state (slider/dropdown/lasso) via `POST /api/widget`, since siza has no widget-set tool — see [reference/widgets.md](reference/widgets.md). It still needs user sign-off before you `curl` it.
 
 **Never edit the notebook's `.md` file directly with file tools (Write/Edit/sed).** The live session the user is looking at is the source of truth; editing the file on disk diverges from it, skips validation (the cell never runs), and skips the browser broadcast. Make every cell change through siza (`insert_cell`/`replace_cell_source`/`delete_cell`) so it is applied, auto-run, and visible. Saving the session back to disk is the user's action in the browser, not a file you write.
 
-## Discovery
+## Discovery and invoking
+
+The primary entrypoint is `${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza` — a thin shim over the compiled typed client (`exe:siza`). It validates tool names and JSON against the typed contract, runs the pre-flight parse + security scan on mutating code, and records each call to a provenance log (see [Provenance](#provenance)).
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-discover.sh
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza discover            # JSON array of live servers; the first is the target
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza health              # probe the first live server's health
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza tool <name> '<json_input>'
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza check [--strict] [-|FILE]   # pre-flight parse + security scan of cell source
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza annotate <cell_id> [--source]   # infer signatures for a cell's unsigned binds
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza await-idle [SECONDS]   # block until the kernel settles to idle (re-loops past timedOut)
 ```
 
-Returns a JSON array of live servers (one entry per `~/.local/state/sabela/servers/<port>.json` that responds to `/api/ai/health`). Pick the first. Honors:
+`siza discover` lists each `~/.local/state/sabela/servers/<port>.json` that responds to `/api/ai/health`. Every subcommand reads the same env vars, so you don't pass URLs around: `SABELA_URL` short-circuits discovery; `SABELA_AI_TOKEN` is the bearer token when `authRequired: true`; `SABELA_SESSION` is the `X-Sabela-Session` header (defaults to a per-terminal id; isolates `explore_result` handles between clients). `$SIZA_BIN` overrides where the shim finds the binary; otherwise it resolves `cabal list-bin exe:siza` from the repo root (build it once with `cabal build exe:siza`).
 
-- `SABELA_URL` — short-circuits discovery and probes a specific URL.
-- `SABELA_AI_TOKEN` — bearer token, required if the server has `authRequired: true`.
-- `SABELA_SESSION` — `X-Sabela-Session` header value, defaults to a per-terminal id. Isolates `explore_result` handles between concurrent clients.
+For `siza tool`, `<json_input>` defaults to `{}` if omitted. Output is pretty JSON on stdout. Exit code is non-zero when the tool returns `isError: true`. Pass `--strict` to a mutating `tool` (or to `check`) to **block** on a denied capability instead of only advising.
 
-`siza-tool.sh` reads the same env vars, so you don't pass URLs around.
+`siza check` parses and security-scans cell source **without touching the kernel** — use it before a `propose_edit`/`replace_cell_source`/`insert_cell` to catch syntax errors and flagged operations up front. `siza annotate <cell_id>` infers type signatures for a cell's unsigned top-level binds (`--source` emits the annotated source instead of a report).
 
-## Invoking tools
+## Provenance
 
-```bash
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh <tool_name> '<json_input>'
-```
-
-`<json_input>` defaults to `{}` if omitted. Output is pretty JSON on stdout. Exit code is non-zero when the tool returns `isError: true`.
-
-## Worked example — "analyse X in my notebook"
-
-```bash
-# 1. Confirm a server is up.
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-discover.sh
-
-# 2. See what's already in the notebook.
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh list_cells
-
-# 3. Read the cells that look relevant (note their hashes).
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh read_cell '{"cell_id":7}'
-
-# 4. Dry-run new code in the throwaway scratchpad before touching the notebook.
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh scratchpad \
-  '{"language":"Haskell","code":"import qualified DataFrame as D\nlangs <- D.readCsv \"./examples/data/languages.csv\"\nD.dimensions langs"}'
-
-# 5. If the dry-run is clean, insert the cell after the last relevant one.
-#    Always pass BOTH cell_type and language — required on every cell, prose included (see gotcha).
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-tool.sh insert_cell \
-  '{"after_cell_id":7,"cell_type":"CodeCell","language":"Haskell","source":"import qualified DataFrame as D\nlangs <- D.readCsv \"./examples/data/languages.csv\"\nD.take 5 langs"}'
-
-# 6. Read execution.ok in the response. If false, fix in place with replace_cell_source
-#    using the hash returned by insert_cell — never delete + re-insert.
-```
-
-## Always write clear, notebook-friendly code
-
-A notebook is a document a human reads top to bottom, not a script. Every cell you
-write or edit must be legible on its own. This is not optional polish; dense,
-mixed-concern cells make the notebook hostile to read.
-
-- **Separate logic from display.** Pure computation (parsing, aggregation, models,
-  ranking) goes in its own cells; rendering (tables, charts, `displayMarkdown`,
-  widgets) goes in separate cells that call it. A cell that mixes a dense fold with the
-  SVG that draws it is unreadable. This mirrors the library-vs-view split.
-- **One concept per cell.** Split a long cell that does several things into focused
-  cells, each with a single responsibility and a one-line prose lead-in saying what
-  question it answers. Never paste a whole subsystem into one cell.
-- **Readable, modular code.** Name things for what they are (`pathsBefore`, `growthFor`),
-  not `rp'`/`mb'`/`gp`/`ks`. Extract helpers and a type alias or two; do not cram nested
-  logic into one expression the reader must hold in their head. A short top-level comment
-  states intent.
-- **Top-level bindings, not `do let`.** Write a cell's values as top-level definitions
-  (`totalDelta = pTotal new - pTotal base`, `topRegressors = take 12 regressors`), not
-  stuffed into a `do let … ` block. A `do let` forces every binding into one indented wall
-  and pushes you to keep cramming; flat top-level bindings each stand alone and read in
-  order. Reserve a trailing `do` for the actual effects (the `display*`/`showTable` calls).
-  Top-level names are global (reactivity-tracked, can't collide across cells), so name them
-  descriptively — never generic `top`/`lead`/`nm`.
-- **Shallow `where`/`let`.** Keep local bindings to one level of nesting and at most three
-  per clause. The moment a `where` grows a nested `let` (a second level) or a fourth
-  binding, lift that inner computation to its own top-level (or `-- compile`) helper,
-  parameterised over what it needs. Deeply nested local scopes are the hardest notebook
-  code to read.
-- **Narrate.** Put prose between cells that makes a claim the next cell substantiates.
-  Hide setup (parsers, helpers) under a collapsed "Setup" heading; surface the results.
-- **Keep heavy work off the default path.** A cell that walks a large structure and is
-  slow should not run on every load: gate it behind an on-demand helper (`drill "name"`)
-  or compute only what the visible result needs.
-- **Compile heavy pure logic.** A tree walk or fold over a large structure in an
-  *interpreted* cell can exceed the cell timeout and wedge the kernel. Put pure heavy
-  functions in a `-- compile:` cell (native `-O2`) and call them from interpreted cells.
-  A pure function can be compiled even when its arguments are interpreted runtime values:
-  parameterise it over those values instead of closing over them (e.g. take `before`,
-  `after` as `Prof` arguments rather than referencing the interpreted `base`/`new`).
-  internal steps silently; it doesn't call them out as special sections. Drop headings like
-  "Ruling out the false leads — renames" or "Excluding the pseudo-centres": the technique is
-  built in, so describe what the reader sees in the result, not the implementation's
-  housekeeping. Prose narrates findings, not the algorithm's defensive steps.
-- **Prose style.** Plain and detached, in the user's voice. No em dashes (use a colon or
-  parens instead). No marketing or sales tone. No "X, not Y" / "rather than" contrasts.
-  Headings are informative and gentle, not reveals ("What grew", not "The answer").
+Each `siza tool` call is recorded to an append-only JSONL provenance log under `~/.local/state/sabela/sessions/<notebook-id>/<session-id>.jsonl` (honouring `$XDG_STATE_HOME`), beside the server registry. One line per call records the time, session, notebook, actor, tool name, input, pre-flight verdict, outcome, kernel-state-before, and the `(session, ebGeneration)` correlation key. The server writes its own authoritative log at the tool seam; the client log is the intent layer. This is a side effect — it never changes a tool's output or blocks a call (a log-write failure is swallowed). Review a session's metrics with `siza retro <file>` or `siza retro --notebook <nb> --session <sid>`.
 
 ## Which mutation tool?
 
 | You want to… | Use |
 |---|---|
 | Edit a cell **the user wrote** | `propose_edit` — pending patch they accept/reject in the UI. Always pass `expected_hash`. |
-| Edit a cell **you just inserted** | `replace_cell_source` — applied + auto-run immediately. Iterate on your own scaffolding. |
+| Edit a cell **you just inserted** | `replace_cell_source` — applied + auto-run immediately. Iterate on your own scaffolding. Pass `expected_hash`. |
 | Add a new cell | `insert_cell`. `after_cell_id: -1` puts it at the top. |
 | Remove a cell | `delete_cell` — immediate, no undo. Widgets disappear from the rendered page. |
 
@@ -130,129 +58,86 @@ All tools accept a JSON object input; outputs below are abbreviated.
 | `read_cell` | `{cell_id}` | `{id,hash,type,lang,source,outputs,error}` | Full source + rendered outputs. Large outputs may be a handle. |
 | `read_cell_output` | `{cell_id}` | `{id,outputs,error}` | Cheaper than `read_cell` when you already know the source. |
 | `find_cells_by_content` | `{pattern}` | `{matches:[{id,lang,matchingLines:[{line,text}]}]}` | Case-sensitive substring. Up to 5 matching lines per cell, 120 chars each. |
-| `insert_cell` | `{after_cell_id,source,cell_type,language?}` | `{cellId,hash,execution}` | Auto-runs Haskell code cells; `execution: null` for Python or prose. **Pass `cell_type` AND `language` on _every_ insert — prose cells included.** The schema marks them optional, but omitting `cell_type` fails with `Unknown cell_type: .` and omitting `language` fails with `Unknown language: .` even for a `ProseCell` (use `"Haskell"` if there's no real language to give). |
+| `insert_cell` | `{after_cell_id,source,cell_type,language?}` | `{cellId,hash,execution}` | Auto-runs Haskell code cells; `execution` is a typed `CellResult` (`{outcome,outputs,warnings,ok}`), `null` for Python or prose. **Pass `cell_type` AND `language` on _every_ insert — prose cells included.** Omitting `cell_type` fails with `Unknown cell_type: .` and omitting `language` fails with `Unknown language: .` even for a `ProseCell` (use `"Haskell"` if there's no real language to give). |
 | `delete_cell` | `{cell_id}` | `{deleted:true,cellId}` | Irreversible. |
-| `replace_cell_source` | `{cell_id,new_source,expected_hash?}` | `{cellId,hash,execution}` | Auto-runs. Pass `expected_hash` to detect concurrent edits. |
+| `replace_cell_source` | `{cell_id,new_source,expected_hash?}` | `{cellId,hash,execution}` | Auto-runs; `execution` is a typed `CellResult`. Pass `expected_hash` to detect concurrent edits. |
 | `propose_edit` | `{cell_id,new_source,expected_hash?}` | `{editId,cellId,status:"pending"}` | Does **not** apply or run. Re-proposing supersedes prior pending edit on the same cell. |
-| `execute_cell` | `{cell_id}` | `{cellId,outputs,error,errors}` | Reactive: downstream cells re-run automatically. ~120s timeout. |
-| `scratchpad` | `{code,language?}` | `{stdout,stderr}` | Throwaway, isolated session. See "Scratchpad rules" below. |
+| `execute_cell` | `{cell_id}` | `{cellId,outcome,outputs,warnings,ok}` | Reactive: downstream cells re-run automatically. ~120s timeout. |
+| `kernel_status` | `{}` | `{state:{state,ksGen,building},ksGen,ebGeneration}` | Lock-free; answers even while a cell holds the run-lock. See [Kernel discipline](#kernel-discipline). |
+| `interrupt` | `{}` | `{interrupted:true}` | Best-effort group SIGINT to a runaway cell. |
+| `kernel_restart` | `{}` | `{restartInitiated:true}` | Forked; returns immediately, then poll `kernel_status`. **Destructive** — wipes every binding and compiled module. |
+| `export_notebook` | `{}` | `{title, cells:[{id,position,type,lang,source,…}]}` | Every cell's source in one call — re-sync after a human edits. |
+| `scratchpad` | `{code,language?}` | `{stdout,stderr}` | Throwaway, isolated session. See the explore recipe. |
 | `ghci_query` | `{op:"type"\|"info"\|"kind"\|"browse"\|"doc",arg}` | `{op,arg,result}` | Cheap introspection of the live Haskell session. No side effects. Requires at least one cell already executed. |
-| `api_reference` | `{module?}` | `{module,reference}` | Pre-generated `:browse` for DataFrame, DataFrame.Typed, DataFrame.Functions, DataFrame.Display.Web.Plot, Granite.Svg. Substring match on section header; empty returns all. |
-| `explore_result` | `{handle_id,op:"head"\|"tail"\|"slice"\|"grep",n?,from?,to?,pattern?}` | `{lines,totalLines}` or `{hits,totalLines}` | Drill into a stashed large payload. See "Handle lifecycle" below. |
+| `api_reference` | `{module?}` | `{module,reference}` | The embedded card. See [reference/dataframe-granite.md](reference/dataframe-granite.md). |
+| `explore_result` | `{handle_id,op:"head"\|"tail"\|"slice"\|"grep",n?,from?,to?,pattern?}` | `{lines,totalLines}` or `{hits,totalLines}` | Drill into a stashed large payload. **Handles expire at turn end** — drill or extract the same turn. `slice` is 1-based inclusive. |
 
-You can fetch the authoritative schemas at any time with `curl -s "$base/api/ai/tools" | jq` — `siza-discover.sh` gives you `$base`.
+You can fetch the authoritative schemas at any time with `curl -s "$base/api/ai/tools" | jq`.
 
-## Execution result semantics
+## Cell-result and kernel-status semantics
 
-For Haskell code-cell mutations (`insert_cell`, `replace_cell_source`, `execute_cell`), the response carries:
+The tool surface is **sum-typed**: a cell result is one `outcome` tag and a kernel status is one `state` tag, so you match a tag instead of recombining loose booleans.
 
+**Cell result.** For Haskell code-cell mutations (`insert_cell`, `replace_cell_source`, `execute_cell`) the `execution` (or `execute_cell` result) is a `CellResult`:
+
+- `outcome: {tag, …}` — one of `Succeeded`, `Raised {message}` (runtime exception), `Rejected {errors:[{line?,col?,message}]}` (structured compile errors), or `Aborted {reason}` (`Interrupted` | `Superseded` | `TimedOut`).
 - `outputs: [{mime, output}]` — rendered outputs. Individual outputs >40 lines or >4 KB become handles (`{handleId, summary, totalLines, totalBytes}`).
-- `error: string | null` — aggregated runtime stderr.
-- `errors: [{line?, col?, message}]` — **structured compile errors**, possibly empty.
-- `ok = (errors is empty) AND (error is null)`. A cell can have both at once (compile error with warnings).
+- `warnings: [{line?, col?, message}]` — non-fatal diagnostics.
+- `ok: bool` — `true` iff `outcome.tag == "Succeeded"`. Match `outcome.tag` for *why* it failed; read `ok` for the quick yes/no.
 
-Python cells and prose cells return `execution: null`. Don't read `execution.ok` on those — branch on cell type first.
+Python and prose cells return `execution: null` — branch on cell type first, don't read `execution.ok`. If `ok: false`, **fix in the same turn**; downstream cells won't run.
 
-If `ok: false`, **fix in the same turn** before moving on. Downstream cells won't run.
+**Kernel status.** `kernel_status` returns `{state: {state, ksGen, building}, ksGen, ebGeneration}`. `state.state` is one tag — `cold` (no session), `idle`, `executing` (a cell or query holds the run-lock), or `building` (off-lock build work: a cabal-env install, a cold-start GHCi spawn, or a `-- compile` module build). `building` and `executing` are independent axes that can co-occur: while a cell runs the tag stays `executing` and `state.building` carries the rebuild, so read `state.building` when you need both. **Only `state == "idle"` is genuinely settled.** `ksGen` bumps only on a GHCi restart, so a constant `ksGen` through a long run is normal — it is not a wedge signal. `ebGeneration` is a distinct event-bus fence, separate from `ksGen`.
 
 ## Reactivity
 
-Editing or running a cell reruns every cell that textually depends on it (Sabela tracks `let`, `data`, `type`, `newtype`, `class`, and value bindings against later cells' identifier use). You don't need to manually rerun dependents. Dependency tracking is **textual, not semantic** — renaming a symbol without updating callers is allowed; the breakage surfaces on next run. Always dry-run renames in `scratchpad` first.
+Editing or running a cell reruns every cell that textually depends on it (Sabela tracks `let`, `data`, `type`, `newtype`, `class`, and value bindings against later cells' identifier use). You don't manually rerun dependents. Dependency tracking is **textual, not semantic** — renaming a symbol without updating callers is allowed; the breakage surfaces on next run.
 
-**One asymmetry to watch:** a cell that *failed to compile* is not recorded as the provider of the names it would have bound, so the dependency edge is missing. After you **fix** a previously-broken upstream cell, its downstream consumers can stay red — re-run them by hand once. (A cell going green for the first time doesn't retro-trigger the cells that were waiting on it.) Conversely, a single broken upstream cell produces a *flood* of `Variable not in scope` errors across every downstream cell; trace the not-in-scope errors back to the one root cell rather than treating each as separate.
+**The asymmetry to watch:** a cell that *failed to compile* is not recorded as the provider of the names it would have bound, so the dependency edge is missing. After you **fix** a previously-broken upstream cell, its downstream consumers can stay red — re-run them by hand once. (Conversely, one broken upstream cell floods every downstream cell with `Variable not in scope`; trace those back to the single root rather than treating each as separate.)
 
-## Handle lifecycle
+## Kernel discipline
 
-Large payloads are auto-compacted:
+There is **one** GHCi kernel per notebook behind a single run-lock. The notebook, the session, and the lock are shared per notebook: browser runs, widget updates, run-all, and your tools all drive the same lock. A human taking over is a normal event.
 
-- Individual cell outputs: stashed when >40 lines or >4 KB.
-- Whole tool results: stashed when the JSON exceeds ~8 KB; you'll see `_compacted: true` and a `_large.handleId` in the response.
+- **One call at a time.** A second tool call that needs the kernel while a cell holds the lock is **bounced immediately** with `busy` — it does **not** queue or stack server-side. So a `busy` bounce is a wasted round-trip that tells you nothing new: serialise (issue one, wait for its response, then the next) rather than spray.
+- **A timeout is not a failure and not a cancel.** When `execute_cell` returns a `curl` timeout, the cell is very likely still running: the server waits on the cell's result for up to ~130 s while the client's ~60 s request timeout abandons the HTTP response first. The work continues; you have only stopped watching. **DO NOT retry** — a retry bounces `busy`, and killing the client does not cancel the cell already running on the server. Wait for the kernel to drain by polling the **lock-free** `kernel_status` (or `list_cells`, `/api/ai/health`); they answer even while a cell holds the lock, which is how you tell "busy" from "wedged".
+- **Never attribute warm-up to the cell.** The *first* `execute_cell` after a (re)start, a `-- compile` edit, or a `-- cabal:` edit blocks on the cold-start **and** the `-O2` project compile (often 1–3 min) *before your cell even runs*. Do not benchmark a cell from a cold call. Warm the kernel first (run a trivial cell, or poll `kernel_status` to idle), then time the cell you care about.
+- **Beware the Bash auto-background trap.** Long commands get auto-backgrounded, so an impatient retry of a slow loop launches a *second concurrent* loop. The moment the kernel goes idle a stray loop can fire a run you did not intend, and killing the client does **not** cancel a cell already on the server. **Never retry a backgrounded siza loop** — let the first finish.
+- **Heavy exploration goes in the `scratchpad`,** never a long `execute_cell` against the live kernel — a blocking cell wedges the *whole* notebook for the user too.
+- **A `kernel_status` change you did not cause means a human acted** (a `state` flip you didn't trigger, or a bumped `ksGen`). Back off and re-sync with one `export_notebook` call rather than retrying.
 
-Drill in with `explore_result`:
+### `-- cabal:` and `-- compile` costs
 
-- `head n` / `tail n` — first/last n lines (default 20).
-- `slice from to` — **1-based inclusive** range.
-- `grep pattern` — substring match, up to 50 hits.
+- **`-- cabal:` edit = full restart.** Editing a `-- cabal:` line rebuilds the package env and **silently restarts GHCi**, wiping every binding and every loaded `-- compile` module — a cold session, one to three minutes. `list_cells` flags (`hasError`/`dirty`) go stale across a restart; don't trust them. **Batch all dep additions up front** so you pay the restart + recompile once.
+- **`-- compile` cell = multi-minute `-O2` relaunch.** A `-- compile` line relaunches the *entire* kernel as object code and wipes the interpreted context. The server **re-warms it for you**: after the wipe it automatically re-runs every interpreted cell in dependency order (see Part 2.4 of the design). So fire one run and await idle — don't hand-sequence a re-warm. A compile that *fails* still escalates (downstream cells come back red; read them and fix the root), and a *no-op* edit that doesn't reload won't escalate.
 
-**Handles expire at turn end.** Drill in the same turn or extract what you need into a notebook cell before the turn closes.
+## No rebinding a name across cells
 
-## Scratchpad rules
+Sabela tracks top-level definitions globally, so binding a name a *different* cell already defines fails — e.g. `df <- …` (or `let df = …`) when `df` is bound elsewhere returns `Duplicate definition: 'df' is already defined in cell N (which takes precedence)`. To transform a value, bind a **new** name (`let featured = … df …`) and thread it forward; `propose_edit` the downstream consumers to read the new name. (Re-running the *same* cell that owns a binding is fine; this only bites when a second cell redefines it.)
 
-- **Per-language, per-turn.** Switching language kills the previous scratchpad. State doesn't survive across turns.
-- **Haskell:** write `x = 10` at top level, **not** `let x = 10`. The runner uses scripths, which wraps multi-line definitions in `:{ … :}` for you. `import …`, `data …`, `class …`, etc. all work normally.
-- **The scratchpad can't resolve `-- cabal:` deps** — it has a fixed package env and its own CWD. Code that needs an extra package (or relative data paths) can only be dry-run in the live notebook, not the scratchpad. Use `ghci_query` against the live session for type/scope checks instead.
-- **Non-empty stderr flips `isError: true`** even if stdout looks fine. Don't ignore it.
-- **Circuit breaker:** after 3 consecutive scratchpad errors in one turn, the response gets a `_sabelaHint`. Stop and ask the user — don't keep retrying.
+## Recipes
+
+Each recipe is a small composition over the primitives above.
+
+- **Fix a red cell in the same turn** (the highest-frequency loop): read the error from `errors`/`error`, diagnose, `replace_cell_source` (yours) or `propose_edit` (theirs), re-check `ok`. Mind the reactivity asymmetry — re-run a downstream consumer by hand once after fixing a previously-broken upstream cell.
+- **Edit a user's cell:** `read_cell` to capture the `hash`, then `propose_edit(expected_hash)`. They accept or reject in the UI.
+- **Edit your own cell:** `replace_cell_source(expected_hash)` — applied and auto-run immediately.
+- **Run and wait** = run → await-idle → read. Issue `execute_cell` (or a mutation), then `scripts/siza await-idle [SECONDS]` (a bounded ~45s long-poll on the execution-done fence; the subcommand re-loops past `timedOut` to an overall budget) until its `status.state.state` is `idle`, then `read_cell_output` for the settled result. The underlying `siza tool await_idle` stays available if you want each poll visible — the calls stay visible so you see the `busy` and partial-output states; there is deliberately no fused run-and-wait verb.
+- **Sync the notebook:** one `export_notebook` call beats N `read_cell` calls, and is the right move after any `kernel_status` change you did not cause.
+- **Explore:** `ghci_query` against the live session for type and scope (it sees `-- cabal:` deps and the real CWD). Use `scratchpad` only for self-contained slices — **the scratchpad has its own package env and CWD and cannot resolve `-- cabal:` deps or relative data paths.** Write `x = 10` at top level there, not `let x = 10`; non-empty stderr flips `isError: true`; after 3 consecutive scratchpad errors in a turn the response carries a `_sabelaHint` — stop and ask the user.
+- **Safe rename:** tracking is textual, so a rename that misses a caller surfaces only on next run. Dry-run the rename in `scratchpad` first.
+- **Add deps:** batch the `-- cabal:` edits into one change, expect one restart (one to three minutes), then fire one run and await idle. See the cost note above.
+- **Recover a wedge** (conservative, human-gated): a true wedge is a call that never returns while `kernel_status` shows `state == "idle"` with an *unchanged* `ksGen` — distinct from a long compile (`state == "building"`) or a long run (`state == "executing"`), neither of which is wedged. Do not restart on a hunch; a restart is irreversible and wipes all work. Sequence: `interrupt` first (best-effort, async — may not free a non-interruptible FFI call or a tight loop); re-check `kernel_status`; only then propose `kernel_restart` to the user; after a restart, wait for `ksGen` to strictly increase; if it is still unresponsive, tell the user to restart the server process (a fresh server also resets `SABELA_CELL_TIMEOUT_SECONDS`).
 
 ## Concurrent-edit recovery
 
-If a mutation rejects with a hash mismatch:
-
-```json
-{"error":"Hash mismatch — re-read the cell and retry.","cellId":5,"currentHash":"…","expectedHash":"…"}
-```
-
-The user edited the cell out from under you. Re-`read_cell`, decide whether your change still applies, and retry with the fresh hash.
-
-## Kernel discipline — concurrency, timeouts, restarts
-
-There is **one** GHCi kernel per notebook behind a single run-lock with no admission control. Almost all lost wall-clock in practice comes from mishandling it. These are hard rules, not suggestions:
-
-- **NEVER run `execute_cell` (or any mutation) concurrently.** Issue one, wait for its response, then the next. In-flight requests queue **server-side**; the client `curl` gives up at 60 s but the **server keeps processing the backlog**, so the queue outlives every timeout.
-- **A timeout is not a failure and not a cancel.** When `execute_cell` returns a `curl` timeout, the cell is very likely still running (a cold `-O2` compile or a >60 s computation easily exceeds the curl ceiling). **STOP. DO NOT retry** — each retry adds another job to the queue and makes the wedge worse. Wait for the kernel to drain by polling the **lock-free** endpoints (`kernel_status`, `siza-tool.sh list_cells`, or `/api/ai/health`); they answer even while a cell holds the lock, which is how you tell "busy" from "wedged".
-- **Never attribute warm-up to the cell — the #1 way to measure wrong.** The *first* `execute_cell` after a (re)start, a `-- compile:` edit, or a `-- cabal:` edit blocks on the kernel cold-start **and** the `-O2` project compile (often 1–3 min) *before your cell even runs*, so its elapsed time is startup, not the cell. Do **not** benchmark or judge a cell from a cold call, and do not call a one-line cell "slow" because the first run took 130 s. **Warm the kernel first:** run a trivial cell (or poll `kernel_status` until `{kernel: alive, running: false, compiling: false}` with a *stable* `sessionGen` — `compiling: true` means it is still building, so `running: false` alone is not idle), *then* time the cell you care about. If you must drive cells programmatically, warm once and measure second — never measure the warm-up.
-- **Beware the Bash auto-background trap.** Long-running commands get auto-backgrounded, so an impatient retry of a slow loop (e.g. a per-cell read/sync loop) launches a *second concurrent* loop — several pile up and flood the queue. Killing the client (`pkill`/`Ctrl-C`) does **NOT** cancel the server-side work already queued. **Never retry a backgrounded siza loop** — let the first finish.
-- **Heavy exploration goes in the `scratchpad`,** never a long `execute_cell` against the live kernel — a blocking or long cell wedges the *whole* notebook for the user too.
-- **Recovery tools exist over the bridge:** `kernel_status` (lock-free — `{kernel: alive|absent, running, compiling, sessionGen}`), `interrupt`, `kernel_restart`, `export_notebook`. Use `kernel_status` to tell *warming/busy* from *wedged*; `interrupt` clears a runaway cell; `kernel_restart` gives a fresh kernel. If the kernel stays unresponsive **after** `kernel_restart`, only a **server-process restart by the user** recovers it (a fresh server also resets the cell timeout, configurable via `SABELA_CELL_TIMEOUT_SECONDS`).
-- **`running` and `compiling` are two separate axes — read both.** `running` is the run-lock (a cell or query executing); `compiling` is off-lock build work: a cabal-env install, a cold-start GHCi spawn, or a `-- compile:` module build. **`running: false` does NOT mean idle.** A cold start or a compile shows `{running: false, compiling: true}` for 1–3 min while a slow `execute_cell` appears to "hang" — that is the kernel *building*, not wedged: keep polling, do not retry or restart. Only `{running: false, compiling: false}` with a stable `sessionGen` is genuinely idle. A call that never returns while **both** are false (and `sessionGen` is unchanged) is the real wedge.
-- **Editing a `-- compile` cell wipes the whole interpreted context.** The recompile does a `:load` that clears *every* prompt binding (not just the edited module's dependents) — `base`, the analysis bindings, the chart helpers, all of it. After it, re-warm the interpreted chain **in notebook order** (params → load → analysis → helpers → displays), not just the cells the flags mark dirty: running them out of order gives transient `Variable not in scope` (a helper that references a not-yet-loaded binding), and the dependency tracker re-dirties downstream on each out-of-order run. A browser **Run All** is the clean re-warm. So batch `-- compile` edits, and verify a compiled-fn change by *timing it in a scratch cell* (the recompile wipe means a downstream `execute_cell` can also be measuring cold re-warm, not the function).
-
-### After a `-- cabal:` change or a restart
-
-Editing a `-- cabal:` line rebuilds the package env and **silently restarts GHCi**, wiping every binding and every loaded `-- compile` module — a cold session. The traps:
-
-- **`list_cells` flags go stale.** `hasError`/`dirty` reflect *pre-restart* state, so cells can report `ok` while their bindings are gone and downstream cells fail `Not in scope`. Don't trust the flags across a restart.
-- **The reactive re-run may not fully fire.** After any restart, manually re-run the `-- compile` cells and binding cells **in dependency order** before touching downstream cells.
-- **Batch all dep additions up front** so you pay the restart + recompile once, not mid-build. A `-- cabal:` edit that lands while a cell is mid-flight races the running cell.
+If a mutation rejects with a hash mismatch (`{"error":"Hash mismatch — re-read the cell and retry.","cellId":5,"currentHash":"…","expectedHash":"…"}`), the user edited the cell out from under you. Re-`read_cell`, decide whether your change still applies, and retry with the fresh hash.
 
 ## Other gotchas
 
-- **No rebinding a name across cells.** Sabela tracks top-level definitions globally, so binding a name a *different* cell already defines fails — e.g. `df <- …` (or `let df = …`) when `df` is bound elsewhere returns `Duplicate definition: 'df' is already defined in cell N (which takes precedence)`. To transform a value, bind a **new** name (`let featured = … df …`) and thread it forward — `propose_edit` the downstream consumers to read the new name instead of trying to overwrite the original. (Re-running the *same* cell that owns a binding is fine; this only bites when a second cell redefines it.)
-- **Cabal metadata.** Cells declare deps with `-- cabal:` comments. Changing those triggers a package-env rebuild and a silent GHCi restart — see [Kernel discipline](#kernel-discipline--concurrency-timeouts-restarts) for the cold-session recovery. Batch dep changes.
-- **Prefer the lightest package.** `build-depends: dataframe` is an **umbrella** that drags in plotting/typed/ML/web (and granite) — a heavy env whose `-O2` object-code startup can hang GHCi long enough to need a browser restart. For plain frames use **`dataframe-core`** (base/containers/primitive/text/vector only). Nothing in the toolchain warns you the umbrella is heavy or that a `-core` exists — reach for the narrow package first.
-- **Compiled cells (`-- compile`).** A cell containing a `-- compile` line (or `-- compile: Module.Name`) is built into a generated module at `-O2` — native code, 10–300× faster for tight pure-Haskell loops. **Cost to weigh first:** a single `-- compile` line relaunches the *entire* kernel as `ghc --interactive -fobject-code -O2 -fexpose-all-unfoldings`, so even interpreted cells pay a multi-minute object-code startup, and every later restart pays it again — `-- compile` **plus** a heavy dep like `dataframe` is the classic hard-wedge combination. Rules: declarations only (no bare expressions, no `x <- …`, no widgets/`display*`); downstream cells use the names directly; a compiled cell cannot use an interpreted cell's name (pass values as arguments); cells sharing a `-- compile:` name merge into one module and may be mutually recursive. Editing a compiled cell costs a recompile (~0.5–1s warm) and re-runs dependents of the affected modules — batch compiled-cell edits, and tweak call sites in interpreted cells (which never recompiles). Propose it only when a pure-Haskell loop is the real bottleneck; skip it when the time is inside native library calls (large tensor ops, dataframe internals).
-- **Single GHCi kernel per notebook.** A long-running `execute_cell` blocks every other cell and every siza tool call (they all wait on the run-lock). See [Kernel discipline](#kernel-discipline--concurrency-timeouts-restarts).
-- **Token cap.** Responses cap at 4096 tokens; very large `propose_edit` / `replace_cell_source` payloads can truncate mid-JSON. Split: `insert_cell` an empty cell (or a small stub), then patch it in follow-up calls.
-- **`api_reference` first for unfamiliar libs.** Before guessing DataFrame / Granite APIs, call `api_reference '{"module":"DataFrame.Typed"}'` (or the relevant slice). Cheaper and more current than recalling from training. Plotting shold primarily be done with Granite and you should browser the API.
-- **The live session is the source of truth; the disk `.md` is a written artifact.** "Save" is a separate endpoint not exposed via siza — if the user asks to save, tell them to save in the browser. **DO NOT** author a fixed `.md` to disk and ask for a reload as a recovery path. File edits **WILL NOT** reach the live kernel, and they diverge silently: the still-open browser session auto-saves its *old* cells back over your file, a reload renumbers every cell id, and the saved file's cached outputs are dropped (forcing a full rerun that can re-trigger the heavy compile you were escaping). Keep all work flowing through the live session via siza tools.
-- **Non-localhost URLs trigger a stderr warning** from `siza-tool.sh`. If you see it, double-check with the user that the remote target is intentional before sending data.
-
-### In-cell Haskell traps
-
-A handful of things type-check or run but behave wrongly in the live session. These cost real debugging time because the failure is silent or the error misleading.
-
-- **`fromList` needs a type application.** `DataFrame`'s `fromList` is return-type-polymorphic (an `Unboxable`/`Columnable` constraint it can't infer from the list), so a bare `fromList xs` fails with `GHC-80003: Non type-variable argument in the constraint: SBoolI (… Unboxable a1)` **and a flatly wrong fix suggestion** ("use record field `TruncateConfig.maxRows`"). Pin it at the call site: `fromList @Text xs`, `fromList @Double xs`. (A top-level signature on the whole builder also works but is heavier.)
-- **`Data.Text.dropWhileEnd` can silently no-op in-session.** `T.dropWhileEnd C.isDigit "abc99"` has returned `"abc99"` unchanged in a live cell (suspected fusion/RULES interaction; unconfirmed) — a *correctness* trap with no error, no warning. If a trailing-strip silently does nothing, rewrite as `T.reverse . T.dropWhile p . T.reverse`.
-- **Multiple effects need a `do` block.** Two bare `putStrLn (…)` statements on consecutive lines parse as one application — `putStrLn (…) putStrLn (…)` — and fail with a confusing "applied to N visible arguments". Some statement pairs (e.g. consecutive `showTable …`) *do* split, so the behaviour is inconsistent; the safe rule is **multiple effectful statements → wrap them in a `do` block**.
-- **Reconcile non-additive metrics before you headline them.** Ranking by an inherited/subtree/`%`/ratio metric as if it summed produces a plausible, confident, *wrong* story (a measured case: an inherited-cost metric summed to ~80× the whole program). Nothing in the toolchain pushes back. Before narrating "the biggest contributor is X", check a reconciliation invariant — e.g. Σ(individual deltas) == total delta — in a scratch cell.
-
-## Driving widgets
-
-Widgets — `scatterSelectWith` lassoes, `slider`, `dropdown`, `checkbox`, `textInput` — read their state from a **server-side `WidgetStore`**, which `Sabela.Bridge.widgetPreamble` writes into the in-session `_sabelaWidgetRef` **before every cell run**. So you **cannot** set a widget by `modifyIORef _sabelaWidgetRef` from a cell — it's clobbered on the next run. The only writer is the browser bridge, and siza exposes no widget-set tool.
-
-When the user asks you to set a widget's value from chat — a lasso's selection, a slider position, a dropdown choice — use the browser's own endpoint, the lone sanctioned raw POST (get user OK first):
-
-```bash
-base="$(${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza-discover.sh | jq -r '.[0].baseUrl')"
-curl -s -o /dev/null -w 'HTTP %{http_code}\n' -X POST "$base/api/widget" \
-  -H 'Content-Type: application/json' \
-  --data "$(jq -nc --rawfile v /tmp/sel.txt \
-    '{wuCellId:<widget-cell-id>, wuName:"<widget-name>", wuValue:($v|rtrimstr("\n"))}')"
-```
-
-This is safe in the ways the Hard rule worries about: `setWidgetH` writes the store, then `handleWidgetCell` → `executeAffected wuCellId` re-renders the widget cell **and** reruns downstream cells reactively + broadcasts over SSE — identical to a real browser interaction. There's no cell-source hash to guard.
-
-- **`wuCellId`** = the cell that *renders* the widget (the `scatterSelectWith`/`slider`/… cell). Must be that cell, or its highlight/control won't refresh.
-- **`wuName`** = the widget's name argument — the first string you passed it (the `name` in `scatterSelectWith name …`, `slider name …`, etc.).
-- **`wuValue`** = the value `show`-serialized, read back via `reads`: a lasso is a `[Int]` literal of **0-based positions** into the points list passed to the widget (= DataFrame row order if `pts` was built from columns in order); a slider an int; dropdown/text a string.
-- **Big selections:** compute the indices in a throwaway cell and `writeFile "/tmp/sel.txt" (show idx)`, then feed the file to `jq --rawfile` rather than pasting thousands of ints through tool output. Delete the temp cell afterward.
+- **`api_reference` first for unfamiliar libs**, and prefer the lightest package (`dataframe-core` over the `dataframe` umbrella). Both live in [reference/dataframe-granite.md](reference/dataframe-granite.md).
+- **In-cell Haskell traps** (the `fromList` type application, the `dropWhileEnd` no-op, the `do`-block rule, reconciling non-additive metrics) live in [reference/haskell-cell-traps.md](reference/haskell-cell-traps.md) — read it when a cell type-checks but behaves wrongly.
+- **Write clear, notebook-friendly code:** separate logic from display, one concept per cell, top-level bindings over `do let`, narrate findings not housekeeping. The full guidance is in [reference/notebook-style.md](reference/notebook-style.md).
+- **Token cap.** Responses cap at 4096 tokens; very large `propose_edit` / `replace_cell_source` payloads can truncate mid-JSON. Split: `insert_cell` a small stub, then patch it in follow-up calls.
+- **The live session is the source of truth; the disk `.md` is a written artifact.** "Save" is the user's browser action, not a siza tool. **DO NOT** author a fixed `.md` to disk and ask for a reload as recovery — file edits won't reach the live kernel, and they diverge silently (the open browser auto-saves its old cells back over your file, a reload renumbers every cell id, and cached outputs are dropped).
+- **Non-localhost URLs trigger a stderr warning** from the client. If you see it, double-check with the user that the remote target is intentional.

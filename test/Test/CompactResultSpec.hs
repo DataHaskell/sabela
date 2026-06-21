@@ -12,7 +12,9 @@ import Test.Hspec
 
 import Sabela.AI.Handles (
     HandleId (..),
+    HandleRef (..),
     HandleStore,
+    Output (..),
     lookupHandle,
     newHandleStore,
     storeLargeResult,
@@ -35,8 +37,8 @@ compactToolResult store v = do
         else do
             r <- storeLargeResult store text
             case r of
-                Left cleaned -> pure (String cleaned)
-                Right (hid, summary, nLines, nBytes) ->
+                Inline _ cleaned -> pure (String cleaned)
+                Stashed (HandleRef hid summary nLines nBytes) ->
                     pure $
                         object
                             [ "_compacted" .= True

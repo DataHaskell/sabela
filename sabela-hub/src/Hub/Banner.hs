@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The "non-interactive preview — fork to run" banner spliced into a published
-share's stored HTML. One mechanism for both the publish path (new shares) and
+{- | The "running in your browser (MicroHs) — fork for the full toolchain"
+banner spliced into a published share's stored HTML. One mechanism for both the
+publish path (new shares) and
 the @republish-banners@ backfill (existing shares): 'spliceBanner' inserts the
 banner right after the opening @\<body\>@ tag, is idempotent via a marker
 comment, and is a no-op on HTML that has no @\<body\>@. Every byte outside the
@@ -51,9 +52,9 @@ bannerHtml slug =
         [ TE.decodeUtf8 bannerMarker
         , "<div role=\"note\" style=\""
         , wrapStyle
-        , "\"><span style=\"flex:1;min-width:0\">This is a read-only preview"
-        , " \8212 sliders, inputs and other interactive controls do not run"
-        , " here. <strong>Fork it to run the notebook live in Sabela.</strong>"
+        , "\"><span style=\"flex:1;min-width:0\">Running in your browser"
+        , " (MicroHs \8212 a Haskell subset)."
+        , " <strong>Fork for the full toolchain &amp; packages.</strong>"
         , "</span><form method=\"post\" action=\"/_hub/fork/"
         , slug
         , "\" target=\"_blank\" style=\"margin:0\">"

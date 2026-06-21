@@ -1,0 +1,7 @@
+-- Root project for the sabela LIBRARY/SERVER and the new siza-client.
+-- sabela-hub/ is deliberately NOT a package here: it has its own
+-- sabela-hub.cabal and is built standalone. Keep this list to . and
+-- siza-client/ so `cabal build` never drags in the hub project.
+-- (Use explicit targets: cabal build lib:siza-client / exe:siza /
+-- lib:sabela — never `cabal build all`.)
+packages: . siza-client/

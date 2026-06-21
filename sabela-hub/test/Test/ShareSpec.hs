@@ -78,7 +78,7 @@ spec = describe "Hub.Share" $ do
 
     describe "publish / lookup / list / delete" $ do
         it "round-trips the snapshot html" $ withStore $ \store _ -> do
-            publishShare store (mkShare "aa11" "alice@x") "<h1>dash</h1>"
+            publishShare store (mkShare "aa11" "alice@x") "<h1>dash</h1>" Nothing
             lookupShareHtml store "aa11" `shouldReturn` Just "<h1>dash</h1>"
 
         it "returns Nothing for unknown or traversal slugs" $ withStore $ \store _ -> do
@@ -86,14 +86,14 @@ spec = describe "Hub.Share" $ do
             lookupShareHtml store "../meta" `shouldReturn` Nothing
 
         it "lists shares by owner" $ withStore $ \store _ -> do
-            publishShare store (mkShare "aa11" "alice@x") "a"
-            publishShare store (mkShare "bb22" "alice@x") "b"
-            publishShare store (mkShare "cc33" "bob@x") "c"
+            publishShare store (mkShare "aa11" "alice@x") "a" Nothing
+            publishShare store (mkShare "bb22" "alice@x") "b" Nothing
+            publishShare store (mkShare "cc33" "bob@x") "c" Nothing
             owned <- listShares store "alice@x"
             sort (map shareSlug owned) `shouldBe` ["aa11", "bb22"]
 
         it "delete is owner-checked" $ withStore $ \store _ -> do
-            publishShare store (mkShare "aa11" "alice@x") "a"
+            publishShare store (mkShare "aa11" "alice@x") "a" Nothing
             deleteShare store "bob@x" "aa11" `shouldReturn` False
             r1 <- lookupShareHtml store "aa11"
             r1 `shouldSatisfy` (/= Nothing)
@@ -101,7 +101,7 @@ spec = describe "Hub.Share" $ do
             lookupShareHtml store "aa11" `shouldReturn` Nothing
 
         it "reloads shares from disk on a new store" $ withStore $ \store dir -> do
-            publishShare store (mkShare "aa11" "alice@x") "<h1>persisted</h1>"
+            publishShare store (mkShare "aa11" "alice@x") "<h1>persisted</h1>" Nothing
             store2 <- newShareStore dir
             lookupShareHtml store2 "aa11" `shouldReturn` Just "<h1>persisted</h1>"
             owned <- listShares store2 "alice@x"
@@ -114,6 +114,7 @@ spec = describe "Hub.Share" $ do
                     store
                     (mkShare "aa11" "alice@x"){shareTitle = "Iris, end to end"}
                     "x"
+                    Nothing
                 store2 <- newShareStore dir
                 owned <- listShares store2 "alice@x"
                 map shareTitle owned `shouldBe` ["Iris, end to end"]
@@ -136,6 +137,7 @@ spec = describe "Hub.Share" $ do
                     store
                     (mkShare "aa11" "alice@x"){shareTitle = "evil\nowner=mallory@x"}
                     "x"
+                    Nothing
                 store2 <- newShareStore dir
                 owned <- listShares store2 "alice@x"
                 map shareOwner owned `shouldBe` ["alice@x"]
@@ -156,6 +158,7 @@ spec = describe "Hub.Share" $ do
                     store
                     (mkShare "aa11" "alice@x"){shareTitle = ""}
                     "x"
+                    Nothing
                 store2 <- newShareStore dir
                 owned <- listShares store2 "alice@x"
                 map shareTitle owned `shouldBe` ["Untitled"]
@@ -163,8 +166,8 @@ spec = describe "Hub.Share" $ do
     describe "listAllShares" $
         it "returns every owner's shares (the admin view)" $
             withStore $ \store _ -> do
-                publishShare store (mkShare "aa11" "alice@x") "a"
-                publishShare store (mkShare "cc33" "bob@x") "c"
+                publishShare store (mkShare "aa11" "alice@x") "a" Nothing
+                publishShare store (mkShare "cc33" "bob@x") "c" Nothing
                 allShares <- listAllShares store
                 sort (map shareSlug allShares) `shouldBe` ["aa11", "cc33"]
 

@@ -217,7 +217,7 @@ renderCollectionReader chrome cv n =
         [] -> ""
     frame
         | validSlug slug =
-            "<iframe class=\"reader\" sandbox=\"allow-scripts allow-popups\" src=\"/s/"
+            "<iframe class=\"reader\" sandbox=\"allow-scripts allow-popups allow-forms\" src=\"/s/"
                 <> slug
                 <> "\"></iframe>"
         | otherwise = "<p>Notebook unavailable.</p>"

@@ -24,6 +24,26 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PAGES = ['index', 'dashboard', 'slideshow'];
 
+// Standalone (non-page) JS bundles: an ordered list of source partials
+// concatenated verbatim into one served file. Unlike the three pages there is
+// no HTML shell — the order here IS the order. Paths are relative to ROOT.
+// The WASM-mode share runtime reuses the shared MIME renderer, so it is listed
+// first (it defines renderMimeOutput/mergeOutputs the runtime calls).
+const JS_BUNDLES = {
+  'static/sabela-wasm-run.js': [
+    'static/src/shared/mime-render.js',
+    'static/src/wasm-run/js/01-constants.js',
+    'static/src/wasm-run/js/02-source-island.js',
+    'static/src/wasm-run/js/03-mhs-engine.js',
+    'static/src/wasm-run/js/04-program.js',
+    'static/src/wasm-run/js/05-fork-nudge.js',
+    'static/src/wasm-run/js/06-render-shim.js',
+    'static/src/wasm-run/js/07-ui.js',
+    'static/src/wasm-run/js/08-run.js',
+    'static/src/wasm-run/js/09-init.js',
+  ],
+};
+
 const isRemote = (url) => /^(https?:)?\/\//i.test(url) || /^data:/i.test(url);
 
 // A local asset reference looks like one of our partials; used by the
@@ -107,6 +127,25 @@ function bundle(page) {
   return result;
 }
 
+// Concatenate an ordered list of source partials into one bundle string,
+// forcing a trailing newline per file so a missing one can't fuse two.
+function bundleJs(files) {
+  const banner =
+    '// AUTO-GENERATED from static/src/ — do not edit. ' +
+    'Edit the partials and run: node tools/build-frontend.mjs\n';
+  const body = files
+    .map((f) => {
+      try {
+        return readFileSync(join(ROOT, f), 'utf8');
+      } catch {
+        throw new Error(`cannot read bundle partial "${f}"`);
+      }
+    })
+    .map((t) => (t.endsWith('\n') ? t : t + '\n'))
+    .join('');
+  return banner + body;
+}
+
 const check = process.argv.includes('--check');
 let stale = 0;
 
@@ -125,5 +164,20 @@ for (const page of PAGES) {
   }
 }
 
-if (check && stale === 0) console.log('✓ all bundled HTML is up to date');
+for (const [dest, files] of Object.entries(JS_BUNDLES)) {
+  const built = bundleJs(files);
+  const destPath = join(ROOT, dest);
+  if (check) {
+    const current = readFileSync(destPath, 'utf8');
+    if (current !== built) {
+      console.error(`✗ ${dest} is stale — run: node tools/build-frontend.mjs`);
+      stale += 1;
+    }
+  } else {
+    writeFileSync(destPath, built);
+    console.log(`✓ built ${dest}`);
+  }
+}
+
+if (check && stale === 0) console.log('✓ all bundled frontend output is up to date');
 process.exit(stale > 0 ? 1 : 0);

@@ -8,7 +8,9 @@ import Test.Hspec
 
 import Sabela.AI.Handles (
     HandleId (..),
+    HandleRef (..),
     LargeResult (..),
+    Output (..),
     cleanOutput,
     clearHandles,
     grepLines,
@@ -27,16 +29,16 @@ spec = do
             store <- newHandleStore
             r <- storeLargeResult store "short"
             case r of
-                Left cleaned -> cleaned `shouldBe` "short"
-                Right _ -> expectationFailure "small payload should inline"
+                Inline _ cleaned -> cleaned `shouldBe` "short"
+                Stashed _ -> expectationFailure "small payload should inline"
 
         it "stores large payloads under a handle" $ do
             store <- newHandleStore
             let big = T.unlines (map (T.pack . show) [1 :: Int .. 100])
             r <- storeLargeResult store big
             case r of
-                Left _ -> expectationFailure "large payload should get a handle"
-                Right (HandleId hid, summary, nLines, _) -> do
+                Inline _ _ -> expectationFailure "large payload should get a handle"
+                Stashed (HandleRef (HandleId hid) summary nLines _) -> do
                     hid `shouldSatisfy` T.isPrefixOf "lr_"
                     nLines `shouldBe` 100
                     summary `shouldSatisfy` T.isInfixOf "more lines"
@@ -44,7 +46,7 @@ spec = do
         it "clearHandles drops stored entries" $ do
             store <- newHandleStore
             let big = T.unlines (map (T.pack . show) [1 :: Int .. 100])
-            Right (hid, _, _, _) <- storeLargeResult store big
+            Stashed (HandleRef hid _ _ _) <- storeLargeResult store big
             mLr <- lookupHandle store hid
             isJust mLr `shouldBe` True
             clearHandles store

@@ -13,6 +13,7 @@ import Control.Concurrent.STM (newTVarIO)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Hub.Admin.Api (adminDispatch, requireAdmin)
 import Hub.Admin.Page (adminPage)
@@ -45,6 +46,7 @@ import Hub.Shares.Api (
     handleDeleteShare,
     handleListShares,
     handlePublish,
+    serveAsset,
     serveShare,
  )
 import Hub.Types
@@ -80,6 +82,9 @@ hubApp' ::
 hubApp' sm store users gallery mgr states req respond =
     case pathInfo req of
         ["s", slug] -> serveShare store slug respond
+        -- Cacheable static assets (no auth): the in-browser WASM runtime.
+        ["_hub", "assets", name] ->
+            serveAsset (T.unpack (hcAssetsDir cfg)) name respond
         -- Public gallery (no auth, soft-resolved against the share cache).
         ["gallery"] -> serveGallery cfg gallery store req respond
         ["gallery", "feed.xml"] -> serveFeed cfg gallery store respond

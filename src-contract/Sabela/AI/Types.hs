@@ -33,7 +33,7 @@ module Sabela.AI.Types (
 ) where
 
 import Control.Concurrent.STM (TVar, newTVarIO)
-import Data.Aeson (ToJSON (..), Value, object, (.=))
+import Data.Aeson (ToJSON (..), Value)
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Time (UTCTime, getCurrentTime)
@@ -141,19 +141,15 @@ data ScratchpadSession = ScratchpadSession
 -- Execution result
 ------------------------------------------------------------------------
 
+{- | The raw cell-execution result. Mapped to the typed 'CellResult' by
+'Sabela.AI.CellResult.toCellResult'; it carries NO 'ToJSON' instance — the
+legacy @{outputs,error,errors}@ blob was the duplicate encoding C-2 removed.
+-}
 data ExecutionResult = ExecutionResult
     { erOutputs :: [OutputItem]
     , erError :: Maybe Text
     , erErrors :: [CellError]
     }
-
-instance ToJSON ExecutionResult where
-    toJSON er =
-        object
-            [ "outputs" .= erOutputs er
-            , "error" .= erError er
-            , "errors" .= erErrors er
-            ]
 
 ------------------------------------------------------------------------
 -- Tool execution outcome

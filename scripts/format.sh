@@ -60,11 +60,15 @@ run_fourmolu() {
             --overwrite-policy=always --force-reinstalls
     fi
 
-    # mapfile keeps filenames with spaces intact; --null is overkill for our paths.
+    # Tracked *.hs plus the siza-client package, whose files are not yet tracked
+    # but must still pass the gate. find covers src/app/test under siza-client/.
     local files
-    files=$(git ls-files '*.hs')
+    files=$(
+        git ls-files '*.hs'
+        find siza-client -name '*.hs' 2>/dev/null
+    )
     if [[ -z "$files" ]]; then
-        echo "[format] no tracked *.hs files; skipping fourmolu"
+        echo "[format] no *.hs files; skipping fourmolu"
         return 0
     fi
 

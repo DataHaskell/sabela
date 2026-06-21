@@ -123,7 +123,7 @@ spec = describe "Hub.Admin.Api" $ do
     describe "AdminApiWireSpec — GET /_hub/admin/shares" $
         it "returns the curation fields and the dangling list" $
             withAdminApp $ \app shares gallery -> do
-                publishShare shares (mkShare "aa11" "Iris") "x"
+                publishShare shares (mkShare "aa11" "Iris") "x" Nothing
                 addFeatured gallery "aa11"
                 r <- runSession (getReq "adminsid" "/_hub/admin/shares") app
                 let b = respBody r
@@ -136,14 +136,14 @@ spec = describe "Hub.Admin.Api" $ do
 
     describe "CSRF Origin check on mutations" $ do
         it "rejects a missing Origin (403)" $ withAdminApp $ \app shares _ -> do
-            publishShare shares (mkShare "aa11" "Iris") "x"
+            publishShare shares (mkShare "aa11" "Iris") "x" Nothing
             r <-
                 runSession
                     (mutReq methodPost "/_hub/admin/feature" "adminsid" [] "{\"slug\":\"aa11\"}")
                     app
             simpleStatus r `shouldBe` status403
         it "rejects a cross-origin request (403)" $ withAdminApp $ \app shares _ -> do
-            publishShare shares (mkShare "aa11" "Iris") "x"
+            publishShare shares (mkShare "aa11" "Iris") "x" Nothing
             r <-
                 runSession
                     ( mutReq
@@ -157,7 +157,7 @@ spec = describe "Hub.Admin.Api" $ do
             simpleStatus r `shouldBe` status403
         it "accepts the canonical Origin (200) and features idempotently" $
             withAdminApp $ \app shares gallery -> do
-                publishShare shares (mkShare "aa11" "Iris") "x"
+                publishShare shares (mkShare "aa11" "Iris") "x" Nothing
                 let feature =
                         mutReq
                             methodPost
@@ -189,7 +189,7 @@ spec = describe "Hub.Admin.Api" $ do
                 respBody r `shouldSatisfy` isInfixOf "\"cid\""
         it "PUT /_hub/admin/tags/{id} rejects an invalid tag (400)" $
             withAdminApp $ \app shares gallery -> do
-                publishShare shares (mkShare "aa11" "Iris") "x"
+                publishShare shares (mkShare "aa11" "Iris") "x" Nothing
                 addFeatured gallery "aa11"
                 r <-
                     runSession

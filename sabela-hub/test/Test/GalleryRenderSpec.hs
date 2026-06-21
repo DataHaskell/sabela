@@ -126,7 +126,9 @@ spec = describe "Hub.Gallery.Render / Feed" $ do
                     }
         it "frames the member as an opaque-origin sandbox (no allow-same-origin)" $ do
             let out = renderCollectionReader chrome cv 0
-            out `shouldSatisfy` T.isInfixOf "sandbox=\"allow-scripts allow-popups\""
+            out
+                `shouldSatisfy` T.isInfixOf
+                    "sandbox=\"allow-scripts allow-popups allow-forms\""
             out `shouldSatisfy` (not . T.isInfixOf "allow-same-origin")
             out `shouldSatisfy` T.isInfixOf "src=\"/s/aa\""
 
