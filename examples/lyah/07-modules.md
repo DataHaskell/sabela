@@ -4,13 +4,9 @@
 
 Adapted from **Learn You a Haskell for Great Good!** by Miran Lipovača, licensed under [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/). This Sabela port preserves that license.
 
-
 ```haskell
 -- cabal: build-depends: base, containers
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 ## Loading modules
 
@@ -35,16 +31,12 @@ One script can, of course, import several modules.
 Just put each import statement into a separate line.
 Let's import the `Data.List` module, which has a bunch of useful functions for working with lists and use a function that it exports to create a function that tells us how many unique elements a list has.
 
-
 ```haskell
 import Data.List
 
 numUniques :: (Eq a) => [a] -> Int
 numUniques = length . nub
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 When you do `import Data.List`, all the functions that `Data.List` exports become available in the global namespace, meaning that you can call them from wherever in the script.
 `nub` is a function defined in `Data.List` that takes a list and weeds out duplicate elements.
@@ -53,13 +45,13 @@ Composing `length` and `nub` by doing `length . nub` produces a function that's 
 You can also put the functions of modules into the global namespace when using GHCi.
 If you're in GHCi and you want to be able to call the functions exported by `Data.List`, do this:
 
-```text
+```haskell
 ghci> :m + Data.List
 ```
 
 If we want to load up the names from several modules inside GHCi, we don't have to do `:m +` several times, we can just load up several modules at once.
 
-```text
+```haskell
 ghci> :m + Data.List Data.Map Data.Set
 ```
 
@@ -68,50 +60,34 @@ However, if you've loaded a script that already imports a module, you don't need
 If you just need a couple of functions from a module, you can selectively import just those functions.
 If we wanted to import only the `nub` and `sort` functions from `Data.List`, we'd do this:
 
-
 ```haskell
 import Data.List (nub, sort)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 You can also choose to import all of the functions of a module except a few select ones.
 That's often useful when several modules export functions with the same name and you want to get rid of the offending ones.
 Say we already have our own function that's called `nub` and we want to import all the functions from `Data.List` except the `nub` function:
 
-
 ```haskell
 import Data.List hiding (nub)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Another way of dealing with name clashes is to do qualified imports.
 The `Data.Map` module, which offers a data structure for looking up values by key, exports a bunch of functions with the same name as `Prelude` functions, like `filter` or `null`.
 So when we import `Data.Map` and then call `filter`, Haskell won't know which function to use.
 Here's how we solve this:
 
-
 ```haskell
 import qualified Data.Map
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 This makes it so that if we want to reference `Data.Map`'s `filter` function, we have to do `Data.Map.filter`, whereas just `filter` still refers to the normal `filter` we all know and love.
 But typing out `Data.Map` in front of every function from that module is kind of tedious.
 That's why we can rename the qualified import to something shorter:
 
-
 ```haskell
 import qualified Data.Map as M
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Now, to reference `Data.Map`'s `filter` function, we just use `M.filter`.
 
@@ -134,13 +110,12 @@ Let's take a look at some of the functions that we haven't met before.
 `intersperse` takes an element and a list and then puts that element in between each pair of elements in the list.
 Here's a demonstration:
 
-
 ```haskell
 intersperse '.' "MONKEY"
 ```
 
 > <!-- scripths:mime text/plain -->
-> M.O.N.K.E.Y
+> "M.O.N.K.E.Y"
 
 ```haskell
 intersperse 0 [1,2,3,4,5,6]
@@ -149,17 +124,15 @@ intersperse 0 [1,2,3,4,5,6]
 > <!-- scripths:mime text/plain -->
 > [1,0,2,0,3,0,4,0,5,0,6]
 
-
 `intercalate` takes a list and a list of lists.
 It then inserts that list in between all those lists and then flattens the result.
-
 
 ```haskell
 intercalate " " ["hey","there","folks"]
 ```
 
 > <!-- scripths:mime text/plain -->
-> hey there folks
+> "hey there folks"
 
 ```haskell
 intercalate [0,0,0] [[1,2,3],[4,5,6],[7,8,9]]
@@ -168,10 +141,8 @@ intercalate [0,0,0] [[1,2,3],[4,5,6],[7,8,9]]
 > <!-- scripths:mime text/plain -->
 > [1,2,3,0,0,0,4,5,6,0,0,0,7,8,9]
 
-
 `transpose` transposes a list of lists.
 If you look at a list of lists as a 2D matrix, the columns become the rows and vice versa.
-
 
 ```haskell
 transpose [[1,2,3],[4,5,6],[7,8,9]]
@@ -187,11 +158,9 @@ transpose ["hey","there","folks"]
 > <!-- scripths:mime text/plain -->
 > ["htf","eho","yel","rk","es"]
 
-
 Say we have the polynomials *3x^2^ + 5x + 9*, *10x^3^ + 9* and *8x^3^ + 5x^2^ + x - 1* and we want to add them together.
 We can use the lists `[0,3,5,9]`, `[10,0,0,9]` and `[8,5,1,-1]` to represent them in Haskell.
 Now, to add them, all we have to do is this:
-
 
 ```haskell
 map sum $ transpose [[0,3,5,9],[10,0,0,9],[8,5,1,-1]]
@@ -199,7 +168,6 @@ map sum $ transpose [[0,3,5,9],[10,0,0,9],[8,5,1,-1]]
 
 > <!-- scripths:mime text/plain -->
 > [18,8,6,17]
-
 
 When we transpose these three lists, the third powers are then in the first row, the second powers in the second one and so on.
 Mapping `sum` to that produces our desired result.
@@ -216,13 +184,12 @@ So if you ever get stack overflow errors when doing lazy folds, try switching to
 
 `concat` flattens a list of lists into just a list of elements.
 
-
 ```haskell
 concat ["foo","bar","car"]
 ```
 
 > <!-- scripths:mime text/plain -->
-> foobarcar
+> "foobarcar"
 
 ```haskell
 concat [[3,4,5],[2,3,4],[2,1,1]]
@@ -231,12 +198,10 @@ concat [[3,4,5],[2,3,4],[2,1,1]]
 > <!-- scripths:mime text/plain -->
 > [3,4,5,2,3,4,2,1,1]
 
-
 It will just remove one level of nesting.
 So if you want to completely flatten `[[[2,3],[3,4,5],[2]],[[2,3],[3,4]]]`, which is a list of lists of lists, you have to concatenate it twice.
 
 Doing `concatMap` is the same as first mapping a function to a list and then concatenating the list with `concat`.
-
 
 ```haskell
 concatMap (replicate 4) [1..3]
@@ -245,9 +210,7 @@ concatMap (replicate 4) [1..3]
 > <!-- scripths:mime text/plain -->
 > [1,1,1,1,2,2,2,2,3,3,3,3]
 
-
 `and` takes a list of boolean values and returns `True` only if all the values in the list are `True`.
-
 
 ```haskell
 and $ map (>4) [5,6,7,8]
@@ -263,9 +226,7 @@ and $ map (==4) [4,4,4,3,4]
 > <!-- scripths:mime text/plain -->
 > False
 
-
 `or` is like `and`, only it returns `True` if any of the boolean values in a list is `True`.
-
 
 ```haskell
 or $ map (==4) [2,3,4,5,6,1]
@@ -281,10 +242,8 @@ or $ map (>4) [1,2,3]
 > <!-- scripths:mime text/plain -->
 > False
 
-
 `any` and `all` take a predicate and then check if any or all the elements in a list satisfy the predicate, respectively.
 Usually we use these two functions instead of mapping over a list and then doing `and` or `or`.
-
 
 ```haskell
 any (==4) [2,3,5,6,1,4]
@@ -314,11 +273,9 @@ any (`elem` ['A'..'Z']) "HEYGUYSwhatsup"
 > <!-- scripths:mime text/plain -->
 > True
 
-
 `iterate` takes a function and a starting value.
 It applies the function to the starting value, then it applies that function to the result, then it applies the function to that result again, etc.
 It returns all the results in the form of an infinite list.
-
 
 ```haskell
 take 10 $ iterate (*2) 1
@@ -334,10 +291,8 @@ take 3 $ iterate (++ "haha") "haha"
 > <!-- scripths:mime text/plain -->
 > ["haha","hahahaha","hahahahahaha"]
 
-
 `splitAt` takes a number and a list.
 It then splits the list at that many elements, returning the resulting two lists in a tuple.
-
 
 ```haskell
 splitAt 3 "heyman"
@@ -365,13 +320,11 @@ let (a,b) = splitAt 3 "foobar" in b ++ a
 ```
 
 > <!-- scripths:mime text/plain -->
-> barfoo
-
+> "barfoo"
 
 `takeWhile` is a really useful little function.
 It takes elements from a list while the predicate holds and then when an element is encountered that doesn't satisfy the predicate, it's cut off.
 It turns out this is very useful.
-
 
 ```haskell
 takeWhile (>3) [6,5,4,3,2,1,2,3,4,5,4,3,2,1]
@@ -385,14 +338,12 @@ takeWhile (/=' ') "This is a sentence"
 ```
 
 > <!-- scripths:mime text/plain -->
-> This
-
+> "This"
 
 Say we wanted to know the sum of all third powers that are under 10,000.
 We can't map `(^3)` to `[1..]`, apply a filter and then try to sum that up because filtering an infinite list never finishes.
 You may know that all the elements here are ascending but Haskell doesn't.
 That's why we can do this:
-
 
 ```haskell
 sum $ takeWhile (<10000) $ map (^3) [1..]
@@ -401,7 +352,6 @@ sum $ takeWhile (<10000) $ map (^3) [1..]
 > <!-- scripths:mime text/plain -->
 > 53361
 
-
 We apply `(^3)` to an infinite list and then once an element that's over 10,000 is encountered, the list is cut off.
 Now we can sum it up easily.
 
@@ -409,13 +359,12 @@ Now we can sum it up easily.
 Once predicate equates to `False`, it returns the rest of the list.
 An extremely useful and lovely function!
 
-
 ```haskell
 dropWhile (/=' ') "This is a sentence"
 ```
 
 > <!-- scripths:mime text/plain -->
-> is a sentence
+> " is a sentence"
 
 ```haskell
 dropWhile (<3) [1,2,2,2,3,4,5,4,3,2,1]
@@ -424,17 +373,13 @@ dropWhile (<3) [1,2,2,2,3,4,5,4,3,2,1]
 > <!-- scripths:mime text/plain -->
 > [3,4,5,4,3,2,1]
 
-
 We're given a list that represents the value of a stock by date.
 The list is made of tuples whose first component is the stock value, the second is the year, the third is the month and the fourth is the date.
 We want to know when the stock value first exceeded one thousand dollars!
 
-
 ```haskell
 let stock = [(994.4,2008,9,1),(995.2,2008,9,2),(999.2,2008,9,3),(1001.4,2008,9,4),(998.3,2008,9,5)]
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 head (dropWhile (\(val,y,m,d) -> val < 1000) stock)
@@ -443,23 +388,19 @@ head (dropWhile (\(val,y,m,d) -> val < 1000) stock)
 > <!-- scripths:mime text/plain -->
 > (1001.4,2008,9,4)
 
-
 `span` is kind of like `takeWhile`, only it returns a pair of lists.
 The first list contains everything the resulting list from `takeWhile` would contain if it were called with the same predicate and the same list.
 The second list contains the part of the list that would have been dropped.
-
 
 ```haskell
 let (fw, rest) = span (/=' ') "This is a sentence" in "First word: " ++ fw ++ ", the rest:" ++ rest
 ```
 
 > <!-- scripths:mime text/plain -->
-> First word: This, the rest: is a sentence
-
+> "First word: This, the rest: is a sentence"
 
 Whereas `span` spans the list while the predicate is true, `break` breaks it when the predicate is first true.
 Doing `break p` is the equivalent of doing `span (not . p)`.
-
 
 ```haskell
 break (==4) [1,2,3,4,5,6,7]
@@ -475,12 +416,10 @@ span (/=4) [1,2,3,4,5,6,7]
 > <!-- scripths:mime text/plain -->
 > ([1,2,3],[4,5,6,7])
 
-
 When using `break`, the second list in the result will start with the first element that satisfies the predicate.
 
 `sort` simply sorts a list.
 The type of the elements in the list has to be part of the `Ord` typeclass, because if the elements of a list can't be put in some kind of order, then the list can't be sorted.
-
 
 ```haskell
 sort [8,5,3,2,1,6,4,2]
@@ -494,11 +433,9 @@ sort "This will be sorted soon"
 ```
 
 > <!-- scripths:mime text/plain -->
-> Tbdeehiillnooorssstw
-
+> "    Tbdeehiillnooorssstw"
 
 `group` takes a list and groups adjacent elements into sublists if they are equal.
-
 
 ```haskell
 group [1,1,1,1,2,2,2,2,3,3,2,2,2,5,6,7]
@@ -507,9 +444,7 @@ group [1,1,1,1,2,2,2,2,3,3,2,2,2,5,6,7]
 > <!-- scripths:mime text/plain -->
 > [[1,1,1,1],[2,2,2,2],[3,3],[2,2,2],[5],[6],[7]]
 
-
 If we sort a list before grouping it, we can find out how many times each element appears in the list.
-
 
 ```haskell
 map (\l@(x:xs) -> (x,length l)) . group . sort $ [1,1,1,1,2,2,2,2,3,3,2,2,2,5,6,7]
@@ -518,10 +453,8 @@ map (\l@(x:xs) -> (x,length l)) . group . sort $ [1,1,1,1,2,2,2,2,3,3,2,2,2,5,6,
 > <!-- scripths:mime text/plain -->
 > [(1,4),(2,7),(3,2),(5,1),(6,1),(7,1)]
 
-
 `inits` and `tails` are like `init` and `tail`, only they recursively apply that to a list until there's nothing left.
 Observe.
-
 
 ```haskell
 inits "w00t"
@@ -544,9 +477,7 @@ let w = "w00t" in zip (inits w) (tails w)
 > <!-- scripths:mime text/plain -->
 > [("","w00t"),("w","00t"),("w0","0t"),("w00","t"),("w00t","")]
 
-
 Let's use a fold to implement searching a list for a sublist.
-
 
 ```haskell
 search :: (Eq a) => [a] -> [a] -> Bool
@@ -555,15 +486,11 @@ search needle haystack =
     in  foldl (\acc x -> if take nlen x == needle then True else acc) False (tails haystack)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 First we call `tails` with the list in which we're searching.
 Then we go over each tail and see if it starts with what we're looking for.
 
 With that, we actually just made a function that behaves like `isInfixOf`.
 `isInfixOf` searches for a sublist within a list and returns `True` if the sublist we're looking for is somewhere inside the target list.
-
 
 ```haskell
 "cat" `isInfixOf` "im a cat burglar"
@@ -586,9 +513,7 @@ With that, we actually just made a function that behaves like `isInfixOf`.
 > <!-- scripths:mime text/plain -->
 > False
 
-
 `isPrefixOf` and `isSuffixOf` search for a sublist at the beginning and at the end of a list, respectively.
-
 
 ```haskell
 "hey" `isPrefixOf` "hey there!"
@@ -618,12 +543,10 @@ With that, we actually just made a function that behaves like `isInfixOf`.
 > <!-- scripths:mime text/plain -->
 > False
 
-
 `elem` and `notElem` check if an element is or isn't inside a list.
 
 `partition` takes a list and a predicate and returns a pair of lists.
 The first list in the result contains all the elements that satisfy the predicate, the second contains all the ones that don't.
-
 
 ```haskell
 partition (`elem` ['A'..'Z']) "BOBsidneyMORGANeddy"
@@ -639,9 +562,7 @@ partition (>3) [1,3,5,6,3,2,1,0,3,7]
 > <!-- scripths:mime text/plain -->
 > ([5,6,7],[1,3,3,2,1,0,3])
 
-
 It's important to understand how this is different from `span` and `break`:
-
 
 ```haskell
 span (`elem` ['A'..'Z']) "BOBsidneyMORGANeddy"
@@ -649,7 +570,6 @@ span (`elem` ['A'..'Z']) "BOBsidneyMORGANeddy"
 
 > <!-- scripths:mime text/plain -->
 > ("BOB","sidneyMORGANeddy")
-
 
 While `span` and `break` are done once they encounter the first element that doesn't and does satisfy the predicate, `partition` goes through the whole list and splits it up according to the predicate.
 
@@ -659,7 +579,6 @@ We'll be covering algebraic data types more in depth in the next chapter but for
 Much like a list can be either an empty list or a list with some elements, a `Maybe` value can be either no elements or a single element.
 And like the type of a list of, say, integers is `[Int]`, the type of maybe having an integer is `Maybe Int`.
 Anyway, let's take our `find` function for a spin.
-
 
 ```haskell
 find (>4) [1,2,3,4,5,6]
@@ -675,8 +594,7 @@ find (>9) [1,2,3,4,5,6]
 > <!-- scripths:mime text/plain -->
 > Nothing
 
-
-```text
+```haskell
 ghci> :t find
 find :: (a -> Bool) -> [a] -> Maybe a
 ```
@@ -698,11 +616,10 @@ But if there was a valid answer in that list, we'd get, say, `Just (1001.4,2008,
 It maybe returns the index of the element we're looking for.
 If that element isn't in our list, it returns a `Nothing`.
 
-```text
+```haskell
 ghci> :t elemIndex
 elemIndex :: (Eq a) => a -> [a] -> Maybe Int
 ```
-
 
 ```haskell
 4 `elemIndex` [1,2,3,4,5,6]
@@ -718,10 +635,8 @@ elemIndex :: (Eq a) => a -> [a] -> Maybe Int
 > <!-- scripths:mime text/plain -->
 > Nothing
 
-
 `elemIndices` is like `elemIndex`, only it returns a list of indices, in case the element we're looking for crops up in our list several times.
 Because we're using a list to represent the indices, we don't need a `Maybe` type, because failure can be represented as the empty list, which is very much synonymous to `Nothing`.
-
 
 ```haskell
 ' ' `elemIndices` "Where are the spaces?"
@@ -730,10 +645,8 @@ Because we're using a list to represent the indices, we don't need a `Maybe` typ
 > <!-- scripths:mime text/plain -->
 > [5,9,13]
 
-
 `findIndex` is like find, but it maybe returns the index of the first element that satisfies the predicate.
 `findIndices` returns the indices of all elements that satisfy the predicate in the form of a list.
-
 
 ```haskell
 findIndex (==4) [5,3,2,1,6,4]
@@ -756,7 +669,6 @@ findIndices (`elem` ['A'..'Z']) "Where Are The Caps?"
 > <!-- scripths:mime text/plain -->
 > [0,6,10,14]
 
-
 We already covered `zip` and `zipWith`.
 We noted that they zip together two lists, either in a tuple or with a binary function (meaning such a function that takes two parameters).
 But what if we want to zip together three lists?
@@ -765,7 +677,6 @@ Well, for that, we have `zip3`, `zip4`, etc. and `zipWith3`, `zipWith4`, etc.
 These variants go up to 7.
 While this may look like a hack, it works out pretty fine, because there aren't many times when you want to zip 8 lists together.
 There's also a very clever way for zipping infinite numbers of lists, but we're not advanced enough to cover that just yet.
-
 
 ```haskell
 zipWith3 (\x y z -> x + y + z) [1,2,3] [4,5,2,2] [2,2,3]
@@ -781,12 +692,10 @@ zip4 [2,3,3] [2,2,2] [5,5,3] [2,2,2]
 > <!-- scripths:mime text/plain -->
 > [(2,2,5,2),(3,2,5,2),(3,2,3,2)]
 
-
 Just like with normal zipping, lists that are longer than the shortest list that's being zipped are cut down to size.
 
 `lines` is a useful function when dealing with files or input from somewhere.
 It takes a string and returns every line of that string as separate element of a list.
-
 
 ```haskell
 lines "first line\nsecond line\nthird line"
@@ -795,27 +704,21 @@ lines "first line\nsecond line\nthird line"
 > <!-- scripths:mime text/plain -->
 > ["first line","second line","third line"]
 
-
 `'\n'` is the character for a unix newline.
 Backslashes have special meaning in Haskell strings and characters.
 
 `unlines` is the inverse function of `lines`.
 It takes a list of strings and joins them together using a `'\n'`.
 
-
 ```haskell
 unlines ["first line", "second line", "third line"]
 ```
 
 > <!-- scripths:mime text/plain -->
-> first line
-> second line
-> third line
-
+> "first line\nsecond line\nthird line\n"
 
 `words` and `unwords` are for splitting a line of text into words or joining a list of words into a text.
 Very useful.
-
 
 ```haskell
 words "hey these are the words in this sentence"
@@ -836,15 +739,13 @@ unwords ["hey","there","mate"]
 ```
 
 > <!-- scripths:mime text/plain -->
-> hey there mate
-
+> "hey there mate"
 
 We've already mentioned `nub`.
 It takes a list and weeds out the duplicate elements, returning a list whose every element is a unique snowflake!
 The function does have a kind of strange name.
 It turns out that "nub" means a small lump or essential part of something.
 In my opinion, they should use real words for function names instead of old-people words.
-
 
 ```haskell
 nub [1,2,3,4,3,2,1,2,3,4,3,2,1]
@@ -858,38 +759,34 @@ nub "Lots of words and stuff"
 ```
 
 > <!-- scripths:mime text/plain -->
-> Lots fwrdanu
-
+> "Lots fwrdanu"
 
 `delete` takes an element and a list and deletes the first occurrence of that element in the list.
-
 
 ```haskell
 delete 'h' "hey there ghang!"
 ```
 
 > <!-- scripths:mime text/plain -->
-> ey there ghang!
+> "ey there ghang!"
 
 ```haskell
 delete 'h' . delete 'h' $ "hey there ghang!"
 ```
 
 > <!-- scripths:mime text/plain -->
-> ey tere ghang!
+> "ey tere ghang!"
 
 ```haskell
 delete 'h' . delete 'h' . delete 'h' $ "hey there ghang!"
 ```
 
 > <!-- scripths:mime text/plain -->
-> ey tere gang!
-
+> "ey tere gang!"
 
 `\\` is the list difference function.
 It acts like a set difference, basically.
 For every element in the right-hand list, it removes a matching element in the left one.
-
 
 ```haskell
 [1..10] \\ [2,5,9]
@@ -903,8 +800,7 @@ For every element in the right-hand list, it removes a matching element in the l
 ```
 
 > <!-- scripths:mime text/plain -->
-> Im a  baby
-
+> "Im a  baby"
 
 Doing `[1..10] \\ [2,5,9]` is like doing `delete 2 . delete 5 . delete 9 $ [1..10]`.
 
@@ -913,13 +809,12 @@ It returns the union of two lists.
 It pretty much goes over every element in the second list and appends it to the first one if it isn't already in yet.
 Watch out though, duplicates are removed from the second list!
 
-
 ```haskell
 "hey man" `union` "man what's up"
 ```
 
 > <!-- scripths:mime text/plain -->
-> hey manwt'sup
+> "hey manwt'sup"
 
 ```haskell
 [1..7] `union` [5..10]
@@ -928,10 +823,8 @@ Watch out though, duplicates are removed from the second list!
 > <!-- scripths:mime text/plain -->
 > [1,2,3,4,5,6,7,8,9,10]
 
-
 `intersect` works like set intersection.
 It returns only the elements that are found in both lists.
-
 
 ```haskell
 [1..7] `intersect` [5..10]
@@ -940,10 +833,8 @@ It returns only the elements that are found in both lists.
 > <!-- scripths:mime text/plain -->
 > [5,6,7]
 
-
 `insert` takes an element and a list of elements that can be sorted and inserts it into the last position where it's still less than or equal to the next element.
 In other words, `insert` will start at the beginning of the list and then keep going until it finds an element that's equal to or greater than the element that we're inserting and it will insert it just before the element.
-
 
 ```haskell
 insert 4 [3,5,1,2,8,2]
@@ -959,11 +850,9 @@ insert 4 [1,3,4,4,1]
 > <!-- scripths:mime text/plain -->
 > [1,3,4,4,4,1]
 
-
 The `4` is inserted right after the `3` and before the `5` in the first example and in between the `3` and `4` in the second example.
 
 If we use `insert` to insert into a sorted list, the resulting list will be kept sorted.
-
 
 ```haskell
 insert 4 [1,2,3,5,6,7]
@@ -977,7 +866,7 @@ insert 'g' $ ['a'..'f'] ++ ['h'..'z']
 ```
 
 > <!-- scripths:mime text/plain -->
-> abcdefghijklmnopqrstuvwxyz
+> "abcdefghijklmnopqrstuvwxyz"
 
 ```haskell
 insert 3 [1,2,4,3,2,1]
@@ -985,7 +874,6 @@ insert 3 [1,2,4,3,2,1]
 
 > <!-- scripths:mime text/plain -->
 > [1,2,3,4,3,2,1]
-
 
 What `length`, `take`, `drop`, `splitAt`, `!!` and `replicate` have in common is that they take an `Int` as one of their parameters (or return an `Int`), even though they could be more generic and usable if they just took any type that's part of the `Integral` or `Num` typeclasses (depending on the functions).
 They do that for historical reasons.
@@ -1007,12 +895,9 @@ But what we want is to group them by whether they are negative or not.
 That's where `groupBy` comes in!
 The equality function supplied to the *By* functions should take two elements of the same type and return `True` if it considers them equal by its standards.
 
-
 ```haskell
 let values = [-4.3, -2.4, -1.2, 0.4, 2.3, 5.9, 10.5, 29.1, 5.3, -2.4, -14.5, 2.9, 2.3]
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 groupBy (\x y -> (x > 0) == (y > 0)) values
@@ -1020,7 +905,6 @@ groupBy (\x y -> (x > 0) == (y > 0)) values
 
 > <!-- scripths:mime text/plain -->
 > [[-4.3,-2.4,-1.2],[0.4,2.3,5.9,10.5,29.1,5.3],[-2.4,-14.5],[2.9,2.3]]
-
 
 From this, we clearly see which sections are positive and which are negative.
 The equality function supplied takes two elements and then returns `True` only if they're both negative or if they're both positive.
@@ -1031,7 +915,7 @@ An even clearer way to write equality functions for the *By* functions is if you
 So doing ``(==) `on` (> 0)`` returns an equality function that looks like `\x y -> (x > 0) == (y > 0)`.
 `on` is used a lot with the *By* functions because with it, we can do:
 
-```text
+```haskell
 groupBy ((==) `on` (> 0)) values
 ```
 
@@ -1049,15 +933,11 @@ Lists can be compared, but when they are, they are compared lexicographically.
 What if we have a list of lists and we want to sort it not based on the inner lists' contents but on their lengths?
 Well, as you've probably guessed, we'll use the `sortBy` function.
 
-
 ```haskell
 let xs = [[5,4,5,4,4],[1,2,3],[3,5,4,3],[],[2],[2,2]]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 sortBy (compare `on` length) xs
 ```
 
@@ -1127,11 +1007,11 @@ Most of the time you'll use this to filter out strings or something like that.
 For instance, let's say we're making a program that takes a username consisting only of alphanumeric characters.
 We can use the `Data.List` function `all` in combination with the `Data.Char` predicates to determine if the username is alright.
 
-```text
+```haskell
 all isAlphaNum "bobby283"
 ```
 
-```text
+```haskell
 all isAlphaNum "eddy the fish!"
 ```
 
@@ -1140,7 +1020,6 @@ In case you don't remember, `all` takes a predicate and a list and returns `True
 
 We can also use `isSpace` to simulate the `Data.List` function `words`.
 
-
 ```haskell
 words "hey folks its me"
 ```
@@ -1148,8 +1027,7 @@ words "hey folks its me"
 > <!-- scripths:mime text/plain -->
 > ["hey","folks","its","me"]
 
-
-```text
+```haskell
 groupBy ((==) `on` isSpace) "hey folks its me"
 ```
 
@@ -1157,7 +1035,7 @@ Hmmm, well, it kind of does what `words` does but we're left with elements of on
 Hmm, whatever shall we do?
 I know, let's filter that sucker.
 
-```text
+```haskell
 filter (not . any isSpace) . groupBy ((==) `on` isSpace) $ "hey folks its me"
 ```
 
@@ -1173,27 +1051,27 @@ The main function for getting the general category of a character is `generalCat
 It has a type of `generalCategory :: Char -> GeneralCategory`.
 There are about 31 categories so we won't list them all here, but let's play around with the function.
 
-```text
+```haskell
 generalCategory ' '
 ```
 
-```text
+```haskell
 generalCategory 'A'
 ```
 
-```text
+```haskell
 generalCategory 'a'
 ```
 
-```text
+```haskell
 generalCategory '.'
 ```
 
-```text
+```haskell
 generalCategory '9'
 ```
 
-```text
+```haskell
 map generalCategory " \t\nA9?|"
 ```
 
@@ -1210,36 +1088,36 @@ For most characters, title-case is the same as upper-case.
 `digitToInt` converts a character to an `Int`.
 To succeed, the character must be in the ranges `'0'..'9'`, `'a'..'f'` or `'A'..'F'`.
 
-```text
+```haskell
 map digitToInt "34538"
 ```
 
-```text
+```haskell
 map digitToInt "FF85AB"
 ```
 
 `intToDigit` is the inverse function of `digitToInt`.
 It takes an `Int` in the range of `0..15` and converts it to a lower-case character.
 
-```text
+```haskell
 intToDigit 15
 ```
 
-```text
+```haskell
 intToDigit 5
 ```
 
 The `ord` and `chr` functions convert characters to their corresponding numbers and vice versa:
 
-```text
+```haskell
 ord 'a'
 ```
 
-```text
+```haskell
 chr 97
 ```
 
-```text
+```haskell
 map ord "abcdefgh"
 ```
 
@@ -1248,7 +1126,7 @@ The difference between the `ord` values of two characters is equal to how far ap
 The Caesar cipher is a primitive method of encoding messages by shifting each character in them by a fixed number of positions in the alphabet.
 We can easily create a sort of Caesar cipher of our own, only we won't constrict ourselves to the alphabet.
 
-```text
+```haskell
 encode :: Int -> String -> String
 encode shift msg =
     let ords = map ord msg
@@ -1261,39 +1139,39 @@ Then we add the shift amount to each number before converting the list of number
 If you're a composition cowboy, you could write the body of this function as `map (chr . (+ shift) . ord) msg`.
 Let's try encoding a few messages.
 
-```text
+```haskell
 encode 3 "Heeeeey"
 ```
 
-```text
+```haskell
 encode 4 "Heeeeey"
 ```
 
-```text
+```haskell
 encode 1 "abcd"
 ```
 
-```text
+```haskell
 encode 5 "Marry Christmas! Ho ho ho!"
 ```
 
 That's encoded alright.
 Decoding a message is basically just shifting it back by the number of places it was shifted by in the first place.
 
-```text
+```haskell
 decode :: Int -> String -> String
 decode shift msg = encode (negate shift) msg
 ```
 
-```text
+```haskell
 encode 3 "Im a little teapot"
 ```
 
-```text
+```haskell
 decode 3 "Lp#d#olwwoh#whdsrw"
 ```
 
-```text
+```haskell
 decode 5 . encode 5 $ "This is a sentence"
 ```
 
@@ -1307,7 +1185,6 @@ The most obvious way to represent association lists in Haskell would be by havin
 The first component in the pair would be the key, the second component the value.
 Here's an example of an association list with phone numbers:
 
-
 ```haskell
 phoneBook =
     [("amelia","555-2938")
@@ -1319,21 +1196,14 @@ phoneBook =
     ]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Despite this seemingly odd indentation, this is just a list of pairs of strings.
 The most common task when dealing with association lists is looking up some value by key.
 Let's make a function that looks up some value given a key.
 
-
 ```haskell
-findKey :: (Eq k) => k -> [(k,v)] -> v
-findKey key xs = snd . head . filter (\(k,v) -> key == k) $ xs
+_findKey :: (Eq k) => k -> [(k,v)] -> v
+_findKey key xs = snd . head . filter (\(k,v) -> key == k) $ xs
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Pretty simple.
 The function that takes a key and a list, filters the list so that only matching keys remain, gets the first key-value that matches and returns the value.
@@ -1344,7 +1214,6 @@ However, we should avoid making our programs so easy to crash, so let's use the 
 If we don't find the key, we'll return a `Nothing`.
 If we find it, we'll return `Just something`, where something is the value corresponding to that key.
 
-
 ```haskell
 findKey :: (Eq k) => k -> [(k,v)] -> Maybe v
 findKey key [] = Nothing
@@ -1352,9 +1221,6 @@ findKey key ((k,v):xs) = if key == k
                             then Just v
                             else findKey key xs
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Look at the type declaration.
 It takes a key that can be equated, an association list and then it maybe produces a value.
@@ -1364,40 +1230,31 @@ This is a textbook recursive function that operates on a list.
 Edge case, splitting a list into a head and a tail, recursive calls, they're all there.
 This is the classic fold pattern, so let's see how this would be implemented as a fold.
 
-
 ```haskell
-findKey :: (Eq k) => k -> [(k,v)] -> Maybe v
-findKey key = foldr (\(k,v) acc -> if key == k then Just v else acc) Nothing
+findKey' :: (Eq k) => k -> [(k,v)] -> Maybe v
+findKey' key = foldr (\(k,v) acc -> if key == k then Just v else acc) Nothing
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 **Note:** It's usually better to use folds for this standard list recursion pattern instead of explicitly writing the recursion because they're easier to read and identify.
 Everyone knows it's a fold when they see the `foldr` call, but it takes some more thinking to read explicit recursion.
-
 
 ```haskell
 findKey "tenzing" phoneBook
 ```
 
 > <!-- scripths:mime text/plain -->
-> Just "853-2492"
+> "853-2492"
 
 ```haskell
 findKey "amelia" phoneBook
 ```
 
 > <!-- scripths:mime text/plain -->
-> Just "555-2938"
+> "555-2938"
 
 ```haskell
 findKey "christopher" phoneBook
 ```
-
-> <!-- scripths:mime text/plain -->
-> Nothing
-
 
 ![legomap](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/modules/legomap.png)
 
@@ -1411,13 +1268,9 @@ From now on, we'll say we're working with maps instead of association lists.
 
 Because `Data.Map` exports functions that clash with the `Prelude` and `Data.List` ones, we'll do a qualified import.
 
-
 ```haskell
 import qualified Data.Map as Map
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Put this import statement into a script and then load the script via GHCi.
 
@@ -1425,7 +1278,6 @@ Let's go ahead and see what `Data.Map` has in store for us!
 Here's the basic rundown of its functions.
 
 The `fromList` function takes an association list (in the form of a list) and returns a map with the same associations.
-
 
 ```haskell
 Map.fromList [("amelia","555-2938"),("freya","452-2928"),("neil","205-2928")]
@@ -1441,13 +1293,15 @@ Map.fromList [(1,2),(3,4),(3,2),(5,5)]
 > <!-- scripths:mime text/plain -->
 > fromList [(1,2),(3,2),(5,5)]
 
-
 If there are duplicate keys in the original association list, the duplicates are just discarded.
 This is the type signature of `fromList`
 
-```text
-Map.fromList :: (Ord k) => [(k, v)] -> Map.Map k v
+```haskell
+:t Map.fromList
 ```
+
+> <!-- scripths:mime text/plain -->
+> Map.fromList :: Ord k => [(k, a)] -> Data.Map.Map k a
 
 It says that it takes a list of pairs of type `k` and `v` and returns a map that maps from keys of type `k` to type `v`.
 Notice that when we were doing association lists with normal lists, the keys only had to be equatable (their type belonging to the `Eq` typeclass) but now they have to be orderable.
@@ -1459,7 +1313,6 @@ You should always use `Data.Map` for key-value associations unless you have keys
 `empty` represents an empty map.
 It takes no arguments, it just returns an empty map.
 
-
 ```haskell
 Map.empty
 ```
@@ -1467,9 +1320,7 @@ Map.empty
 > <!-- scripths:mime text/plain -->
 > fromList []
 
-
 `insert` takes a key, a value and a map and returns a new map that's just like the old one, only with the key and value inserted.
-
 
 ```haskell
 Map.empty
@@ -1499,7 +1350,6 @@ Map.insert 5 600 . Map.insert 4 200 . Map.insert 3 100 $ Map.empty
 > <!-- scripths:mime text/plain -->
 > fromList [(3,100),(4,200),(5,600)]
 
-
 We can implement our own `fromList` by using the empty map, `insert` and a fold.
 Watch:
 
@@ -1507,7 +1357,6 @@ It's a pretty straightforward fold.
 We start of with an empty map and we fold it up from the right, inserting the key value pairs into the accumulator as we go along.
 
 `null` checks if a map is empty.
-
 
 ```haskell
 Map.null Map.empty
@@ -1523,9 +1372,7 @@ Map.null $ Map.fromList [(2,3),(5,5)]
 > <!-- scripths:mime text/plain -->
 > False
 
-
 `size` reports the size of a map.
-
 
 ```haskell
 Map.size Map.empty
@@ -1541,9 +1388,7 @@ Map.size $ Map.fromList [(2,4),(3,3),(4,2),(5,4),(6,4)]
 > <!-- scripths:mime text/plain -->
 > 5
 
-
 `singleton` takes a key and a value and creates a map that has exactly one mapping.
-
 
 ```haskell
 Map.singleton 3 9
@@ -1559,12 +1404,10 @@ Map.insert 5 9 $ Map.singleton 3 9
 > <!-- scripths:mime text/plain -->
 > fromList [(3,9),(5,9)]
 
-
 `lookup` works like the `Data.List` `lookup`, only it operates on maps.
 It returns `Just something` if it finds something for the key and `Nothing` if it doesn't.
 
 `member` is a predicate that takes a key and a map and reports whether the key is in the map or not.
-
 
 ```haskell
 Map.member 3 $ Map.fromList [(3,6),(4,3),(6,9)]
@@ -1580,9 +1423,7 @@ Map.member 3 $ Map.fromList [(2,5),(4,5)]
 > <!-- scripths:mime text/plain -->
 > False
 
-
 `map` and `filter` work much like their list equivalents.
-
 
 ```haskell
 Map.map (*100) $ Map.fromList [(1,1),(2,4),(3,9)]
@@ -1591,13 +1432,16 @@ Map.map (*100) $ Map.fromList [(1,1),(2,4),(3,9)]
 > <!-- scripths:mime text/plain -->
 > fromList [(1,100),(2,400),(3,900)]
 
+```haskell
+import Data.Char
 
-```text
 Map.filter isUpper $ Map.fromList [(1,'a'),(2,'A'),(3,'b'),(4,'B')]
 ```
 
-`toList` is the inverse of `fromList`.
+> <!-- scripths:mime text/plain -->
+> fromList [(2,'A'),(4,'B')]
 
+`toList` is the inverse of `fromList`.
 
 ```haskell
 Map.toList . Map.insert 9 2 $ Map.singleton 4 3
@@ -1606,7 +1450,6 @@ Map.toList . Map.insert 9 2 $ Map.singleton 4 3
 > <!-- scripths:mime text/plain -->
 > [(4,3),(9,2)]
 
-
 `keys` and `elems` return lists of keys and values respectively.
 `keys` is the equivalent of `map fst . Map.toList` and `elems` is the equivalent of `map snd . Map.toList`.
 
@@ -1614,9 +1457,8 @@ Map.toList . Map.insert 9 2 $ Map.singleton 4 3
 It acts like `fromList`, only it doesn't discard duplicate keys but it uses a function supplied to it to decide what to do with them.
 Let's say that a friend can have several numbers and we have an association list set up like this.
 
-
 ```haskell
-phoneBook =
+phoneBook' =
     [("amelia","555-2938")
     ,("amelia","342-2492")
     ,("freya","452-2928")
@@ -1630,52 +1472,44 @@ phoneBook =
     ]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Now if we just use `fromList` to put that into a map, we'll lose a few numbers!
 So here's what we'll do:
-
 
 ```haskell
 phoneBookToMap :: (Ord k) => [(k, String)] -> Map.Map k String
 phoneBookToMap xs = Map.fromListWith (\number1 number2 -> number1 ++ ", " ++ number2) xs
 ```
 
-> <!-- scripths:mime text/plain -->
+```haskell
+Map.lookup "isabella" $ phoneBookToMap phoneBook'
 
+Map.lookup "roald" $ phoneBookToMap phoneBook'
 
-```text
-ghci> Map.lookup "isabella" $ phoneBookToMap phoneBook
-"827-9162, 943-2929, 493-2928"
-ghci> Map.lookup "roald" $ phoneBookToMap phoneBook
-"939-8282"
-ghci> Map.lookup "amelia" $ phoneBookToMap phoneBook
-"342-2492, 555-2938"
+Map.lookup "amelia" $ phoneBookToMap phoneBook'
 ```
+
+> <!-- scripths:mime text/plain -->
+> Just "827-9162, 943-2929, 493-2928"
+> Just "939-8282"
+> Just "342-2492, 555-2938"
 
 If a duplicate key is found, the function we pass is used to combine the values of those keys into some other value.
 We could also first make all the values in the association list singleton lists and then we can use `++` to combine the numbers.
 
-
 ```haskell
-phoneBookToMap :: (Ord k) => [(k, a)] -> Map.Map k [a]
-phoneBookToMap xs = Map.fromListWith (++) $ map (\(k,v) -> (k,[v])) xs
+phoneBookToMap' :: (Ord k) => [(k, a)] -> Map.Map k [a]
+phoneBookToMap' xs = Map.fromListWith (++) $ map (\(k,v) -> (k,[v])) xs
 ```
 
-> <!-- scripths:mime text/plain -->
-
 ```haskell
-Map.lookup "isabella" $ phoneBookToMap phoneBook
+Map.lookup "isabella" $ phoneBookToMap' phoneBook'
 ```
 
 > <!-- scripths:mime text/plain -->
 > Just ["827-9162","943-2929","493-2928"]
 
-
 Pretty neat!
 Another use case is if we're making a map from an association list of numbers and when a duplicate key is found, we want the biggest value for the key to be kept.
-
 
 ```haskell
 Map.fromListWith max [(2,3),(2,5),(2,100),(3,29),(3,22),(3,11),(4,22),(4,15)]
@@ -1684,9 +1518,7 @@ Map.fromListWith max [(2,3),(2,5),(2,100),(3,29),(3,22),(3,11),(4,22),(4,15)]
 > <!-- scripths:mime text/plain -->
 > fromList [(2,100),(3,29),(4,22)]
 
-
 Or we could choose to add together values on the same keys.
-
 
 ```haskell
 Map.fromListWith (+) [(2,3),(2,5),(2,100),(3,29),(3,22),(3,11),(4,22),(4,15)]
@@ -1695,10 +1527,8 @@ Map.fromListWith (+) [(2,3),(2,5),(2,100),(3,29),(3,22),(3,11),(4,22),(4,15)]
 > <!-- scripths:mime text/plain -->
 > fromList [(2,108),(3,62),(4,37)]
 
-
 `insertWith` is to `insert` what `fromListWith` is to `fromList`.
 It inserts a key-value pair into a map, but if that map already contains the key, it uses the function passed to it to determine what to do.
-
 
 ```haskell
 Map.insertWith (+) 3 100 $ Map.fromList [(3,4),(5,103),(6,339)]
@@ -1706,7 +1536,6 @@ Map.insertWith (+) 3 100 $ Map.fromList [(3,4),(5,103),(6,339)]
 
 > <!-- scripths:mime text/plain -->
 > fromList [(3,104),(5,103),(6,339)]
-
 
 These were just a few functions from `Data.Map`.
 You can see a complete list of functions in the [documentation](https://hackage.haskell.org/package/containers/docs/Data-Map.html).
@@ -1735,125 +1564,185 @@ We want to find out which characters were used in both of them.
 The `fromList` function works much like you would expect.
 It takes a list and converts it into a set.
 
-```text
-let set1 = Set.fromList text1
+```haskell
+import qualified Data.Set as Set
+
+let set1 = Set.fromList "hello"
 ```
 
-```text
-let set2 = Set.fromList text2
+```haskell
+let set2 = Set.fromList "world"
 ```
 
-```text
+```haskell
 set1
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> fromList "ehlo"
+
+```haskell
 set2
 ```
+
+> <!-- scripths:mime text/plain -->
+> fromList "dlorw"
 
 As you can see, the items are ordered and each element is unique.
 Now let's use the `intersection` function to see which elements they both share.
 
-```text
+```haskell
 Set.intersection set1 set2
 ```
 
+> <!-- scripths:mime text/plain -->
+> fromList "lo"
+
 We can use the `difference` function to see which letters are in the first set but aren't in the second one and vice versa.
 
-```text
+```haskell
 Set.difference set1 set2
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> fromList "eh"
+
+```haskell
 Set.difference set2 set1
 ```
 
+> <!-- scripths:mime text/plain -->
+> fromList "drw"
+
 Or we can see all the unique letters used in both sentences by using `union`.
 
-```text
+```haskell
 Set.union set1 set2
 ```
 
+> <!-- scripths:mime text/plain -->
+> fromList "dehlorw"
+
 The `null`, `size`, `member`, `empty`, `singleton`, `insert` and `delete` functions all work like you'd expect them to.
 
-```text
+```haskell
 Set.null Set.empty
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> True
+
+```haskell
 Set.null $ Set.fromList [3,4,5,5,4,3]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> False
+
+```haskell
 Set.size $ Set.fromList [3,4,5,3,4,5]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> 3
+
+```haskell
 Set.singleton 9
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> fromList [9]
+
+```haskell
 Set.insert 4 $ Set.fromList [9,3,8,1]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> fromList [1,3,4,8,9]
+
+```haskell
 Set.insert 8 $ Set.fromList [5..10]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> fromList [5,6,7,8,9,10]
+
+```haskell
 Set.delete 4 $ Set.fromList [3,4,5,4,3,4,5]
 ```
+
+> <!-- scripths:mime text/plain -->
+> fromList [3,5]
 
 We can also check for subsets or proper subset.
 Set A is a subset of set B if B contains all the elements that A does.
 Set A is a proper subset of set B if B contains all the elements that A does but has more elements.
 
-```text
+```haskell
 Set.fromList [2,3,4] `Set.isSubsetOf` Set.fromList [1,2,3,4,5]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> True
+
+```haskell
 Set.fromList [1,2,3,4,5] `Set.isSubsetOf` Set.fromList [1,2,3,4,5]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> True
+
+```haskell
 Set.fromList [1,2,3,4,5] `Set.isProperSubsetOf` Set.fromList [1,2,3,4,5]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> False
+
+```haskell
 Set.fromList [2,3,4,8] `Set.isSubsetOf` Set.fromList [1,2,3,4,5]
 ```
 
+> <!-- scripths:mime text/plain -->
+> False
+
 We can also `map` over sets and `filter` them.
 
-```text
+```haskell
 Set.filter odd $ Set.fromList [3,4,5,6,7,2,3,4]
 ```
 
-```text
+> <!-- scripths:mime text/plain -->
+> fromList [3,5,7]
+
+```haskell
 Set.map (+1) $ Set.fromList [3,4,5,6,7,2,3,4]
 ```
+
+> <!-- scripths:mime text/plain -->
+> fromList [3,4,5,6,7,8]
 
 Sets are often used to weed a list of duplicates from a list by first making it into a set with `fromList` and then converting it back to a list with `toList`.
 The `Data.List` function `nub` already does that, but weeding out duplicates for large lists is much faster if you cram them into a set and then convert them back to a list than using `nub`.
 But using `nub` only requires the type of the list's elements to be part of the `Eq` typeclass, whereas if you want to cram elements into a set, the type of the list has to be in `Ord`.
 
-```text
+```haskell
 let setNub xs = Set.toList $ Set.fromList xs
 ```
 
-```text
+```haskell
 setNub "HEY WHATS CRACKALACKIN"
 ```
 
+> <!-- scripths:mime text/plain -->
+> " ACEHIKLNRSTWY"
 
 ```haskell
 nub "HEY WHATS CRACKALACKIN"
 ```
 
 > <!-- scripths:mime text/plain -->
-> HEY WATSCRKLIN
-
+> "HEY WATSCRKLIN"
 
 `setNub` is generally faster than `nub` on big lists but as you can see, `nub` preserves the ordering of the list's elements, while `setNub` does not.
 
