@@ -5,7 +5,7 @@ module Main (main) where
 {- HLINT ignore "Use fewer imports" -}
 import Control.Exception (finally)
 import Control.Monad (unless, void, when)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, maybeToList)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
@@ -13,6 +13,7 @@ import Network.HTTP.Client.TLS (newTlsManager)
 import Network.Wai.Handler.Warp (run)
 import Sabela.AI.Provenance (stateBase)
 import Sabela.Handlers (
+    buildTimeSupportDir,
     initGlobalEnv,
     initPreinstalledPackages,
     setupReactive,
@@ -26,6 +27,7 @@ import System.Directory (
     doesFileExist,
     getCurrentDirectory,
     getHomeDirectory,
+    makeAbsolute,
     removeDirectoryRecursive,
     removeFile,
  )
@@ -72,6 +74,21 @@ withPort s k = case readMaybe s of
     Just p -> k p
     Nothing -> hPutStrLn stderr ("Invalid port: " <> s) >> exitFailure
 
+{- | Dev fallback for resolving the @sabela-notebook@ support library when
+@SABELA_LOCAL_PACKAGES@ is unset. Tries the build-time source path first (so a
+@cabal install@ed binary resolves it from any working directory, as long as the
+repo it was built from is still on disk), then a sibling @sabela-notebook@ under
+the current directory. A real Hackage install matches neither and resolves the
+package from Hackage instead.
+-}
+locateSupportSource :: IO (Maybe FilePath)
+locateSupportSource = go [buildTimeSupportDir, "sabela-notebook"]
+  where
+    go [] = pure Nothing
+    go (dir : rest) = do
+        present <- doesFileExist (dir </> "sabela-notebook.cabal")
+        if present then Just <$> makeAbsolute dir else go rest
+
 start :: Int -> FilePath -> FilePath -> [String] -> IO ()
 start port workDir globalFile pkgs = do
     cwd <- getCurrentDirectory
@@ -83,9 +100,9 @@ start port workDir globalFile pkgs = do
     httpMgr <- newTlsManager
     mAiToken <- fmap T.pack <$> lookupEnv "SABELA_AI_TOKEN"
     mLocalPkgs <- lookupEnv "SABELA_LOCAL_PACKAGES"
-    let localPkgs = case mLocalPkgs of
-            Just s | not (null s) -> splitSearchPath s
-            _ -> []
+    localPkgs <- case mLocalPkgs of
+        Just s | not (null s) -> pure (splitSearchPath s)
+        _ -> maybeToList <$> locateSupportSource
     unless (null localPkgs) $
         putStrLn ("Local package overlays: " ++ unwords localPkgs)
     app <- newApp workDir allGlobalDeps (Just httpMgr) mAiToken localPkgs

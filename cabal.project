@@ -1,7 +1,10 @@
--- Root project for the sabela LIBRARY/SERVER and the new siza-client.
--- sabela-hub/ is deliberately NOT a package here: it has its own
--- sabela-hub.cabal and is built standalone. Keep this list to . and
--- siza-client/ so `cabal build` never drags in the hub project.
--- (Use explicit targets: cabal build lib:siza-client / exe:siza /
--- lib:sabela — never `cabal build all`.)
-packages: . siza-client/
+-- Root project for the sabela LIBRARY/SERVER, the siza-client, and the
+-- sabela-notebook support library (the FRP/picture/animation vocabulary every
+-- notebook depends on). Listing sabela-notebook/ here lets local builds and the
+-- test suite resolve it from source; a live server resolves it from Hackage or
+-- via SABELA_LOCAL_PACKAGES pointing at sabela-notebook/. sabela-hub/ is
+-- deliberately NOT a package here: it has its own sabela-hub.cabal and is built
+-- standalone.
+-- (Use explicit targets: cabal build lib:siza-client / exe:siza / lib:sabela /
+-- lib:sabela-notebook; never `cabal build all`.)
+packages: . siza-client/ sabela-notebook/

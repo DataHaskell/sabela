@@ -17,12 +17,12 @@ import Data.List (sort)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 
-import Sabela.AI.CellResult
 import Sabela.AI.Capabilities.Edit.Run (
     abortCancelled,
     abortSuperseded,
     abortTimedOut,
  )
+import Sabela.AI.CellResult
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Model (CellError (..), MimeType (..), OutputItem (..))
 import Test.Hspec
@@ -126,7 +126,11 @@ spec = describe "CellResult typed carving (R2-2)" $ do
             outcomeTag (toCellResult (Right (ExecutionResult [] Nothing [])) [])
                 `shouldBe` Just (String "Succeeded")
         it "outputs pass through orthogonally to the outcome" $
-            crOutputs (toCellResult (Right (ExecutionResult [sampleOutput] (Just "e") [])) [sampleOutput])
+            crOutputs
+                ( toCellResult
+                    (Right (ExecutionResult [sampleOutput] (Just "e") []))
+                    [sampleOutput]
+                )
                 `shouldBe` [sampleOutput]
 
     describe "the real executeCell Left strings map to AbortReason" $ do

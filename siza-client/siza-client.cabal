@@ -7,16 +7,19 @@ description:        Typed CLI + library that drives a running Sabela notebook
                     security) pipeline. Replaces siza-discover.sh/siza-tool.sh.
 build-type:         Simple
 license:            MIT
+license-file:       LICENSE
 author:             DataHaskell
 maintainer:         mschavinda@gmail.com
 category:           Development
 
+source-repository head
+    type:     git
+    location: https://github.com/DataHaskell/sabela
+    subdir:   siza-client
+
 common warnings
     ghc-options: -Wall
 
--- R3-1 shipped the transport core (Discover/Transport/Cli). R3-2 adds the
--- pre-flight parse seam (Language/Lang.Haskell/Preflight). R3-3 adds the
--- capability security scan (Security). R3-4 adds the annotate :type pull.
 library
     import:           warnings
     hs-source-dirs:   src
@@ -41,12 +44,12 @@ library
     build-depends:    base >= 4 && < 5
                       -- the contract sub-library: typed wire DTOs + AST parser
                       -- reuse, without the server's warp/servant/process drag
-                    , sabela:sabela-contract
+                    , sabela:sabela-contract >= 0.1 && < 0.2
                       -- transport (already in-project; server uses the same)
                     , http-client >= 0.7 && < 0.10
                     , http-client-tls >= 0.3 && < 0.4
                     , http-types >= 0.12 && < 0.13
-                    , aeson >= 0.11.0.0 && < 3
+                    , aeson >= 2.0 && < 3
                     , bytestring >= 0.10 && < 0.13
                     , text >= 1.2 && < 3
                     , containers >= 0.6.7 && < 0.9
@@ -88,9 +91,9 @@ test-suite siza-client-test
     default-extensions: OverloadedStrings
     build-depends:    base >= 4 && < 5
                     , siza-client
-                    , sabela:sabela-contract
+                    , sabela:sabela-contract >= 0.1 && < 0.2
                     , hspec >= 2 && < 3
-                    , aeson >= 0.11.0.0 && < 3
+                    , aeson >= 2.0 && < 3
                     , bytestring >= 0.10 && < 0.13
                     , text >= 1.2 && < 3
                     , containers >= 0.6.7 && < 0.9

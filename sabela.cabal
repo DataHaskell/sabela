@@ -2,7 +2,12 @@ cabal-version:      3.0
 name:               sabela
 version:            0.1.0.0
 synopsis:           A reactive notebook environment for Haskell.
-description:        A reactive notebook environment for Haskell.
+description:        Sabela is a web-based reactive notebook for Haskell. Notebooks are
+                    plain Markdown files whose code blocks become executable cells,
+                    evaluated by a long-lived GHCi subprocess. Editing a cell
+                    re-runs the cells that depend on it, and a bundled web IDE
+                    (embedded in the executable) provides editing, rich output,
+                    and slideshow/dashboard export.
 homepage:           https://www.datahaskell.org/
 license:            MIT
 license-file:       LICENSE
@@ -13,16 +18,11 @@ build-type:         Simple
 extra-doc-files:    CHANGELOG.md, README.md
 extra-source-files: static/index.html, static/dashboard.html, static/slideshow.html, data/api-reference.txt,
                     static/src/widgets/scatter.js,
-                    static/src/widgets/sabela-widgets.js,
-                    static/notebook/sabela-notebook/sabela-notebook.cabal.tmpl,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Anim.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Behavior.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Event.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Frp.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Picture.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Picture/Internal.hs,
-                    static/notebook/sabela-notebook/src/Sabela/Notebook/Picture/Svg.hs
+                    static/src/widgets/sabela-widgets.js
+
+source-repository head
+    type:     git
+    location: https://github.com/DataHaskell/sabela
 
 common warnings
     ghc-options: -Wall
@@ -54,7 +54,7 @@ library sabela-contract
                       Sabela.Parse.Ast.Names,
                       Sabela.Parse.Ast.PatNodeBinders
     build-depends:    base >= 4 && < 5,
-                      aeson >= 0.11.0.0 && < 3,
+                      aeson >= 2.0 && < 3,
                       bytestring >= 0.10 && < 0.13,
                       containers >= 0.6.7 && < 0.9,
                       directory >= 1.3 && < 1.4,
@@ -152,10 +152,9 @@ library
                       Sabela.Topo,
                       Sabela.Url,
                       Sabela.Platform,
-                      Sabela.PythonSession,
-                      Sabela.Notebook.Support
+                      Sabela.PythonSession
     build-depends:    base >= 4 && < 5,
-                      aeson >= 0.11.0.0 && < 3,
+                      aeson >= 2.0 && < 3,
                       bytestring >= 0.10 && < 0.13,
                       containers >= 0.6.7 && < 0.9,
                       directory >= 1.3 && < 1.4,
@@ -186,7 +185,7 @@ library
 executable sabela
   main-is: Main.hs
   build-depends: base >= 4 && < 5,
-                 aeson >= 0.11.0.0 && < 3,
+                 aeson >= 2.0 && < 3,
                  bytestring >= 0.10 && < 0.13,
                  containers >= 0.6.7 && < 0.9,
                  directory >= 1.3 && < 1.4,
@@ -208,17 +207,10 @@ test-suite sabela-test
     import:           warnings
     default-language: Haskell2010
     type:             exitcode-stdio-1.0
-    hs-source-dirs:   test, static/notebook/sabela-notebook/src
+    hs-source-dirs:   test
     main-is:          Main.hs
     ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
-    other-modules:    Sabela.Notebook.Anim,
-                      Sabela.Notebook.Behavior,
-                      Sabela.Notebook.Event,
-                      Sabela.Notebook.Frp,
-                      Sabela.Notebook.Picture,
-                      Sabela.Notebook.Picture.Internal,
-                      Sabela.Notebook.Picture.Svg,
-                      Test.NotebookAnimSpec,
+    other-modules:    Test.NotebookAnimSpec,
                       Test.NotebookFrpSpec,
                       Test.NotebookPictureSpec,
                       Test.SessionSpec,
@@ -280,7 +272,8 @@ test-suite sabela-test
                       Test.SessionGenSpec
     build-depends:
         base >= 4 && < 5,
-        aeson >= 0.11.0.0 && < 3,
+        sabela-notebook >= 0.1 && < 0.2,
+        aeson >= 2.0 && < 3,
         bytestring >= 0.10 && < 0.13,
         containers >= 0.6.7 && < 0.9,
         hspec >= 2 && < 3,

@@ -34,10 +34,6 @@ import qualified Data.Text as T
 import Sabela.Deps (ProjectSig, depsMatch, mergedMeta, projectSig)
 import Sabela.Handlers.Shared
 import Sabela.Model (NotebookEvent (..), SessionStatus (..))
-import Sabela.Notebook.Support (
-    materializeSupport,
-    supportPackageDir,
- )
 import Sabela.Output (displayPrelude)
 import Sabela.Session (
     Session,
@@ -73,7 +69,7 @@ import Sabela.State.SessionManager (
 import ScriptHs.Parser (CabalMeta (..))
 import System.FilePath (isAbsolute, (</>))
 
-import Sabela.Session.Project (setupReplProject)
+import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 
 -- | Runtime reset of the managed backends (notebook reset/restart).
 killAllSessions :: App -> IO ()
@@ -169,8 +165,7 @@ installDepsAndStartSession app _gen metas = withBuilding app $ do
                 (envLocalPackages (appEnv app))
                 merged
     setHaskellProjectSig (appDeps app) (projectSig localPkgs merged)
-    _ <- materializeSupport (envWorkDir (appEnv app))
-    setupReplProject localPkgs projDir merged
+    setupReplProject WithNotebookSupport localPkgs projDir merged
     broadcast app (EvSessionStatus SStarting)
     killSession app
     startSessionWith app projDir
@@ -194,7 +189,7 @@ dirs pass through.
 -}
 resolveLocalPackages :: FilePath -> [FilePath] -> CabalMeta -> [FilePath]
 resolveLocalPackages workDir envLocals meta =
-    nub (supportPackageDir workDir : envLocals ++ map resolve (metaPackages meta))
+    nub (envLocals ++ map resolve (metaPackages meta))
   where
     resolve t =
         let p = T.unpack t

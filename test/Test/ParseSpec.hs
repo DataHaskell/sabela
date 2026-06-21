@@ -11,7 +11,7 @@ sets so it's obvious what feeds the reactivity DAG, instead of just
 module Test.ParseSpec (spec) where
 
 import qualified Data.Set as S
-import Sabela.Parse (cellNames)
+import Sabela.Parse (CellSymbols (..), cellNames, cellSymbols)
 import Test.Hspec
 
 spec :: Spec
@@ -47,6 +47,25 @@ spec = describe "Sabela.Parse.cellNames" $ do
         it "class with methods: defs={MyShow, myShow}, uses={}" $
             cellNames "class MyShow a where\n  myShow :: a -> String"
                 `shouldBe` (S.fromList ["MyShow", "myShow"], S.empty)
+
+    -- Instances own no top-level name, but they must still join the DAG:
+    -- depend on the class they implement (via uses) and let method consumers
+    -- depend on them (via provides). See 'Sabela.Topo.buildDepGraph'.
+    describe "typeclass instances feed the reactivity DAG" $ do
+        it "instance: no defs, but uses the class name" $ do
+            let (defs, uses) =
+                    cellNames "instance Rand Int where\n  rand' x = x * 2"
+            defs `shouldBe` S.empty
+            S.member "Rand" uses `shouldBe` True
+
+        it "instance: method binders surface as provides, not defs" $ do
+            let syms = cellSymbols "instance Rand Int where\n  rand' x = x * 2"
+            csDefs syms `shouldBe` S.empty
+            csProvides syms `shouldBe` S.fromList ["rand'"]
+
+        it "class: method names surface as class methods" $ do
+            let syms = cellSymbols "class Rand a where\n  rand' :: a -> a"
+            csClassMethods syms `shouldBe` S.fromList ["rand'"]
 
     -- ----------------------------------------------------------------
     -- The user's headline complaint: function params must NOT leak

@@ -3,14 +3,44 @@
 module Test.OutputSpec (spec) where
 
 import qualified Data.Text as T
-import Sabela.Output (parseMimeOutputs)
+import Sabela.Output (displayPrelude, parseMimeOutputs)
 import Sabela.Output.Scatter (scatterDefs, scatterWidgetJs)
+import Sabela.Output.Widgets (widgetDefs)
 import Test.Hspec
 
 spec :: Spec
 spec = do
     parseMimeOutputsSpec
     scatterEmbedSpec
+    inputRenameSpec
+
+{- | The effectful interactive-control type is @Input@ (the pure
+@Sabela.Notebook.Behavior@ keeps @Behavior@). These pin the lockstep rename
+across the three string-producing sites (Output.displayPrelude, Output.Widgets,
+Output.Scatter), none of which the type checker validates until a session runs.
+-}
+inputRenameSpec :: Spec
+inputRenameSpec = describe "effectful widget type Input (renamed from Behavior)" $ do
+    let prelude = displayPrelude
+    it "defines the Input type and its value/show verbs" $ do
+        prelude `shouldSatisfy` T.isInfixOf "data Input a = Input"
+        prelude `shouldSatisfy` T.isInfixOf "iValue"
+        prelude `shouldSatisfy` T.isInfixOf "iShow"
+        prelude `shouldSatisfy` T.isInfixOf "currentValue ::"
+        prelude `shouldSatisfy` T.isInfixOf "showInput ::"
+        prelude `shouldSatisfy` T.isInfixOf "constInput ::"
+        prelude `shouldSatisfy` T.isInfixOf "display :: Input a -> IO a"
+    it "keeps a one-release deprecated Behavior alias (prelude only)" $
+        prelude `shouldSatisfy` T.isInfixOf "type Behavior = Input"
+    it "retires the effectful Behavior record and its fields everywhere" $ do
+        prelude `shouldNotSatisfy` T.isInfixOf "data Behavior"
+        prelude `shouldNotSatisfy` T.isInfixOf "bSample"
+        prelude `shouldNotSatisfy` T.isInfixOf "bRender"
+    it "renames the widget and scatter constructors in lockstep" $ do
+        widgetDefs `shouldNotSatisfy` T.isInfixOf "Behavior"
+        scatterDefs `shouldNotSatisfy` T.isInfixOf "Behavior"
+        widgetDefs `shouldSatisfy` T.isInfixOf "Input a"
+        scatterDefs `shouldSatisfy` T.isInfixOf "Input [Int]"
 
 scatterEmbedSpec :: Spec
 scatterEmbedSpec = describe "scatter widget JS embedding" $ do

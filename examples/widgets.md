@@ -2,29 +2,29 @@
 
 Widgets are HTML controls — sliders, dropdowns, buttons, checkboxes, text inputs — that live inside a cell's output and trigger re-execution when the user interacts with them. No JavaScript on your part: Sabela generates the control, bridges the value back to Haskell, and re-runs the cell automatically.
 
-## The Behavior type
+## The Input type
 
-Every widget is a `Behavior a` — a value that knows how to *render* itself and how to *sample* its current value:
+Every widget is an `Input a` — an on-screen control that knows how to *show* itself and how to read its current *value*:
 
 ```haskell
 -- cabal: build-depends: dataframe, text, containers
 -- cabal: default-extensions: OverloadedStrings, TypeApplications
 
--- data Behavior a = Behavior { bSample :: IO a, bRender :: IO () }
--- instance Functor     Behavior
--- instance Applicative Behavior
+-- data Input a  -- an interactive control
+-- instance Functor     Input
+-- instance Applicative Input
 ```
 
-The single verb `display` renders the control **and** returns the current value:
+The single verb `display` shows the control **and** returns the current value:
 
 ```haskell
--- display :: Behavior a -> IO a
+-- display :: Input a -> IO a
 ```
 
 ## slider
 
 ```haskell
--- slider :: (Show a, Read a) => String -> a -> a -> a -> Behavior a
+-- slider :: (Show a, Read a) => String -> a -> a -> a -> Input a
 --           name               default  lo    hi
 ```
 
@@ -50,7 +50,7 @@ displayHtml $ unlines
 ## dropdown
 
 ```haskell
--- dropdown :: String -> [String] -> String -> Behavior String
+-- dropdown :: String -> [String] -> String -> Input String
 --             name     options     default
 ```
 
@@ -76,7 +76,7 @@ displayHtml $ "<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>
 ## button
 
 ```haskell
--- button :: String -> String -> Behavior (Maybe ())
+-- button :: String -> String -> Input (Maybe ())
 --           label    name
 -- Nothing = not clicked, Just () = clicked since last run
 ```
@@ -102,7 +102,7 @@ displayHtml $ "<p>" ++ result ++ "</p>"
 ## checkbox
 
 ```haskell
--- checkbox :: String -> Bool -> Behavior Bool
+-- checkbox :: String -> Bool -> Input Bool
 --             name     default
 ```
 
@@ -126,7 +126,7 @@ displayHtml $ "<p>Result: <b>" ++ show (sum [1..n]) ++ "</b></p>"
 ## textInput
 
 ```haskell
--- textInput :: String -> String -> Behavior String
+-- textInput :: String -> String -> Input String
 --              name     default
 ```
 
@@ -145,7 +145,7 @@ displayHtml $ "<h2>Hello, " ++ name ++ "!</h2>"
 ## scatterSelect
 
 ```haskell
--- scatterSelect :: String -> [(Double, Double)] -> Behavior [Int]
+-- scatterSelect :: String -> [(Double, Double)] -> Input [Int]
 --                  name      points
 ```
 
@@ -591,7 +591,7 @@ See `examples/scatter-selection.md` for a complete, runnable version.
 
 ## Combining with fmap and liftA2
 
-`Behavior` is `Functor` and `Applicative`, so standard Prelude functions work directly.
+`Input` is `Functor` and `Applicative`, so standard Prelude functions work directly.
 
 **`fmap`** — derive a value from one widget without binding:
 
@@ -623,10 +623,10 @@ displayHtml $ "<p>Area: <b>" ++ show area ++ "</b></p>"
 > <!-- MIME:text/html -->
 > <p>Area: <b>100</b></p>
 
-**`pure`** — a constant behavior that renders nothing:
+**`constInput`** — a fixed value with no control:
 
 ```haskell
-x <- display (pure (42 :: Int))
+x <- display (constInput (42 :: Int))
 
 displayHtml $ "<p>Always: " ++ show x ++ "</p>"
 ```
@@ -670,13 +670,13 @@ D.empty |> D.insert "x" [1..100]
 > | 9            | 109          |
 > | 10           | 110          |
 
-## sample and render separately
+## currentValue and showInput separately
 
-For the rare case where you need to read a value without rendering, or render without reading:
+For the rare case where you need to read a value without showing the control, or show it without reading:
 
 ```haskell
--- sample :: Behavior a -> IO a   -- read current value, no output
--- render :: Behavior a -> IO ()  -- render control, discard value
+-- currentValue :: Input a -> IO a   -- read current value, no output
+-- showInput    :: Input a -> IO ()  -- show control, discard value
 ```
 
 ## Reactivity and re-execution

@@ -9,8 +9,8 @@ lockstep (redesign 6.8).
 'Sabela.Parse' only surfaces @(defs, uses)@ and swallows a parse failure
 into a fallback, so it cannot report a syntax error or its location. We call
 @P.parseModule@ here ourselves to recover the located error on @PFailed@.
-The security scan and @:type@ annotate stages plug in alongside this in R3-3
-and R3-4.
+The security scan and @:type@ annotate stages plug in alongside this without
+changing the parse interface.
 -}
 module Siza.Lang.Haskell (
     haskell,

@@ -10,6 +10,7 @@ module Sabela.Topo (
     reachableFrom,
     reverseDeps,
     cellNames,
+    cellSymbols,
 ) where
 
 import qualified Data.Foldable as F
@@ -18,7 +19,7 @@ import qualified Data.Sequence as Seq
 import qualified Data.Set as S
 import Data.Text (Text)
 import Sabela.Model (Cell (..))
-import Sabela.Parse (cellNames)
+import Sabela.Parse (CellSymbols (..), cellNames, cellSymbols)
 
 data TopoResult = TopoResult
     { trOrdered :: [Cell]
@@ -56,17 +57,37 @@ buildDefMap = foldl step (M.empty, M.empty)
                 else (defMap, M.insert cid redefs redefMap)
 
 {- | Build dependency graph: cell ID -> set of cell IDs it depends on.
-Based on defMap: a cell depends on the cell that canonically defines each name it uses.
+
+A cell depends on the cell that canonically defines each name it uses
+(@defMap@). On top of that, typeclass method users gain an edge to every
+*instance* that provides the method — instances own no top-level name, so
+@defMap@ alone can't connect them. The provides edges are scoped to
+methods actually declared by a notebook class so a @Show@/@Eq@ instance
+doesn't wire every @show@/@==@ caller to itself.
 -}
 buildDepGraph :: M.Map Text Int -> [Cell] -> M.Map Int (S.Set Int)
 buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
   where
+    symsById = M.fromList [(cellId c, cellSymbols (cellSource c)) | c <- cells]
+    notebookMethods = S.unions [csClassMethods s | s <- M.elems symsById]
+    providerMap =
+        M.fromListWith
+            S.union
+            [ (name, S.singleton cid)
+            | (cid, s) <- M.toList symsById
+            , name <- S.toList (csProvides s `S.intersection` notebookMethods)
+            ]
     depsOf c =
-        let (_, uses) = cellNames (cellSource c)
+        let s = symsById M.! cellId c
             cid = cellId c
-         in S.delete cid $
-                S.fromList
-                    [depCid | name <- S.toList uses, Just depCid <- [M.lookup name defMap]]
+            ownerDeps =
+                [depCid | name <- S.toList (csUses s), Just depCid <- [M.lookup name defMap]]
+            instanceDeps =
+                [ pc
+                | name <- S.toList (csUses s)
+                , pc <- S.toList (M.findWithDefault S.empty name providerMap)
+                ]
+         in S.delete cid $ S.fromList (ownerDeps ++ instanceDeps)
 
 data TopoState = TopoState
     { tsFilteredDeps :: M.Map Int (S.Set Int)

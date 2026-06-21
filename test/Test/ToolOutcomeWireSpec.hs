@@ -63,8 +63,9 @@ fakeBackend busy = do
                 }
     pure backend
 
--- | App with a real HTTP manager (so 'ensureAIStoreForTools' builds a store)
--- and a fake Haskell session of the given busy state.
+{- | App with a real HTTP manager (so 'ensureAIStoreForTools' builds a store)
+and a fake Haskell session of the given busy state.
+-}
 mkApp :: Bool -> IO App
 mkApp busy = do
     mgr <- newManager defaultManagerSettings
@@ -132,8 +133,9 @@ spec = describe "ToolOutcome envelope mapping (§1.8)" $ do
                 `shouldBe` False
         it "the ToolOk value carries the typed outcome tag" $
             case toToolOutcome (CellResult (Rejected [cerr]) [] []) of
-                ToolOk v -> (field "outcome" v >>= field "tag")
-                    `shouldBe` Just (String "Rejected")
+                ToolOk v ->
+                    (field "outcome" v >>= field "tag")
+                        `shouldBe` Just (String "Rejected")
                 ToolErr _ -> expectationFailure "expected ToolOk"
 
     describe "the real aiToolH/executeTool dispatch" $ do

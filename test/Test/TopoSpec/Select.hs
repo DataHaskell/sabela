@@ -236,3 +236,57 @@ spec = do
                     [mkCell 1 "import Data.Text (Text)\ngreet name = name"]
                 (defMap, _) = buildDefMap cells
             defMap `shouldBe` M.fromList [("greet", 1)]
+
+    -- A class, an instance, and a consumer of the method. The instance owns
+    -- no top-level name, so the single-owner defMap can't connect it; the
+    -- provides/class-method channel supplies the missing edges.
+    describe "DAG: typeclass instance reactivity" $ do
+        let classCell = mkCell 1 "class Rand a where\n  rand' :: a -> a"
+            instCell = mkCell 2 "instance Rand Int where\n  rand' x = x * 2"
+            useCell = mkCell 3 "rand' (9 :: Int)"
+            cells = [classCell, instCell, useCell]
+
+        it "the instance depends on its class" $ do
+            let (defMap, _) = buildDefMap cells
+                deps = buildDepGraph defMap cells
+            S.member 1 (M.findWithDefault S.empty 2 deps) `shouldBe` True
+
+        it "the consumer depends on both class and instance" $ do
+            let (defMap, _) = buildDefMap cells
+                deps = buildDepGraph defMap cells
+            M.findWithDefault S.empty 3 deps `shouldBe` S.fromList [1, 2]
+
+        it "editing the class re-runs the instance and the consumer" $ do
+            let (result, _) = selectAffectedTopo 1 cells
+                ids = map cellId (trOrdered result)
+            ids `shouldContain` [1]
+            ids `shouldContain` [2]
+            ids `shouldContain` [3]
+
+        it "editing the instance re-runs the consumer" $ do
+            let (result, _) = selectAffectedTopo 2 cells
+                ids = map cellId (trOrdered result)
+            ids `shouldContain` [2]
+            ids `shouldContain` [3]
+            ids `shouldNotContain` [1]
+
+        it "topo order: class before instance before consumer" $ do
+            let (result, _) = selectAffectedTopo 1 cells
+                ids = map cellId (trOrdered result)
+            case (elemIndex 1 ids, elemIndex 2 ids, elemIndex 3 ids) of
+                (Just a, Just b, Just c) -> do
+                    a `shouldSatisfy` (< b)
+                    b `shouldSatisfy` (< c)
+                _ -> expectationFailure "all three cells should be in trOrdered"
+
+        it "an instance of a Prelude class does not over-connect method users" $ do
+            -- `show` is declared by Prelude, not a notebook cell, so a cell
+            -- calling `show` must NOT gain an edge to this Show instance.
+            let cs =
+                    [ mkCell 1 "data T = T"
+                    , mkCell 2 "instance Show T where\n  show _ = \"T\""
+                    , mkCell 3 "show (5 :: Int)"
+                    ]
+                (defMap, _) = buildDefMap cs
+                deps = buildDepGraph defMap cs
+            S.member 2 (M.findWithDefault S.empty 3 deps) `shouldBe` False

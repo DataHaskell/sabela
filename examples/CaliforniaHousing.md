@@ -20,7 +20,7 @@ import is introduced where it is first used, so every cell carries its own
 context.
 
 ```haskell
--- cabal: build-depends: dataframe ==2.1.0.3, dataframe-hasktorch ==0.2.0.1, hasktorch, text, random, granite
+-- cabal: build-depends: dataframe ==2.3.0.0, dataframe-hasktorch ==0.2.0.2, hasktorch, text, random, granite
 -- cabal: default-extensions: BangPatterns, NumericUnderscores, OverloadedStrings, ScopedTypeVariables, TemplateHaskell, TypeApplications
 ```
 

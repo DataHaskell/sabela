@@ -138,7 +138,7 @@ mkApp app rn =
 
 {- | Gate the @/api/ai/*@ subtree behind bearer auth whenever
 @SABELA_AI_TOKEN@ is configured. When unset, all requests pass through
-unchanged (matches the local/zero-friction posture described in the plan).
+unchanged (the zero-friction local posture: unauthenticated by default).
 -}
 aiAuthMiddleware :: Maybe Text -> Middleware
 aiAuthMiddleware Nothing baseApp req sendResp = baseApp req sendResp

@@ -164,7 +164,7 @@ builtinExamples =
         "Widgets"
         "name <- display (textInput \"name\" \"World\")\ndisplayHtml $ \"<h2>Hello, \" ++ name ++ \"!</h2>\""
     , Example
-        "Composed Behaviors"
+        "Composed Inputs"
         "Combine two sliders with liftA2"
         "Widgets"
         "area <- display (liftA2 (*) (slider \"width\" (10 :: Int) 1 100) (slider \"height\" (10 :: Int) 1 100))\ndisplayHtml $ \"<p>Area: <b>\" ++ show area ++ \"</b></p>\""

@@ -15,7 +15,7 @@ import Control.Concurrent (
     threadDelay,
  )
 import qualified Data.Text as T
-import Sabela.Handlers (setupReplProject)
+import Sabela.Handlers (ReplSupport (..), setupReplProject)
 import Sabela.Output (displayPrelude)
 import Sabela.Session (interruptIfBusy, mkSessionConfig, runBlock)
 import Sabela.Session.Proc (
@@ -102,7 +102,7 @@ spec = do
             case cabal of
                 Nothing -> pendingWith "cabal not found on PATH"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
+                    setupReplProject BareRepl [] dir emptyMeta
                     cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 120_000_000 (newSession cfg)
                     interruptIfBusy sess
@@ -128,7 +128,7 @@ spec = do
             case cabal of
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
+                    setupReplProject BareRepl [] dir emptyMeta
                     cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 60_000_000 (newSession cfg)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess "1 + 1")
@@ -142,7 +142,7 @@ spec = do
             case cabal of
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
+                    setupReplProject BareRepl [] dir emptyMeta
                     cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 60_000_000 (newSession cfg)
                     (out, err) <- withTimeout 10_000_000 (runBlock sess "let x = 1\nx + \"a\"")
@@ -156,7 +156,7 @@ spec = do
             case cabal of
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
+                    setupReplProject BareRepl [] dir emptyMeta
                     cfg <- mkSessionConfig dir dir
                     sess1 <- withTimeout 60_000_000 (newSession cfg)
                     sess2 <- withTimeout 60_000_000 (resetSession sess1)
@@ -171,7 +171,7 @@ spec = do
             case cabal of
                 Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
                 Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
-                    setupReplProject [] dir emptyMeta
+                    setupReplProject BareRepl [] dir emptyMeta
                     cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 60_000_000 (newSession cfg)
                     -- mirror a dataframe cell's default-extensions so the prelude
@@ -187,7 +187,7 @@ spec = do
                         withTimeout 20_000_000 $
                             runBlock
                                 sess
-                                "writeIORef _sabelaWidgetRef [(\"s\",\"[0,2]\")] >> (sample (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0),(5.0,6.0)]) >>= print)"
+                                "writeIORef _sabelaWidgetRef [(\"s\",\"[0,2]\")] >> (currentValue (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0),(5.0,6.0)]) >>= print)"
                     (htmlOut, _) <-
                         withTimeout 20_000_000 $
                             runBlock

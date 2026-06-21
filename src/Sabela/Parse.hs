@@ -33,7 +33,9 @@ retried with 'parseDeclaration' and 'parseExpression' independently and
 the parseable subset still contributes to @defs@/@uses@.
 -}
 module Sabela.Parse (
+    CellSymbols (..),
     cellNames,
+    cellSymbols,
 ) where
 
 import qualified Data.Char as Char
@@ -56,6 +58,7 @@ import qualified Language.Haskell.GhclibParserEx.GHC.Parser as P
 import Language.Haskell.GhclibParserEx.GHC.Settings.Config (fakeSettings)
 
 import Sabela.Parse.Ast (
+    CellSymbols (..),
     collectBinders,
     collectUses,
     declFreeVars,
@@ -67,18 +70,32 @@ import Sabela.Parse.Ast (
 -- Public API
 -- ---------------------------------------------------------------------------
 
-{- | Extract @(defs, uses)@ from a cell's Haskell source. See module
-header for semantics.
+{- | Extract @(defs, uses)@ from a cell's Haskell source. A thin projection
+of 'cellSymbols' for the many callers that only need those two sets.
 -}
 cellNames :: Text -> (Set Text, Set Text)
-cellNames src =
+cellNames src = let s = cellSymbols src in (csDefs s, csUses s)
+
+{- | Full symbol extraction for a cell: defs, uses, instance-provided method
+names, and class-declared method names. See 'CellSymbols' for how the
+extra channels feed typeclass reactivity.
+-}
+cellSymbols :: Text -> CellSymbols
+cellSymbols src =
     let preprocessed = preprocess src
         moduleSrc =
             "module SabelaCell where\n"
                 ++ T.unpack (T.unlines preprocessed)
      in case P.parseModule moduleSrc dynFlags of
             POk _ (L _ hsMod) -> extractFromModule hsMod
-            PFailed _ -> fallbackPerChunk preprocessed
+            PFailed _ ->
+                let (defs, uses) = fallbackPerChunk preprocessed
+                 in CellSymbols
+                        { csDefs = defs
+                        , csUses = uses
+                        , csProvides = S.empty
+                        , csClassMethods = S.empty
+                        }
 
 -- ---------------------------------------------------------------------------
 -- Pre-processing: turn REPL fragments into a parseable module body

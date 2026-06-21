@@ -114,7 +114,7 @@ execExploreResult store input = do
                         (errOutcome (errorJson ("Handle not found (may have expired): " <> hidText)))
                 -- 'runExplore' returns 'errorJson' for an unknown op; propagate
                 -- that as a typed tool error rather than masquerading as
-                -- success (this also fixes integration reviewer #7).
+                -- success.
                 Just lr -> case parseExploreOp op of
                     Nothing ->
                         pure (errOutcome (runExplore op input lr))

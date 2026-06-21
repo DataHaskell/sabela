@@ -1,0 +1,40 @@
+cabal-version:      2.4
+name:               sabela-notebook
+version:            0.1.0.0
+synopsis:           FRP, animation, and picture vocabulary for Sabela notebooks.
+description:
+    The batteries every Sabela notebook depends on: a small, heavily documented
+    Functional Reactive Programming vocabulary (behaviours and events), plus a
+    picture and animation layer, importable directly from notebook cells with a
+    single @import Sabela.Notebook@. Written to be readable by someone new to
+    programming, with a runnable example on every function.
+homepage:           https://www.datahaskell.org/
+license:            MIT
+license-file:       LICENSE
+author:             DataHaskell
+maintainer:         mschavinda@gmail.com
+category:           Development
+build-type:         Simple
+extra-doc-files:    LICENSE
+
+source-repository head
+    type:     git
+    location: https://github.com/DataHaskell/sabela
+    subdir:   sabela-notebook
+
+library
+    default-language: Haskell2010
+    hs-source-dirs:   src
+    ghc-options:      -Wall
+    exposed-modules:
+        Sabela.Notebook
+        Sabela.Notebook.Anim
+        Sabela.Notebook.Behavior
+        Sabela.Notebook.Event
+        Sabela.Notebook.Frp
+        Sabela.Notebook.Picture
+    other-modules:
+        Sabela.Notebook.Picture.Internal
+        Sabela.Notebook.Picture.Svg
+    -- liftA2 from the Prelude (base >= 4.18 / GHC >= 9.6).
+    build-depends:    base >= 4.18 && < 5

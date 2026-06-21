@@ -47,7 +47,6 @@ import System.IO (
     mkTextEncoding,
  )
 import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Types (ProcessGroupID)
 import System.Process (
     CreateProcess (create_group, cwd, std_err, std_in, std_out),
     ProcessHandle,
@@ -60,6 +59,7 @@ import System.Process (
 import System.Timeout (timeout)
 
 #if defined(mingw32_HOST_OS)
+import Data.Word (Word32)
 import System.Process (interruptProcessGroupOf, terminateProcess)
 #else
 import System.Posix.Signals (
@@ -69,6 +69,12 @@ import System.Posix.Signals (
     sigTERM,
     signalProcessGroup,
  )
+import System.Posix.Types (ProcessGroupID)
+#endif
+
+#if defined(mingw32_HOST_OS)
+-- | Windows has no POSIX process-group id; getPid yields a Word32.
+type ProcessGroupID = Word32
 #endif
 
 {- | A spawned interpreter process: handles, its process group (captured

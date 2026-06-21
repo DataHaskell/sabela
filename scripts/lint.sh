@@ -57,6 +57,16 @@ if [[ "$FIX_MODE" == true ]]; then
       continue
     fi
 
+    # apply-refact preprocesses CPP before rewriting, which on a non-Windows
+    # host keeps only the active branch and silently deletes every #if/#else
+    # branch (e.g. the Windows paths in Session/Proc.hs). Never auto-refactor a
+    # file with conditional compilation; lint it read-only instead.
+    if grep -qE '^\{-#[[:space:]]*LANGUAGE([^#]*[, ])?CPP\b|^#(if|ifdef|ifndef|else|elif|endif|define)\b' "$file"; then
+      echo "==> SKIP --refactor (CPP file; would strip conditional branches), lint-only: $file"
+      hlint "$file" || true
+      continue
+    fi
+
     total=$((total + 1))
     echo "==> hlint --refactor -i: $file"
 

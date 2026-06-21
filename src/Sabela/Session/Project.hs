@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 {- | The throwaway @cabal repl@ project scaffold, shared by the notebook session
 ('Sabela.Handlers.Lifecycle') and the isolated scratchpad
@@ -7,28 +8,54 @@ same way. A leaf module (no @Handlers@/@AI@ dependencies), which is what lets th
 scratchpad scaffold its own project without depending on a prior notebook run.
 -}
 module Sabela.Session.Project (
+    ReplSupport (..),
+    buildTimeSupportDir,
     setupReplProject,
     writeFileIfChanged,
 ) where
 
 import Control.Monad (unless)
+import Data.FileEmbed (makeRelativeToProject)
 import qualified Data.Text as T
 import ScriptHs.Parser (CabalMeta (..))
 import ScriptHs.Run (renderCabalFile, renderCabalProject)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
-import System.FilePath (takeFileName, (</>))
+import System.FilePath ((</>))
 import System.IO (readFile')
 
-import Sabela.Notebook.Support (supportPackageName)
+{- | Absolute path to the @sabela-notebook@ source as it sat at BUILD time. For a
+dev build from the repo this is @<repo>\/sabela-notebook@ and persists on disk, so
+an installed binary resolves the support package from any working directory; for a
+Hackage build it points at the unpacked sdist dir, which is gone at run time, so
+resolution falls back to Hackage. Used as a fallback when @SABELA_LOCAL_PACKAGES@
+is unset (see @app\/Main.hs@).
+-}
+buildTimeSupportDir :: FilePath
+buildTimeSupportDir = $(makeRelativeToProject "sabela-notebook" >>= \p -> [|p|])
+
+{- | The notebook support library. A real notebook\/scratchpad session depends on
+it so a cell can @import Sabela.Notebook.*@; it resolves from Hackage, or from a
+local @packages:@ entry supplied via @SABELA_LOCAL_PACKAGES@.
+-}
+supportPackageName :: String
+supportPackageName = "sabela-notebook"
+
+{- | Whether a repl project gets the notebook support library on its
+@build-depends@. Real sessions use 'WithNotebookSupport'; a bare session that
+only exercises the repl machinery (no @import Sabela.Notebook.*@) uses 'BareRepl'
+so it neither requires nor builds the support package.
+-}
+data ReplSupport = WithNotebookSupport | BareRepl
+    deriving (Eq, Show)
 
 {- | Write the throwaway repl project into @dir@. Local packages resolve through
 the @packages:@ stanza in the generated @cabal.project@; a package only joins
 @build-depends@ (so its modules are in scope) when its dir is in @localPkgs@. The
-sticky 'supportPackageName' is added exactly when its materialised dir is present,
-so a cell can @import Sabela.Notebook.*@.
+'supportPackageName' dependency is added for 'WithNotebookSupport' so a cell can
+@import Sabela.Notebook.*@ regardless of how that package resolves.
 -}
-setupReplProject :: [FilePath] -> FilePath -> CabalMeta -> IO ()
-setupReplProject localPkgs dir meta = do
+setupReplProject :: ReplSupport -> [FilePath] -> FilePath -> CabalMeta -> IO ()
+setupReplProject support localPkgs dir meta = do
     createDirectoryIfMissing True dir
     _ <-
         writeFileIfChanged
@@ -42,10 +69,9 @@ setupReplProject localPkgs dir meta = do
                 )
             )
     ensureFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
-    let extraDeps =
-            [ T.pack supportPackageName
-            | any ((== supportPackageName) . takeFileName) localPkgs
-            ]
+    let extraDeps = case support of
+            WithNotebookSupport -> [T.pack supportPackageName]
+            BareRepl -> []
     _ <-
         writeFileIfChanged
             (dir </> "sabela-repl.cabal")

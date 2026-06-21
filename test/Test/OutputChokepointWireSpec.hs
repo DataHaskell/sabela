@@ -55,7 +55,9 @@ spec = describe "Output chokepoint (R2-5)" $ do
         it "Inline toJSON has exactly {mime,output}" $ do
             let v = toJSON (Inline MimeHtml "<p>hi</p>")
             objectKeys v `shouldBe` ["mime", "output"]
-            v `shouldBe` A.object ["mime" .= ("text/html" :: T.Text), "output" .= ("<p>hi</p>" :: T.Text)]
+            v
+                `shouldBe` A.object
+                    ["mime" .= ("text/html" :: T.Text), "output" .= ("<p>hi</p>" :: T.Text)]
 
         it "compactOutputs below threshold emits the {mime,output} object" $ do
             store <- mkStore
@@ -75,13 +77,16 @@ spec = describe "Output chokepoint (R2-5)" $ do
             let big = T.unlines (map (T.pack . show) [1 :: Int .. 100])
             v <- compactOutputs store [OutputItem MimePlain big]
             case v of
-                A.Array arr | [one] <- foldr (:) [] arr ->
-                    objectKeys one
-                        `shouldBe` ["handleId", "hint", "summary", "totalBytes", "totalLines"]
+                A.Array arr
+                    | [one] <- foldr (:) [] arr ->
+                        objectKeys one
+                            `shouldBe` ["handleId", "hint", "summary", "totalBytes", "totalLines"]
                 _ -> expectationFailure "expected a single-element array"
 
-    describe "both paths share one inline shape" $
-        it "compactOutputs and compactMaybeText emit the SAME inline shape for the same text" $ do
+    describe "both paths share one inline shape"
+        $ it
+            "compactOutputs and compactMaybeText emit the SAME inline shape for the same text"
+        $ do
             store <- mkStore
             let text = "the same body"
             outsV <- compactOutputs store [OutputItem MimePlain text]

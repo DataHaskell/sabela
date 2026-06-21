@@ -20,12 +20,11 @@ module Sabela.Session.ParentPoller (
     spawnReaperFor,
 ) where
 
-import System.Posix.Types (ProcessGroupID, ProcessID)
-
 #if !defined(mingw32_HOST_OS)
 import Control.Concurrent (forkIO)
 import Control.Monad (void)
 import System.Posix.Process (getProcessID)
+import System.Posix.Types (ProcessGroupID, ProcessID)
 import System.Process (createProcess, proc, waitForProcess)
 #else
 import Control.Monad (void, when)
@@ -36,6 +35,12 @@ import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Marshal.Utils (fillBytes)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Storable (pokeByteOff)
+#endif
+
+#if defined(mingw32_HOST_OS)
+-- | Windows has no POSIX process ids; the reaper coerces them to Word32.
+type ProcessGroupID = Word32
+type ProcessID = Word32
 #endif
 
 {- | Install the orphan safeguard for an interpreter whose process group

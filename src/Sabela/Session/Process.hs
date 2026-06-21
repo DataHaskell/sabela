@@ -128,14 +128,17 @@ notebook — and every restart — starts fast (incident K / stress case 26): th
 unconditional @-fobject-code -O2 -fexpose-all-unfoldings@ that forced the whole
 session into object code is gone. Each @-- compile@ module opts itself back
 into @-O2@ object code via a per-module @OPTIONS_GHC@ pragma
-('Sabela.Compiled.objectCodeOptions'). @-odir@\/@-hidir@ stay pinned absolute
-so the @:cd@ at init cannot orphan those modules' @.o@\/@.hi@ cache.
+('Sabela.Compiled.objectCodeOptions'). @--builddir@, @-odir@, and @-hidir@ are
+pinned absolute under the project dir so the @:cd@ to the work dir at init can
+neither orphan the @.o@\/@.hi@ cache nor scatter a @dist-newstyle@ into the
+notebook's directory.
 -}
 ghciArgs :: SessionConfig -> String -> [String]
 ghciArgs cfg rtsOpts =
     [ "repl"
     , "exe:main"
     , "--project-dir=" ++ scProjectDir cfg
+    , "--builddir=" ++ scProjectDir cfg </> "dist-newstyle"
     , "-v1"
     , "--repl-options=-odir " ++ objDir ++ " -hidir " ++ objDir
     , "--ghc-options=" ++ rtsOpts

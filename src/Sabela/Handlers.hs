@@ -19,6 +19,8 @@ module Sabela.Handlers (
 
     -- * Haskell session management (also used by tests)
     installAndRestart,
+    ReplSupport (..),
+    buildTimeSupportDir,
     setupReplProject,
     resolveLocalPackages,
     updateCellSource,
@@ -75,6 +77,7 @@ import Sabela.Reactivity (
     markDependentsDirty,
     runAllNeedsRun,
  )
+import Sabela.Session.Project (ReplSupport (..), buildTimeSupportDir)
 import Sabela.State (App (..), getAIStore)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import ScriptHs.Parser (CabalMeta (..))

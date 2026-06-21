@@ -32,9 +32,9 @@ data Diagnostic = Diagnostic
     }
     deriving (Eq, Show)
 
-{- | A notebook language's pre-flight capability. This slice fills only
-'langParse'; the security scan and the @:type@ annotate pull plug in here
-in later phases (R3-3, R3-4) without changing the seam.
+{- | A notebook language's pre-flight capability. 'langParse' is the only
+field today; the security scan and the @:type@ annotate pull plug in here
+without changing the seam.
 -}
 data Language = Language
     { langName :: Text

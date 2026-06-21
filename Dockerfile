@@ -17,10 +17,14 @@ RUN cabal update
 # Building hasktorch runs libtorch-ffi's Custom Setup, which downloads libtorch
 # 2.9.1 (CPU) into $LIBTORCH_HOME and RPATHs the artifacts to it. Kept above
 # COPY ./sabela.cabal so source/cabal edits never re-trigger this slow step.
-# dataframe-hasktorch ==0.2.0.0 pins dataframe ==2.1.0.0 (the notebook recipe).
+# The notebook ML recipe: dataframe 2.3.0.0 + dataframe-hasktorch 0.2.0.2 (the
+# first dataframe-hasktorch that builds against base 4.21 / GHC 9.12; the older
+# 0.2.0.0 forced dataframe ==2.1.0.0, which excludes GHC >= 9.12). Keep this in
+# lockstep with examples/CaliforniaHousing.md so the warm cache is actually hit.
 RUN mkdir -p /opt/warm \
-  && printf 'cabal-version: 3.0\nname: warm\nversion: 0\nlibrary\n  default-language: Haskell2010\n  build-depends: dataframe ==2.1.0.0, dataframe-hasktorch ==0.2.0.0, hasktorch, granite\n' > /opt/warm/warm.cabal \
+  && printf 'cabal-version: 3.0\nname: warm\nversion: 0\nlibrary\n  default-language: Haskell2010\n  build-depends: dataframe ==2.3.0.0, dataframe-hasktorch ==0.2.0.2, hasktorch, granite\n' > /opt/warm/warm.cabal \
   && cd /opt/warm \
+  && cabal update \
   && cabal build --only-dependencies
 
 COPY ./sabela.cabal /opt/build/
@@ -66,8 +70,14 @@ COPY --from=build /opt/build/display/ /opt/sabela/display/
 
 COPY ./examples /opt/sabela/examples/
 
+# The sabela-notebook support library (Sabela.Notebook.*) is not yet on Hackage,
+# so ship its source and point SABELA_LOCAL_PACKAGES at it; each notebook's
+# repl-project then resolves it as a local package. base-only, so it builds fast.
+COPY --from=build /opt/build/sabela-notebook /opt/sabela/sabela-notebook
+
 ENV CABAL_DIR="/root/.cabal"
 ENV LIBTORCH_HOME="/opt/libtorch"
+ENV SABELA_LOCAL_PACKAGES="/opt/sabela/sabela-notebook"
 
 # Entrypoint script prepends EFS tool paths to PATH at runtime
 # (avoids hardcoding PATH in task definition, which broke GHC discovery)

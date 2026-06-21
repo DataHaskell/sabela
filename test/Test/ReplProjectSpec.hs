@@ -6,7 +6,11 @@ must rewrite when the metadata changes.
 -}
 module Test.ReplProjectSpec (spec) where
 
-import Sabela.Session.Project (setupReplProject, writeFileIfChanged)
+import Sabela.Session.Project (
+    ReplSupport (..),
+    setupReplProject,
+    writeFileIfChanged,
+ )
 import ScriptHs.Parser (CabalMeta (..))
 import System.Directory (getModificationTime)
 import System.FilePath ((</>))
@@ -49,18 +53,18 @@ spec = describe "repl-project env caching" $ do
     describe "setupReplProject" $ do
         it "does not rewrite cabal.project / .cabal across identical runs" $
             withSystemTempDirectory "rp" $ \d -> do
-                setupReplProject [] d emptyMeta
+                setupReplProject BareRepl [] d emptyMeta
                 tp1 <- getModificationTime (d </> "cabal.project")
                 tc1 <- getModificationTime (d </> "sabela-repl.cabal")
-                setupReplProject [] d emptyMeta
+                setupReplProject BareRepl [] d emptyMeta
                 tp2 <- getModificationTime (d </> "cabal.project")
                 tc2 <- getModificationTime (d </> "sabela-repl.cabal")
                 (tp2, tc2) `shouldBe` (tp1, tc1)
 
         it "rewrites sabela-repl.cabal when the deps change" $
             withSystemTempDirectory "rp" $ \d -> do
-                setupReplProject [] d emptyMeta
+                setupReplProject BareRepl [] d emptyMeta
                 before <- readFile' (d </> "sabela-repl.cabal")
-                setupReplProject [] d emptyMeta{metaDeps = ["containers"]}
+                setupReplProject BareRepl [] d emptyMeta{metaDeps = ["containers"]}
                 after <- readFile' (d </> "sabela-repl.cabal")
                 after `shouldNotBe` before

@@ -8,8 +8,7 @@ These are the pieces every mutating tool (@replace_cell_source@,
 @insert_cell@) calls so the tool response carries the freshly-computed
 execution summary, plus the @execute_cell@ tool itself. Kept as a
 separate module because the listener-and-timeout pattern in 'executeCell'
-is also a natural reuse point for any future REST blocking-run endpoint
-(Kmett architectural follow-up #4).
+is also a natural reuse point for a REST blocking-run endpoint.
 -}
 module Sabela.AI.Capabilities.Edit.Run (
     autoExecuteAfterMutation,
@@ -44,11 +43,10 @@ import Sabela.State
 The outcome sum (Succeeded/Raised/Rejected/Aborted) and the @ok@ boolean
 ride on the same value the @execute_cell@ tool emits.
 
-@_store@ is the (currently unused) carrier for the staged Output chokepoint:
-per redesign §1.3 cell outputs route through @inlineOrStash@ behind the MV
-slice, so @crOutputs@ inline raw here for now. The in-browser chat is still
-bounded by 'Sabela.AI.Orchestrator.Compact'; the REST bridge ('aiToolH') is
-deliberately un-stashed on this path until that slice lands.
+@_store@ is the (currently unused) carrier for a staged Output chokepoint;
+@crOutputs@ inline raw here. The in-browser chat is bounded by
+'Sabela.AI.Orchestrator.Compact'; the REST bridge ('aiToolH') is deliberately
+un-stashed on this path.
 -}
 autoExecuteAfterMutation ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Int -> IO Value
@@ -57,7 +55,7 @@ autoExecuteAfterMutation app _store rn cancelTok cid = do
     pure (toJSON (toCellResult res (resultOutputs res)))
 
 {- | @execute_cell@. @_store@ is the staged Output-chokepoint carrier — see
-'autoExecuteAfterMutation'; @crOutputs@ inline raw on this path for now.
+'autoExecuteAfterMutation'; @crOutputs@ inline raw on this path.
 -}
 execExecuteCell ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Value -> IO ToolOutcome

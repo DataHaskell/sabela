@@ -24,6 +24,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.IORef (atomicModifyIORef')
 import Data.Text (Text)
 import qualified Data.Text as T
+import System.FilePath ((</>))
 import System.IO.Temp (createTempDirectory)
 
 import Sabela.AI.Capabilities.Util (compactMaybeText, fieldText, parseCellLang)
@@ -34,7 +35,6 @@ import Sabela.Api (errorJson)
 -- 'ToolOutcome' (and its smart constructors) is re-exported from
 -- 'Sabela.AI.Types' via the open import above; no explicit list needed.
 import Sabela.Deps (collectMetadataFromContent, mergedMeta)
-import Sabela.Notebook.Support (materializeSupport, supportPackageDir)
 import Sabela.Output (displayPrelude)
 import Sabela.PythonSession (newPythonSession, pythonBackend)
 import Sabela.Session (
@@ -47,7 +47,7 @@ import Sabela.Session.Process (
     ghciBackend,
     newSession,
  )
-import Sabela.Session.Project (setupReplProject)
+import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 import Sabela.SessionTypes (CellLang (..), SessionBackend (..))
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
@@ -227,11 +227,13 @@ ensureScratchpad app store lang = do
                     -- dist-newstyle), so it works on a cold notebook (before any
                     -- cell has materialised repl-project) and never contends with
                     -- the live notebook session over the shared build dir.
-                    let workDir = envWorkDir (appEnv app)
-                        projDir = envTmpDir (appEnv app) ++ "/scratch-project"
+                    let projDir = envTmpDir (appEnv app) </> "scratch-project"
                         meta = mergedMeta (envGlobalDeps (appEnv app)) (collectMetadataFromContent "")
-                    _ <- materializeSupport workDir
-                    setupReplProject [supportPackageDir workDir] projDir meta
+                    setupReplProject
+                        WithNotebookSupport
+                        (envLocalPackages (appEnv app))
+                        projDir
+                        meta
                     cfg <- mkSessionConfig projDir spDir
                     sess <- newSession cfg
                     -- If GHCi/cabal dies during prelude injection, surface
@@ -259,7 +261,7 @@ ensureScratchpad app store lang = do
                                            )
                         Right _ -> pure (ghciBackend sess)
                 Python -> do
-                    let venvDir = envTmpDir (appEnv app) ++ "/python-venv"
+                    let venvDir = envTmpDir (appEnv app) </> "python-venv"
                     sess <- newPythonSession (Just venvDir) spDir
                     pure (pythonBackend sess)
             let sp = ScratchpadSession backend spDir lang

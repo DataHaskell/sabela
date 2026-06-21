@@ -13,6 +13,7 @@ points that 'Sabela.Parse' actually wires together are public.
 -}
 module Sabela.Parse.Ast (
     -- * Module-level entry
+    CellSymbols (..),
     extractFromModule,
 
     -- * Per-decl entries (used by the chunk-level fallback)
@@ -24,12 +25,14 @@ module Sabela.Parse.Ast (
     collectBinders,
 ) where
 
+import qualified Data.Char as Char
 import Data.Data (Data)
 import Data.Foldable (toList)
 import qualified Data.List.NonEmpty as NE
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
+import qualified Data.Text as T
 
 import Data.Generics.Uniplate.Data (universeBi)
 
@@ -42,19 +45,91 @@ import qualified Sabela.Parse.Ast.PatNodeBinders as PatNodeBinders
 -- Module-level extraction
 -- ---------------------------------------------------------------------------
 
+{- | What a single cell contributes to the reactivity DAG. @csDefs@/@csUses@
+are the single-owner def/use sets; the two extra channels carry the
+typeclass relationships the single-owner @defMap@ can't express:
+
+* @csProvides@ — method names an *instance* binds. An instance owns no
+  top-level name (the class does), so consumers of a method can't reach
+  the instance through @defMap@. 'Sabela.Topo.buildDepGraph' turns these
+  into edges from each method user to every implementing instance.
+
+* @csClassMethods@ — method names a *class* declaration introduces. Used
+  to scope @csProvides@ edges to methods that are actually declared in the
+  notebook, so an @instance Show MyType@ doesn't wire every @show@ caller
+  to itself.
+-}
+data CellSymbols = CellSymbols
+    { csDefs :: Set Text
+    , csUses :: Set Text
+    , csProvides :: Set Text
+    , csClassMethods :: Set Text
+    }
+    deriving (Eq, Show)
+
 {- | Top-level extraction. Defs come from each top-level decl's LHS. Uses
 are computed **per decl** (not globally over the module), so a parameter
 @x@ that's local to one decl doesn't shadow a free @x@ in a sibling
 decl's body. References to names this cell defines itself are subtracted
-from uses since they're intra-cell, not external dependencies.
+from uses since they're intra-cell, not external dependencies. An
+instance's head type names are folded into uses so it depends on the cell
+declaring its class.
 -}
-extractFromModule :: Hs.HsModule Hs.GhcPs -> (Set Text, Set Text)
+extractFromModule :: Hs.HsModule Hs.GhcPs -> CellSymbols
 extractFromModule m =
     let topDecls = map unLoc (Hs.hsmodDecls m)
+        insts = instanceDecls m
         defs = S.unions (map topLevelDefsFromDecl topDecls)
         rawUses = S.unions (map declFreeVars topDecls)
-        uses = rawUses `S.difference` defs
-     in (defs, uses)
+        instUses = S.unions (map instanceTypeUses insts)
+        uses = (rawUses `S.union` instUses) `S.difference` defs
+     in CellSymbols
+            { csDefs = defs
+            , csUses = uses
+            , csProvides = S.unions (map instanceMethodNames insts)
+            , csClassMethods = S.unions (map classMethodNames topDecls)
+            }
+
+-- | The instance declarations in a module body.
+instanceDecls :: Hs.HsModule Hs.GhcPs -> [Hs.InstDecl Hs.GhcPs]
+instanceDecls m = [inst | Hs.InstD _ inst <- map unLoc (Hs.hsmodDecls m)]
+
+{- | Type-constructor / class names referenced anywhere in an instance decl
+(its head and method types). Restricted to upper-case names so type
+variables can't create spurious cross-cell edges. These become extra uses
+so an instance depends on the cell defining its class (and any head types).
+-}
+instanceTypeUses :: Hs.InstDecl Hs.GhcPs -> Set Text
+instanceTypeUses inst =
+    S.fromList
+        [ name
+        | Hs.HsTyVar _ _ ln <- universeBi inst :: [Hs.HsType Hs.GhcPs]
+        , let name = rdrText (unLoc ln)
+        , isUpperName name
+        ]
+
+{- | Method names an instance binds. Collected generically (every binder in
+the instance subtree); over-collecting a method's local @where@ helper only
+ever adds a conservative extra edge, never drops a real one.
+-}
+instanceMethodNames :: Hs.InstDecl Hs.GhcPs -> Set Text
+instanceMethodNames inst =
+    S.unions
+        [ bindBinders b
+        | b <- universeBi inst :: [Hs.HsBindLR Hs.GhcPs Hs.GhcPs]
+        ]
+
+-- | Method names a class declaration introduces (its method signatures).
+classMethodNames :: Hs.HsDecl Hs.GhcPs -> Set Text
+classMethodNames = \case
+    Hs.TyClD _ Hs.ClassDecl{Hs.tcdSigs = sigs} ->
+        S.unions (map (sigBinders . unLoc) sigs)
+    _ -> S.empty
+
+isUpperName :: Text -> Bool
+isUpperName t = case T.uncons t of
+    Just (c, _) -> Char.isUpper c
+    Nothing -> False
 
 {- | Free variables of a single top-level declaration: every 'Hs.HsVar'
 reference inside the decl, minus every name bound anywhere within that
