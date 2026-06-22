@@ -87,6 +87,7 @@ function showChatEditProposal(editId, cellId, oldSource, newSource) {
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-edit-proposal';
+  div.dataset.editId = editId;
   div.innerHTML = `
     <div style="font-size:10px;color:var(--fg-dim);margin-bottom:6px">Proposed edit for cell ${cellId}</div>
     <pre style="color:var(--red);font-size:11px">${escapeHtml(oldSource.substring(0, 500))}</pre>
@@ -117,6 +118,7 @@ async function acceptEdit(editId, cellId) {
     }
     const nb = await api('GET', 'notebook');
     render(nb);
+    resolveChatEditProposal(editId, cellId, 'accepted');
   } catch (e) {
     showChatError('Accept failed: ' + e.message);
   }
@@ -127,9 +129,21 @@ async function revertEdit(editId, cellId) {
     await fetch(`/api/chat/edit/${editId}/revert`, { method: 'POST' });
     const cellEl = document.querySelector(`.cell[data-id="${cellId}"]`);
     if (cellEl) cellEl.classList.remove('ai-proposed');
+    resolveChatEditProposal(editId, cellId, 'reverted');
   } catch (e) {
     showChatError('Revert failed: ' + e.message);
   }
+}
+
+// Collapse a proposal card into a compact resolved status, removing its
+// actionable diff/buttons so accepted edits read as done in the chat log.
+function resolveChatEditProposal(editId, cellId, status) {
+  const div = document.querySelector(`.chat-edit-proposal[data-edit-id="${editId}"]`);
+  if (!div) return;
+  div.classList.add('resolved', status);
+  const label = status === 'accepted' ? 'Accepted edit' : 'Reverted edit';
+  const mark = status === 'accepted' ? '✓' : '↩';
+  div.innerHTML = `<div class="chat-edit-status">${mark} ${label} for cell ${cellId}</div>`;
 }
 
 function showChatError(message) {

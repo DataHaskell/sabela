@@ -236,6 +236,27 @@
   color: var(--red);
   border-color: var(--red);
 }
+.chat-edit-proposal.resolved {
+  padding: 6px 10px;
+  border-style: solid;
+  opacity: 0.75;
+}
+.chat-edit-proposal.resolved.accepted {
+  border-color: var(--green);
+}
+.chat-edit-proposal.resolved.reverted {
+  border-color: var(--red);
+}
+.chat-edit-status {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.chat-edit-proposal.resolved.accepted .chat-edit-status {
+  color: var(--green);
+}
+.chat-edit-proposal.resolved.reverted .chat-edit-status {
+  color: var(--red);
+}
 .chat-scratchpad {
   background: var(--bg-cell);
   border-left: 3px solid var(--mauve);
