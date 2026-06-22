@@ -17,7 +17,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy.Char8 as LBS8
 import Data.Either (fromLeft)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -35,7 +35,7 @@ import Siza.Cli.Annotate (runAnnotate)
 import Siza.Cli.Await (awaitBudgetParser, runAwaitIdle)
 import Siza.Cli.Provenance (logToolCall)
 import Siza.Cli.Retro (RetroTarget, retroTargetParser, runRetro)
-import Siza.Discover (Server (..), discover, serverValue)
+import Siza.Discover (Server (..), defaultLocalUrl, discover, serverValue)
 import Siza.Language (
     Diagnostic,
     Severity (Error),
@@ -190,10 +190,7 @@ runCommand = \case
     Retro target -> runRetro target
     Logout -> runLogout
     Login mUrl -> withConn $ \conn ->
-        case mUrl <|> envSabelaUrl (connEnv conn) of
-            Just url -> runLogin conn url
-            Nothing ->
-                hPutStrLn stderr "siza: provide a HUB_URL or set SABELA_URL." >> exitFailure
+        runLogin conn (fromMaybe defaultLocalUrl (mUrl <|> envSabelaUrl (connEnv conn)))
     Await budget ->
         withConn $ \conn -> withFirstServer conn $ \srv ->
             runAwaitIdle conn (srvBaseUrl srv) budget

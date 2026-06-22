@@ -8,6 +8,7 @@ module Siza.Discover (
     Server (..),
     discover,
     serverValue,
+    defaultLocalUrl,
 ) where
 
 import Control.Monad (filterM)
@@ -65,12 +66,23 @@ serverValue s =
         , "live" .= True
         ]
 
--- | Live servers. @SABELA_URL@, if set, short-circuits to a single probe.
+{- | The localhost server siza falls back to when no @SABELA_URL@ is set and
+the registry has no live entry — the standard sabela port.
+-}
+defaultLocalUrl :: Text
+defaultLocalUrl = "http://localhost:3000"
+
+{- | Live servers. @SABELA_URL@, if set, short-circuits to a single probe;
+otherwise scan the registry, and if it is empty fall back to probing
+'defaultLocalUrl' so a plain local notebook needs no configuration.
+-}
 discover :: Conn -> IO [Server]
 discover conn =
     case envSabelaUrl (connEnv conn) of
         Just url -> probeOne conn url
-        Nothing -> scanRegistry conn
+        Nothing -> do
+            servers <- scanRegistry conn
+            if null servers then probeOne conn defaultLocalUrl else pure servers
 
 probeOne :: Conn -> Text -> IO [Server]
 probeOne conn url = do
