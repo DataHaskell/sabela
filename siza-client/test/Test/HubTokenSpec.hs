@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | The saved @siza login@ token: the pure url-match + expiry decision
@@ -14,6 +15,7 @@ import Siza.HubToken (
     TokenStatus (..),
     clearHubToken,
     evalStatus,
+    hubTokenPath,
     loadHubToken,
     saveHubToken,
     statusForUrl,
@@ -26,6 +28,17 @@ import System.Directory (
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.FilePath ((</>))
 import Test.Hspec
+#ifndef mingw32_HOST_OS
+import System.Posix.Files (
+    accessModes,
+    fileMode,
+    getFileStatus,
+    intersectFileModes,
+    ownerReadMode,
+    ownerWriteMode,
+    unionFileModes,
+ )
+#endif
 
 at :: Integer -> UTCTime
 at h = UTCTime (fromGregorian 2026 6 21) (secondsToDiffTime (h * 3600))
@@ -65,8 +78,19 @@ hubTokenSpec = do
                 saveHubToken tok
                 loadHubToken `shouldReturn` Just tok
                 statusForUrl "https://hub.example.com" `shouldReturn` Expired
+                assertOwnerOnly
                 clearHubToken
                 loadHubToken `shouldReturn` Nothing
+
+assertOwnerOnly :: IO ()
+#ifndef mingw32_HOST_OS
+assertOwnerOnly = do
+    st <- getFileStatus =<< hubTokenPath
+    intersectFileModes accessModes (fileMode st)
+        `shouldBe` unionFileModes ownerReadMode ownerWriteMode
+#else
+assertOwnerOnly = pure ()
+#endif
 
 {- | Run an action with @XDG_STATE_HOME@ pointed at a fresh temp dir, restoring
 the original afterwards so other specs that read 'stateBase' are unaffected.

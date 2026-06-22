@@ -13,6 +13,7 @@ module Hub.Auth (
     extractSessionId,
     parseCookies,
     requireSession,
+    requireSessionOrLogin,
     handleLogin,
     handleOAuthCallback,
     logoutResponse,
@@ -46,8 +47,11 @@ import qualified Network.HTTP.Client as HC
 import Network.HTTP.Types
 import Network.Wai
 
--- | Pending OAuth states (CSRF protection). Maps state token → creation time.
-type PendingStates = TVar (Map.Map Text UTCTime)
+{- | Pending OAuth states (CSRF protection). Maps each state token to its
+creation time and an optional local return path to redirect to after login
+(used by the @siza@ CLI flow to come back to the authorize page).
+-}
+type PendingStates = TVar (Map.Map Text (UTCTime, Maybe Text))
 
 {- | The CSRF @state@ time-to-live (10 min); shared by the login insert (which
 prunes expired entries) and the callback validity check.
@@ -67,8 +71,11 @@ secureAttr req
 {- | Drop CSRF @state@ entries older than 'csrfStateTtl' relative to @now@; the
 login handler applies this on each insert so the map stays bounded.
 -}
-dropExpiredStates :: UTCTime -> Map.Map Text UTCTime -> Map.Map Text UTCTime
-dropExpiredStates now = Map.filter ((< csrfStateTtl) . diffUTCTime now)
+dropExpiredStates ::
+    UTCTime ->
+    Map.Map Text (UTCTime, Maybe Text) ->
+    Map.Map Text (UTCTime, Maybe Text)
+dropExpiredStates now = Map.filter ((< csrfStateTtl) . diffUTCTime now . fst)
 
 {- | Run the continuation with the caller's session, or reply 401 JSON when the
 request carries no valid @_sabela_session@. Gates the @\/_hub\/*@ share
@@ -86,6 +93,34 @@ requireSession sm req respond k =
         Just sid -> do
             mSess <- lookupBySessionId sm sid
             maybe (respond $ jsonError status401 "Not signed in.") k mSess
+
+{- | Like 'requireSession' but for HTML browser pages: when the request carries
+no *live* session, 302 to @\/_hub\/login@ carrying this URL as @next@, so the
+user is returned here after Google login (rather than landing on a dead-end
+page). A stale cookie that no longer resolves is treated as signed-out.
+-}
+requireSessionOrLogin ::
+    SessionManager ->
+    Request ->
+    (Response -> IO ResponseReceived) ->
+    (Session -> IO ResponseReceived) ->
+    IO ResponseReceived
+requireSessionOrLogin sm req respond k =
+    case extractSessionId req of
+        Nothing -> respond (loginRedirect req)
+        Just sid -> do
+            mSess <- lookupBySessionId sm sid
+            maybe (respond (loginRedirect req)) k mSess
+
+-- | A 302 to the login flow that remembers the current path+query as @next@.
+loginRedirect :: Request -> Response
+loginRedirect req =
+    responseLBS
+        status302
+        [("Location", "/_hub/login?next=" <> urlEncode True dest)]
+        ""
+  where
+    dest = rawPathInfo req <> rawQueryString req
 
 -- | Extract session ID from the _sabela_session cookie.
 extractSessionId :: Request -> Maybe SessionId
@@ -122,8 +157,12 @@ handleOAuthCallback sm mgr states cfg req respond = do
             pending <- readTVarIO states
             now <- getCurrentTime
             let stateText = TE.decodeUtf8 state
-                valid = case Map.lookup stateText pending of
-                    Just t -> diffUTCTime now t < csrfStateTtl
+                mEntry = Map.lookup stateText pending
+                dest = case mEntry of
+                    Just (_, Just n) -> n
+                    _ -> "/"
+                valid = case mEntry of
+                    Just (t, _) -> diffUTCTime now t < csrfStateTtl
                     Nothing -> False
             if not valid
                 then respond $ textResponse status400 "Invalid or expired state parameter"
@@ -151,7 +190,7 @@ handleOAuthCallback sm mgr states cfg req respond = do
                                     respond $
                                         responseLBS
                                             status302
-                                            [ ("Location", "/")
+                                            [ ("Location", TE.encodeUtf8 dest)
                                             ,
                                                 ( "Set-Cookie"
                                                 , "_sabela_session="
@@ -170,22 +209,38 @@ handleOAuthCallback sm mgr states cfg req respond = do
             respond $ textResponse status400 "Missing code or state parameter"
 
 {- | Start the OAuth flow: mint a fresh CSRF @state@, prune expired entries,
-record the new state, and 302 to Google's authorization endpoint. The matching
-'handleOAuthCallback' validates the state on return.
+record the new state (bound to a validated @next@ return path, if any), and 302
+to Google's authorization endpoint. The matching 'handleOAuthCallback' validates
+the state on return and redirects to that @next@.
 -}
 handleLogin :: PendingStates -> HubConfig -> Application
-handleLogin states cfg _req respond = do
+handleLogin states cfg req respond = do
     state <- generateRandomToken
     now <- getCurrentTime
+    let mNext = safeNext (join (lookup "next" (queryString req)))
     atomically $
         modifyTVar' states $
-            Map.insert state now . dropExpiredStates now
+            Map.insert state (now, mNext) . dropExpiredStates now
     let url = googleAuthUrl cfg state
     respond $
         responseLBS
             status302
             [("Location", TE.encodeUtf8 url)]
             ""
+
+{- | Accept a @next@ redirect target only when it is a *local* path: it must
+begin with a single @/@ and not @//@ or @/\\@, so it can never be coerced into
+an open redirect to another origin.
+-}
+safeNext :: Maybe BS.ByteString -> Maybe Text
+safeNext mbs = do
+    bs <- mbs
+    let t = TE.decodeUtf8 bs
+    if "/" `T.isPrefixOf` t
+        && not ("//" `T.isPrefixOf` t)
+        && not ("/\\" `T.isPrefixOf` t)
+        then Just t
+        else Nothing
 
 {- | A 302 to @/@ that clears the @_sabela_session@ cookie. The @Secure@
 attribute is gated on @X-Forwarded-Proto@ so local plain-HTTP dev still works.

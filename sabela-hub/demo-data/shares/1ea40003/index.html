@@ -31,7 +31,622 @@ pre.code code.hljs{background:transparent;padding:0}
 .out{border-left:3px solid #6f9355;background:#fff;border-radius:0 8px 8px 0;padding:.8rem 1.1rem;margin:.4rem 0 1.4rem}
 pre.out{font-family:var(--mono);font-size:.8rem;color:var(--dim);white-space:pre-wrap}
 img{max-width:100%;border-radius:8px}
-</style></head><body>
+</style></head><body><!--sabela-wasm-runner--><script type="application/notebook+markdown" id="sabela-nb-source" data-slug="1ea40003">&lt;!-- scripths: 0.5.2.0 --&gt;
+
+# Types and Typeclasses
+
+Adapted from **Learn You a Haskell for Great Good!** by Miran Lipovača, licensed under [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/). This Sabela port preserves that license.
+
+## Believe the type
+
+![moo](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/cow.png)
+
+Previously we mentioned that Haskell has a static type system.
+The type of every expression is known at compile time, which leads to safer code.
+If you write a program where you try to divide a boolean type with some number, it won't even compile.
+That's good because it's better to catch such errors at compile time instead of having your program crash.
+Everything in Haskell has a type, so the compiler can reason quite a lot about your program before compiling it.
+
+Unlike Java or Pascal, Haskell has type inference.
+If we write a number, we don't have to tell Haskell it's a number.
+It can *infer* that on its own, so we don't have to explicitly write out the types of our functions and expressions to get things done.
+We covered some of the basics of Haskell with only a very superficial glance at types.
+However, understanding the type system is a very important part of learning Haskell.
+
+A type is a kind of label that every expression has.
+It tells us in which category of things that expression fits.
+The expression `True` is a boolean, `&quot;hello&quot;` is a string, etc.
+
+Now we'll use GHCi to examine the types of some expressions.
+We'll do that by using the `:t` command which, followed by any valid expression, tells us its type.
+Let's give it a whirl.
+
+```haskell
+:t 'a'
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 'a' :: Char
+
+```haskell
+:t True
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True :: Bool
+
+```haskell
+:t &quot;HELLO!&quot;
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; &quot;HELLO!&quot; :: ghc-internal:GHC.Internal.Data.String.IsString a =&gt; a
+
+```haskell
+:t (True, 'a')
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; (True, 'a') :: (Bool, Char)
+
+```haskell
+:t 4 == 5
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 4 == 5 :: Bool
+
+![bomb](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/bomb.png)
+Here we see that doing `:t` on an expression prints out the expression followed by `::` and its type.
+`::` is read as &quot;has type of&quot;.
+Explicit types are always denoted with the first letter in capital case.
+`'a'`, as it would seem, has a type of `Char`.
+It's not hard to conclude that it stands for *character*.
+`True` is of a `Bool` type.
+That makes sense.
+But what's this?
+Examining the type of `&quot;HELLO!&quot;` yields a `[Char]`.
+The square brackets denote a list.
+So we read that as it being *a list of characters*.
+Unlike lists, each tuple length has its own type.
+So the expression of `(True, 'a')` has a type of `(Bool, Char)`, whereas an expression such as `('a','b','c')` would have the type of `(Char, Char, Char)`.
+`4 == 5` will always return `False`, so its type is `Bool`.
+
+Functions also have types.
+When writing our own functions, we can choose to give them an explicit type declaration.
+This is generally considered to be good practice except when writing very short functions.
+From here on, we'll give all the functions that we make type declarations.
+Remember the list comprehension we made previously that filters a string so that only caps remain?
+Here's how it looks like with a type declaration.
+
+```haskell
+removeNonUppercase :: [Char] -&gt; [Char]
+removeNonUppercase st = [ c | c &lt;- st, c `elem` ['A'..'Z']]
+```
+
+`removeNonUppercase` has a type of `[Char] -&gt; [Char]`, meaning that it maps from a string to a string.
+That's because it takes one string as a parameter and returns another as a result.
+The `[Char]` type is synonymous with `String` so it's clearer if we write `removeNonUppercase :: String -&gt; String`.
+We didn't have to give this function a type declaration because the compiler can infer by itself that it's a function from a string to a string but we did anyway.
+But how do we write out the type of a function that takes several parameters?
+Here's a simple function that takes three integers and adds them together:
+
+```haskell
+addThree :: Int -&gt; Int -&gt; Int -&gt; Int
+addThree x y z = x + y + z
+```
+
+The parameters are separated with `-&gt;` and there's no special distinction between the parameters and the return type.
+The return type is the last item in the declaration and the parameters are the first three.
+Later on we'll see why they're all just separated with `-&gt;` instead of having some more explicit distinction between the return types and the parameters like `Int, Int, Int -&gt; Int` or something.
+
+If you want to give your function a type declaration but are unsure as to what it should be, you can always just write the function without it and then check it with `:t`.
+Functions are expressions too, so `:t` works on them without a problem.
+
+Here's an overview of some common types.
+
+`Int` stands for integer.
+It's used for whole numbers.
+`7` can be an `Int` but `7.2` cannot.
+`Int` is bounded, which means that it has a minimum and a maximum value.
+Usually on 32-bit machines the maximum possible `Int` is 2147483647 and the minimum is -2147483648.
+
+`Integer` stands for, er ... also integer.
+The main difference is that it's not bounded so it can be used to represent really really big numbers.
+I mean like really big.
+`Int`, however, is more efficient.
+
+```haskell
+factorial :: Integer -&gt; Integer
+factorial n = product [1..n]
+```
+
+```haskell
+factorial 50
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 30414093201713378043612608166064768844377641568960512000000000000
+
+`Float` is a real floating point with single precision.
+
+```haskell
+circumference :: Float -&gt; Float
+circumference r = 2 * pi * r
+```
+
+```haskell
+circumference 4.0
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 25.132742
+
+`Double` is a real floating point with double the precision!
+
+```haskell
+circumference' :: Double -&gt; Double
+circumference' r = 2 * pi * r
+```
+
+```haskell
+circumference' 4.0
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 25.132741228718345
+
+`Bool` is a boolean type.
+It can have only two values: `True` and `False`.
+
+`Char` represents a character.
+It's denoted by single quotes.
+A list of characters is a string.
+
+Tuples are types but they are dependent on their length as well as the types of their components, so there is theoretically an infinite number of tuple types, which is too many to cover in this tutorial.
+Note that the empty tuple `()` is also a type which can only have a single value: `()`
+
+## Type variables
+
+What do you think is the type of the `head` function?
+Because `head` takes a list of any type and returns the first element, so what could it be?
+Let's check!
+
+```haskell
+:t head
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; head
+&gt;   :: ghc-internal:GHC.Internal.Stack.Types.HasCallStack =&gt; [a] -&gt; a
+
+![box](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/box.png)
+Hmmm!
+What is this `a`?
+Is it a type?
+Remember that we previously stated that types are written in capital case, so it can't exactly be a type.
+Because it's not in capital case it's actually a **type variable**.
+That means that `a` can be of any type.
+This is much like generics in other languages, only in Haskell it's much more powerful because it allows us to easily write very general functions if they don't use any specific behavior of the types in them.
+Functions that have type variables are called **polymorphic functions**.
+The type declaration of `head` states that it takes a list of any type and returns one element of that type.
+
+Although type variables can have names longer than one character, we usually give them names of a, b, c, d ...
+
+Remember `fst`?
+It returns the first component of a pair.
+Let's examine its type.
+
+```haskell
+:t fst
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; fst :: (a, b) -&gt; a
+
+We see that `fst` takes a tuple which contains two types and returns an element which is of the same type as the pair's first component.
+That's why we can use `fst` on a pair that contains any two types.
+Note that just because `a` and `b` are different type variables, they don't have to be different types.
+It just states that the first component's type and the return value's type are the same.
+
+## Typeclasses 101
+
+![class](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/classes.png)
+
+A typeclass is a sort of interface that defines some behavior.
+If a type is a part of a typeclass, that means that it supports and implements the behavior the typeclass describes.
+A lot of people coming from OOP get confused by typeclasses because they think they are like classes in object-oriented languages.
+Well, they're not.
+You can think of them kind of as Java interfaces, only better.
+
+What's the type signature of the `==` function?
+
+```haskell
+:t (==)
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; (==) :: Eq a =&gt; a -&gt; a -&gt; Bool
+
+**Note**: the equality operator, `==` is a function.
+So are `+`, `*`, `-`, `/` and pretty much all operators.
+If a function name is comprised only of special characters, it's considered an infix function by default.
+If we want to examine its type, pass it to another function or call it as a prefix function, we have to surround it in parentheses.
+
+Interesting.
+We see a new thing here, the `=&gt;` symbol.
+Everything before the `=&gt;` symbol is called a **class constraint**.
+We can read the previous type declaration like this: the equality function takes any two values that are of the same type and returns a `Bool`.
+The type of those two values must be a member of the `Eq` class (this was the class constraint).
+
+The `Eq` typeclass provides an interface for testing for equality.
+Any type where it makes sense to test for equality between two values of that type should be a member of the `Eq` class.
+All standard Haskell types except for IO (the type for dealing with input and output) and functions are a part of the `Eq` typeclass.
+
+The `elem` function has a type of `(Eq a) =&gt; a -&gt; [a] -&gt; Bool` because it uses `==` over a list to check whether some value we're looking for is in it.
+
+Some basic typeclasses:
+
+`Eq` is used for types that support equality testing.
+The functions its members implement are `==` and `/=`.
+So if there's an `Eq` class constraint for a type variable in a function, it uses `==` or `/=` somewhere inside its definition.
+All the types we mentioned previously except for functions are part of `Eq`, so they can be tested for equality.
+
+```haskell
+5 == 5
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+```haskell
+5 /= 5
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; False
+
+```haskell
+'a' == 'a'
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+```haskell
+&quot;Ho Ho&quot; == &quot;Ho Ho&quot;
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+```haskell
+3.432 == 3.432
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+`Ord` is for types that have an ordering.
+
+```haskell
+:t (&gt;)
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; (&gt;) :: Ord a =&gt; a -&gt; a -&gt; Bool
+
+All the types we covered so far except for functions are part of `Ord`.
+`Ord` covers all the standard comparing functions such as `&gt;`, `&lt;`, `&gt;=` and `&lt;=`.
+The `compare` function takes two `Ord` members of the same type and returns an ordering.
+`Ordering` is a type that can be `GT`, `LT` or `EQ`, meaning *greater than*, *lesser than* and *equal*, respectively.
+
+To be a member of `Ord`, a type must first have membership in the prestigious and exclusive `Eq` club.
+
+```haskell
+&quot;Abrakadabra&quot; &lt; &quot;Zebra&quot;
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+```haskell
+&quot;Abrakadabra&quot; `compare` &quot;Zebra&quot;
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; LT
+
+```haskell
+5 &gt;= 2
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+```haskell
+5 `compare` 3
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; GT
+
+Members of `Show` can be presented as strings.
+All types covered so far except for functions are a part of `Show`.
+The most used function that deals with the `Show` typeclass is `show`.
+It takes a value whose type is a member of `Show` and presents it to us as a string.
+
+```haskell
+show 3
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; &quot;3&quot;
+
+```haskell
+show 5.334
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; &quot;5.334&quot;
+
+```haskell
+show True
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; &quot;True&quot;
+
+`Read` is sort of the opposite typeclass of `Show`.
+The `read` function takes a string and returns a type which is a member of `Read`.
+
+```haskell
+read &quot;True&quot; || False
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+```haskell
+read &quot;8.2&quot; + 3.8
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 12.0
+
+```haskell
+read &quot;5&quot; - 2
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 3
+
+```haskell
+read &quot;[1,2,3,4]&quot; ++ [3]
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; [1,2,3,4,3]
+
+So far so good.
+Again, all types covered so far are in this typeclass.
+But what happens if we try to do just `read &quot;4&quot;`?
+
+```haskell
+read &quot;4&quot;
+```
+
+What GHCi is telling us here is that it doesn't know what we want in return.
+Notice that in the previous uses of `read` we did something with the result afterwards.
+That way, GHCi could infer what kind of result we wanted out of our `read`.
+If we used it as a boolean, it knew it had to return a `Bool`.
+But now, it knows we want some type that is part of the `Read` class, it just doesn't know which one.
+Let's take a look at the type signature of `read`.
+
+```haskell
+:t read
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; read :: Read a =&gt; String -&gt; a
+
+See?
+It returns a type that's part of `Read` but if we don't try to use it in some way later, it has no way of knowing which type.
+That's why we can use explicit **type annotations**.
+Type annotations are a way of explicitly saying what the type of an expression should be.
+We do that by adding `::` at the end of the expression and then specifying a type.
+Observe:
+
+```haskell
+read &quot;5&quot; :: Int
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 5
+
+```haskell
+read &quot;5&quot; :: Float
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 5.0
+
+```haskell
+(read &quot;5&quot; :: Float) * 4
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 20.0
+
+```haskell
+read &quot;[1,2,3,4]&quot; :: [Int]
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; [1,2,3,4]
+
+```haskell
+read &quot;(3, 'a')&quot; :: (Int, Char)
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; (3,'a')
+
+Most expressions are such that the compiler can infer what their type is by itself.
+But sometimes, the compiler doesn't know whether to return a value of type `Int` or `Float` for an expression like `read &quot;5&quot;`.
+To see what the type is, Haskell would have to actually evaluate `read &quot;5&quot;`.
+But since Haskell is a statically typed language, it has to know all the types before the code is compiled (or in the case of GHCi, evaluated).
+So we have to tell Haskell: &quot;Hey, this expression should have this type, in case you don't know!&quot;.
+
+`Enum` members are sequentially ordered types --- they can be enumerated.
+The main advantage of the `Enum` typeclass is that we can use its types in list ranges.
+They also have defined successors and predecessors, which you can get with the `succ` and `pred` functions.
+Types in this class: `()`, `Bool`, `Char`, `Ordering`, `Int`, `Integer`, `Float` and `Double`.
+
+```haskell
+['a'..'e']
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; &quot;abcde&quot;
+
+```haskell
+[LT .. GT]
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; [LT,EQ,GT]
+
+```haskell
+[3 .. 5]
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; [3,4,5]
+
+```haskell
+succ 'B'
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 'C'
+
+`Bounded` members have an upper and a lower bound.
+
+```haskell
+minBound :: Int
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; -9223372036854775808
+
+```haskell
+maxBound :: Char
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; '\1114111'
+
+```haskell
+maxBound :: Bool
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; True
+
+```haskell
+minBound :: Bool
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; False
+
+`minBound` and `maxBound` are interesting because they have a type of `(Bounded a) =&gt; a`.
+In a sense they are polymorphic constants.
+
+All tuples are also part of `Bounded` if the components are also in it.
+
+```haskell
+maxBound :: (Bool, Int, Char)
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; (True,9223372036854775807,'\1114111')
+
+`Num` is a numeric typeclass.
+Its members have the property of being able to act like numbers.
+Let's examine the type of a number.
+
+```haskell
+:t 20
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 20 :: Num a =&gt; a
+
+It appears that whole numbers are also polymorphic constants.
+They can act like any type that's a member of the `Num` typeclass.
+
+```haskell
+20 :: Int
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 20
+
+```haskell
+20 :: Integer
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 20
+
+```haskell
+20 :: Float
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 20.0
+
+```haskell
+20 :: Double
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; 20.0
+
+Those are types that are in the `Num` typeclass.
+If we examine the type of `*`, we'll see that it accepts all numbers.
+
+```haskell
+:t (*)
+```
+
+&gt; &lt;!-- scripths:mime text/plain --&gt;
+&gt; (*) :: Num a =&gt; a -&gt; a -&gt; a
+
+It takes two numbers of the same type and returns a number of that type.
+That's why `(5 :: Int) * (6 :: Integer)` will result in a type error whereas `5 * (6 :: Integer)` will work just fine and produce an `Integer` because `5` can act like an `Integer` or an `Int`.
+
+To join `Num`, a type must already be friends with `Show` and `Eq`.
+
+`Integral` is also a numeric typeclass.
+`Num` includes all numbers, including real numbers and integral numbers, `Integral` includes only integral (whole) numbers.
+In this typeclass are `Int` and `Integer`.
+
+`Floating` includes only floating point numbers, so `Float` and `Double`.
+
+A very useful function for dealing with numbers is `fromIntegral`.
+It has a type declaration of `fromIntegral :: (Num b, Integral a) =&gt; a -&gt; b`.
+From its type signature we see that it takes an integral number and turns it into a more general number.
+That's useful when you want integral and floating point types to work together nicely.
+For instance, the `length` function has a type declaration of `length :: [a] -&gt; Int` instead of having a more general type of `(Num b) =&gt; length :: [a] -&gt; b`.
+If we try to get a length of a list and then add it to `3.2`, we'll get an error because we tried to add together an `Int` and a floating point number.
+So to get around this, we do `fromIntegral (length [1,2,3,4]) + 3.2` and it all works out.
+
+Notice that `fromIntegral` has several class constraints in its type signature.
+That's completely valid and as you can see, the class constraints are separated by commas inside the parentheses.
+</script><script src="/_hub/assets/sabela-wasm-run.js" defer></script><script>window.SABELA_WASM_SLUG="1ea40003";</script><!--sabela-fork-banner--><div role="note" style="display:flex;align-items:center;gap:14px;padding:11px 20px;background:#fff4d6;color:#5b4a26;border-bottom:1px solid #e6cf93;font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;"><span style="flex:1;min-width:0">Running in your browser (MicroHs — a Haskell subset). <strong>Fork for the full toolchain &amp; packages.</strong></span><form method="post" action="/_hub/fork/1ea40003" target="_blank" style="margin:0"><button type="submit" style="white-space:nowrap;cursor:pointer;border:0;border-radius:6px;padding:7px 14px;background:#0066ff;color:#fff;font:inherit;font-weight:600;">Fork &amp; run ▸</button></form><button type="button" aria-label="Dismiss" onclick="this.parentNode.remove()" style="cursor:pointer;border:0;background:none;color:#8a7a52;font-size:20px;line-height:1;padding:0 2px;">×</button></div>
 <header class="top">
 <a class="brand" href="/gallery"><span class="lam">&lambda;</span> Sabela</a>
 <nav class="acts">
@@ -42,7 +657,7 @@ img{max-width:100%;border-radius:8px}
 </header>
 <main>
 <h1>Types and Typeclasses</h1>
-<p class="byline">by Miran Lipovača (CC BY-NC-SA 3.0)</p>
+<p class="byline">by Miran Lipovaca (CC BY-NC-SA 3.0)</p>
 <p>Adapted from <strong>Learn You a Haskell for Great Good!</strong> by Miran Lipovača, licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/3.0/">CC BY-NC-SA 3.0</a>. This Sabela port preserves that license.</p>
 <h2>Believe the type</h2>
 <p><img alt="moo" src="https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/cow.png"></p>
@@ -50,16 +665,16 @@ img{max-width:100%;border-radius:8px}
 <p>Unlike Java or Pascal, Haskell has type inference. If we write a number, we don't have to tell Haskell it's a number. It can *infer* that on its own, so we don't have to explicitly write out the types of our functions and expressions to get things done. We covered some of the basics of Haskell with only a very superficial glance at types. However, understanding the type system is a very important part of learning Haskell.</p>
 <p>A type is a kind of label that every expression has. It tells us in which category of things that expression fits. The expression <code>True</code> is a boolean, <code>"hello"</code> is a string, etc.</p>
 <p>Now we'll use GHCi to examine the types of some expressions. We'll do that by using the <code>:t</code> command which, followed by any valid expression, tells us its type. Let's give it a whirl.</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t 'a'
-'a' :: Char</code></pre>
-<pre class="code"><code class="nohighlight">ghci&gt; :t True
-True :: Bool</code></pre>
-<pre class="code"><code class="nohighlight">ghci&gt; :t "HELLO!"
-"HELLO!" :: [Char]</code></pre>
-<pre class="code"><code class="nohighlight">ghci&gt; :t (True, 'a')
-(True, 'a') :: (Bool, Char)</code></pre>
-<pre class="code"><code class="nohighlight">ghci&gt; :t 4 == 5
-4 == 5 :: Bool</code></pre>
+<pre class="code"><code class="language-haskell">:t 'a'</code></pre>
+<pre class="out">'a' :: Char</pre>
+<pre class="code"><code class="language-haskell">:t True</code></pre>
+<pre class="out">True :: Bool</pre>
+<pre class="code"><code class="language-haskell">:t "HELLO!"</code></pre>
+<pre class="out">"HELLO!" :: ghc-internal:GHC.Internal.Data.String.IsString a =&gt; a</pre>
+<pre class="code"><code class="language-haskell">:t (True, 'a')</code></pre>
+<pre class="out">(True, 'a') :: (Bool, Char)</pre>
+<pre class="code"><code class="language-haskell">:t 4 == 5</code></pre>
+<pre class="out">4 == 5 :: Bool</pre>
 <p><img alt="bomb" src="https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/bomb.png"> Here we see that doing <code>:t</code> on an expression prints out the expression followed by <code>::</code> and its type. <code>::</code> is read as "has type of". Explicit types are always denoted with the first letter in capital case. <code>'a'</code>, as it would seem, has a type of <code>Char</code>. It's not hard to conclude that it stands for *character*. <code>True</code> is of a <code>Bool</code> type. That makes sense. But what's this? Examining the type of <code>"HELLO!"</code> yields a <code>[Char]</code>. The square brackets denote a list. So we read that as it being *a list of characters*. Unlike lists, each tuple length has its own type. So the expression of <code>(True, 'a')</code> has a type of <code>(Bool, Char)</code>, whereas an expression such as <code>('a','b','c')</code> would have the type of <code>(Char, Char, Char)</code>. <code>4 == 5</code> will always return <code>False</code>, so its type is <code>Bool</code>.</p>
 <p>Functions also have types. When writing our own functions, we can choose to give them an explicit type declaration. This is generally considered to be good practice except when writing very short functions. From here on, we'll give all the functions that we make type declarations. Remember the list comprehension we made previously that filters a string so that only caps remain? Here's how it looks like with a type declaration.</p>
 <pre class="code"><code class="language-haskell">removeNonUppercase :: [Char] -&gt; [Char]
@@ -91,20 +706,21 @@ circumference' r = 2 * pi * r</code></pre>
 <p>Tuples are types but they are dependent on their length as well as the types of their components, so there is theoretically an infinite number of tuple types, which is too many to cover in this tutorial. Note that the empty tuple <code>()</code> is also a type which can only have a single value: <code>()</code></p>
 <h2>Type variables</h2>
 <p>What do you think is the type of the <code>head</code> function? Because <code>head</code> takes a list of any type and returns the first element, so what could it be? Let's check!</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t head
-head :: [a] -&gt; a</code></pre>
+<pre class="code"><code class="language-haskell">:t head</code></pre>
+<pre class="out">head
+  :: ghc-internal:GHC.Internal.Stack.Types.HasCallStack =&gt; [a] -&gt; a</pre>
 <p><img alt="box" src="https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/box.png"> Hmmm! What is this <code>a</code>? Is it a type? Remember that we previously stated that types are written in capital case, so it can't exactly be a type. Because it's not in capital case it's actually a <strong>type variable</strong>. That means that <code>a</code> can be of any type. This is much like generics in other languages, only in Haskell it's much more powerful because it allows us to easily write very general functions if they don't use any specific behavior of the types in them. Functions that have type variables are called <strong>polymorphic functions</strong>. The type declaration of <code>head</code> states that it takes a list of any type and returns one element of that type.</p>
 <p>Although type variables can have names longer than one character, we usually give them names of a, b, c, d ...</p>
 <p>Remember <code>fst</code>? It returns the first component of a pair. Let's examine its type.</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t fst
-fst :: (a, b) -&gt; a</code></pre>
+<pre class="code"><code class="language-haskell">:t fst</code></pre>
+<pre class="out">fst :: (a, b) -&gt; a</pre>
 <p>We see that <code>fst</code> takes a tuple which contains two types and returns an element which is of the same type as the pair's first component. That's why we can use <code>fst</code> on a pair that contains any two types. Note that just because <code>a</code> and <code>b</code> are different type variables, they don't have to be different types. It just states that the first component's type and the return value's type are the same.</p>
 <h2>Typeclasses 101</h2>
 <p><img alt="class" src="https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/classes.png"></p>
 <p>A typeclass is a sort of interface that defines some behavior. If a type is a part of a typeclass, that means that it supports and implements the behavior the typeclass describes. A lot of people coming from OOP get confused by typeclasses because they think they are like classes in object-oriented languages. Well, they're not. You can think of them kind of as Java interfaces, only better.</p>
 <p>What's the type signature of the <code>==</code> function?</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t (==)
-(==) :: (Eq a) =&gt; a -&gt; a -&gt; Bool</code></pre>
+<pre class="code"><code class="language-haskell">:t (==)</code></pre>
+<pre class="out">(==) :: Eq a =&gt; a -&gt; a -&gt; Bool</pre>
 <p><strong>Note</strong>: the equality operator, <code>==</code> is a function. So are <code>+</code>, <code>*</code>, <code>-</code>, <code>/</code> and pretty much all operators. If a function name is comprised only of special characters, it's considered an infix function by default. If we want to examine its type, pass it to another function or call it as a prefix function, we have to surround it in parentheses.</p>
 <p>Interesting. We see a new thing here, the <code>=&gt;</code> symbol. Everything before the <code>=&gt;</code> symbol is called a <strong>class constraint</strong>. We can read the previous type declaration like this: the equality function takes any two values that are of the same type and returns a <code>Bool</code>. The type of those two values must be a member of the <code>Eq</code> class (this was the class constraint).</p>
 <p>The <code>Eq</code> typeclass provides an interface for testing for equality. Any type where it makes sense to test for equality between two values of that type should be a member of the <code>Eq</code> class. All standard Haskell types except for IO (the type for dealing with input and output) and functions are a part of the <code>Eq</code> typeclass.</p>
@@ -122,8 +738,8 @@ fst :: (a, b) -&gt; a</code></pre>
 <pre class="code"><code class="language-haskell">3.432 == 3.432</code></pre>
 <pre class="out">True</pre>
 <p><code>Ord</code> is for types that have an ordering.</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t (&gt;)
-(&gt;) :: (Ord a) =&gt; a -&gt; a -&gt; Bool</code></pre>
+<pre class="code"><code class="language-haskell">:t (&gt;)</code></pre>
+<pre class="out">(&gt;) :: Ord a =&gt; a -&gt; a -&gt; Bool</pre>
 <p>All the types we covered so far except for functions are part of <code>Ord</code>. <code>Ord</code> covers all the standard comparing functions such as <code>&gt;</code>, <code>&lt;</code>, <code>&gt;=</code> and <code>&lt;=</code>. The <code>compare</code> function takes two <code>Ord</code> members of the same type and returns an ordering. <code>Ordering</code> is a type that can be <code>GT</code>, <code>LT</code> or <code>EQ</code>, meaning *greater than*, *lesser than* and *equal*, respectively.</p>
 <p>To be a member of <code>Ord</code>, a type must first have membership in the prestigious and exclusive <code>Eq</code> club.</p>
 <pre class="code"><code class="language-haskell">"Abrakadabra" &lt; "Zebra"</code></pre>
@@ -136,11 +752,11 @@ fst :: (a, b) -&gt; a</code></pre>
 <pre class="out">GT</pre>
 <p>Members of <code>Show</code> can be presented as strings. All types covered so far except for functions are a part of <code>Show</code>. The most used function that deals with the <code>Show</code> typeclass is <code>show</code>. It takes a value whose type is a member of <code>Show</code> and presents it to us as a string.</p>
 <pre class="code"><code class="language-haskell">show 3</code></pre>
-<pre class="out">3</pre>
+<pre class="out">"3"</pre>
 <pre class="code"><code class="language-haskell">show 5.334</code></pre>
-<pre class="out">5.334</pre>
+<pre class="out">"5.334"</pre>
 <pre class="code"><code class="language-haskell">show True</code></pre>
-<pre class="out">True</pre>
+<pre class="out">"True"</pre>
 <p><code>Read</code> is sort of the opposite typeclass of <code>Show</code>. The <code>read</code> function takes a string and returns a type which is a member of <code>Read</code>.</p>
 <pre class="code"><code class="language-haskell">read "True" || False</code></pre>
 <pre class="out">True</pre>
@@ -151,14 +767,10 @@ fst :: (a, b) -&gt; a</code></pre>
 <pre class="code"><code class="language-haskell">read "[1,2,3,4]" ++ [3]</code></pre>
 <pre class="out">[1,2,3,4,3]</pre>
 <p>So far so good. Again, all types covered so far are in this typeclass. But what happens if we try to do just <code>read "4"</code>?</p>
-<pre class="code"><code class="nohighlight">ghci&gt; read "4"
-&lt;interactive&gt;:1:0:
-    Ambiguous type variable `a' in the constraint:
-      `Read a' arising from a use of `read' at &lt;interactive&gt;:1:0-7
-    Probable fix: add a type signature that fixes these type variable(s)</code></pre>
+<pre class="code"><code class="language-haskell">read "4"</code></pre>
 <p>What GHCi is telling us here is that it doesn't know what we want in return. Notice that in the previous uses of <code>read</code> we did something with the result afterwards. That way, GHCi could infer what kind of result we wanted out of our <code>read</code>. If we used it as a boolean, it knew it had to return a <code>Bool</code>. But now, it knows we want some type that is part of the <code>Read</code> class, it just doesn't know which one. Let's take a look at the type signature of <code>read</code>.</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t read
-read :: (Read a) =&gt; String -&gt; a</code></pre>
+<pre class="code"><code class="language-haskell">:t read</code></pre>
+<pre class="out">read :: Read a =&gt; String -&gt; a</pre>
 <p>See? It returns a type that's part of <code>Read</code> but if we don't try to use it in some way later, it has no way of knowing which type. That's why we can use explicit <strong>type annotations</strong>. Type annotations are a way of explicitly saying what the type of an expression should be. We do that by adding <code>::</code> at the end of the expression and then specifying a type. Observe:</p>
 <pre class="code"><code class="language-haskell">read "5" :: Int</code></pre>
 <pre class="out">5</pre>
@@ -173,7 +785,7 @@ read :: (Read a) =&gt; String -&gt; a</code></pre>
 <p>Most expressions are such that the compiler can infer what their type is by itself. But sometimes, the compiler doesn't know whether to return a value of type <code>Int</code> or <code>Float</code> for an expression like <code>read "5"</code>. To see what the type is, Haskell would have to actually evaluate <code>read "5"</code>. But since Haskell is a statically typed language, it has to know all the types before the code is compiled (or in the case of GHCi, evaluated). So we have to tell Haskell: "Hey, this expression should have this type, in case you don't know!".</p>
 <p><code>Enum</code> members are sequentially ordered types --- they can be enumerated. The main advantage of the <code>Enum</code> typeclass is that we can use its types in list ranges. They also have defined successors and predecessors, which you can get with the <code>succ</code> and <code>pred</code> functions. Types in this class: <code>()</code>, <code>Bool</code>, <code>Char</code>, <code>Ordering</code>, <code>Int</code>, <code>Integer</code>, <code>Float</code> and <code>Double</code>.</p>
 <pre class="code"><code class="language-haskell">['a'..'e']</code></pre>
-<pre class="out">abcde</pre>
+<pre class="out">"abcde"</pre>
 <pre class="code"><code class="language-haskell">[LT .. GT]</code></pre>
 <pre class="out">[LT,EQ,GT]</pre>
 <pre class="code"><code class="language-haskell">[3 .. 5]</code></pre>
@@ -194,8 +806,8 @@ read :: (Read a) =&gt; String -&gt; a</code></pre>
 <pre class="code"><code class="language-haskell">maxBound :: (Bool, Int, Char)</code></pre>
 <pre class="out">(True,9223372036854775807,'\1114111')</pre>
 <p><code>Num</code> is a numeric typeclass. Its members have the property of being able to act like numbers. Let's examine the type of a number.</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t 20
-20 :: (Num t) =&gt; t</code></pre>
+<pre class="code"><code class="language-haskell">:t 20</code></pre>
+<pre class="out">20 :: Num a =&gt; a</pre>
 <p>It appears that whole numbers are also polymorphic constants. They can act like any type that's a member of the <code>Num</code> typeclass.</p>
 <pre class="code"><code class="language-haskell">20 :: Int</code></pre>
 <pre class="out">20</pre>
@@ -206,8 +818,8 @@ read :: (Read a) =&gt; String -&gt; a</code></pre>
 <pre class="code"><code class="language-haskell">20 :: Double</code></pre>
 <pre class="out">20.0</pre>
 <p>Those are types that are in the <code>Num</code> typeclass. If we examine the type of <code>*</code>, we'll see that it accepts all numbers.</p>
-<pre class="code"><code class="nohighlight">ghci&gt; :t (*)
-(*) :: (Num a) =&gt; a -&gt; a -&gt; a</code></pre>
+<pre class="code"><code class="language-haskell">:t (*)</code></pre>
+<pre class="out">(*) :: Num a =&gt; a -&gt; a -&gt; a</pre>
 <p>It takes two numbers of the same type and returns a number of that type. That's why <code>(5 :: Int) * (6 :: Integer)</code> will result in a type error whereas <code>5 * (6 :: Integer)</code> will work just fine and produce an <code>Integer</code> because <code>5</code> can act like an <code>Integer</code> or an <code>Int</code>.</p>
 <p>To join <code>Num</code>, a type must already be friends with <code>Show</code> and <code>Eq</code>.</p>
 <p><code>Integral</code> is also a numeric typeclass. <code>Num</code> includes all numbers, including real numbers and integral numbers, <code>Integral</code> includes only integral (whole) numbers. In this typeclass are <code>Int</code> and <code>Integer</code>.</p>

@@ -9,10 +9,13 @@ import qualified Test.DockerSpec
 import qualified Test.GalleryRenderSpec
 import qualified Test.GallerySpec
 import Test.Hspec
+import qualified Test.LyahSpec
 import qualified Test.ProxyRoutesSpec
 import qualified Test.ProxySpec
 import qualified Test.ReaperSpec
 import qualified Test.RunnerSpec
+import qualified Test.SeedRenderSpec
+import qualified Test.SeedSpec
 import qualified Test.SessionSpec
 import qualified Test.ShareSpec
 import qualified Test.UsersSpec
@@ -26,6 +29,9 @@ main = hspec $ do
     Test.BannerSpec.spec
     Test.RunnerSpec.spec
     Test.CliAuthSpec.spec
+    Test.SeedSpec.spec
+    Test.LyahSpec.spec
+    Test.SeedRenderSpec.spec
     Test.AdminApiSpec.spec
     Test.DockerSpec.spec
     Test.ShareSpec.spec

@@ -9,6 +9,7 @@ import Test.LanguageSpec (
     parseSpec,
     securitySpec,
  )
+import Test.LoginSpec (loginSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.TransportSpec (transportSpec)
 
@@ -24,3 +25,4 @@ main = hspec $ do
     crossSeamSpec
     transportSpec
     hubTokenSpec
+    loginSpec

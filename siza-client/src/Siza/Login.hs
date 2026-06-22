@@ -11,6 +11,7 @@ logged into the hub.
 module Siza.Login (
     runLogin,
     runLogout,
+    isSecureHub,
 ) where
 
 import Control.Concurrent (threadDelay)
@@ -21,6 +22,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
 import Data.Time (addUTCTime, getCurrentTime)
 import Network.HTTP.Client (
@@ -31,7 +33,7 @@ import Network.HTTP.Client (
     parseRequest,
     responseTimeoutMicro,
  )
-import Siza.HubToken (HubToken (..), clearHubToken, saveHubToken)
+import Siza.HubToken (HubToken (..), clearHubToken, loadHubToken, saveHubToken)
 import Siza.Transport (Conn (..))
 import System.Exit (exitFailure)
 import System.Info (os)
@@ -43,6 +45,17 @@ browser, poll to approval, and persist the token. Exits non-zero on failure.
 runLogin :: Conn -> Text -> IO ()
 runLogin conn hubUrl = do
     let base = T.dropWhileEnd (== '/') hubUrl
+    if not (isSecureHub base)
+        then
+            die
+                ( "refusing to log in over a non-HTTPS hub ("
+                    <> base
+                    <> "); the token would travel in cleartext."
+                )
+        else doLogin conn base
+
+doLogin :: Conn -> Text -> IO ()
+doLogin conn base = do
     est <- postJson conn (base <> "/_hub/cli-auth/start") (object [])
     case est of
         Left e -> die ("could not reach the hub at " <> base <> ": " <> e)
@@ -56,7 +69,11 @@ approveAndSave conn base v device user = do
         expiresIn = intField "expiresIn" 300 v
         url = base <> "/_hub/cli-auth?code=" <> user
     TIO.putStrLn
-        ("To authorize siza, approve this request in your browser (code " <> user <> "):")
+        ( "To authorize siza, open this URL in a browser signed into the hub "
+            <> "(any device works) and enter the code "
+            <> user
+            <> ":"
+        )
     TIO.putStrLn ("  " <> url)
     openBrowser url
     TIO.putStrLn "Waiting for approval..."
@@ -93,11 +110,49 @@ pollLoop conn base device interval remaining
   where
     again = pollLoop conn base device interval (remaining - interval)
 
--- | Forget the saved token. The hub-side token expires on its own TTL.
-runLogout :: IO ()
-runLogout = do
+{- | Revoke the saved token server-side (best-effort) and forget it locally.
+A failed/absent revoke still clears the local file; the hub TTL is the backstop.
+-}
+runLogout :: Conn -> IO ()
+runLogout conn = do
+    mt <- loadHubToken
+    case mt of
+        Just t -> revokeRemote conn (htUrl t) (htToken t)
+        Nothing -> pure ()
     clearHubToken
-    TIO.putStrLn "Logged out: local siza token cleared."
+    TIO.putStrLn "Logged out: siza token cleared."
+
+-- | Best-effort @POST /_hub/cli-auth/revoke@ with the token as the bearer.
+revokeRemote :: Conn -> Text -> Text -> IO ()
+revokeRemote conn base tok = do
+    er <-
+        try
+            ( parseRequest
+                (T.unpack (T.dropWhileEnd (== '/') base <> "/_hub/cli-auth/revoke"))
+            )
+    case (er :: Either SomeException Request) of
+        Left _ -> pure ()
+        Right req0 -> do
+            let req =
+                    req0
+                        { method = "POST"
+                        , requestHeaders = [("Authorization", "Bearer " <> TE.encodeUtf8 tok)]
+                        , responseTimeout = responseTimeoutMicro 10_000_000
+                        }
+            _ <-
+                try (httpLbs req (connManager conn)) ::
+                    IO (Either SomeException (Response LBS.ByteString))
+            pure ()
+
+{- | A hub URL is safe to send a token to over HTTPS, or over plain HTTP only
+when it is loopback (local hub development).
+-}
+isSecureHub :: Text -> Bool
+isSecureHub url =
+    "https://" `T.isPrefixOf` url
+        || any
+            (`T.isPrefixOf` url)
+            ["http://localhost", "http://127.0.0.1", "http://[::1]"]
 
 -- ---------------------------------------------------------------------------
 -- helpers

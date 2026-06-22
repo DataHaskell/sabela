@@ -70,6 +70,9 @@ library
                       -- uses, pinned to the SAME bounds so they stay lockstep
                     , ghc-lib-parser >= 9.6 && < 9.20
                     , ghc-lib-parser-ex >= 9.6 && < 9.20
+    -- POSIX file modes for the 0600 hub-token file; Windows uses ACLs (CPP no-op)
+    if !os(windows)
+        build-depends: unix >= 2.7 && < 2.9
 
 executable siza
     import:           warnings
@@ -93,6 +96,7 @@ test-suite siza-client-test
                       Test.CrossSeamSpec
                       Test.TransportSpec
                       Test.HubTokenSpec
+                      Test.LoginSpec
     default-language: Haskell2010
     default-extensions: OverloadedStrings
     build-depends:    base >= 4 && < 5
@@ -106,3 +110,6 @@ test-suite siza-client-test
                     , directory >= 1.3 && < 1.4
                     , filepath >= 1.4 && < 1.6
                     , time >= 1.9 && < 2
+    -- assert the hub-token file is mode 0600 (POSIX); Windows test is a no-op
+    if !os(windows)
+        build-depends: unix >= 2.7 && < 2.9

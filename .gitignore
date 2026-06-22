@@ -35,6 +35,3 @@ infra/builder-task-definition.json
 
 # Hub build artifacts
 sabela-hub/dist-newstyle/
-
-# Vendored MicroHs WASM engine (2.6MB binary; served at /_hub/assets/mhs-embed.js)
-static/mhs-embed.js

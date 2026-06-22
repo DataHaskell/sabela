@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 {- | Local storage for the short-lived token minted by @siza login@.
 
 A single token (the hub you last logged into) is kept at
@@ -40,6 +42,9 @@ import System.Directory (
     removeFile,
  )
 import System.FilePath (takeDirectory, (</>))
+#ifndef mingw32_HOST_OS
+import System.Posix.Files (setFileMode)
+#endif
 
 -- | A saved CLI token: the hub it authenticates, the opaque token, its expiry.
 data HubToken = HubToken
@@ -102,11 +107,23 @@ loadHubToken = do
                 Left _ -> Nothing
                 Right raw -> either (const Nothing) Just (eitherDecode raw)
 
+{- | Write the token owner-only (@0600@ on POSIX): it is a live credential, so
+it must not land world-readable on a shared host. A no-op on Windows, which
+uses ACLs rather than mode bits.
+-}
 saveHubToken :: HubToken -> IO ()
 saveHubToken t = do
     path <- hubTokenPath
     createDirectoryIfMissing True (takeDirectory path)
     LBS.writeFile path (encode t)
+    restrictToOwner path
+
+restrictToOwner :: FilePath -> IO ()
+#ifndef mingw32_HOST_OS
+restrictToOwner path = setFileMode path 0o600
+#else
+restrictToOwner _ = pure ()
+#endif
 
 clearHubToken :: IO ()
 clearHubToken = do

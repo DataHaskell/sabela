@@ -2,7 +2,7 @@
 # `cabal` / `./scripts/*.sh` (see CLAUDE.md); this Makefile exists mainly
 # to make regenerating the embedded API reference discoverable.
 
-.PHONY: help api-reference frontend frontend-check
+.PHONY: help api-reference frontend frontend-check hub-assets
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -15,6 +15,15 @@ frontend: ## Rebuild the embedded HTML (static/*.html) + the WASM-run bundle (st
 
 frontend-check: ## Fail if any static/*.html or the WASM-run bundle is stale vs its static/src/ partials
 	node tools/build-frontend.mjs --check
+
+hub-assets: ## Refresh the hub's WASM assets (sabela-hub/static/) so it builds/deploys self-contained
+	node tools/build-frontend.mjs
+	cp static/sabela-wasm-run.js sabela-hub/static/sabela-wasm-run.js
+	@test -f static/mhs-embed.js \
+		&& cp static/mhs-embed.js sabela-hub/static/mhs-embed.js \
+		&& echo "copied mhs-embed.js from static/" \
+		|| echo "static/mhs-embed.js absent; keeping the committed sabela-hub/static/mhs-embed.js (vendored runtime)"
+	@echo "Committed sabela-hub/static/* is what the hub Dockerfile bundles into /opt/static."
 
 api-reference: ## Regenerate data/api-reference.txt from dataframe/granite (rerun when those packages change)
 	./tools/gen-api-reference.sh

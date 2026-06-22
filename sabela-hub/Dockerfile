@@ -37,4 +37,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=build /opt/bin/sabela-hub /opt/bin/sabela-hub
 
+# Static assets served at /_hub/assets/* (the in-browser WASM runtime:
+# sabela-wasm-run.js + the vendored mhs-embed.js). The hub reads hcAssetsDir
+# ("static" by default) relative to its working dir, so run from /opt.
+WORKDIR /opt
+COPY static /opt/static
+
 CMD ["/opt/bin/sabela-hub"]

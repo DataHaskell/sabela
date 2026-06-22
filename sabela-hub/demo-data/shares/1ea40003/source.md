@@ -28,30 +28,40 @@ Now we'll use GHCi to examine the types of some expressions.
 We'll do that by using the `:t` command which, followed by any valid expression, tells us its type.
 Let's give it a whirl.
 
-```text
-ghci> :t 'a'
-'a' :: Char
+```haskell
+:t 'a'
 ```
 
-```text
-ghci> :t True
-True :: Bool
+> <!-- scripths:mime text/plain -->
+> 'a' :: Char
+
+```haskell
+:t True
 ```
 
-```text
-ghci> :t "HELLO!"
-"HELLO!" :: [Char]
+> <!-- scripths:mime text/plain -->
+> True :: Bool
+
+```haskell
+:t "HELLO!"
 ```
 
-```text
-ghci> :t (True, 'a')
-(True, 'a') :: (Bool, Char)
+> <!-- scripths:mime text/plain -->
+> "HELLO!" :: ghc-internal:GHC.Internal.Data.String.IsString a => a
+
+```haskell
+:t (True, 'a')
 ```
 
-```text
-ghci> :t 4 == 5
-4 == 5 :: Bool
+> <!-- scripths:mime text/plain -->
+> (True, 'a') :: (Bool, Char)
+
+```haskell
+:t 4 == 5
 ```
+
+> <!-- scripths:mime text/plain -->
+> 4 == 5 :: Bool
 
 ![bomb](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/bomb.png)
 Here we see that doing `:t` on an expression prints out the expression followed by `::` and its type.
@@ -76,14 +86,10 @@ From here on, we'll give all the functions that we make type declarations.
 Remember the list comprehension we made previously that filters a string so that only caps remain?
 Here's how it looks like with a type declaration.
 
-
 ```haskell
 removeNonUppercase :: [Char] -> [Char]
 removeNonUppercase st = [ c | c <- st, c `elem` ['A'..'Z']]
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 `removeNonUppercase` has a type of `[Char] -> [Char]`, meaning that it maps from a string to a string.
 That's because it takes one string as a parameter and returns another as a result.
@@ -92,14 +98,10 @@ We didn't have to give this function a type declaration because the compiler can
 But how do we write out the type of a function that takes several parameters?
 Here's a simple function that takes three integers and adds them together:
 
-
 ```haskell
 addThree :: Int -> Int -> Int -> Int
 addThree x y z = x + y + z
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 The parameters are separated with `->` and there's no special distinction between the parameters and the return type.
 The return type is the last item in the declaration and the parameters are the first three.
@@ -121,13 +123,10 @@ The main difference is that it's not bounded so it can be used to represent real
 I mean like really big.
 `Int`, however, is more efficient.
 
-
 ```haskell
 factorial :: Integer -> Integer
 factorial n = product [1..n]
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 factorial 50
@@ -136,16 +135,12 @@ factorial 50
 > <!-- scripths:mime text/plain -->
 > 30414093201713378043612608166064768844377641568960512000000000000
 
-
 `Float` is a real floating point with single precision.
-
 
 ```haskell
 circumference :: Float -> Float
 circumference r = 2 * pi * r
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 circumference 4.0
@@ -154,16 +149,12 @@ circumference 4.0
 > <!-- scripths:mime text/plain -->
 > 25.132742
 
-
 `Double` is a real floating point with double the precision!
-
 
 ```haskell
 circumference' :: Double -> Double
 circumference' r = 2 * pi * r
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 circumference' 4.0
@@ -171,7 +162,6 @@ circumference' 4.0
 
 > <!-- scripths:mime text/plain -->
 > 25.132741228718345
-
 
 `Bool` is a boolean type.
 It can have only two values: `True` and `False`.
@@ -189,10 +179,13 @@ What do you think is the type of the `head` function?
 Because `head` takes a list of any type and returns the first element, so what could it be?
 Let's check!
 
-```text
-ghci> :t head
-head :: [a] -> a
+```haskell
+:t head
 ```
+
+> <!-- scripths:mime text/plain -->
+> head
+>   :: ghc-internal:GHC.Internal.Stack.Types.HasCallStack => [a] -> a
 
 ![box](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/types-and-typeclasses/box.png)
 Hmmm!
@@ -211,10 +204,12 @@ Remember `fst`?
 It returns the first component of a pair.
 Let's examine its type.
 
-```text
-ghci> :t fst
-fst :: (a, b) -> a
+```haskell
+:t fst
 ```
+
+> <!-- scripths:mime text/plain -->
+> fst :: (a, b) -> a
 
 We see that `fst` takes a tuple which contains two types and returns an element which is of the same type as the pair's first component.
 That's why we can use `fst` on a pair that contains any two types.
@@ -233,10 +228,12 @@ You can think of them kind of as Java interfaces, only better.
 
 What's the type signature of the `==` function?
 
-```text
-ghci> :t (==)
-(==) :: (Eq a) => a -> a -> Bool
+```haskell
+:t (==)
 ```
+
+> <!-- scripths:mime text/plain -->
+> (==) :: Eq a => a -> a -> Bool
 
 **Note**: the equality operator, `==` is a function.
 So are `+`, `*`, `-`, `/` and pretty much all operators.
@@ -261,7 +258,6 @@ Some basic typeclasses:
 The functions its members implement are `==` and `/=`.
 So if there's an `Eq` class constraint for a type variable in a function, it uses `==` or `/=` somewhere inside its definition.
 All the types we mentioned previously except for functions are part of `Eq`, so they can be tested for equality.
-
 
 ```haskell
 5 == 5
@@ -298,13 +294,14 @@ All the types we mentioned previously except for functions are part of `Eq`, so 
 > <!-- scripths:mime text/plain -->
 > True
 
-
 `Ord` is for types that have an ordering.
 
-```text
-ghci> :t (>)
-(>) :: (Ord a) => a -> a -> Bool
+```haskell
+:t (>)
 ```
+
+> <!-- scripths:mime text/plain -->
+> (>) :: Ord a => a -> a -> Bool
 
 All the types we covered so far except for functions are part of `Ord`.
 `Ord` covers all the standard comparing functions such as `>`, `<`, `>=` and `<=`.
@@ -312,7 +309,6 @@ The `compare` function takes two `Ord` members of the same type and returns an o
 `Ordering` is a type that can be `GT`, `LT` or `EQ`, meaning *greater than*, *lesser than* and *equal*, respectively.
 
 To be a member of `Ord`, a type must first have membership in the prestigious and exclusive `Eq` club.
-
 
 ```haskell
 "Abrakadabra" < "Zebra"
@@ -342,38 +338,34 @@ To be a member of `Ord`, a type must first have membership in the prestigious an
 > <!-- scripths:mime text/plain -->
 > GT
 
-
 Members of `Show` can be presented as strings.
 All types covered so far except for functions are a part of `Show`.
 The most used function that deals with the `Show` typeclass is `show`.
 It takes a value whose type is a member of `Show` and presents it to us as a string.
-
 
 ```haskell
 show 3
 ```
 
 > <!-- scripths:mime text/plain -->
-> 3
+> "3"
 
 ```haskell
 show 5.334
 ```
 
 > <!-- scripths:mime text/plain -->
-> 5.334
+> "5.334"
 
 ```haskell
 show True
 ```
 
 > <!-- scripths:mime text/plain -->
-> True
-
+> "True"
 
 `Read` is sort of the opposite typeclass of `Show`.
 The `read` function takes a string and returns a type which is a member of `Read`.
-
 
 ```haskell
 read "True" || False
@@ -403,17 +395,12 @@ read "[1,2,3,4]" ++ [3]
 > <!-- scripths:mime text/plain -->
 > [1,2,3,4,3]
 
-
 So far so good.
 Again, all types covered so far are in this typeclass.
 But what happens if we try to do just `read "4"`?
 
-```text
-ghci> read "4"
-<interactive>:1:0:
-    Ambiguous type variable `a' in the constraint:
-      `Read a' arising from a use of `read' at <interactive>:1:0-7
-    Probable fix: add a type signature that fixes these type variable(s)
+```haskell
+read "4"
 ```
 
 What GHCi is telling us here is that it doesn't know what we want in return.
@@ -423,10 +410,12 @@ If we used it as a boolean, it knew it had to return a `Bool`.
 But now, it knows we want some type that is part of the `Read` class, it just doesn't know which one.
 Let's take a look at the type signature of `read`.
 
-```text
-ghci> :t read
-read :: (Read a) => String -> a
+```haskell
+:t read
 ```
+
+> <!-- scripths:mime text/plain -->
+> read :: Read a => String -> a
 
 See?
 It returns a type that's part of `Read` but if we don't try to use it in some way later, it has no way of knowing which type.
@@ -434,7 +423,6 @@ That's why we can use explicit **type annotations**.
 Type annotations are a way of explicitly saying what the type of an expression should be.
 We do that by adding `::` at the end of the expression and then specifying a type.
 Observe:
-
 
 ```haskell
 read "5" :: Int
@@ -471,7 +459,6 @@ read "(3, 'a')" :: (Int, Char)
 > <!-- scripths:mime text/plain -->
 > (3,'a')
 
-
 Most expressions are such that the compiler can infer what their type is by itself.
 But sometimes, the compiler doesn't know whether to return a value of type `Int` or `Float` for an expression like `read "5"`.
 To see what the type is, Haskell would have to actually evaluate `read "5"`.
@@ -483,13 +470,12 @@ The main advantage of the `Enum` typeclass is that we can use its types in list 
 They also have defined successors and predecessors, which you can get with the `succ` and `pred` functions.
 Types in this class: `()`, `Bool`, `Char`, `Ordering`, `Int`, `Integer`, `Float` and `Double`.
 
-
 ```haskell
 ['a'..'e']
 ```
 
 > <!-- scripths:mime text/plain -->
-> abcde
+> "abcde"
 
 ```haskell
 [LT .. GT]
@@ -512,9 +498,7 @@ succ 'B'
 > <!-- scripths:mime text/plain -->
 > 'C'
 
-
 `Bounded` members have an upper and a lower bound.
-
 
 ```haskell
 minBound :: Int
@@ -544,12 +528,10 @@ minBound :: Bool
 > <!-- scripths:mime text/plain -->
 > False
 
-
 `minBound` and `maxBound` are interesting because they have a type of `(Bounded a) => a`.
 In a sense they are polymorphic constants.
 
 All tuples are also part of `Bounded` if the components are also in it.
-
 
 ```haskell
 maxBound :: (Bool, Int, Char)
@@ -558,19 +540,19 @@ maxBound :: (Bool, Int, Char)
 > <!-- scripths:mime text/plain -->
 > (True,9223372036854775807,'\1114111')
 
-
 `Num` is a numeric typeclass.
 Its members have the property of being able to act like numbers.
 Let's examine the type of a number.
 
-```text
-ghci> :t 20
-20 :: (Num t) => t
+```haskell
+:t 20
 ```
+
+> <!-- scripths:mime text/plain -->
+> 20 :: Num a => a
 
 It appears that whole numbers are also polymorphic constants.
 They can act like any type that's a member of the `Num` typeclass.
-
 
 ```haskell
 20 :: Int
@@ -600,14 +582,15 @@ They can act like any type that's a member of the `Num` typeclass.
 > <!-- scripths:mime text/plain -->
 > 20.0
 
-
 Those are types that are in the `Num` typeclass.
 If we examine the type of `*`, we'll see that it accepts all numbers.
 
-```text
-ghci> :t (*)
-(*) :: (Num a) => a -> a -> a
+```haskell
+:t (*)
 ```
+
+> <!-- scripths:mime text/plain -->
+> (*) :: Num a => a -> a -> a
 
 It takes two numbers of the same type and returns a number of that type.
 That's why `(5 :: Int) * (6 :: Integer)` will result in a type error whereas `5 * (6 :: Integer)` will work just fine and produce an `Integer` because `5` can act like an `Integer` or an `Int`.

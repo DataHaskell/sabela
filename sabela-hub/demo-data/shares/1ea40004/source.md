@@ -16,15 +16,11 @@ This leads to really neat code that's simple and readable.
 You can pattern match on any data type --- numbers, characters, lists, tuples, etc.
 Let's make a really trivial function that checks if the number we supplied to it is a seven or not.
 
-
 ```haskell
 lucky :: (Integral a) => a -> String
 lucky 7 = "LUCKY NUMBER SEVEN!"
 lucky x = "Sorry, you're out of luck, pal!"
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 When you call `lucky`, the patterns will be checked from top to bottom and when it conforms to a pattern, the corresponding function body will be used.
 The only way a number can conform to the first pattern here is if it is 7.
@@ -33,7 +29,6 @@ This function could have also been implemented by using an if statement.
 But what if we wanted a function that says the numbers from 1 to 5 and says `"Not between 1 and 5"` for any other number?
 Without pattern matching, we'd have to make a pretty convoluted if then else tree.
 However, with it:
-
 
 ```haskell
 sayMe :: (Integral a) => a -> String
@@ -45,9 +40,6 @@ sayMe 5 = "Five!"
 sayMe x = "Not between 1 and 5"
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Note that if we moved the last pattern (the catch-all one) to the top, it would always say `"Not between 1 and 5"`, because it would catch all the numbers and they wouldn't have a chance to fall through and be checked for any other patterns.
 
 Remember the factorial function we implemented previously?
@@ -57,15 +49,11 @@ We start by saying that the factorial of 0 is 1.
 Then we state that the factorial of any positive integer is that integer multiplied by the factorial of its predecessor.
 Here's how that looks like translated in Haskell terms.
 
-
 ```haskell
 factorial :: (Integral a) => a -> a
 factorial 0 = 1
 factorial n = n * factorial (n - 1)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 This is the first time we've defined a function recursively.
 Recursion is important in Haskell and we'll take a closer look at it later.
@@ -81,7 +69,6 @@ That's why order is important when specifying patterns and it's always best to s
 Pattern matching can also fail.
 If we define a function like this:
 
-
 ```haskell
 charName :: Char -> String
 charName 'a' = "Albert"
@@ -89,28 +76,23 @@ charName 'b' = "Broseph"
 charName 'c' = "Cecil"
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 and then try to call it with an input that we didn't expect, this is what happens:
-
 
 ```haskell
 charName 'a'
 ```
 
 > <!-- scripths:mime text/plain -->
-> Albert
+> "Albert"
 
 ```haskell
 charName 'b'
 ```
 
 > <!-- scripths:mime text/plain -->
-> Broseph
+> "Broseph"
 
-
-```text
+```haskell
 charName 'h'
 ```
 
@@ -122,26 +104,18 @@ What if we wanted to make a function that takes two vectors in a 2D space (that 
 To add together two vectors, we add their x components separately and then their y components separately.
 Here's how we would have done it if we didn't know about pattern matching:
 
-
 ```haskell
-addVectors :: (Num a) => (a, a) -> (a, a) -> (a, a)
-addVectors a b = (fst a + fst b, snd a + snd b)
+addVectors' :: (Num a) => (a, a) -> (a, a) -> (a, a)
+addVectors' a b = (fst a + fst b, snd a + snd b)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Well, that works, but there's a better way to do it.
 Let's modify the function so that it uses pattern matching.
-
 
 ```haskell
 addVectors :: (Num a) => (a, a) -> (a, a) -> (a, a)
 addVectors (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 There we go!
 Much better.
@@ -151,7 +125,6 @@ The type of `addVectors` (in both cases) is `addVectors :: (Num a) => (a, a) -> 
 `fst` and `snd` extract the components of pairs.
 But what about triples?
 Well, there are no provided functions that do that but we can make our own.
-
 
 ```haskell
 first :: (a, b, c) -> a
@@ -164,21 +137,15 @@ third :: (a, b, c) -> c
 third (_, _, z) = z
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 The `_` means the same thing as it does in list comprehensions.
 It means that we really don't care what that part is, so we just write a `_`.
 
 Which reminds me, you can also pattern match in list comprehensions.
 Check this out:
 
-
 ```haskell
 let xs = [(1,3), (4,3), (2,4), (5,3), (5,6), (3,1)]
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 [a+b | (a,b) <- xs]
@@ -186,7 +153,6 @@ let xs = [(1,3), (4,3), (2,4), (5,3), (5,6), (3,1)]
 
 > <!-- scripths:mime text/plain -->
 > [4,7,6,8,11,4]
-
 
 Should a pattern match fail, it will just move on to the next element.
 
@@ -203,18 +169,13 @@ It will only match against lists that have three elements or more.
 
 Now that we know how to pattern match against list, let's make our own implementation of the `head` function.
 
-
 ```haskell
 head' :: [a] -> a
 head' [] = error "Can't call head on an empty list, dummy!"
 head' (x:_) = x
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Checking if it works:
-
 
 ```haskell
 head' [4,5,6]
@@ -230,7 +191,6 @@ head' "Hello"
 > <!-- scripths:mime text/plain -->
 > 'H'
 
-
 Nice!
 Notice that if you want to bind to several variables (even if one of them is just `_` and doesn't actually bind at all), we have to surround them in parentheses.
 Also notice the `error` function that we used.
@@ -240,7 +200,6 @@ But calling `head` on an empty list doesn't make sense.
 
 Let's make a trivial function that tells us some of the first elements of the list in (in)convenient English form.
 
-
 ```haskell
 tell :: (Show a) => [a] -> String
 tell [] = "The list is empty"
@@ -249,9 +208,6 @@ tell (x:y:[]) = "The list has two elements: " ++ show x ++ " and " ++ show y
 tell (x:y:_) = "This list is long. The first two elements are: " ++ show x ++ " and " ++ show y
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 This function is safe because it takes care of the empty list, a singleton list, a list with two elements and a list with more than two elements.
 Note that `(x:[])` and `(x:y:[])` could be rewritten as `[x]` and `[x,y]` (because its syntactic sugar, we don't need the parentheses).
 We can't rewrite `(x:y:_)` with square brackets because it matches any list of length 2 or more.
@@ -259,15 +215,11 @@ We can't rewrite `(x:y:_)` with square brackets because it matches any list of l
 We already implemented our own `length` function using list comprehension.
 Now we'll do it by using pattern matching and a little recursion:
 
-
 ```haskell
 length' :: (Num b) => [a] -> b
 length' [] = 0
 length' (_:xs) = 1 + length' xs
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 This is similar to the factorial function we wrote earlier.
 First we defined the result of a known input --- the empty list.
@@ -295,15 +247,11 @@ We write that down as a pattern.
 And we also know that the sum of a list is the head plus the sum of the rest of the list.
 So if we write that down, we get:
 
-
 ```haskell
 sum' :: (Num a) => [a] -> a
 sum' [] = 0
 sum' (x:xs) = x + sum' xs
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 There's also a thing called *as patterns*.
 Those are a handy way of breaking something up according to a pattern and binding it to names whilst still keeping a reference to the whole thing.
@@ -312,22 +260,18 @@ For instance, the pattern `xs@(x:y:ys)`.
 This pattern will match exactly the same thing as `x:y:ys` but you can easily get the whole list via `xs` instead of repeating yourself by typing out `x:y:ys` in the function body again.
 Here's a quick and dirty example:
 
-
 ```haskell
 capital :: String -> String
 capital "" = "Empty string, whoops!"
 capital all@(x:xs) = "The first letter of " ++ all ++ " is " ++ [x]
 ```
 
-> <!-- scripths:mime text/plain -->
-
 ```haskell
 capital "Dracula"
 ```
 
 > <!-- scripths:mime text/plain -->
-> The first letter of Dracula is D
-
+> "The first letter of Dracula is D"
 
 Normally we use as patterns to avoid repeating ourselves when matching against a bigger pattern when we have to use the whole thing again in the function body.
 
@@ -352,7 +296,6 @@ If it has more than 1000g/L (the density of water), it will sink in water.
 Between are things (like people, usually) that will neither float away nor sink in water.
 So here's the function (we won't be calculating density right now, this function just gets a density and responds)
 
-
 ```haskell
 densityTell :: (RealFloat a) => a -> String
 densityTell density
@@ -360,9 +303,6 @@ densityTell density
     | density <= 1000.0 = "Have fun swimming, but watch out for sharks!"
     | otherwise   = "If it's sink or swim, you're going to sink."
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Guards are indicated by pipes that follow a function's name and its parameters.
 Usually, they're indented a bit to the right and lined up.
@@ -387,28 +327,22 @@ If no suitable guards or patterns are found, an error is thrown.
 Of course we can use guards with functions that take as many parameters as we want.
 Instead of having the user calculate the density of the substance on their own before calling the function, let's modify this function so that it takes a mass (in grams) and volume (in liters).
 
-
 ```haskell
-densityTell :: (RealFloat a) => a -> a -> String
-densityTell mass volume
+densityTell' :: (RealFloat a) => a -> a -> String
+densityTell' mass volume
     | mass / volume < 1.2 = "Wow! You're going for a ride in the sky!"
     | mass / volume <= 1000.0 = "Have fun swimming, but watch out for sharks!"
     | otherwise   = "If it's sink or swim, you're going to sink."
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Let's see if cat food will float ...
 
-
 ```haskell
-densityTell 400 1
+densityTell' 400 1
 ```
 
 > <!-- scripths:mime text/plain -->
-> Have fun swimming, but watch out for sharks!
-
+> "Have fun swimming, but watch out for sharks!"
 
 Looks like it will!
 At least until it dissolves into the pool...
@@ -420,7 +354,6 @@ Many newbies get syntax errors because they sometimes put it there.
 Another very simple example: let's implement our own `max` function.
 If you remember, it takes two things that can be compared and returns the larger of them.
 
-
 ```haskell
 max' :: (Ord a) => a -> a -> a
 max' a b
@@ -428,25 +361,17 @@ max' a b
     | otherwise = b
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Guards can also be written inline, although I'd advise against that because it's less readable, even for very short functions.
 But to demonstrate, we could write `max'` like this:
 
-
 ```haskell
-max' :: (Ord a) => a -> a -> a
-max' a b | a > b = a | otherwise = b
+max'' :: (Ord a) => a -> a -> a
+max'' a b | a > b = a | otherwise = b
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Ugh!
 Not very readable at all!
 Moving on: let's implement our own `compare` by using guards.
-
 
 ```haskell
 myCompare :: (Ord a) => a -> a -> Ordering
@@ -456,13 +381,12 @@ a `myCompare` b
     | otherwise = LT
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
-ghci> 3 `myCompare` 2
-GT
+```haskell
+3 `myCompare` 2
 ```
+
+> <!-- scripths:mime text/plain -->
+> GT
 
 **Note:** Not only can we call functions as infix with backticks, we can also define them using backticks.
 Sometimes it's easier to read that way.
@@ -470,7 +394,6 @@ Sometimes it's easier to read that way.
 ## Where!?
 
 In the previous section, we defined a density calculator function and responder like this:
-
 
 ```haskell
 densityTell :: (RealFloat a) => a -> a -> String
@@ -480,15 +403,11 @@ densityTell mass volume
     | otherwise   = "If it's sink or swim, you're going to sink."
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Notice that we repeat ourselves here two times.
 We repeat ourselves two times.
 Repeating yourself (two times) while programming is about as desirable as getting kicked inna head.
 Since we repeat the same expression twice, it would be ideal if we could calculate it once, bind it to a name and then use that name instead of the expression.
 Well, we can modify our function like this:
-
 
 ```haskell
 densityTell :: (RealFloat a) => a -> a -> String
@@ -499,15 +418,11 @@ densityTell mass volume
     where density = mass / volume
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 We put the keyword `where` after the guards (usually it's best to indent it as much as the pipes are indented) and then we define several names or functions.
 These names are visible across the guards and give us the advantage of not having to repeat ourselves.
 If we decide that we want to calculate density a bit differently, we only have to change it once.
 It also improves readability by giving names to things and can make our programs faster since stuff like our `density` variable here is calculated only once.
 We could go a bit overboard and present our function like this:
-
 
 ```haskell
 densityTell :: (RealFloat a) => a -> a -> String
@@ -520,9 +435,6 @@ densityTell mass volume
           water = 1000.0
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 The names we define in the `where` block of a function are only visible to that function, so we don't have to worry about them polluting the namespace of other functions.
 Notice that all the names are aligned at a single column.
 If we don't align them nice and proper, Haskell gets confused because then it doesn't know they're all part of the same block.
@@ -533,14 +445,13 @@ If you want several patterns of one function to access some shared name, you hav
 You can also use `where` bindings to **pattern match**!
 We could have rewritten the `where` block of our previous function as:
 
-```text
+```haskell
 ...
     where density = mass / volume
           (air, water) = (1.2, 1000.0)
 ```
 
 Let's make another fairly trivial function where we get a first and a last name and give someone back their initials.
-
 
 ```haskell
 initials :: String -> String -> String
@@ -549,23 +460,16 @@ initials firstname lastname = [f] ++ ". " ++ [l] ++ "."
           (l:_) = lastname
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 We could have done this pattern matching directly in the function's parameters (it would have been shorter and clearer actually) but this just goes to show that it's possible to do it in `where` bindings as well.
 
 Just like we've defined constants in `where` blocks, you can also define functions.
 Staying true to our solids programming theme, let's make a function that takes a list of mass-volume pairs and returns a list of densities.
-
 
 ```haskell
 calcDensities :: (RealFloat a) => [(a, a)] -> [a]
 calcDensities xs = [density m v | (m, v) <- xs]
     where density mass volume = mass / volume
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 And that's all there is to it!
 The reason we had to introduce `density` as a function in this example is because we can't just calculate one density from the function's parameters.
@@ -583,7 +487,6 @@ Just like any construct in Haskell that is used to bind values to names, `let` b
 Let's see them in action!
 This is how we could define a function that gives us a cylinder's surface area based on its height and radius:
 
-
 ```haskell
 cylinder :: (RealFloat a) => a -> a -> a
 cylinder r h =
@@ -591,9 +494,6 @@ cylinder r h =
         topArea = pi * r ^2
     in  sideArea + 2 * topArea
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 ![let it be](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/syntax-in-functions/letitbe.png)
 
@@ -607,7 +507,6 @@ For now it just seems that `let` puts the bindings first and the expression that
 The difference is that `let` bindings are expressions themselves.
 `where` bindings are just syntactic constructs.
 Remember when we did the if statement and it was explained that an if else statement is an expression and you can cram it in almost anywhere?
-
 
 ```haskell
 [if 5 > 3 then "Woo" else "Boo", if 'a' > 'b' then "Foo" else "Bar"]
@@ -623,9 +522,7 @@ Remember when we did the if statement and it was explained that an if else state
 > <!-- scripths:mime text/plain -->
 > 42
 
-
 You can also do that with `let` bindings.
-
 
 ```haskell
 4 * (let a = 9 in a + 1) + 2
@@ -634,9 +531,7 @@ You can also do that with `let` bindings.
 > <!-- scripths:mime text/plain -->
 > 42
 
-
 They can also be used to introduce functions in a local scope:
-
 
 ```haskell
 [let square x = x * x in (square 5, square 3, square 2)]
@@ -645,10 +540,8 @@ They can also be used to introduce functions in a local scope:
 > <!-- scripths:mime text/plain -->
 > [(25,9,4)]
 
-
 If we want to bind to several variables inline, we obviously can't align them at columns.
 That's why we can separate them with semicolons.
-
 
 ```haskell
 (let a = 100; b = 200; c = 300 in a*b*c, let foo="Hey "; bar = "there!" in foo ++ bar)
@@ -657,11 +550,9 @@ That's why we can separate them with semicolons.
 > <!-- scripths:mime text/plain -->
 > (6000000,"Hey there!")
 
-
 You don't have to put a semicolon after the last binding but you can if you want.
 Like we said before, you can pattern match with `let` bindings.
 They're very useful for quickly dismantling a tuple into components and binding them to names and such.
-
 
 ```haskell
 (let (a,b,c) = (1,2,3) in a+b+c) * 100
@@ -670,31 +561,22 @@ They're very useful for quickly dismantling a tuple into components and binding 
 > <!-- scripths:mime text/plain -->
 > 600
 
-
 You can also put `let` bindings inside list comprehensions.
 Let's rewrite our previous example of calculating lists of mass-volume pairs to use a `let` inside a list comprehension instead of defining an auxiliary function with a `where`.
-
 
 ```haskell
 calcDensities :: (RealFloat a) => [(a, a)] -> [a]
 calcDensities xs = [density | (m, v) <- xs, let density = m / v]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 We include a `let` inside a list comprehension much like we would a predicate, only it doesn't filter the list, it only binds to names.
 The names defined in a `let` inside a list comprehension are visible to the output function (the part before the `|`) and all predicates and sections that come after of the binding.
 So we could make our function return only the densities that will float in air:
-
 
 ```haskell
 calcDensities :: (RealFloat a) => [(a, a)] -> [a]
 calcDensities xs = [density | (m, v) <- xs, let density = m / v, density < 1.2]
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We can't use the `density` name in the `(m, v) <- xs` part because it's defined prior to the `let` binding.
 
@@ -703,12 +585,9 @@ However, we could use a `let in` binding in a predicate and the names defined wo
 The `in` part can also be omitted when defining functions and constants directly in GHCi.
 If we do that, then the names will be visible throughout the entire interactive session.
 
-
 ```haskell
 let zoot x y z = x * y + z
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 zoot 3 9 2
@@ -724,8 +603,7 @@ let boot x y z = x * y + z in boot 3 4 2
 > <!-- scripths:mime text/plain -->
 > 14
 
-
-```text
+```haskell
 ghci> boot
 <interactive>:1:0: Not in scope: `boot'
 ```
@@ -750,14 +628,11 @@ Oh yeah, pattern matching on parameters in function definitions!
 Well, that's actually just syntactic sugar for case expressions.
 These two pieces of code do the same thing and are interchangeable:
 
-
 ```haskell
 head' :: [a] -> a
 head' [] = error "No head for empty lists!"
 head' (x:_) = x
 ```
-
-> <!-- scripths:mime text/plain -->
 
 ```haskell
 head' :: [a] -> a
@@ -765,12 +640,9 @@ head' xs = case xs of [] -> error "No head for empty lists!"
                       (x:_) -> x
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 As you can see, the syntax for case expressions is pretty simple:
 
-```text
+```haskell
 case expression of pattern -> result
                    pattern -> result
                    pattern -> result
@@ -784,7 +656,6 @@ If it falls through the whole case expression and no suitable pattern is found, 
 Whereas pattern matching on function parameters can only be done when defining functions, case expressions can be used pretty much anywhere.
 For instance:
 
-
 ```haskell
 describeList :: [a] -> String
 describeList xs = "The list is " ++ case xs of [] -> "empty."
@@ -792,12 +663,8 @@ describeList xs = "The list is " ++ case xs of [] -> "empty."
                                                xs -> "a longer list."
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 They are useful for pattern matching against something in the middle of an expression.
 Because pattern matching in function definitions is syntactic sugar for case expressions, we could have also defined this like so:
-
 
 ```haskell
 describeList :: [a] -> String
@@ -806,5 +673,3 @@ describeList xs = "The list is " ++ what xs
           what [x] = "a singleton list."
           what xs = "a longer list."
 ```
-
-> <!-- scripths:mime text/plain -->

@@ -6,23 +6,30 @@ hub user can drive their notebook from the terminal without copying the
 
 Flow: the CLI POSTs @start@ (no auth) and gets a secret @deviceCode@ plus a
 short @userCode@; it opens the browser at the authorize page carrying the
-@userCode@; the logged-in user clicks Approve, which mints a short-lived token
-bound to *their* session; the CLI polls @poll@ with the @deviceCode@ until the
-token appears. 'resolveCliToken' then accepts that token as a @Bearer@ at the
-proxy boundary — and since 'Hub.Proxy.Forward' strips @Authorization@, it never
-reaches the backend.
+@userCode@; the logged-in user re-types the code and approves, which mints a
+short-lived token bound to *their* session; the CLI polls @poll@ with the
+@deviceCode@ until the token appears. 'resolveCliToken' accepts that token as a
+@Bearer@ at the proxy boundary — and since 'Hub.Proxy.Forward' strips
+@Authorization@, it never reaches the backend.
 
 The token resolves to the approver's 'SessionId', so it drives the SAME
-session/backend the browser is on and dies when that session ends;
-'hcCliTokenTtl' caps it independently.
+session/backend and is only valid while that session is live ('lookupBySessionId'
+fails once it ends). It is also revoked by @siza logout@ ('handleCliRevoke'), by
+the user signing out ('revokeSessionTokens'), and by its own 'hcCliTokenTtl'.
+
+The @start@ endpoint is unauthenticated, so the pending table is capped
+('maxPending') and pruned on every call to bound memory; user codes are unique
+and high-entropy.
 -}
 module Hub.CliAuth (
     CliAuth,
     newCliAuth,
     resolveCliToken,
+    revokeSessionTokens,
     handleCliStart,
     handleCliPoll,
     handleCliApprove,
+    handleCliRevoke,
     cliAuthPage,
 ) where
 
@@ -39,7 +46,6 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Lazy as BL
 import Data.List (find)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -53,8 +59,9 @@ import Data.Time (
     getCurrentTime,
  )
 import Hub.Auth (extractSessionId)
+import Hub.CliAuth.Page (authorizePage, noticePage)
 import Hub.OAuth (generateRandomToken)
-import Hub.Pages (jsonError, jsonResponse, loginPage)
+import Hub.Pages (jsonError, jsonResponse)
 import Hub.Types (HubConfig (..), SessionId (..))
 import Network.HTTP.Types
 import Network.Wai
@@ -70,11 +77,12 @@ data Pending = Pending
     , pToken :: Maybe Text
     }
 
--- | The CLI-auth stores plus the configured token lifetime.
+-- | The CLI-auth stores, the token lifetime, and the hub's public origin.
 data CliAuth = CliAuth
     { caPending :: TVar (Map.Map Text Pending)
     , caTokens :: TVar (Map.Map Text (SessionId, UTCTime))
     , caTtl :: NominalDiffTime
+    , caOrigin :: Text
     }
 
 newCliAuth :: HubConfig -> IO CliAuth
@@ -83,6 +91,7 @@ newCliAuth cfg =
         <$> newTVarIO Map.empty
         <*> newTVarIO Map.empty
         <*> pure (hcCliTokenTtl cfg)
+        <*> pure (originFromRedirect (hcGoogleRedirectUri cfg))
 
 -- | How long a pending (unapproved) request stays valid (5 min).
 requestTtl :: NominalDiffTime
@@ -92,8 +101,15 @@ requestTtl = 300
 pollInterval :: Int
 pollInterval = 2
 
+{- | Upper bound on concurrently-pending requests. @start@ is unauthenticated,
+so this caps the memory an attacker can pin by spraying it; expired entries are
+pruned on every @start@, so legitimate traffic never approaches it.
+-}
+maxPending :: Int
+maxPending = 1000
+
 -- ---------------------------------------------------------------------------
--- Resolve a token at the proxy boundary
+-- Resolve / revoke tokens
 -- ---------------------------------------------------------------------------
 
 {- | Resolve a request's @Authorization: Bearer <token>@ to the session the
@@ -113,6 +129,11 @@ resolveCliToken ca req =
                     Just (sid, expiry) | expiry > now -> Just sid
                     _ -> Nothing
 
+-- | Revoke every CLI token bound to a session (used when the user signs out).
+revokeSessionTokens :: CliAuth -> SessionId -> IO ()
+revokeSessionTokens ca sid =
+    atomically $ modifyTVar' (caTokens ca) (Map.filter ((/= sid) . fst))
+
 -- | The token from an @Authorization: Bearer <token>@ header, if present.
 bearerToken :: Request -> Maybe Text
 bearerToken req = do
@@ -128,28 +149,44 @@ bearerToken req = do
 -- start
 -- ---------------------------------------------------------------------------
 
-{- | @POST /_hub/cli-auth/start@ (no auth): mint a @deviceCode@ + @userCode@,
-record the pending request, and return the codes plus the authorize URL. Prunes
-expired pending entries on the way in so the map stays bounded.
+{- | @POST /_hub/cli-auth/start@ (no auth): prune expired entries, refuse with
+429 when the pending table is full, else mint a unique @userCode@ + secret
+@deviceCode@ and return them plus the authorize URL (built from the hub's
+configured origin, not the request @Host@).
 -}
 handleCliStart :: CliAuth -> Application
 handleCliStart ca req respond = do
-    deviceCode <- generateRandomToken
-    userCode <- T.toUpper . T.take 8 <$> generateRandomToken
     now <- getCurrentTime
-    let pending = Pending userCode Nothing now Nothing
-    atomically $
-        modifyTVar' (caPending ca) $
-            Map.insert deviceCode pending . Map.filter (notExpired now)
-    respond $
-        jsonResponse status200 $
-            object
-                [ "deviceCode" .= deviceCode
-                , "userCode" .= userCode
-                , "verificationUri" .= (originOf req <> "/_hub/cli-auth?code=" <> userCode)
-                , "interval" .= pollInterval
-                , "expiresIn" .= (round requestTtl :: Int)
-                ]
+    full <- atomically $ do
+        modifyTVar' (caPending ca) (Map.filter (notExpired now))
+        (>= maxPending) . Map.size <$> readTVar (caPending ca)
+    if full
+        then
+            respond $ jsonError status429 "Too many pending authorizations; retry shortly."
+        else do
+            deviceCode <- generateRandomToken
+            userCode <- freshUserCode ca
+            atomically $
+                modifyTVar'
+                    (caPending ca)
+                    (Map.insert deviceCode (Pending userCode Nothing now Nothing))
+            let origin = if T.null (caOrigin ca) then originOf req else caOrigin ca
+            respond $
+                jsonResponse status200 $
+                    object
+                        [ "deviceCode" .= deviceCode
+                        , "userCode" .= userCode
+                        , "verificationUri" .= (origin <> "/_hub/cli-auth?code=" <> userCode)
+                        , "interval" .= pollInterval
+                        , "expiresIn" .= (round requestTtl :: Int)
+                        ]
+
+-- | A 12-hex-char (48-bit) upper-cased user code, unique among live pendings.
+freshUserCode :: CliAuth -> IO Text
+freshUserCode ca = do
+    c <- T.toUpper . T.take 12 <$> generateRandomToken
+    pend <- readTVarIO (caPending ca)
+    if any ((== c) . pUserCode) (Map.elems pend) then freshUserCode ca else pure c
 
 -- ---------------------------------------------------------------------------
 -- poll
@@ -187,38 +224,36 @@ handleCliPoll ca req respond = do
                 _ -> respond $ jsonResponse status200 (object ["status" .= ("expired" :: Text)])
 
 -- ---------------------------------------------------------------------------
--- authorize page + approve
+-- authorize page + approve + revoke
 -- ---------------------------------------------------------------------------
 
-{- | @GET /_hub/cli-auth?code=<userCode>@: the authorize page. Cookie-gated —
-an unauthenticated visitor gets the login page (then re-opens the CLI link).
-Mints a CSRF nonce into the matching pending request and embeds it in the form.
+{- | @GET /_hub/cli-auth?code=<userCode>@: the authorize page. The router gates
+this on a *live* session (redirecting an unauthenticated visitor through Google
+login and back), so here we only mint a CSRF nonce into the matching pending
+request and embed it in the form. The user code itself is never put in the page.
 -}
 cliAuthPage :: CliAuth -> Application
-cliAuthPage ca req respond =
-    case extractSessionId req of
-        Nothing -> respond loginPage
-        Just _ -> do
-            now <- getCurrentTime
-            case userCodeParam req of
-                Nothing -> respond $ htmlPage status400 (noticeHtml "Missing authorization code.")
-                Just userCode -> do
-                    csrf <- generateRandomToken
-                    found <- atomically $ do
-                        pend <- readTVar (caPending ca)
-                        case findByUserCode userCode pend of
-                            Just (dc, p) | notExpired now p -> do
-                                modifyTVar' (caPending ca) $
-                                    Map.insert dc p{pCsrf = Just csrf}
-                                pure True
-                            _ -> pure False
-                    respond $
-                        if found
-                            then htmlPage status200 (authorizeHtml userCode csrf)
-                            else
-                                htmlPage
-                                    status410
-                                    (noticeHtml "This authorization request has expired. Re-run siza login.")
+cliAuthPage ca req respond = do
+    now <- getCurrentTime
+    case userCodeParam req of
+        Nothing -> respond $ noticePage status400 "Missing authorization code."
+        Just userCode -> do
+            csrf <- generateRandomToken
+            found <- atomically $ do
+                pend <- readTVar (caPending ca)
+                case findByUserCode userCode pend of
+                    Just (dc, p) | notExpired now p -> do
+                        modifyTVar' (caPending ca) $
+                            Map.insert dc p{pCsrf = Just csrf}
+                        pure True
+                    _ -> pure False
+            respond $
+                if found
+                    then authorizePage csrf
+                    else
+                        noticePage
+                            status410
+                            "This authorization request has expired. Re-run siza login."
 
 {- | @POST /_hub/cli-auth/approve@ with @{userCode, csrf}@. Cookie-gated by the
 router; binds a fresh short-lived token to the approver's 'SessionId'. The CSRF
@@ -252,6 +287,18 @@ handleCliApprove ca req respond = do
                         else jsonError status410 "This authorization request has expired."
         _ -> respond $ jsonError status400 "Expected {userCode, csrf}."
 
+{- | @POST /_hub/cli-auth/revoke@ with @Authorization: Bearer <token>@: delete
+that token server-side. No cookie needed — presenting the token is proof enough
+to revoke it. Backs @siza logout@.
+-}
+handleCliRevoke :: CliAuth -> Application
+handleCliRevoke ca req respond =
+    case bearerToken req of
+        Nothing -> respond $ jsonError status400 "Expected a bearer token."
+        Just tok -> do
+            atomically $ modifyTVar' (caTokens ca) (Map.delete tok)
+            respond $ jsonResponse status200 (object ["revoked" .= True])
+
 -- ---------------------------------------------------------------------------
 -- helpers
 -- ---------------------------------------------------------------------------
@@ -269,7 +316,16 @@ strField k v = case v of
         _ -> Nothing
     _ -> Nothing
 
--- | The @scheme://host@ origin, from @Host@ and @X-Forwarded-Proto@.
+{- | The hub's public @scheme://host@ origin, derived from the configured OAuth
+redirect URI (trusted config) rather than the request @Host@ header. Empty when
+the redirect URI is unset (dev), where the caller falls back to 'originOf'.
+-}
+originFromRedirect :: Text -> Text
+originFromRedirect uri = case T.splitOn "/" uri of
+    (scheme : "" : host : _) | not (T.null host) -> scheme <> "//" <> host
+    _ -> ""
+
+-- | Fallback origin from @Host@ + @X-Forwarded-Proto@ (dev only).
 originOf :: Request -> Text
 originOf req =
     scheme <> "://" <> maybe "localhost" TE.decodeUtf8 (requestHeaderHost req)
@@ -283,54 +339,3 @@ userCodeParam req = do
     mv <- lookup "code" (queryString req)
     raw <- mv
     if BS.null raw then Nothing else Just (TE.decodeUtf8 raw)
-
-htmlPage :: Status -> Text -> Response
-htmlPage st body =
-    responseLBS
-        st
-        [(hContentType, "text/html; charset=utf-8")]
-        (BL.fromStrict (TE.encodeUtf8 body))
-
-{- | The authorize page: shows the user code and an Approve button that POSTs
-@{userCode, csrf}@ to @approve@ (the session cookie rides along automatically),
-then confirms in place so the user knows to return to the terminal.
--}
-authorizeHtml :: Text -> Text -> Text
-authorizeHtml userCode csrf =
-    T.unlines
-        [ "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        , "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        , "<title>Authorize siza CLI</title>"
-        , "<style>body{font-family:system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1.5rem;color:#2e3440;background:#fdfaf5}"
-        , "h1{font-size:1.4rem}code{background:#eceff4;padding:.15rem .4rem;border-radius:.3rem;font-size:1.1rem;letter-spacing:.1em}"
-        , "button{font-size:1rem;padding:.7rem 1.4rem;border:0;border-radius:.5rem;background:#5e81ac;color:#fff;cursor:pointer}"
-        , "button:disabled{background:#9aa5b1;cursor:default}#ok{color:#3b7a57;font-weight:600}</style></head><body>"
-        , "<h1>Authorize the siza CLI</h1>"
-        , "<p>A terminal is requesting access to drive your notebook. Confirm the code matches the one shown in your terminal:</p>"
-        , "<p><code>" <> userCode <> "</code></p>"
-        , "<p><button id=go onclick=approve()>Approve access</button></p>"
-        , "<p id=ok hidden>Approved \x2014 return to your terminal.</p>"
-        , "<script>"
-        , "async function approve(){"
-        , "  document.getElementById('go').disabled=true;"
-        , "  const r=await fetch('/_hub/cli-auth/approve',{method:'POST',headers:{'content-type':'application/json'},"
-        , "    body:JSON.stringify({userCode:'"
-            <> userCode
-            <> "',csrf:'"
-            <> csrf
-            <> "'})});"
-        , "  if(r.ok){document.getElementById('ok').hidden=false;document.getElementById('go').hidden=true;}"
-        , "  else{document.getElementById('go').disabled=false;alert('Authorization failed or expired. Re-run siza login.');}"
-        , "}"
-        , "</script></body></html>"
-        ]
-
--- | A minimal notice page for the error/expiry cases.
-noticeHtml :: Text -> Text
-noticeHtml msg =
-    T.unlines
-        [ "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        , "<title>siza CLI</title>"
-        , "<style>body{font-family:system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1.5rem;color:#2e3440;background:#fdfaf5}</style>"
-        , "</head><body><p>" <> msg <> "</p></body></html>"
-        ]

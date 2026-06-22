@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Reseed the curated gallery shares on the prod box's EFS (/mnt/sabela/shares)
-# over SSM. Additive: only the curated slugs' files are touched, never the
-# gallery index or other users' shares.
+# Reseed the curated gallery on the prod box's EFS (/mnt/sabela/shares) over SSM.
+# Pushes the five curated single-share dashboards AND the 14-chapter "Learn You a
+# Haskell" collection. Additive at the share level (only these slugs' files are
+# touched, never other users' shares); the gallery index/attribution/tags ARE
+# overwritten to the canonical curated+collection set.
+#
+# The curated dashboards come from the legacy python seeder (unchanged path).
+# The LYAH chapters come from the Haskell seeder (`sabela-hub seed-gallery`),
+# which already splices the fork banner + WASM MicroHs runner into each chapter,
+# so they need no runner backfill.
 #
 # Transfer: small dashboards (and source.md) are gzip+base64 chunked over SSM.
 # California's dashboard is multi-megabyte and only ever needs the brand mark
@@ -13,6 +20,11 @@ source "$(dirname "$0")/.env"
 : "${AWS_REGION:?}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SHARES_REMOTE=/mnt/sabela/shares
+GALLERY_REMOTE=/mnt/sabela/gallery
+
+# The LYAH chapter slugs (1ea40001..1ea40014), seeded as collection 1ea40000.
+LYAH_SLUGS=(); for i in $(seq -w 1 14); do LYAH_SLUGS+=("1ea400$i"); done
+LYAH_CID=1ea40000
 
 # Slugs pushed in full (content may have changed since the last seed).
 PUSH_SLUGS=(c56a0001 b1ef0001 f12a0001 c0de0001 ca1f0001)
@@ -24,11 +36,19 @@ IID=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names sa
   --query 'AutoScalingGroups[0].Instances[0].InstanceId' --output text --region "$AWS_REGION")
 [ -n "$IID" ] && [ "$IID" != "None" ] || { echo "no running box in ASG sabela-box" >&2; exit 1; }
 
-# Regenerate the gallery into a temp data root so the pushed files are current.
+# Regenerate the gallery into temp data roots so the pushed files are current.
+# STAGE: legacy python seeder (curated dashboards). HSTAGE: Haskell seeder
+# (curated + LYAH chapters + the collection + a collection-aware gallery index).
 STAGE=$(mktemp -d)
-trap 'rm -rf "$STAGE"' EXIT
+HSTAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE" "$HSTAGE"' EXIT
 python3 "$ROOT/sabela-hub/scripts/seed-gallery.py" "$STAGE" >/dev/null
 STAGE_SHARES="$STAGE/shares"
+
+echo "=== building the Haskell seeder ==="
+(cd "$ROOT/sabela-hub" && cabal build -v0)
+HUB_BIN=$(cd "$ROOT/sabela-hub" && cabal list-bin sabela-hub)
+"$HUB_BIN" seed-gallery "$HSTAGE" "$ROOT" >/dev/null
 
 ssm_run() { # run one shell command on the box, print its stdout
   local cid
@@ -79,13 +99,24 @@ for s in ${BRAND_ONLY[@]+"${BRAND_ONLY[@]}"}; do
   brand_inplace "$SHARES_REMOTE/$s/index.html"
 done
 
-# Install the curated gallery index files (index / attribution / tags). These
-# list only curated slugs, so overwriting them matches seed-gallery.py's
-# canonical CURATION set without touching users' own (unlisted) shares.
-GALLERY_REMOTE=/mnt/sabela/gallery
+# Push the LYAH chapters from the Haskell stage. These already carry the fork
+# banner + WASM runner (spliced by `sabela-hub seed-gallery`), so no backfill.
+for s in "${LYAH_SLUGS[@]}"; do
+  echo "=== $s: pushing LYAH chapter ==="
+  for f in index.html source.md meta; do
+    push_file "$HSTAGE/shares/$s/$f" "$SHARES_REMOTE/$s/$f"
+  done
+done
+echo "=== gallery: pushing collection $LYAH_CID ==="
+push_file "$HSTAGE/gallery/collections/$LYAH_CID/meta" "$GALLERY_REMOTE/collections/$LYAH_CID/meta"
+
+# Install the gallery index files (index / attribution / tags) from the Haskell
+# stage so the feed lists the five curated shares AND the LYAH collection. These
+# list only curated/collection slugs, so overwriting them never touches users'
+# own (unlisted) shares.
 for f in index attribution tags; do
   echo "=== gallery: pushing $f ==="
-  push_file "$STAGE/gallery/$f" "$GALLERY_REMOTE/$f"
+  push_file "$HSTAGE/gallery/$f" "$GALLERY_REMOTE/$f"
 done
 
 # seed-gallery.py writes raw exports with no fork banner, so the pushes above
@@ -94,5 +125,6 @@ done
 echo "=== re-splicing fork banners ==="
 ssm_run "docker exec sabela-hub /opt/bin/sabela-hub republish-banners $SHARES_REMOTE 2>&1"
 
-echo "Done. Curated gallery reseeded + banners re-spliced on $IID. Restart the hub to reload it:"
+echo "Done. Curated gallery + LYAH collection reseeded, banners re-spliced on $IID."
+echo "Restart the hub to reload it:"
 echo "  ./infra/box.sh restart"

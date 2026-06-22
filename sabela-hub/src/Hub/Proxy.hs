@@ -24,15 +24,18 @@ import Hub.Auth (
     handleOAuthCallback,
     logoutResponse,
     requireSession,
+    requireSessionOrLogin,
  )
 import Hub.CliAuth (
     CliAuth,
     cliAuthPage,
     handleCliApprove,
     handleCliPoll,
+    handleCliRevoke,
     handleCliStart,
     newCliAuth,
     resolveCliToken,
+    revokeSessionTokens,
  )
 import Hub.Fork (serveFork)
 import Hub.Gallery (GalleryStore)
@@ -93,16 +96,27 @@ hubApp' ::
 hubApp' sm store users gallery mgr states cliAuth req respond =
     case pathInfo req of
         ["s", slug] -> serveShare store slug respond
-        -- siza CLI device-authorization flow.
-        ["_hub", "cli-auth"] -> cliAuthPage cliAuth req respond
+        -- siza CLI device-authorization flow. Wrong-method requests 405 here
+        -- rather than falling through to the per-user proxy.
+        ["_hub", "cli-auth"]
+            | requestMethod req == methodGet ->
+                requireSessionOrLogin sm req respond $ \_ ->
+                    cliAuthPage cliAuth req respond
+            | otherwise -> notAllowed
         ["_hub", "cli-auth", "start"]
             | requestMethod req == methodPost -> handleCliStart cliAuth req respond
+            | otherwise -> notAllowed
         ["_hub", "cli-auth", "poll"]
             | requestMethod req == methodPost -> handleCliPoll cliAuth req respond
+            | otherwise -> notAllowed
         ["_hub", "cli-auth", "approve"]
             | requestMethod req == methodPost ->
                 requireSession sm req respond $ \_ ->
                     handleCliApprove cliAuth req respond
+            | otherwise -> notAllowed
+        ["_hub", "cli-auth", "revoke"]
+            | requestMethod req == methodPost -> handleCliRevoke cliAuth req respond
+            | otherwise -> notAllowed
         -- Cacheable static assets (no auth): the in-browser WASM runtime.
         ["_hub", "assets", name] ->
             serveAsset (T.unpack (hcAssetsDir cfg)) name respond
@@ -136,6 +150,7 @@ hubApp' sm store users gallery mgr states cliAuth req respond =
         _ -> hubDispatch sm store gallery mgr states cliAuth req respond
   where
     cfg = smConfig sm
+    notAllowed = respond (jsonError status405 "Method not allowed.")
     -- The page must not be enumerable: an authed non-admin (or anyone) falls to
     -- the login page, never a 403 that confirms the route.
     adminPageRoute =
@@ -215,7 +230,8 @@ hubDispatch sm store gallery mgr states cliAuth req respond =
                 handleLogin states cfg req respond
             "/_hub/oauth/callback" ->
                 handleOAuthCallback sm mgr states cfg req respond
-            "/_hub/logout" ->
+            "/_hub/logout" -> do
+                maybe (pure ()) (revokeSessionTokens cliAuth) (extractSessionId req)
                 respond (logoutResponse req)
             _ -> do
                 mSess <- resolveSession sm cliAuth req

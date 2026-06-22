@@ -8,6 +8,7 @@ import Hub.Config (loadConfig)
 import Hub.Docker (cliDockerOps, dockerBackend)
 import Hub.Ecs (cliEcsBackend)
 import Hub.Gallery (newGalleryStore)
+import Hub.Gallery.Seed (seedGallery)
 import Hub.Proxy (hubApp)
 import Hub.Reaper (startReaper, sweepOrphans)
 import Hub.Republish (republishBanners, republishRunners)
@@ -31,7 +32,21 @@ main = do
             runRepublish "republish-banners" republishBanners rest
         ("republish-runners" : rest) ->
             runRepublish "republish-runners" republishRunners rest
+        ("seed-gallery" : rest) -> runSeed rest
         _ -> runServer
+
+{- | @sabela-hub seed-gallery [DATA_ROOT] [REPO_ROOT]@: (re)generate the curated
+gallery — the five featured shares plus the Learn You a Haskell collection — into
+@DATA_ROOT@ (holding @shares\/@ and @gallery\/@) from the example notebooks under
+@REPO_ROOT@. Both default to @.@. Standalone, like the republish backfills.
+-}
+runSeed :: [String] -> IO ()
+runSeed rest =
+    let (dataRoot, repoRoot) = case rest of
+            (d : r : _) -> (d, r)
+            [d] -> (d, ".")
+            [] -> (".", ".")
+     in seedGallery repoRoot dataRoot
 
 {- | @sabela-hub \<cmd\> [SHARES_DIR]@: backfill a spliced fragment into existing
 snapshots (the fork banner or the WASM runner). The dir defaults to

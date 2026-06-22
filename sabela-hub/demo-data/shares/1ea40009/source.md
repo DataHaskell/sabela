@@ -4,13 +4,9 @@
 
 Adapted from **Learn You a Haskell for Great Good!** by Miran Lipovača, licensed under [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/). This Sabela port preserves that license.
 
-
 ```haskell
 -- cabal: build-depends: base, random, directory
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 ![poor dog](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/input-and-output/dognap.png)
 
@@ -48,13 +44,9 @@ If you're on Windows, I'd suggest you download [Cygwin](https://www.cygwin.com/)
 
 So, for starters, punch in the following in your favorite text editor:
 
-
 ```haskell
 main = putStrLn "hello, world"
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We just defined a name called `main` and in it we call a function called `putStrLn` with the parameter `"hello, world"`.
 Looks pretty much run-of-the-mill, but it isn't, as we'll see in just a few moments.
@@ -65,7 +57,7 @@ We're actually going to compile our program!
 I'm so excited!
 Open up your terminal and navigate to the directory where `helloworld.hs` is located and do the following:
 
-```text
+```haskell
 $ ghc --make helloworld
 [1 of 1] Compiling Main             ( helloworld.hs, helloworld.o )
 Linking helloworld ...
@@ -74,7 +66,7 @@ Linking helloworld ...
 Okay!
 With any luck, you got something like this and now you can run your program by doing `./helloworld`.
 
-```text
+```haskell
 $ ./helloworld
 hello, world
 ```
@@ -85,12 +77,15 @@ How extraordinarily boring!
 Let's examine what we wrote.
 First, let's look at the type of the function `putStrLn`.
 
-```text
+```haskell
 ghci> :t putStrLn
 putStrLn :: String -> IO ()
 ghci> :t putStrLn "hello, world"
 putStrLn "hello, world" :: IO ()
 ```
+
+> <!-- scripths:mime text/plain -->
+> hello, world
 
 We can read the type of `putStrLn` like this: `putStrLn` takes a string and returns an **I/O action** that has a result type of `()` (i.e. the empty tuple, also known as `unit`).
 An I/O action is something that, when performed, will carry out an action with a side-effect (that's usually either reading from the input or printing stuff to the screen) and will also contain some kind of return value inside it.
@@ -106,16 +101,126 @@ Having your whole program be just one I/O action seems kind of limiting.
 That's why we can use `do` syntax to glue together several I/O actions into one.
 Take a look at the following example:
 
-
 ```haskell
-main = do
-    putStrLn "Hello, what's your name?"
-    name <- getLine
-    putStrLn ("Hey " ++ name ++ ", you rock!")
+name <- display (textInput "name" "World")
+displayHtml $ "Hey " ++ name ++ ", you rock!"
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> <!-- MIME:text/html -->
+> <div id='sw_1249_name'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1249_name",cid:1249,name:"name",value:"World"});</script>
+> <!-- MIME:text/html -->
+> Hey World, you rock!
 
 Ah, interesting, new syntax!
 And this reads pretty much like an imperative program.
@@ -133,7 +238,7 @@ It looks like it reads a line from the input and stores it into a variable calle
 Does it really?
 Well, let's examine the type of `getLine`.
 
-```text
+```haskell
 ghci> :t getLine
 getLine :: IO String
 ```
@@ -160,8 +265,8 @@ When we do `name <- getLine`, `name` is just a normal string, because it represe
 We can have a really complicated function that, say, takes your name (a normal string) as a parameter and tells you your fortune and your whole life's future based on your name.
 We can do this:
 
-```text
-main = do
+```haskell
+mainFortune = do
     putStrLn "Hello, what's your name?"
     name <- getLine
     putStrLn $ "Read this carefully, because this is your future: " ++ tellFortune name
@@ -172,7 +277,7 @@ and `tellFortune` (or any of the functions it passes `name` to) doesn't have to 
 Take a look at this piece of code.
 Is it valid?
 
-```text
+```haskell
 nameTag = "Hello, my name is " ++ getLine
 ```
 
@@ -189,16 +294,10 @@ So the taint of impurity spreads around much like the undead scourge and it's in
 Every I/O action that gets performed has a result encapsulated within it.
 That's why our previous example program could also have been written like this:
 
-
 ```haskell
-main = do
-    foo <- putStrLn "Hello, what's your name?"
-    name <- getLine
-    putStrLn ("Hey " ++ name ++ ", you rock!")
+name <- display (textInput "name" "World")
+displayHtml $ "Hey " ++ name ++ ", you rock!"
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 However, `foo` would just have a value of `()`, so doing that would be kind of moot.
 Notice that we didn't bind the last `putStrLn` to anything.
@@ -212,13 +311,9 @@ But that's useless, so we leave out the `<-` for I/O actions that don't contain 
 
 Beginners sometimes think that doing
 
-
 ```haskell
 name = getLine
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 will read from the input and then bind the value of that to `name`.
 Well, it won't, all this does is give the `getLine` I/O action a different name called, well, `name`.
@@ -231,7 +326,7 @@ Either way, they'll be performed only if they eventually fall into `main`.
 Oh, right, there's also one more case when I/O actions will be performed.
 When we type out an I/O action in GHCi and press return, it will be performed.
 
-```text
+```haskell
 ghci> putStrLn "HEEY"
 HEEY
 ```
@@ -245,22 +340,241 @@ We also said that in list comprehensions, the `in` part isn't needed.
 Well, you can use them in `do` blocks pretty much like you use them in list comprehensions.
 Check this out:
 
-
 ```haskell
 import Data.Char
 
-main = do
-    putStrLn "What's your first name?"
-    firstName <- getLine
-    putStrLn "What's your last name?"
-    lastName <- getLine
-    let bigFirstName = map toUpper firstName
-        bigLastName = map toUpper lastName
-    putStrLn $ "hey " ++ bigFirstName ++ " " ++ bigLastName ++ ", how are you?"
+firstName <- display (textInput "firstName" "John")
+lastName <- display (textInput "lastName" "Doe")
+displayHtml $ "hey " ++ map toUpper firstName ++ " " ++ map toUpper lastName ++ ", how are you?"
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> <!-- MIME:text/html -->
+> <div id='sw_1263_firstName'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1263_firstName",cid:1263,name:"firstName",value:"John"});</script>
+> <!-- MIME:text/html -->
+> <div id='sw_1263_lastName'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1263_lastName",cid:1263,name:"lastName",value:"Doe"});</script>
+> <!-- MIME:text/html -->
+> hey JOHN DOE, how are you?
 
 See how the I/O actions in the `do` block are lined up?
 Also notice how the `let` is lined up with the I/O actions and the names of the `let` are lined up with each other?
@@ -279,14 +593,14 @@ Now we're going to make a program that continuously reads a line and prints out 
 The program's execution will stop when we input a blank line.
 This is the program:
 
-```text
-main = do
+```haskell
+mainReverse = do
     line <- getLine
     if null line
         then return ()
         else do
             putStrLn $ reverseWords line
-            main
+            mainReverse
 
 reverseWords :: String -> String
 reverseWords = unwords . map reverse . words
@@ -313,7 +627,7 @@ Let's first take a look at what happens under the `else` clause.
 Because, we have to have exactly one I/O action after the `else`, we use a `do` block to glue together two I/O actions into one.
 You could also write that part out as:
 
-```text
+```haskell
 else (do
     putStrLn $ reverseWords line
     main)
@@ -344,9 +658,8 @@ That's why we just made a bogus I/O action that doesn't do anything by writing `
 Using `return` doesn't cause the I/O `do` block to end in execution or anything like that.
 For instance, this program will quite happily carry out all the way to the last line:
 
-
 ```haskell
-main = do
+mainReturns = do
     return ()
     return "HAHAHA"
     line <- getLine
@@ -355,37 +668,32 @@ main = do
     putStrLn line
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 All these `return`s do is that they make I/O actions that don't really do anything except have an encapsulated result and that result is thrown away because it isn't bound to a name.
 We can use `return` in combination with `<-` to bind stuff to names.
 
-
 ```haskell
-main = do
+do
     a <- return "hell"
     b <- return "yeah!"
     putStrLn $ a ++ " " ++ b
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> hell yeah!
 
 So you see, `return` is sort of the opposite to `<-`.
 While `return` takes a value and wraps it up in a box, `<-` takes a box (and performs it) and takes the value out of it, binding it to a name.
 But doing this is kind of redundant, especially since you can use `let` bindings in `do` blocks to bind to names, like so:
 
-
 ```haskell
-main = do
+do
     let a = "hell"
         b = "yeah"
     putStrLn $ a ++ " " ++ b
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> hell yeah
 
 When dealing with I/O `do` blocks, we mostly use `return` either because we need to create an I/O action that doesn't do anything or because we don't want the I/O action that's made up from a `do` block to have the result value of its last action, but we want it to have a different result value, so we use `return` to make an I/O action that always has our desired result contained and we put it at the end.
 
@@ -397,17 +705,17 @@ Before we move on to files, let's take a look at some functions that are useful 
 
 `putStr` is much like `putStrLn` in that it takes a string as a parameter and returns an I/O action that will print that string to the terminal, only `putStr` doesn't jump into a new line after printing out the string while `putStrLn` does.
 
-
 ```haskell
-main = do   putStr "Hey, "
-            putStr "I'm "
-            putStrLn "Andy!"
+do
+    putStr "Hey, "
+    putStr "I'm "
+    putStrLn "Andy!"
 ```
 
 > <!-- scripths:mime text/plain -->
+> Hey, I'm Andy!
 
-
-```text
+```haskell
 $ runhaskell putstr_test.hs
 Hey, I'm Andy!
 ```
@@ -417,17 +725,14 @@ A dud value, so it doesn't make sense to bind it.
 
 `putChar` takes a character and returns an I/O action that will print it out to the terminal.
 
-
 ```haskell
-main = do   putChar 't'
-            putChar 'e'
-            putChar 'h'
+do
+    putChar 't'
+    putChar 'e'
+    putChar 'h'
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 $ runhaskell putchar_test.hs
 teh
 ```
@@ -435,7 +740,6 @@ teh
 `putStr` is actually defined recursively with the help of `putChar`.
 The edge condition of `putStr` is the empty string, so if we're printing an empty string, just return an I/O action that does nothing by using `return ()`.
 If it's not empty, then print the first character of the string by doing `putChar` and then print the remainder using `putStr` recursively.
-
 
 ```haskell
 putStr :: String -> IO ()
@@ -445,9 +749,6 @@ putStr (x:xs) = do
     putStr xs
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 See how we can use recursion in I/O, just like we can use it in pure code.
 Just like in pure code, we define the edge case and then think what the result actually is.
 It's an action that first outputs the first character and then outputs the rest of the string.
@@ -456,19 +757,23 @@ It's an action that first outputs the first character and then outputs the rest 
 Basically, it's just `putStrLn . show`.
 It first runs `show` on a value and then feeds that to `putStrLn`, which returns an I/O action that will print out our value.
 
-
 ```haskell
-main = do   print True
-            print 2
-            print "haha"
-            print 3.2
-            print [3,4,3]
+do
+    print True
+    print 2
+    print "haha"
+    print 3.2
+    print [3,4,3]
 ```
 
 > <!-- scripths:mime text/plain -->
+> True
+> 2
+> "haha"
+> 3.2
+> [3,4,3]
 
-
-```text
+```haskell
 $ runhaskell print_test.hs
 True
 2
@@ -477,11 +782,18 @@ True
 [3,4,3]
 ```
 
+> <!-- scripths:mime text/plain -->
+> True
+> 2
+> "haha"
+> 3.2
+> [3,4,3]
+
 As you can see, it's a very handy function.
 Remember how we talked about how I/O actions are performed only when they fall into `main` or when we try to evaluate them in the GHCi prompt?
 When we type out a value (like `3` or `[1,2,3]`) and press the return key, GHCi actually uses `print` on that value to display it on our terminal!
 
-```text
+```haskell
 ghci> 3
 3
 ghci> print 3
@@ -492,32 +804,34 @@ ghci> print (map (++"!") ["hey","ho","woo"])
 ["hey!","ho!","woo!"]
 ```
 
+> <!-- scripths:mime text/plain -->
+> 3
+> 3
+> ["hey!","ho!","woo!"]
+> ["hey!","ho!","woo!"]
+
 When we want to print out strings, we usually use `putStrLn` because we don't want the quotes around them, but for printing out values of other types to the terminal, `print` is used the most.
 
 `getChar` is an I/O action that reads a character from the input.
 Thus, its type signature is `getChar :: IO Char`, because the result contained within the I/O action is a `Char`.
 Note that due to buffering, reading of the characters won't actually happen until the user mashes the return key.
 
-
 ```haskell
-main = do
+mainGetChar = do
     c <- getChar
     if c /= ' '
         then do
             putChar c
-            main
+            mainGetChar
         else return ()
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 This program looks like it should read a character and then check if it's a space.
 If it is, halt execution and if it isn't, print it to the terminal and then do the same thing all over again.
 Well, it kind of does, only not in the way you might expect.
 Check this out:
 
-```text
+```haskell
 $ runhaskell getchar_test.hs
 hello sir
 hello
@@ -536,19 +850,15 @@ If that boolean value is `True`, it returns the same I/O action that we supplied
 However, if it's `False`, it returns the `return ()`, action, so an I/O action that doesn't do anything.
 Here's how we could rewrite the previous piece of code with which we demonstrated `getChar` by using `when`:
 
-
 ```haskell
 import Control.Monad
 
-main = do
+mainWhen = do
     c <- getChar
     when (c /= ' ') $ do
         putChar c
-        main
+        mainWhen
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 So as you can see, it's useful for encapsulating the <code>if *something* then do *some I/O action* else return ()</code> pattern.
 
@@ -557,29 +867,697 @@ The result contained in that I/O action will be a list of the results of all the
 Its type signature is `sequence :: [IO a] -> IO [a]`.
 Doing this:
 
-
 ```haskell
-main = do
-    a <- getLine
-    b <- getLine
-    c <- getLine
-    print [a,b,c]
+line1 <- display (textInput "line1" "first")
+line2 <- display (textInput "line2" "second")
+line3 <- display (textInput "line3" "third")
+print [line1, line2, line3]
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> <!-- MIME:text/html -->
+> <div id='sw_1294_line1'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1294_line1",cid:1294,name:"line1",value:"first"});</script>
+> <!-- MIME:text/html -->
+> <div id='sw_1294_line2'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1294_line2",cid:1294,name:"line2",value:"second"});</script>
+> <!-- MIME:text/html -->
+> <div id='sw_1294_line3'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1294_line3",cid:1294,name:"line3",value:"third"});</script>
+> ["first","second","third"]
 
 Is exactly the same as doing this:.
 
-
 ```haskell
-main = do
-    rs <- sequence [getLine, getLine, getLine]
-    print rs
+rs <- sequence [display (textInput "l1" "a"), display (textInput "l2" "b"), display (textInput "l3" "c")]
+print rs
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> <!-- MIME:text/html -->
+> <div id='sw_1296_l1'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1296_l1",cid:1296,name:"l1",value:"a"});</script>
+> <!-- MIME:text/html -->
+> <div id='sw_1296_l2'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1296_l2",cid:1296,name:"l2",value:"b"});</script>
+> <!-- MIME:text/html -->
+> <div id='sw_1296_l3'></div><script>// Shared runtime for Sabela's input widgets (slider, dropdown, checkbox,
+> // text input, button). Runs inside a cell's sandboxed output iframe and reports
+> // changes to the editor via parent.postMessage, where 22-widget-bridge.js POSTs
+> // them to /api/widget. The Haskell side (Sabela.Output.Widgets) embeds this file
+> // and emits a tiny sabelaXxx(cfg) bootstrap per widget — no inline event
+> // handlers, and values are set via the DOM (not string-concatenated HTML), so a
+> // value can never break out of its attribute.
+> 
+> // Report a widget change to the editor. `extra` carries optional fields
+> // (e.g. the text-cursor position) merged into the message.
+> function _sabelaPost(cid, name, value, extra) {
+>   var msg = { type: 'widget', cellId: cid, name: name, value: value };
+>   if (extra) {
+>     for (var k in extra) {
+>       if (Object.prototype.hasOwnProperty.call(extra, k)) msg[k] = extra[k];
+>     }
+>   }
+>   parent.postMessage(msg, '*');
+> }
+> 
+> // Replace the placeholder div (cfg.elId) with a freshly built control, and
+> // register it by name so a kernel→browser update (see below) can set its value.
+> function _sabelaMount(cfg, el, kind) {
+>   var host = document.getElementById(cfg.elId);
+>   if (!host) return;
+>   host.innerHTML = '';
+>   host.appendChild(el);
+>   _sabelaControls[cfg.name] = { el: el, kind: kind };
+> }
+> 
+> // Controls in this output iframe, keyed by widget name.
+> var _sabelaControls = {};
+> 
+> // Receive a value pushed from the kernel (04-sse.js forwards EvWidget here) and
+> // set the matching control. Setting .value/.checked programmatically does NOT
+> // fire input/change, so this cannot echo back out through the bridge.
+> window.addEventListener('message', function (e) {
+>   var d = e.data;
+>   if (!d || d.type !== 'widgetUpdate') return;
+>   var c = _sabelaControls[d.name];
+>   if (!c) return;
+>   if (c.kind === 'checkbox') c.el.checked = d.value === 'true';
+>   else {
+>     c.el.value = d.value;
+>     if (c.el._sabelaFit) c.el._sabelaFit();
+>   }
+> });
+> 
+> function sabelaSlider(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'range';
+>   el.min = cfg.min;
+>   el.max = cfg.max;
+>   if (cfg.step != null) el.step = cfg.step;
+>   el.value = cfg.value;
+>   el.addEventListener('input', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'slider');
+> }
+> 
+> function sabelaDropdown(cfg) {
+>   var el = document.createElement('select');
+>   for (var i = 0; i < cfg.options.length; i++) {
+>     var opt = document.createElement('option');
+>     opt.textContent = cfg.options[i];
+>     if (cfg.options[i] === cfg.value) opt.selected = true;
+>     el.appendChild(opt);
+>   }
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, el.value);
+>   });
+>   _sabelaMount(cfg, el, 'dropdown');
+> }
+> 
+> function sabelaCheckbox(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'checkbox';
+>   el.checked = !!cfg.checked;
+>   el.addEventListener('change', function () {
+>     _sabelaPost(cfg.cid, cfg.name, String(el.checked));
+>   });
+>   _sabelaMount(cfg, el, 'checkbox');
+> }
+> 
+> function sabelaTextInput(cfg) {
+>   var el = document.createElement('input');
+>   el.type = 'text';
+>   el.value = cfg.value;
+>   // Size the box to fit its text (with a sensible minimum) so the value isn't clipped.
+>   var fit = function () {
+>     el.size = Math.max(10, Math.min(80, el.value.length + 1));
+>   };
+>   fit();
+>   el.addEventListener('input', function () {
+>     fit();
+>     _sabelaPost(cfg.cid, cfg.name, el.value, { sel: el.selectionStart });
+>   });
+>   el._sabelaFit = fit;
+>   _sabelaMount(cfg, el, 'text');
+> }
+> 
+> function sabelaButton(cfg) {
+>   var el = document.createElement('button');
+>   el.textContent = cfg.label;
+>   el.addEventListener('click', function () {
+>     _sabelaPost(cfg.cid, cfg.name, 'clicked');
+>   });
+>   _sabelaMount(cfg, el, 'button');
+> }
+> sabelaTextInput({elId:"sw_1296_l3",cid:1296,name:"l3",value:"c"});</script>
+> ["a","b","c"]
 
 So `sequence [getLine, getLine, getLine]` makes an I/O action that will perform `getLine` three times.
 If we bind that action to a name, the result is a list of all the results, so in our case, a list of three things that the user entered at the prompt.
@@ -589,7 +1567,7 @@ Doing `map print [1,2,3,4]` won't create an I/O action.
 It will create a list of I/O actions, because that's like writing `[print 1, print 2, print 3, print 4]`.
 If we want to transform that list of I/O actions into an I/O action, we have to sequence it.
 
-```text
+```haskell
 ghci> sequence (map print [1,2,3,4,5])
 1
 2
@@ -598,6 +1576,14 @@ ghci> sequence (map print [1,2,3,4,5])
 5
 [(),(),(),(),()]
 ```
+
+> <!-- scripths:mime text/plain -->
+> 1
+> 2
+> 3
+> 4
+> 5
+> [(),(),(),(),()]
 
 What's with the `[(),(),(),(),()]` at the end?
 Well, when we evaluate an I/O action in GHCi, it's performed and then its result is printed out, unless that result is `()`, in which case it's not printed out.
@@ -609,7 +1595,7 @@ Because mapping a function that returns an I/O action over a list and then seque
 `mapM_` does the same, only it throws away the result later.
 We usually use `mapM_` when we don't care what result our sequenced I/O actions have.
 
-```text
+```haskell
 ghci> mapM print [1,2,3]
 1
 2
@@ -621,34 +1607,38 @@ ghci> mapM_ print [1,2,3]
 3
 ```
 
+> <!-- scripths:mime text/plain -->
+> 1
+> 2
+> 3
+> [(),(),()]
+> 1
+> 2
+> 3
+
 `forever` takes an I/O action and returns an I/O action that just repeats the I/O action it got forever.
 It's located in `Control.Monad`.
 This little program will indefinitely ask the user for some input and spit it back to him, CAPSLOCKED:
-
 
 ```haskell
 import Control.Monad
 import Data.Char
 
-main = forever $ do
+mainCapsForever = forever $ do
     putStr "Give me some input: "
     l <- getLine
     putStrLn $ map toUpper l
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 `forM` (located in `Control.Monad`) is like `mapM`, only that it has its parameters switched around.
 The first parameter is the list and the second one is the function to map over that list, which is then sequenced.
 Why is that useful?
 Well, with some creative use of lambdas and `do` notation, we can do stuff like this:
 
-
 ```haskell
 import Control.Monad
 
-main = do
+mainForM = do
     colors <- forM [1,2,3,4] (\a -> do
         putStrLn $ "Which color do you associate with the number " ++ show a ++ "?"
         color <- getLine
@@ -656,9 +1646,6 @@ main = do
     putStrLn "The colors that you associate with 1, 2, 3 and 4 are: "
     mapM putStrLn colors
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 The `(\a -> do ... )` is a function that takes a number and returns an I/O action.
 We have to surround it with parentheses, otherwise the lambda thinks the last two I/O actions belong to it.
@@ -675,7 +1662,7 @@ What each I/O action will do can depend on the element that was used to make the
 Finally, perform those actions and bind their results to something.
 We don't have to bind it, we can also just throw it away.
 
-```text
+```haskell
 $ runhaskell form_test.hs
 Which color do you associate with the number 1?
 white
@@ -727,7 +1714,7 @@ It'll say: *"Yeah yeah, I'll read the input from the terminal later as we go alo
 In case you don't know how piping works in unix-y systems, here's a quick primer.
 Let's make a text file that contains the following little haiku:
 
-```text
+```haskell
 I'm a lil' teapot
 What's with that airplane food, huh?
 It's so small, tasteless
@@ -740,26 +1727,22 @@ Now, recall the little program we wrote when we were introducing the `forever` f
 It prompted the user for a line, returned it to him in CAPSLOCK and then did that all over again, indefinitely.
 Just so you don't have to scroll all the way back, here it is again:
 
-
 ```haskell
 import Control.Monad
 import Data.Char
 
-main = forever $ do
+mainCapsLock = forever $ do
     putStr "Give me some input: "
     l <- getLine
     putStrLn $ map toUpper l
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We'll save that program as `capslocker.hs` or something and compile it.
 And then, we're going to use a unix pipe to feed our text file directly to our little program.
 We're going to use the help of the GNU *cat* program, which prints out a file that's given to it as an argument.
 Check it out, booyaka!
 
-```text
+```haskell
 $ ghc --make capslocker
 [1 of 1] Compiling Main             ( capslocker.hs, capslocker.o )
 Linking capslocker ...
@@ -781,24 +1764,20 @@ It's like running *cat haiku.txt* and saying: “Wait, don't print this out to t
 So what we're essentially doing with that use of `forever` is taking the input and transforming it into some output.
 That's why we can use `getContents` to make our program even shorter and better:
 
-
 ```haskell
 import Data.Char
 
-main = do
+mainCapsAll = do
     contents <- getContents
     putStr (map toUpper contents)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We run the `getContents` I/O action and name the string it produces `contents`.
 Then, we map `toUpper` over that string and print that to the terminal.
 Keep in mind that because strings are basically lists, which are lazy, and `getContents` is I/O lazy, it won't try to read the whole content at once and store it into memory before printing out the capslocked version.
 Rather, it will print out the capslocked version as it reads it, because it will only read a line from the input when it really needs to.
 
-```text
+```haskell
 $ cat haiku.txt | ./capslocker
 I'M A LIL' TEAPOT
 WHAT'S WITH THAT AIRPLANE FOOD, HUH?
@@ -808,7 +1787,7 @@ IT'S SO SMALL, TASTELESS
 Cool, it works.
 What if we just run *capslocker* and try to type in the lines ourselves?
 
-```text
+```haskell
 $ ./capslocker
 hey ho
 HEY HO
@@ -830,8 +1809,8 @@ And then, `putStr` says: *"Hey, I need the next line, come on!"* and this repeat
 Let's make program that takes some input and prints out only those lines that are shorter than 10 characters.
 Observe:
 
-```text
-main = do
+```haskell
+mainShortLines = do
     contents <- getContents
     putStr (shortLinesOnly contents)
 
@@ -853,7 +1832,7 @@ That list of string is then filtered so that only those lines that are shorter t
 And finally, `unlines` joins that list into a single newline delimited string, giving `"short\nshort again"`.
 Let's give it a go.
 
-```text
+```haskell
 i'm short
 so am i
 i am a loooooooooong line!!!
@@ -863,7 +1842,7 @@ loooooooooooooooooooooooooooong
 short
 ```
 
-```text
+```haskell
 $ ghc --make shortlinesonly
 [1 of 1] Compiling Main             ( shortlinesonly.hs, shortlinesonly.o )
 Linking shortlinesonly ...
@@ -879,9 +1858,8 @@ This pattern of getting some string from the input, transforming it with a funct
 `interact` takes a function of type `String -> String` as a parameter and returns an I/O action that will take some input, run that function on it and then print out the function's result.
 Let's modify our program to use that.
 
-
-```text
-main = interact shortLinesOnly
+```haskell
+mainInteractShort = interact shortLinesOnly
 
 shortLinesOnly :: String -> String
 shortLinesOnly input =
@@ -891,16 +1869,11 @@ shortLinesOnly input =
     in  result
 ```
 
-
 Just to show that this can be achieved in much less code (even though it will be less readable) and to demonstrate our function composition skill, we're going to rework that a bit further.
 
-
 ```haskell
-main = interact $ unlines . filter ((<10) . length) . lines
+mainInteractFilter = interact $ unlines . filter ((<10) . length) . lines
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Wow, we actually reduced that to just one line, which is pretty cool!
 
@@ -915,41 +1888,29 @@ In our case, we have to replace each line of the input with either `"palindrome"
 So we have to write a function that transforms something like `"elephant\nABCBA\nwhatever"` into `"not a palindrome\npalindrome\nnot a palindrome"`.
 Let's do this!
 
-
 ```haskell
 respondPalindromes contents = unlines (map (\xs -> if isPalindrome xs then "palindrome" else "not a palindrome") (lines contents))
     where   isPalindrome xs = xs == reverse xs
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Let's write this in point-free.
-
 
 ```haskell
 respondPalindromes = unlines . map (\xs -> if isPalindrome xs then "palindrome" else "not a palindrome") . lines
     where   isPalindrome xs = xs == reverse xs
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Pretty straightforward.
 First it turns something like `"elephant\nABCBA\nwhatever"` into `["elephant", "ABCBA", "whatever"]` and then it maps that lambda over it, giving `["not a palindrome", "palindrome", "not a palindrome"]` and then `unlines` joins that list into a single, newline delimited string.
 Now we can do
 
-
 ```haskell
-main = interact respondPalindromes
+mainPalindromes = interact respondPalindromes
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Let's test this out:
 
-```text
+```haskell
 $ runhaskell palindromes.hs
 hehe
 not a palindrome
@@ -967,7 +1928,7 @@ We get out of the program by issuing an end-of-file character.
 We can also use this program by just piping a file into it.
 Let's say we have this file:
 
-```text
+```haskell
 dogaroo
 radar
 rotor
@@ -977,7 +1938,7 @@ madam
 and we save it as `words.txt`.
 This is what we get by piping it into our program:
 
-```text
+```haskell
 $ cat words.txt | runhaskell palindromes.hs
 not a palindrome
 palindrome
@@ -1003,7 +1964,7 @@ Keeping that in mind, we'll see that writing to and reading from files is very m
 We'll start off with a really simple program that opens a file called *girlfriend.txt*, which contains a verse from Avril Lavigne's #1&nbsp;hit *Girlfriend*, and just prints it out to the terminal.
 Here's *girlfriend.txt*:
 
-```text
+```haskell
 Hey! Hey! You! You!
 I don't like your girlfriend!
 No way! No way!
@@ -1012,23 +1973,19 @@ I think you need a new one!
 
 And here's our program:
 
-
 ```haskell
 import System.IO
 
-main = do
+mainGirlfriend = do
     handle <- openFile "girlfriend.txt" ReadMode
     contents <- hGetContents handle
     putStr contents
     hClose handle
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Running it, we get the expected result:
 
-```text
+```haskell
 $ runhaskell girlfriend.hs
 Hey! Hey! You! You!
 I don't like your girlfriend!
@@ -1049,23 +2006,15 @@ If you read that out loud, it states: `openFile` takes a file path and an `IOMod
 
 `FilePath` is just a [type synonym](making-our-own-types-and-typeclasses.html#type-synonyms) for `String`, simply defined as:
 
-
 ```haskell
 type FilePath = String
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 `IOMode` is a type that's defined like this:
-
 
 ```haskell
 data IOMode = ReadMode | WriteMode | AppendMode | ReadWriteMode
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 ![A FILE IN A CAKE!!!](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/input-and-output/file.png)
 
@@ -1103,10 +2052,10 @@ What it returns is an I/O action that will open that file, do something we want 
 The result encapsulated in the final I/O action that's returned is the same as the result of the I/O action that the function we give it returns.
 This might sound a bit complicated, but it's really simple, especially with lambdas, here's our previous example rewritten to use `withFile`:
 
-```text
+```haskell
 import System.IO
 
-main = do
+mainWithFile = do
     withFile "girlfriend.txt" ReadMode (\handle -> do
         contents <- hGetContents handle
         putStr contents)
@@ -1119,7 +2068,7 @@ This way, `withFile` opens the file and then passes the handle to the function w
 It gets an I/O action back from that function and then makes an I/O action that's just like it, only it closes the file afterwards.
 Here's how we can make our own `withFile` function:
 
-```text
+```haskell
 withFile' :: FilePath -> IOMode -> (Handle -> IO a) -> IO a
 withFile' path mode f = do
     handle <- openFile path mode
@@ -1151,7 +2100,6 @@ Remember, `FilePath` is just a fancy name for `String`.
 It's usually more handy than doing `openFile` and binding it to a handle and then doing `hGetContents`.
 Here's how we could have written our previous example with `readFile`:
 
-
 ```haskell
 import System.IO
 
@@ -1160,9 +2108,6 @@ main = do
     putStr contents
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Because we don't get a handle with which to identify our file, we can't close it manually, so Haskell does that for us when we use `readFile`.
 
 `writeFile` has a type of `writeFile :: FilePath -> String -> IO ()`.
@@ -1170,20 +2115,16 @@ It takes a path to a file and a string to write to that file and returns an I/O 
 If such a file already exists, it will be stomped down to zero length before being written on.
 Here's how to turn *girlfriend.txt* into a CAPSLOCKED version and write it to *girlfriendcaps.txt*:
 
-
 ```haskell
 import System.IO
 import Data.Char
 
-main = do
+mainToCaps = do
     contents <- readFile "girlfriend.txt"
     writeFile "girlfriendcaps.txt" (map toUpper contents)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 $ runhaskell girlfriendtocaps.hs
 $ cat girlfriendcaps.txt
 HEY! HEY! YOU! YOU!
@@ -1197,19 +2138,15 @@ I THINK YOU NEED A NEW ONE!
 Let's say we have a file *todo.txt* that has one task per line that we have to do.
 Now let's make a program that takes a line from the standard input and adds that to our to-do list.
 
-
 ```haskell
 import System.IO
 
-main = do
+mainAppendTodo = do
     todoItem <- getLine
     appendFile "todo.txt" (todoItem ++ "\n")
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 $ runhaskell appendtodo.hs
 Iron the dishes
 $ runhaskell appendtodo.hs
@@ -1228,8 +2165,8 @@ Ooh, one more thing.
 We talked about how doing `contents <- hGetContents handle` doesn't cause the whole file to be read at once and stored in-memory.
 It's I/O lazy, so doing this:
 
-```text
-main = do
+```haskell
+mainSomething = do
     withFile "something.txt" ReadMode (\handle -> do
         contents <- hGetContents handle
         putStr contents)
@@ -1257,8 +2194,8 @@ If it's `Nothing`, then the operating system determines the chunk size.
 
 Here's our previous piece of code, only it doesn't read it line by line but reads the whole file in chunks of 2048 bytes.
 
-```text
-main = do
+```haskell
+mainBuffering = do
     withFile "something.txt" ReadMode (\handle -> do
         hSetBuffering handle $ BlockBuffering (Just 2048)
         contents <- hGetContents handle
@@ -1288,12 +2225,12 @@ We'll be using a few new functions from `System.Directory` and one new function 
 
 Anyway, here's the program for removing an item from *todo.txt*:
 
-```text
+```haskell
 import System.IO
 import System.Directory
 import Data.List
 
-main = do
+mainDeleteTodo = do
     handle <- openFile "todo.txt" ReadMode
     (tempName, tempHandle) <- openTempFile "." "temp"
     contents <- hGetContents handle
@@ -1349,7 +2286,7 @@ And that's that!
 We could have done this in even fewer lines, but we were very careful not to overwrite any existing files and politely asked the operating system to tell us where we can put our temporary file.
 Let's give this a go!
 
-```text
+```haskell
 $ runhaskell deletetodo.hs
 These are your TO-DO items:
 0 - Iron the dishes
@@ -1372,6 +2309,10 @@ Which one do you want to delete?
 $ cat todo.txt
 Take salad out of the oven
 ```
+
+> <!-- scripths:mime text/plain -->
+> 1
+> 0
 
 ## Command line arguments
 
@@ -1400,12 +2341,11 @@ One is `getArgs`, which has a type of `getArgs :: IO [String]` and is an I/O act
 
 Here's a small program that demonstrates how these two work:
 
-
 ```haskell
 import System.Environment
 import Data.List
 
-main = do
+mainArgs = do
     args <- getArgs
     progName <- getProgName
     putStrLn "The arguments are:"
@@ -1414,15 +2354,12 @@ main = do
     putStrLn progName
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 We bind `getArgs` and `progName` to `args` and `progName`.
 We say `The arguments are:` and then for every argument in `args`, we do `putStrLn`.
 Finally, we also print out the program name.
 Let's compile this as `arg-test`.
 
-```text
+```haskell
 $ ./arg-test first second w00t "multi word arg"
 The arguments are:
 first
@@ -1456,7 +2393,7 @@ It's going to be a simple association list that has command line arguments as ke
 All these functions will be of type `[String] -> IO ()`.
 They're going to take the argument list as a parameter and return an I/O action that does the viewing, adding, deleting, etc.
 
-```text
+```haskell
 import System.Environment
 import System.Directory
 import System.IO
@@ -1471,8 +2408,8 @@ dispatch =  [ ("add", add)
 
 We have yet to define `main`, `add`, `view` and `remove`, so let's start with `main`:
 
-```text
-main = do
+```haskell
+mainDispatch = do
     (command:args) <- getArgs
     let (Just action) = lookup command dispatch
     action args
@@ -1496,14 +2433,10 @@ Great!
 All that's left now is to implement `add`, `view` and `remove`.
 Let's start with `add`:
 
-
 ```haskell
 add :: [String] -> IO ()
 add [fileName, todoItem] = appendFile fileName (todoItem ++ "\n")
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 If we call our program like `todo add todo.txt "Spank the monkey"`, the `"add"` will get bound to `command` in the first pattern match in the `main` block, whereas `["todo.txt", "Spank the monkey"]` will get passed to the function that we get from the dispatch list.
 So, because we're not dealing with bad input right now, we just pattern match against a list with those two elements right away and return an I/O action that appends that line to the end of the file, along with a newline character.
@@ -1511,7 +2444,6 @@ So, because we're not dealing with bad input right now, we just pattern match ag
 Next, let's implement the list viewing functionality.
 If we want to view the items in a file, we do `todo view todo.txt`.
 So in the first pattern match, `command` will be `"view"` and `args` will be `["todo.txt"]`.
-
 
 ```haskell
 view :: [String] -> IO ()
@@ -1522,9 +2454,6 @@ view [fileName] = do
     putStr $ unlines numberedTasks
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 We already did pretty much the same thing in the program that only deleted tasks when we were displaying the tasks so that the user can choose one for deletion, only here we just display the tasks.
 
 And finally, we're going to implement `remove`.
@@ -1532,7 +2461,7 @@ It's going to be very similar to the program that only deleted the tasks, so if 
 The main difference is that we're not hardcoding *todo.txt* but getting it as an argument.
 We're also not prompting the user for the task number to delete, we're getting it as an argument.
 
-```text
+```haskell
 remove :: [String] -> IO ()
 remove [fileName, numberString] = do
     handle <- openFile fileName ReadMode
@@ -1552,7 +2481,7 @@ We opened up the file based on `fileName` and opened a temporary file, deleted t
 
 Here's the whole program at once, in all its glory!
 
-```text
+```haskell
 import System.Environment
 import System.Directory
 import System.IO
@@ -1564,7 +2493,7 @@ dispatch =  [ ("add", add)
             , ("remove", remove)
             ]
 
-main = do
+mainTodo = do
     (command:args) <- getArgs
     let (Just action) = lookup command dispatch
     action args
@@ -1604,7 +2533,7 @@ In other languages, we might have implemented this with a big switch case statem
 
 Let's try our app out!
 
-```text
+```haskell
 $ ./todo view todo.txt
 0 - Iron the dishes
 1 - Dust the dog
@@ -1655,14 +2584,10 @@ All that matters are its results.
 However, this makes it a bit tricky for getting random numbers.
 If I have a function like this:
 
-
 ```haskell
 randomNumber :: (Num a) => a
 randomNumber = 4
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 It's not very useful as a random number function because it will always return `4`, even though I can assure you that the 4 is completely random, because I used a die to determine it.
 
@@ -1698,11 +2623,11 @@ It has a type of `mkStdGen :: Int -> StdGen`.
 It takes an integer and based on that, gives us a random generator.
 Okay then, let's try using `random` and `mkStdGen` in tandem to get a (hardly random) number.
 
-```text
+```haskell
 ghci> random (mkStdGen 100)
 ```
 
-```text
+```haskell
 <interactive>:1:0:
     Ambiguous type variable `a' in the constraint:
       `Random a' arising from a use of `random' at <interactive>:1:0-20
@@ -1713,7 +2638,7 @@ What's this?
 Ah, right, the `random` function can return a value of any type that's part of the `Random` typeclass, so we have to inform Haskell what kind of type we want.
 Also let's not forget that it returns a random value and a random generator in a pair.
 
-```text
+```haskell
 ghci> random (mkStdGen 100) :: (Int, StdGen)
 (-1352021624,651872571 1655838864)
 ```
@@ -1723,7 +2648,7 @@ A number that looks kind of random!
 The first component of the tuple is our number whereas the second component is a textual representation of our new random generator.
 What happens if we call `random` with the same random generator again?
 
-```text
+```haskell
 ghci> random (mkStdGen 100) :: (Int, StdGen)
 (-1352021624,651872571 1655838864)
 ```
@@ -1732,7 +2657,7 @@ Of course.
 The same result for the same parameters.
 So let's try giving it a different random generator as a parameter.
 
-```text
+```haskell
 ghci> random (mkStdGen 949494) :: (Int, StdGen)
 (539963926,466647808 1655838864)
 ```
@@ -1740,7 +2665,7 @@ ghci> random (mkStdGen 949494) :: (Int, StdGen)
 Alright, cool, great, a different number.
 We can use the type annotation to get different types back from that function.
 
-```text
+```haskell
 ghci> random (mkStdGen 949488) :: (Float, StdGen)
 (0.8938442,1597344447 1655838864)
 ghci> random (mkStdGen 949488) :: (Bool, StdGen)
@@ -1757,7 +2682,7 @@ So this is where `random` returning a new generator along with a value really co
 We'll represent a coin with a simple `Bool`.
 `True` is tails, `False` is heads.
 
-```text
+```haskell
 threeCoins :: StdGen -> (Bool, Bool, Bool)
 threeCoins gen =
     let (firstCoin, newGen) = random gen
@@ -1771,7 +2696,7 @@ Then we call it again, only this time with our new generator, to get the second 
 We do the same for the third coin.
 Had we called it with the same generator every time, all the coins would have had the same value and we'd only be able to get `(False, False, False)` or `(True, True, True)` as a result.
 
-```text
+```haskell
 ghci> threeCoins (mkStdGen 21)
 (True,True,True)
 ghci> threeCoins (mkStdGen 22)
@@ -1782,6 +2707,12 @@ ghci> threeCoins (mkStdGen 944)
 (True,True,True)
 ```
 
+> <!-- scripths:mime text/plain -->
+> (True,True,True)
+> (True,False,True)
+> (True,False,True)
+> (True,True,True)
+
 Notice that we didn't have to do `random gen :: (Bool, StdGen)`.
 That's because we already specified that we want booleans in the type declaration of the function.
 That's why Haskell can infer that we want a boolean value in this case.
@@ -1790,7 +2721,7 @@ So what if we want to flip four coins?
 Or five?
 Well, there's a function called `randoms` that takes a generator and returns an infinite sequence of values based on that generator.
 
-```text
+```haskell
 ghci> take 5 $ randoms (mkStdGen 11) :: [Int]
 [-1807975507,545074951,-1015194702,-1622477312,-502893664]
 ghci> take 5 $ randoms (mkStdGen 11) :: [Bool]
@@ -1799,10 +2730,15 @@ ghci> take 5 $ randoms (mkStdGen 11) :: [Float]
 [7.904789e-2,0.62691015,0.26363158,0.12223756,0.38291094]
 ```
 
+> <!-- scripths:mime text/plain -->
+> [-1807975507,545074951,-1015194702,-1622477312,-502893664]
+> [True,True,True,True,False]
+> [7.904789e-2,0.62691015,0.26363158,0.12223756,0.38291094]
+
 Why doesn't `randoms` return a new generator as well as a list?
 We could implement the `randoms` function very easily like this:
 
-```text
+```haskell
 randoms' :: (RandomGen g, Random a) => g -> [a]
 randoms' gen = let (value, newGen) = random gen in value:randoms' newGen
 ```
@@ -1813,7 +2749,7 @@ Because we have to be able to potentially generate an infinite amount of numbers
 
 We could make a function that generates a finite stream of numbers and a new generator like this:
 
-```text
+```haskell
 finiteRandoms :: (RandomGen g, Random a, Num n) => n -> g -> ([a], g)
 finiteRandoms 0 gen = ([], gen)
 finiteRandoms n gen =
@@ -1835,7 +2771,7 @@ What if we want to throw a die?
 Well, we use `randomR` for that purpose.
 It has a type of `randomR :: (RandomGen g, Random a) => (a, a) -> g -> (a, g)`, meaning that it's kind of like `random`, only it takes as its first parameter a pair of values that set the lower and upper bounds and the final value produced will be within those bounds.
 
-```text
+```haskell
 ghci> randomR (1,6) (mkStdGen 359353)
 (6,1494289578 40692)
 ghci> randomR (1,6) (mkStdGen 35935335)
@@ -1845,10 +2781,13 @@ ghci> randomR (1,6) (mkStdGen 35935335)
 There's also `randomRs`, which produces a stream of random values within our defined ranges.
 Check this out:
 
-```text
+```haskell
 ghci> take 10 $ randomRs ('a','z') (mkStdGen 3) :: [Char]
 "ndkxbvmomg"
 ```
+
+> <!-- scripths:mime text/plain -->
+> "ndkxbvmomg"
 
 Nice, looks like a super secret password or something.
 
@@ -1862,19 +2801,15 @@ When your program starts, it asks the system for a good random number generator 
 
 Here's a simple program that generates a random string.
 
-
 ```haskell
 import System.Random
 
-main = do
+do
     gen <- getStdGen
     putStr $ take 20 (randomRs ('a','z') gen)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 $ runhaskell random_string.hs
 pybphhzzhuepknbykxhe
 $ runhaskell random_string.hs
@@ -1888,11 +2823,10 @@ bakzhnnuzrkgvesqplrx
 Be careful though, just performing `getStdGen` twice will ask the system for the same global generator twice.
 If you do this:
 
-
 ```haskell
 import System.Random
 
-main = do
+do
     gen <- getStdGen
     putStrLn $ take 20 (randomRs ('a','z') gen)
     gen2 <- getStdGen
@@ -1900,18 +2834,17 @@ main = do
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> hwpffwigybmhouxvkcid
 
 you will get the same string printed out twice!
 One way to get two different strings of length 20 is to set up an infinite stream and then take the first 20 characters and print them out in one line and then take the second set of 20 characters and print them out in the second line.
 For this, we can use the `splitAt` function from `Data.List`, which splits a list at some index and returns a tuple that has the first part as the first component and the second part as the second component.
 
-
 ```haskell
 import System.Random
 import Data.List
 
-main = do
+do
     gen <- getStdGen
     let randomChars = randomRs ('a','z') gen
         (first20, rest) = splitAt 20 randomChars
@@ -1921,16 +2854,15 @@ main = do
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> hwpffwigybmhouxvkcid
 
 Another way is to use the `newStdGen` action, which splits our current random generator into two generators.
 It updates the global random generator with one of them and encapsulates the other as its result.
 
-
 ```haskell
 import System.Random
 
-main = do
+do
     gen <- getStdGen
     putStrLn $ take 20 (randomRs ('a','z') gen)
     gen' <- newStdGen
@@ -1938,17 +2870,17 @@ main = do
 ```
 
 > <!-- scripths:mime text/plain -->
-
+> hwpffwigybmhouxvkcid
 
 Not only do we get a new random generator when we bind `newStdGen` to something, the global one gets updated as well, so if we do `getStdGen` again and bind it to something, we'll get a generator that's not the same as `gen`.
 
 Here's a little program that will make the user guess which number it's thinking of.
 
-```text
+```haskell
 import System.Random
 import Control.Monad(when)
 
-main = do
+mainGuess = do
     gen <- getStdGen
     askForNumber gen
 
@@ -1990,7 +2922,7 @@ And then we call `askForNumber` recursively, only this time with the new generat
 
 Here's our program in action!
 
-```text
+```haskell
 $ runhaskell guess_the_number.hs
 Which number in the range from 1 to 10 am I thinking of? 4
 Sorry, it was 3
@@ -2005,12 +2937,11 @@ Which number in the range from 1 to 10 am I thinking of?
 
 Another way to make this same program is like this:
 
-
 ```haskell
 import System.Random
 import Control.Monad(when)
 
-main = do
+mainGuessLoop = do
     gen <- getStdGen
     let (randNumber, _) = randomR (1,10) gen :: (Int, StdGen)
     putStr "Which number in the range from 1 to 10 am I thinking of? "
@@ -2021,11 +2952,8 @@ main = do
             then putStrLn "You are correct!"
             else putStrLn $ "Sorry, it was " ++ show randNumber
         newStdGen
-        main
+        mainGuessLoop
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 It's very similar to the previous version, only instead of making a function that takes a generator and then calls itself recursively with the new updated generator, we do all the work in `main`.
 After telling the user whether they were correct in their guess or not, we update the global generator and then call `main` again.
@@ -2080,7 +3008,8 @@ If you look through the [documentation](https://hackage.haskell.org/package/byte
 The functions with the same names mostly act the same as the ones that work on lists.
 Because the names are the same, we're going to do a qualified import in a script and then load that script into GHCi to play with bytestrings.
 
-```text
+```haskell
+-- cabal: build-depends: bytestring
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString as S
 ```
@@ -2099,7 +3028,7 @@ And just like `Int`, it's in the `Num` typeclass.
 For instance, we know that the value `5` is polymorphic in that it can act like any numeral type.
 Well, it can also take the type of `Word8`.
 
-```text
+```haskell
 ghci> B.pack [99,97,110]
 Chunk "can" Empty
 ghci> B.pack [98..120]
@@ -2118,10 +3047,12 @@ It takes a bytestring and turns it into a list of bytes.
 `fromChunks` takes a list of strict bytestrings and converts it to a lazy bytestring.
 `toChunks` takes a lazy bytestring and converts it to a list of strict ones.
 
-```text
-ghci> B.fromChunks [S.pack [40,41,42], S.pack [43,44,45], S.pack [46,47,48]]
-Chunk "()*" (Chunk "+,-" (Chunk "./0" Empty))
+```haskell
+B.fromChunks [S.pack [40,41,42], S.pack [43,44,45], S.pack [46,47,48]]
 ```
+
+> <!-- scripths:mime text/plain -->
+> "()*+,-./0"
 
 This is good if you have a lot of small strict bytestrings and you want to process them efficiently without joining them into one big strict bytestring in memory first.
 
@@ -2129,17 +3060,21 @@ The bytestring version of `:` is called `cons` It takes a byte and a bytestring 
 It's lazy though, so it will make a new chunk even if the first chunk in the bytestring isn't full.
 That's why it's better to use the strict version of `cons`, `cons'` if you're going to be inserting a lot of bytes at the beginning of a bytestring.
 
-```text
-ghci> B.cons 85 $ B.pack [80,81,82,84]
-Chunk "U" (Chunk "PQRT" Empty)
-ghci> B.cons' 85 $ B.pack [80,81,82,84]
-Chunk "UPQRT" Empty
-ghci> foldr B.cons B.empty [50..60]
-Chunk "2" (Chunk "3" (Chunk "4" (Chunk "5" (Chunk "6" (Chunk "7" (Chunk "8" (Chunk "9" (Chunk ":" (Chunk ";" (Chunk "<"
-Empty))))))))))
-ghci> foldr B.cons' B.empty [50..60]
-Chunk "23456789:;<" Empty
+```haskell
+B.cons 85 $ B.pack [80,81,82,84]
+
+B.cons' 85 $ B.pack [80,81,82,84]
+
+foldr B.cons B.empty [50..60]
+
+foldr B.cons' B.empty [50..60]
 ```
+
+> <!-- scripths:mime text/plain -->
+> "UPQRT"
+> "UPQRT"
+> "23456789:;<"
+> "23456789:;<"
 
 As you can see, `empty` makes an empty bytestring.
 See the difference between `cons` and `cons'`?
@@ -2156,11 +3091,11 @@ With lazy bytestrings, it will read it into neat chunks.
 Let's make a simple program that takes two filenames as command-line arguments and copies the first file into the second file.
 Note that `System.Directory` already has a function called `copyFile`, but we're going to implement our own file copying function and program anyway.
 
-```text
+```haskell
 import System.Environment
 import qualified Data.ByteString.Lazy as B
 
-main = do
+mainCopy = do
     (fileName1:fileName2:_) <- getArgs
     copyFile fileName1 fileName2
 
@@ -2173,8 +3108,8 @@ copyFile source dest = do
 We make our own function that takes two `FilePath`s (remember, `FilePath` is just a synonym for `String`) and returns an I/O action that will copy one file into another using bytestring.
 In the `main` function, we just get the arguments and call our function with them to get the I/O action, which is then performed.
 
-```text
-$ runhaskell bytestringcopy.hs something.txt ../../something.txt
+```haskell
+:! runhaskell bytestringcopy.hs something.txt ../../something.txt
 ```
 
 Notice that a program that doesn't use bytestrings could look just like this, the only difference is that we used `B.readFile` and `B.writeFile` instead of `readFile` and `writeFile`.
@@ -2219,11 +3154,10 @@ They have types of `(Integral a) => a -> a -> a` and `[a] -> a`, respectively.
 No `Maybe` or `Either` in their return type and yet they can both fail!
 `div` explodes in your face if you try to divide by zero and `head` throws a tantrum when you give it an empty list.
 
-```text
-ghci> 4 `div` 0
-*** Exception: divide by zero
-ghci> head []
-*** Exception: Prelude.head: empty list
+```haskell
+4 `div` 0
+
+head []
 ```
 
 ![Stop right there, criminal scum! Nobody breaks the law on my watch! Now pay your fine or it's off to jail.](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/input-and-output/police.png){width=241 height=328 .left}
@@ -2250,18 +3184,14 @@ I/O exceptions are exceptions that are caused when something goes wrong while we
 For example, we can try opening a file and then it turns out that the file has been deleted or something.
 Take a look at this program that opens a file whose name is given to it as a command line argument and tells us how many lines the file has.
 
-
 ```haskell
 import System.Environment
 import System.IO
 
-main = do (fileName:_) <- getArgs
+mainLineCount = do (fileName:_) <- getArgs
           contents <- readFile fileName
           putStrLn $ "The file has " ++ show (length (lines contents)) ++ " lines!"
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 A very simple program.
 We perform the `getArgs` I/O action and bind the first string in the list that it yields to `fileName`.
@@ -2269,7 +3199,7 @@ Then we call the contents of the file with that name `contents`.
 Lastly, we apply `lines` to those contents to get a list of lines and then we get the length of that list and give it to `show` to get a string representation of that number.
 It works as expected, but what happens when we give it the name of a file that doesn't exist?
 
-```text
+```haskell
 $ runhaskell linecount.hs i_dont_exist.txt
 linecount.hs: i_dont_exist.txt: openFile: does not exist (No such file or directory)
 ```
@@ -2279,22 +3209,18 @@ Our program crashes.
 What if we wanted to print out a nicer message if the file doesn't exist?
 One way to do that is to check if the file exists before trying to open it by using the `doesFileExist` function from `System.Directory`.
 
-
 ```haskell
 import System.Environment
 import System.IO
 import System.Directory
 
-main = do (fileName:_) <- getArgs
+mainCountExist = do (fileName:_) <- getArgs
           fileExists <- doesFileExist fileName
           if fileExists
               then do contents <- readFile fileName
                       putStrLn $ "The file has " ++ show (length (lines contents)) ++ " lines!"
               else do putStrLn "The file doesn't exist!"
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We did `fileExists <- doesFileExist fileName` because `doesFileExist` has a type of `doesFileExist :: FilePath -> IO Bool`, which means that it returns an I/O action that has as its result a boolean value which tells us if the file exists.
 We can't just use `doesFileExist` in an `if` expression directly.
@@ -2326,12 +3252,12 @@ We can use a bunch of useful predicates to find out stuff about values of type `
 
 So let's put our new friend `catch` to use!
 
-```text
+```haskell
 import System.Environment
 import System.IO
 import System.IO.Error
 
-main = toTry `catch` handler
+mainCatch = toTry `catch` handler
 
 toTry :: IO ()
 toTry = do (fileName:_) <- getArgs
@@ -2349,7 +3275,7 @@ So ``toTry `catch` handler`` is the same as `catch toTry handler`, which fits we
 
 Let's give this a go:
 
-```text
+```haskell
 $ runhaskell count_lines.hs i_exist.txt
 The file has 3 lines!
 
@@ -2366,12 +3292,12 @@ If it's the kind of exception we're waiting to catch, we do our stuff.
 If it's not, we throw that exception back into the wild.
 Let's modify our program to catch only the exceptions caused by a file not existing.
 
-```text
+```haskell
 import System.Environment
 import System.IO
 import System.IO.Error
 
-main = toTry `catch` handler
+mainCatch2 = toTry `catch` handler
 
 toTry :: IO ()
 toTry = do (fileName:_) <- getArgs
@@ -2414,7 +3340,7 @@ For instance, you can do `ioError $ userError "remote computer unplugged!"`, alt
 
 So you could have a handler that looks something like this:
 
-```text
+```haskell
 handler :: IOError -> IO ()
 handler e
     | isDoesNotExistError e = putStrLn "The file doesn't exist!"
@@ -2436,12 +3362,12 @@ It takes an `IOError` as a parameter and maybe returns a `FilePath` (which is ju
 Basically, what it does is it extracts the file path from the `IOError`, if it can.
 Let's modify our program to print out the file path that's responsible for the exception occurring.
 
-```text
+```haskell
 import System.Environment
 import System.IO
 import System.IO.Error
 
-main = toTry `catch` handler
+mainCatch3 = toTry `catch` handler
 
 toTry :: IO ()
 toTry = do (fileName:_) <- getArgs
@@ -2462,8 +3388,8 @@ Using `case` expressions is commonly used when you want to pattern match against
 You don't have to use one handler to `catch` exceptions in your whole I/O part.
 You can just cover certain parts of your I/O code with `catch` or you can cover several of them with `catch` and use different handlers for them, like so:
 
-```text
-main = do toTry `catch` handler1
+```haskell
+mainMulti = do toTry `catch` handler1
           thenTryThis `catch` handler2
           launchRockets
 ```

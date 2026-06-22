@@ -144,7 +144,7 @@ spec = describe "Proxy" $ do
             now <- getCurrentTime
             let m =
                     Map.fromList
-                        [ ("stale", addUTCTime (-1200) now)
-                        , ("fresh", addUTCTime (-60) now)
+                        [ ("stale", (addUTCTime (-1200) now, Nothing))
+                        , ("fresh", (addUTCTime (-60) now, Just "/_hub/cli-auth?code=X"))
                         ]
             Map.keys (dropExpiredStates now m) `shouldBe` ["fresh"]

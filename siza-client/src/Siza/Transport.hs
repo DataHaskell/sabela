@@ -38,7 +38,6 @@ import Sabela.AI.Capabilities.ToolName (ToolName, toolWireName)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.HubToken (TokenStatus (..), statusForUrl)
 import System.Environment (lookupEnv)
-import System.IO (hPutStrLn, stderr)
 
 -- | Process-level configuration read once from the environment.
 data Env = Env
@@ -87,20 +86,19 @@ newConn = do
     pure (Conn mgr env)
 
 {- | Attach a saved @siza login@ token as the bearer when the target is a hub
-('SABELA_URL') and no explicit 'SABELA_AI_TOKEN' was given. An expired token
-for that hub prints a hint; an explicit token always wins.
+('SABELA_URL') and no explicit 'SABELA_AI_TOKEN' was given. An explicit token
+always wins. An expired token is left unattached; the data-command path
+('Siza.Cli') turns that into a clear "run siza login" error rather than a
+silent unauthenticated request.
 -}
 attachHubToken :: Env -> IO Env
 attachHubToken env
     | Just _ <- envToken env = pure env
     | Just url <- envSabelaUrl env = do
         st <- statusForUrl url
-        case st of
-            Valid t -> pure env{envToken = Just t}
-            Expired -> do
-                hPutStrLn stderr "siza: saved hub token expired; run 'siza login' to refresh."
-                pure env
-            NoToken -> pure env
+        pure $ case st of
+            Valid t -> env{envToken = Just t}
+            _ -> env
     | otherwise = pure env
 
 {- | Common request headers: content type, session, an optional bearer token

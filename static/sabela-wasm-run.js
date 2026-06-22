@@ -225,9 +225,14 @@ function parseHaskellCells(source) {
 // 49ms; the ~2s is base processing per run.
 //
 // Instead we boot ONE long-lived `mhsi` REPL (Module.arguments=[]) in a single
-// kept-alive iframe. Base loads ONCE; then each input evaluates in ~90ms. We feed
-// input via Module._set_input_char and read output from the FS.init stdout
-// callback (the iframe is same-origin, so the parent reads window.__so directly).
+// kept-alive iframe. Base loads ONCE; then each input evaluates in ~90ms.
+//
+// The session runs in a child iframe whose origin may be OPAQUE: the gallery
+// collection reader frames a share with `sandbox` and no `allow-same-origin`,
+// so the parent CANNOT touch the child's `window` (`window.__so` / `Module`)
+// directly. Every byte of output and every input line therefore crosses via
+// `postMessage`, which is allowed cross-origin. The child mirrors stdout/stderr
+// to the parent and accepts input lines back.
 //
 //     MhsEngine.load()           -> Promise<void>            (boot/warm; memoised)
 //     MhsEngine.available        -> boolean                  (session ready)
@@ -248,6 +253,27 @@ const MhsEngine = (function () {
   let feedId = 0;
   let chain = Promise.resolve(); // serialise feeds so they never interleave
 
+  // The session iframe's cumulative stdout/stderr, mirrored here over
+  // postMessage because the child may be a distinct opaque origin (the reader's
+  // sandbox), which makes a direct `frame.contentWindow.__so` read a
+  // SecurityError. The child posts the FULL string on change, so these always
+  // hold the latest cumulative output.
+  let soBuf = '';
+  let seBuf = '';
+  let childReady = false;
+
+  window.addEventListener('message', (e) => {
+    if (!frame || e.source !== frame.contentWindow) return;
+    const d = e.data;
+    if (!d || typeof d !== 'object' || typeof d.sws !== 'string') return;
+    if (d.sws === 'out') soBuf = d.v;
+    else if (d.sws === 'err') seBuf = d.v;
+    else if (d.sws === 'ready') {
+      if (typeof d.so === 'string') soBuf = d.so;
+      childReady = true;
+    }
+  });
+
   // Rendered-but-invisible frame. It MUST stay schedulable (real area, near-zero
   // opacity, top z-index) or Chrome throttles the idle session and feeds stall.
   function ensureFrame() {
@@ -260,21 +286,36 @@ const MhsEngine = (function () {
     return frame;
   }
 
-  // The session document: boot mhsi interactive, mirror stdout/stderr into
-  // window.__so/__se (the parent reads them same-origin), no exit hooks.
+  // The session document: boot mhsi interactive, stream stdout/stderr to the
+  // parent via postMessage (it can't read our window cross-origin), accept input
+  // lines the parent posts back, and announce readiness. No exit hooks.
   function sessionDoc() {
     return [
       '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>',
       '(function(){',
-      '  window.__so="";window.__se="";',
-      '  function so(c){if(c!==null)window.__so+=String.fromCharCode(c);}',
-      '  function se(c){if(c!==null)window.__se+=String.fromCharCode(c);}',
+      '  var so="",se="",soP=false,seP=false;',
+      '  function flush(k,v){parent.postMessage({sws:k,v:v},"*");}',
+      '  function so_(c){if(c!==null){so+=String.fromCharCode(c);' +
+        'if(!soP){soP=true;setTimeout(function(){soP=false;flush("out",so);},0);}}}',
+      '  function se_(c){if(c!==null){se+=String.fromCharCode(c);' +
+        'if(!seP){seP=true;setTimeout(function(){seP=false;flush("err",se);},0);}}}',
+      '  window.addEventListener("message",function(e){',
+      '    if(e.source!==window.parent)return;var d=e.data;',
+      '    if(!d||d.sws!=="input"||typeof d.s!=="string")return;',
+      '    if(!(window.Module&&Module._set_input_char))return;',
+      '    for(var i=0;i<d.s.length;i++)Module._set_input_char(d.s.charCodeAt(i));',
+      '    Module._set_input_char(10);',
+      '  });',
       '  window.Module={arguments:[],preRun:[function(){',
-      '    Module.FS.init(function(){return null;},so,se);',
+      '    Module.FS.init(function(){return null;},so_,se_);',
       '    Module.FS.chdir(' + JSON.stringify(MHS_EMBED.home) + ');',
       '  }],print:function(){},printErr:function(){}};',
+      '  var rdy=setInterval(function(){',
+      '    if(window.Module&&typeof Module._set_input_char==="function"&&so.indexOf("> ")>=0){',
+      '      clearInterval(rdy);parent.postMessage({sws:"ready",so:so},"*");}',
+      '  },30);',
       '  var s=document.createElement("script");s.src=' + JSON.stringify(MHS_EMBED.url) + ';',
-      '  s.onerror=function(){window.__se+="failed to load MicroHs embed\\n";};',
+      '  s.onerror=function(){se+="failed to load MicroHs embed\\n";flush("err",se);};',
       '  document.body.appendChild(s);',
       '})();',
       '<' + '/script></body></html>',
@@ -285,17 +326,12 @@ const MhsEngine = (function () {
     if (bootPromise) return bootPromise;
     bootPromise = new Promise((resolve, reject) => {
       const f = ensureFrame();
+      soBuf = '';
+      seBuf = '';
+      childReady = false;
       f.srcdoc = sessionDoc();
       const poll = setInterval(() => {
-        const w = f.contentWindow;
-        // ready when the prompt has printed and the input hook exists
-        if (
-          w &&
-          w.__so &&
-          w.__so.indexOf('> ') >= 0 &&
-          w.Module &&
-          typeof w.Module._set_input_char === 'function'
-        ) {
+        if (childReady) {
           clearInterval(poll);
           clearTimeout(to);
           ready = true;
@@ -310,9 +346,9 @@ const MhsEngine = (function () {
     return bootPromise;
   }
 
-  function sendLine(w, s) {
-    for (let i = 0; i < s.length; i++) w.Module._set_input_char(s.charCodeAt(i));
-    w.Module._set_input_char(10);
+  // One REPL input line to the session (the child appends the newline).
+  function sendLine(s) {
+    frame.contentWindow.postMessage({ sws: 'input', s: s }, '*');
   }
 
   function waitFor(pred, ms) {
@@ -349,22 +385,21 @@ const MhsEngine = (function () {
   function feedNow(lines) {
     return (async () => {
       await load();
-      const w = frame.contentWindow;
       const id = ++feedId;
       const S = '@@SWS' + id + '@@';
       const E = '@@SWE' + id + '@@';
-      const mark = w.__so.length;
-      sendLine(w, 'putStrLn "' + S + '"');
-      for (const l of lines) if (l.trim().length) sendLine(w, l);
-      sendLine(w, 'putStrLn "' + E + '"');
+      const mark = soBuf.length;
+      sendLine('putStrLn "' + S + '"');
+      for (const l of lines) if (l.trim().length) sendLine(l);
+      sendLine('putStrLn "' + E + '"');
       // The PRINTED sentinel is the token followed by a newline; the echo is the
       // token followed by a quote, so `E + "\n"` matches only the print.
-      await waitFor(() => w.__so.indexOf(E + '\n', mark) >= 0, MHS_FEED_TIMEOUT_MS);
-      const buf = w.__so;
+      await waitFor(() => soBuf.indexOf(E + '\n', mark) >= 0, MHS_FEED_TIMEOUT_MS);
+      const buf = soBuf;
       const sStart = buf.indexOf(S + '\n', mark);
       const from = sStart >= 0 ? sStart + (S + '\n').length : mark;
-      const to = buf.indexOf(E + '\n', from);
-      return parseRegion(buf.slice(from, to));
+      const end = buf.indexOf(E + '\n', from);
+      return parseRegion(buf.slice(from, end));
     })();
   }
 

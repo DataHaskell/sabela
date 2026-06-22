@@ -36,6 +36,7 @@ import Siza.Cli.Await (awaitBudgetParser, runAwaitIdle)
 import Siza.Cli.Provenance (logToolCall)
 import Siza.Cli.Retro (RetroTarget, retroTargetParser, runRetro)
 import Siza.Discover (Server (..), defaultLocalUrl, discover, serverValue)
+import Siza.HubToken (TokenStatus (..), statusForUrl)
 import Siza.Language (
     Diagnostic,
     Severity (Error),
@@ -188,8 +189,8 @@ runCommand :: Command -> IO ()
 runCommand = \case
     Check src policy -> runCheck src policy
     Retro target -> runRetro target
-    Logout -> runLogout
-    Login mUrl -> withConn $ \conn ->
+    Logout -> rawConn runLogout
+    Login mUrl -> rawConn $ \conn ->
         runLogin conn (fromMaybe defaultLocalUrl (mUrl <|> envSabelaUrl (connEnv conn)))
     Await budget ->
         withConn $ \conn -> withFirstServer conn $ \srv ->
@@ -212,8 +213,33 @@ runCommand = \case
             logToolCall conn srv name input mpf res
             either fatal emitOutcome res
 
+{- | A connection for the data commands: fails fast with a clear message when
+the saved hub token for the target has expired, rather than sending an
+unauthenticated request that the hub answers with the login page.
+-}
 withConn :: (Conn -> IO ()) -> IO ()
-withConn k = newConn >>= k
+withConn k = do
+    conn <- newConn
+    guardHubAuth (connEnv conn)
+    k conn
+
+-- | A connection with no expiry guard, for @login@/@logout@ themselves.
+rawConn :: (Conn -> IO ()) -> IO ()
+rawConn k = newConn >>= k
+
+guardHubAuth :: Env -> IO ()
+guardHubAuth env
+    | Nothing <- envToken env
+    , Just url <- envSabelaUrl env = do
+        st <- statusForUrl url
+        case st of
+            Expired -> do
+                hPutStrLn
+                    stderr
+                    ("siza: hub token for " <> T.unpack url <> " expired; run 'siza login'.")
+                exitFailure
+            _ -> pure ()
+    | otherwise = pure ()
 
 {- | Run the 'preflight' parse + security gate over a mutation tool's source
 before the call leaves the client, so the agent-facing @siza tool@ surface

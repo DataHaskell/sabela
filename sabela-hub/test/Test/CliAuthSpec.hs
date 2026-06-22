@@ -44,37 +44,56 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
                 (encode (object ["deviceCode" .= ("nope" :: Text)]))
         jstr "status" r `shouldBe` Just "expired"
 
-    it "the authorize page falls back to login when unauthenticated" $ do
+    it "redirects an unauthenticated authorize-page visit to login (with next)" $ do
         app <- makeAppSess
         r <- get app "/_hub/cli-auth?code=ABCD1234" []
+        simpleStatus r `shouldBe` status302
         body r `shouldNotSatisfy` isInfixOf "Approve access"
+        fmap
+            (T.isInfixOf "/_hub/login" . TE.decodeUtf8)
+            (lookup hLocation (simpleHeaders r))
+            `shouldBe` Just True
+
+    it "redirects a stale (non-live) session cookie to login, not the page" $ do
+        app <- makeAppSess
+        r <- get app "/_hub/cli-auth?code=ABCD1234" [cookie "ghost"]
+        simpleStatus r `shouldBe` status302
+        body r `shouldNotSatisfy` isInfixOf "Approve access"
+
+    it "never puts the user code in the authorize page (typed out-of-band)" $ do
+        app <- makeAppSess
+        start <- post app "/_hub/cli-auth/start" [] ""
+        let user = fromJust (jstr "userCode" start)
+        page <- get app ("/_hub/cli-auth?code=" <> user) [cookie "usersid"]
+        body page `shouldSatisfy` isInfixOf "Approve access"
+        body page `shouldNotSatisfy` isInfixOf (T.unpack user)
+
+    it "issues a unique high-entropy (12-char) user code" $ do
+        app <- makeAppSess
+        start <- post app "/_hub/cli-auth/start" [] ""
+        fmap T.length (jstr "userCode" start) `shouldBe` Just 12
+
+    it "405s a wrong-method cli-auth request instead of proxying it" $ do
+        app <- makeAppSess
+        r <- get app "/_hub/cli-auth/start" [] -- GET on a POST-only route
+        simpleStatus r `shouldBe` status405
 
     it "approve binds a token that resolves to the approver's session" $ do
         app <- makeAppSess
-        start <- post app "/_hub/cli-auth/start" [] ""
-        let device = fromJust (jstr "deviceCode" start)
-            user = fromJust (jstr "userCode" start)
-        page <- get app ("/_hub/cli-auth?code=" <> user) [cookie "usersid"]
-        body page `shouldSatisfy` isInfixOf "Approve access"
-        body page `shouldSatisfy` isInfixOf (T.unpack user)
-        let csrf = fromJust (csrfFrom page)
-        appr <-
-            post
-                app
-                "/_hub/cli-auth/approve"
-                [cookie "usersid"]
-                (encode (object ["userCode" .= user, "csrf" .= csrf]))
-        simpleStatus appr `shouldBe` status200
-        polled <-
-            post app "/_hub/cli-auth/poll" [] (encode (object ["deviceCode" .= device]))
-        jstr "status" polled `shouldBe` Just "approved"
-        let token = fromJust (jstr "token" polled)
-        -- The token, presented as a bearer with no cookie, resolves to usersid.
-        viaToken <- get app "/" [("Authorization", "Bearer " <> TE.encodeUtf8 token)]
+        token <- mintToken app
+        viaToken <- get app "/" [bearer token]
         body viaToken `shouldSatisfy` isInfixOf "Starting your notebook environment"
         -- Control: no credential at all does NOT resolve to a session.
         anon <- get app "/" []
         body anon `shouldNotSatisfy` isInfixOf "Starting your notebook environment"
+
+    it "revoke invalidates a minted token" $ do
+        app <- makeAppSess
+        token <- mintToken app
+        rev <- post app "/_hub/cli-auth/revoke" [bearer token] ""
+        simpleStatus rev `shouldBe` status200
+        dead <- get app "/" [bearer token]
+        body dead `shouldNotSatisfy` isInfixOf "Starting your notebook environment"
 
     it "approve with a mismatched csrf is rejected and mints no token" $ do
         app <- makeAppSess
@@ -132,6 +151,29 @@ get app path hdrs =
 cookie :: Text -> Header
 cookie sid = ("Cookie", "_sabela_session=" <> TE.encodeUtf8 sid)
 
+bearer :: Text -> Header
+bearer tok = ("Authorization", "Bearer " <> TE.encodeUtf8 tok)
+
+{- | Drive the full flow (start -> authorize page -> approve -> poll) as the
+"usersid" session and return the minted token.
+-}
+mintToken :: Application -> IO Text
+mintToken app = do
+    start <- post app "/_hub/cli-auth/start" [] ""
+    let device = fromJust (jstr "deviceCode" start)
+        user = fromJust (jstr "userCode" start)
+    page <- get app ("/_hub/cli-auth?code=" <> user) [cookie "usersid"]
+    let csrf = fromJust (csrfFrom page)
+    _ <-
+        post
+            app
+            "/_hub/cli-auth/approve"
+            [cookie "usersid"]
+            (encode (object ["userCode" .= user, "csrf" .= csrf]))
+    polled <-
+        post app "/_hub/cli-auth/poll" [] (encode (object ["deviceCode" .= device]))
+    pure (fromJust (jstr "token" polled))
+
 body :: SResponse -> String
 body = LC8.unpack . simpleBody
 
@@ -145,11 +187,12 @@ jstr k r = case decode (simpleBody r) of
         _ -> Nothing
     _ -> Nothing
 
--- | Pull the CSRF nonce the authorize page embeds in @csrf:'<nonce>'@.
+-- | Pull the CSRF nonce the authorize page embeds in @data-csrf="<nonce>"@.
 csrfFrom :: SResponse -> Maybe Text
 csrfFrom r =
     let t = TE.decodeUtf8 (BL.toStrict (simpleBody r))
-        (_, rest) = T.breakOn "csrf:'" t
+        marker = "data-csrf=\""
+        (_, rest) = T.breakOn marker t
      in if T.null rest
             then Nothing
-            else Just (T.takeWhile (/= '\'') (T.drop (T.length "csrf:'") rest))
+            else Just (T.takeWhile (/= '"') (T.drop (T.length marker) rest))

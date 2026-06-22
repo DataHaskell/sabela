@@ -31,16 +31,20 @@ ${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza await-idle [SECONDS]   # block un
 
 ### Hub-hosted notebooks
 
-To drive a notebook running online behind the hub (e.g. `https://sabela.datahaskell.com`) instead of `localhost:3000`, run `siza login` once. It opens the hub's authorize page in the browser; the user (already signed into the hub there) clicks **Approve**, and the hub mints a **short-lived token** bound to that browser session. siza saves it locally and sends it as the bearer on every `/api/ai/*` call. The hub recognises the token at its boundary and strips `Authorization` before forwarding, so the backend stays no-auth.
+To drive a notebook running online behind the hub (e.g. `https://sabela.datahaskell.com`) instead of `localhost:3000`, authenticate once with `siza login`. The hub mints a **short-lived token** the CLI sends as the bearer on every `/api/ai/*` call; the hub strips `Authorization` before forwarding, so the backend stays no-auth.
+
+**`siza login` is a one-time _human_ step — you (the agent) cannot complete it.** It opens the hub's authorize page in a browser, where the signed-in user **types the code shown in the terminal and clicks Approve**. So: ask the user to run `siza login` (or to approve when the page opens), then drive the notebook normally. The browser can be on any device signed into the hub — the terminal prints the URL + code to open. Only re-prompt the user when a call fails with `hub token … expired`.
 
 ```bash
 export SABELA_URL="https://sabela.datahaskell.com"
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza login        # browser-approved; saves a short-lived token
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza login        # one-time, human-approved; saves a short-lived token
 ${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza tool list_cells
-${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza logout       # forget the saved token
+${CLAUDE_PLUGIN_ROOT}/skills/siza/scripts/siza logout       # revokes the token server-side + clears it locally
 ```
 
-`siza login [HUB_URL]` defaults the URL to `$SABELA_URL`, then to `http://localhost:3000` (useful when running the hub locally; a plain local notebook has no `/_hub/cli-auth` endpoints and needs no login). Setting `SABELA_URL` also makes `discover` probe the hub directly (the local registry is empty for online notebooks), and `newConn` auto-attaches the saved token whenever it targets that hub. `X-Sabela-Session` is **not** stripped by the proxy, so per-terminal session isolation still works through the hub. The non-localhost warning on stderr is expected here. The token expires on its own (hub `HUB_CLI_TOKEN_TTL_MIN`, default 8h) and dies with the browser session it was approved from — when calls start returning the login redirect or siza prints `saved hub token expired`, run `siza login` again.
+`siza login [HUB_URL]` defaults the URL to `$SABELA_URL`, then to `http://localhost:3000` (for a locally-run hub; a plain local notebook has no `/_hub/cli-auth` endpoints and needs no login). Login is refused over non-HTTPS unless the hub is loopback. Setting `SABELA_URL` also makes `discover` probe the hub directly, and `newConn` auto-attaches the saved token when it targets that hub — **unless `SABELA_AI_TOKEN` is set, which overrides it (unset it for hub notebooks).** `X-Sabela-Session` is **not** stripped by the proxy, so per-terminal session isolation still works through the hub.
+
+The token is valid only while that browser session is live, capped by the hub TTL (`HUB_CLI_TOKEN_TTL_MIN`, default 8h), and is revoked by `siza logout` or signing out of the hub. When it lapses, `siza tool` **fails fast** with `hub token … expired; run 'siza login'` (it no longer silently returns the login page) — ask the user to re-run `siza login`. Subsequent `siza tool` calls also print a non-localhost warning on stderr, which is expected against a hub.
 
 For `siza tool`, `<json_input>` defaults to `{}` if omitted. Output is pretty JSON on stdout. Exit code is non-zero when the tool returns `isError: true`. Pass `--strict` to a mutating `tool` (or to `check`) to **block** on a denied capability instead of only advising.
 

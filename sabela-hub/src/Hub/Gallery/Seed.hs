@@ -21,16 +21,20 @@ module Hub.Gallery.Seed (
 ) where
 
 import Control.Monad (forM_)
+import qualified Data.ByteString as BS
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory, (</>))
 
+import Hub.Banner (spliceBanner)
 import Hub.Gallery.Lyah (LyahChapter (..), lyahChapterTable)
 import Hub.Gallery.SeedAssets (rewriteAssets)
 import Hub.Gallery.SeedRender (brandDashboard, page, renderBody)
 import Hub.Meta (writeMetaLine)
+import Hub.Runner (spliceRunner)
 
 -- | How a share's static @index.html@ is produced from its Markdown.
 data RenderSpec
@@ -66,8 +70,11 @@ owner = "curators@sabela.dev"
 createdAt :: Text
 createdAt = "2026-06-12T00:00:00Z"
 
+{- | ASCII-only: gallery @meta@\/@attribution@ files are read with the hub
+container's C locale, which cannot decode a UTF-8 @\269@ (Lipova\269a).
+-}
 lyahAuthor :: Text
-lyahAuthor = "Miran Lipova\269a (CC BY-NC-SA 3.0)"
+lyahAuthor = "Miran Lipovaca (CC BY-NC-SA 3.0)"
 
 -- | The five originally-curated single-notebook shares (unchanged behaviour).
 curation :: [Curated]
@@ -147,7 +154,7 @@ lyahCollection =
         { colCid = "1ea40000"
         , colTitle = "Learn You a Haskell for Great Good!"
         , colDescription =
-            "Miran Lipova\269a's classic introduction to Haskell, ported to runnable "
+            "Miran Lipovaca's classic introduction to Haskell, ported to runnable "
                 <> "Sabela notebooks. Adapted under CC BY-NC-SA 3.0."
         , colTags = ["haskell", "tutorial", "book"]
         , colMembers = map cSlug lyahChapters
@@ -183,13 +190,24 @@ seedGallery repoRoot dataRoot = do
     writeCollection gallery lyahCollection
     putStrLn ("gallery seeded at " <> dataRoot)
 
+{- | Seed one share. The static @index.html@ always gets the fork banner (as the
+live publish path does). A 'FromMarkdown' share — the LYAH chapters — also gets
+the WASM MicroHs runner with its source as the data island, so it runs in the
+browser; the dashboard\/asset exports are pre-rendered outputs MicroHs can't run,
+so they keep the banner only.
+-}
 seedShare :: FilePath -> FilePath -> Curated -> IO ()
 seedShare repoRoot shares c = do
     md <- TIO.readFile (repoRoot </> cFile c)
     let sdir = shares </> T.unpack (cSlug c)
+        slug = cSlug c
     writeText (sdir </> "source.md") md
     indexHtml <- renderShare repoRoot c md
-    writeText (sdir </> "index.html") indexHtml
+    let banner = spliceBanner slug (TE.encodeUtf8 indexHtml)
+        final = case cRender c of
+            FromMarkdown -> spliceRunner slug md banner
+            _ -> banner
+    writeBytes (sdir </> "index.html") final
     writeText
         (sdir </> "meta")
         ( T.unlines
@@ -225,3 +243,8 @@ writeText :: FilePath -> Text -> IO ()
 writeText path txt = do
     createDirectoryIfMissing True (takeDirectory path)
     TIO.writeFile path txt
+
+writeBytes :: FilePath -> BS.ByteString -> IO ()
+writeBytes path bytes = do
+    createDirectoryIfMissing True (takeDirectory path)
+    BS.writeFile path bytes
