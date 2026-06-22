@@ -400,11 +400,7 @@ Again, all types covered so far are in this typeclass.
 But what happens if we try to do just `read "4"`?
 
 ```haskell
-ghci> read "4"
-<interactive>:1:0:
-    Ambiguous type variable `a' in the constraint:
-      `Read a' arising from a use of `read' at <interactive>:1:0-7
-    Probable fix: add a type signature that fixes these type variable(s)
+read "4"
 ```
 
 What GHCi is telling us here is that it doesn't know what we want in return.
