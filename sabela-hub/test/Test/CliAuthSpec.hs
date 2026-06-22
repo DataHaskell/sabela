@@ -32,7 +32,8 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
         simpleStatus r `shouldBe` status200
         jstr "deviceCode" r `shouldSatisfy` notEmpty
         jstr "userCode" r `shouldSatisfy` notEmpty
-        body r `shouldSatisfy` isInfixOf "/_hub/cli-auth?code="
+        body r `shouldSatisfy` isInfixOf "/_hub/cli-auth"
+        body r `shouldNotSatisfy` isInfixOf "cli-auth?code="
 
     it "poll on an unknown deviceCode reports expired" $ do
         app <- makeAppSess
@@ -46,7 +47,7 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
 
     it "redirects an unauthenticated authorize-page visit to login (with next)" $ do
         app <- makeAppSess
-        r <- get app "/_hub/cli-auth?code=ABCD1234" []
+        r <- get app "/_hub/cli-auth" []
         simpleStatus r `shouldBe` status302
         body r `shouldNotSatisfy` isInfixOf "Approve access"
         fmap
@@ -56,7 +57,7 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
 
     it "redirects a stale (non-live) session cookie to login, not the page" $ do
         app <- makeAppSess
-        r <- get app "/_hub/cli-auth?code=ABCD1234" [cookie "ghost"]
+        r <- get app "/_hub/cli-auth" [cookie "ghost"]
         simpleStatus r `shouldBe` status302
         body r `shouldNotSatisfy` isInfixOf "Approve access"
 
@@ -64,7 +65,7 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
         app <- makeAppSess
         start <- post app "/_hub/cli-auth/start" [] ""
         let user = fromJust (jstr "userCode" start)
-        page <- get app ("/_hub/cli-auth?code=" <> user) [cookie "usersid"]
+        page <- get app "/_hub/cli-auth" [cookie "usersid"]
         body page `shouldSatisfy` isInfixOf "Approve access"
         body page `shouldNotSatisfy` isInfixOf (T.unpack user)
 
@@ -100,7 +101,7 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
         start <- post app "/_hub/cli-auth/start" [] ""
         let device = fromJust (jstr "deviceCode" start)
             user = fromJust (jstr "userCode" start)
-        _ <- get app ("/_hub/cli-auth?code=" <> user) [cookie "usersid"]
+        _ <- get app "/_hub/cli-auth" [cookie "usersid"]
         appr <-
             post
                 app
@@ -111,6 +112,20 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
         polled <-
             post app "/_hub/cli-auth/poll" [] (encode (object ["deviceCode" .= device]))
         jstr "status" polled `shouldBe` Just "pending"
+
+    it "rejects a csrf minted for a different session" $ do
+        app <- makeAppSess
+        start <- post app "/_hub/cli-auth/start" [] ""
+        let user = fromJust (jstr "userCode" start)
+        page <- get app "/_hub/cli-auth" [cookie "adminsid"]
+        let csrf = fromJust (csrfFrom page)
+        appr <-
+            post
+                app
+                "/_hub/cli-auth/approve"
+                [cookie "usersid"]
+                (encode (object ["userCode" .= user, "csrf" .= csrf]))
+        simpleStatus appr `shouldBe` status410
 
     it "an unauthenticated approve is refused (401)" $ do
         app <- makeAppSess
@@ -162,7 +177,7 @@ mintToken app = do
     start <- post app "/_hub/cli-auth/start" [] ""
     let device = fromJust (jstr "deviceCode" start)
         user = fromJust (jstr "userCode" start)
-    page <- get app ("/_hub/cli-auth?code=" <> user) [cookie "usersid"]
+    page <- get app "/_hub/cli-auth" [cookie "usersid"]
     let csrf = fromJust (csrfFrom page)
     _ <-
         post

@@ -5,8 +5,9 @@ hub user can drive their notebook from the terminal without copying the
 @HttpOnly@ session cookie out of DevTools.
 
 Flow: the CLI POSTs @start@ (no auth) and gets a secret @deviceCode@ plus a
-short @userCode@; it opens the browser at the authorize page carrying the
-@userCode@; the logged-in user re-types the code and approves, which mints a
+short @userCode@; it opens the browser at the *bare* authorize page (the code is
+never put in a URL, so it can't leak into history or access logs); the logged-in
+user types the code shown in their terminal and approves, which mints a
 short-lived token bound to *their* session; the CLI polls @poll@ with the
 @deviceCode@ until the token appears. 'resolveCliToken' accepts that token as a
 @Bearer@ at the proxy boundary — and since 'Hub.Proxy.Forward' strips
@@ -44,7 +45,6 @@ import Control.Concurrent.STM (
 import Data.Aeson (Value (..), decode, object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 import Data.List (find)
 import qualified Data.Map.Strict as Map
@@ -67,20 +67,24 @@ import Network.HTTP.Types
 import Network.Wai
 
 {- | A pending authorization request, keyed by its secret @deviceCode@. Holds
-the user-facing @userCode@, a CSRF nonce minted when the authorize page is
-rendered, the creation time (for TTL), and — once approved — the minted token.
+the user-facing @userCode@, the creation time (for TTL), and — once approved —
+the minted token.
 -}
 data Pending = Pending
     { pUserCode :: Text
-    , pCsrf :: Maybe Text
     , pCreated :: UTCTime
     , pToken :: Maybe Text
     }
 
--- | The CLI-auth stores, the token lifetime, and the hub's public origin.
+{- | The CLI-auth stores, the token lifetime, and the hub's public origin.
+@caCsrf@ maps each authorize-page CSRF nonce to the session it was minted for
+and when, so 'handleCliApprove' can verify the POST came from that session's own
+page — decoupled from the user code (which never appears in any URL).
+-}
 data CliAuth = CliAuth
     { caPending :: TVar (Map.Map Text Pending)
     , caTokens :: TVar (Map.Map Text (SessionId, UTCTime))
+    , caCsrf :: TVar (Map.Map Text (SessionId, UTCTime))
     , caTtl :: NominalDiffTime
     , caOrigin :: Text
     }
@@ -89,6 +93,7 @@ newCliAuth :: HubConfig -> IO CliAuth
 newCliAuth cfg =
     CliAuth
         <$> newTVarIO Map.empty
+        <*> newTVarIO Map.empty
         <*> newTVarIO Map.empty
         <*> pure (hcCliTokenTtl cfg)
         <*> pure (originFromRedirect (hcGoogleRedirectUri cfg))
@@ -169,14 +174,14 @@ handleCliStart ca req respond = do
             atomically $
                 modifyTVar'
                     (caPending ca)
-                    (Map.insert deviceCode (Pending userCode Nothing now Nothing))
+                    (Map.insert deviceCode (Pending userCode now Nothing))
             let origin = if T.null (caOrigin ca) then originOf req else caOrigin ca
             respond $
                 jsonResponse status200 $
                     object
                         [ "deviceCode" .= deviceCode
                         , "userCode" .= userCode
-                        , "verificationUri" .= (origin <> "/_hub/cli-auth?code=" <> userCode)
+                        , "verificationUri" .= (origin <> "/_hub/cli-auth")
                         , "interval" .= pollInterval
                         , "expiresIn" .= (round requestTtl :: Int)
                         ]
@@ -227,38 +232,30 @@ handleCliPoll ca req respond = do
 -- authorize page + approve + revoke
 -- ---------------------------------------------------------------------------
 
-{- | @GET /_hub/cli-auth?code=<userCode>@: the authorize page. The router gates
-this on a *live* session (redirecting an unauthenticated visitor through Google
-login and back), so here we only mint a CSRF nonce into the matching pending
-request and embed it in the form. The user code itself is never put in the page.
+{- | @GET /_hub/cli-auth@: the authorize page. The router gates this on a *live*
+session (redirecting an unauthenticated visitor through Google login and back),
+so here we mint a CSRF nonce bound to that session and embed it in the form.
+Neither the page nor its URL carries the user code — the approver types it from
+their terminal, and 'handleCliApprove' validates the typed value.
 -}
 cliAuthPage :: CliAuth -> Application
-cliAuthPage ca req respond = do
-    now <- getCurrentTime
-    case userCodeParam req of
-        Nothing -> respond $ noticePage status400 "Missing authorization code."
-        Just userCode -> do
+cliAuthPage ca req respond =
+    case extractSessionId req of
+        Nothing -> respond $ noticePage status401 "Not signed in."
+        Just sid -> do
+            now <- getCurrentTime
             csrf <- generateRandomToken
-            found <- atomically $ do
-                pend <- readTVar (caPending ca)
-                case findByUserCode userCode pend of
-                    Just (dc, p) | notExpired now p -> do
-                        modifyTVar' (caPending ca) $
-                            Map.insert dc p{pCsrf = Just csrf}
-                        pure True
-                    _ -> pure False
-            respond $
-                if found
-                    then authorizePage csrf
-                    else
-                        noticePage
-                            status410
-                            "This authorization request has expired. Re-run siza login."
+            atomically $
+                modifyTVar' (caCsrf ca) $
+                    Map.insert csrf (sid, now) . Map.filter (fresh now)
+            respond (authorizePage csrf)
 
 {- | @POST /_hub/cli-auth/approve@ with @{userCode, csrf}@. Cookie-gated by the
 router; binds a fresh short-lived token to the approver's 'SessionId'. The CSRF
-nonce must match the one the page minted, so a blind cross-site POST can't
-approve a pending request.
+nonce must be one this session's authorize page minted (so a blind cross-site
+POST can't approve), and the @userCode@ must match a live pending request (the
+approver supplies it from their terminal — it is never in any URL or page). A
+matched nonce is consumed; a wrong code leaves it so the user can retype.
 -}
 handleCliApprove :: CliAuth -> Application
 handleCliApprove ca req respond = do
@@ -270,11 +267,16 @@ handleCliApprove ca req respond = do
             , Just csrf <- strField "csrf" v -> do
                 token <- generateRandomToken
                 ok <- atomically $ do
+                    csrfs <- readTVar (caCsrf ca)
                     pend <- readTVar (caPending ca)
+                    let csrfOk = case Map.lookup csrf csrfs of
+                            Just (s, t) -> s == sid && fresh now (s, t)
+                            Nothing -> False
                     case findByUserCode userCode pend of
                         Just (dc, p)
-                            | notExpired now p
-                            , pCsrf p == Just csrf -> do
+                            | csrfOk
+                            , notExpired now p -> do
+                                modifyTVar' (caCsrf ca) (Map.delete csrf)
                                 modifyTVar' (caPending ca) $
                                     Map.insert dc p{pToken = Just token}
                                 modifyTVar' (caTokens ca) $
@@ -306,6 +308,10 @@ handleCliRevoke ca req respond =
 notExpired :: UTCTime -> Pending -> Bool
 notExpired now p = diffUTCTime now (pCreated p) < requestTtl
 
+-- | A timestamped entry (CSRF nonce or pending) is still within 'requestTtl'.
+fresh :: UTCTime -> (a, UTCTime) -> Bool
+fresh now (_, t) = diffUTCTime now t < requestTtl
+
 findByUserCode :: Text -> Map.Map Text Pending -> Maybe (Text, Pending)
 findByUserCode uc = find ((== uc) . pUserCode . snd) . Map.toList
 
@@ -333,9 +339,3 @@ originOf req =
     scheme
         | lookup "X-Forwarded-Proto" (requestHeaders req) == Just "https" = "https"
         | otherwise = "http"
-
-userCodeParam :: Request -> Maybe Text
-userCodeParam req = do
-    mv <- lookup "code" (queryString req)
-    raw <- mv
-    if BS.null raw then Nothing else Just (TE.decodeUtf8 raw)

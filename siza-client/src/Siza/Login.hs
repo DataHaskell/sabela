@@ -67,7 +67,7 @@ approveAndSave :: Conn -> Text -> Value -> Text -> Text -> IO ()
 approveAndSave conn base v device user = do
     let interval = intField "interval" 2 v
         expiresIn = intField "expiresIn" 300 v
-        url = base <> "/_hub/cli-auth?code=" <> user
+        url = base <> "/_hub/cli-auth"
     TIO.putStrLn
         ( "To authorize siza, open this URL in a browser signed into the hub "
             <> "(any device works) and enter the code "
