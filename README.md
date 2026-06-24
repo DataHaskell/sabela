@@ -26,7 +26,7 @@ The execution and dependency model is based on
 
 ## What you can do
 
-* **Run cells reactivly.** Sabela reruns the cells that
+* **Run cells reactively.** Sabela reruns the cells that
   depend on what you changed, and nothing else.
 * **Add interactive controls/widgets.** A `slider`,
   `dropdown`, or `button` is one line of Haskell; drag it and the cell reruns
