@@ -66,6 +66,7 @@ dummySession = do
             , sessLock = lock
             , sessQueryLock = queryLock
             , sessErrBuf = errRef
+            , sessBaselineBindings = errRef
             , sessCounter = ctrRef
             , sessConfig = defaultCfg
             , sessErrCallback = cbRef

@@ -68,9 +68,11 @@ import Sabela.Session.Proc (
     withSpawnedSession,
  )
 import Sabela.Session.Query (
+    queryBindings,
     queryBrowse,
     queryComplete,
     queryDoc,
+    queryHoleFits,
     queryInfo,
     queryKind,
     queryType,
@@ -140,11 +142,14 @@ ghciArgs cfg rtsOpts =
     , "--project-dir=" ++ scProjectDir cfg
     , "--builddir=" ++ scProjectDir cfg </> "dist-newstyle"
     , "-v1"
-    , "--repl-options=-odir " ++ objDir ++ " -hidir " ++ objDir
+    , "--repl-options=-odir " ++ objDir ++ " -hidir " ++ objDir ++ jsonDiag
     , "--ghc-options=" ++ rtsOpts
     ]
   where
     objDir = scProjectDir cfg </> "ghci-objs"
+    jsonDiag
+        | scJsonDiagnostics cfg = " -fdiagnostics-as-json"
+        | otherwise = ""
 
 {- | GHCi RTS options. @-N@ and the heap limit are pinned from the environment
 so a containerized session honors its CPU/memory caps: a bare @-N@ spins up one
@@ -182,6 +187,7 @@ buildSessionStateGen genTag cfg ps onStderrLine = do
     nonce <- mkSessionNonce
     lastInt <- newIORef Nothing
     gen <- newIORef genTag
+    baseline <- newIORef []
     _ <- forkIO $ errLoop (psStderr ps) errBuf cbRef
     pure
         Session
@@ -196,6 +202,7 @@ buildSessionStateGen genTag cfg ps onStderrLine = do
             , sessNonce = nonce
             , sessLastInterruptTime = lastInt
             , sessionGen = gen
+            , sessBaselineBindings = baseline
             }
 
 {- | A 12-digit per-session nonce derived from the wall-clock picoseconds, kept
@@ -282,6 +289,7 @@ ghciBackend :: Session -> ST.SessionBackend
 ghciBackend sess =
     ST.SessionBackend
         { ST.sbSessionId = psId (sessProcSess sess)
+        , ST.sbJsonDiagnostics = scJsonDiagnostics (sessConfig sess)
         , ST.sbRunBlock = runBlock sess
         , ST.sbRunBlockStreaming = runBlockStreaming sess
         , ST.sbClose = closeSession sess
@@ -296,4 +304,6 @@ ghciBackend sess =
         , ST.sbQueryKind = queryKind sess
         , ST.sbQueryBrowse = queryBrowse sess
         , ST.sbQueryDoc = queryDoc sess
+        , ST.sbQueryHoleFits = queryHoleFits sess
+        , ST.sbQueryBindings = queryBindings sess
         }

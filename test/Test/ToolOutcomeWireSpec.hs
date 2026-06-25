@@ -30,14 +30,16 @@ import Sabela.AI.Types (
  )
 import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
 import Sabela.Handlers (ReactiveNotebook (..))
-import Sabela.Model (CellError (..), NotebookEvent (..))
+import Sabela.Model (CellError (..), Notebook (..), NotebookEvent (..))
 import Sabela.Server (newApp)
 import Sabela.Server.Ai (aiToolH)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.EventBus (broadcast)
+import Sabela.State.NotebookStore (modifyNotebook)
 import Sabela.State.SessionManager (setHaskellSession)
 import Test.Hspec
+import Test.TopoSpec.Helpers (mkCell)
 
 -- | A fake backend with a fixed busy flag; everything else is inert.
 fakeBackend :: Bool -> IO ST.SessionBackend
@@ -46,6 +48,7 @@ fakeBackend busy = do
     let backend =
             ST.SessionBackend
                 { ST.sbSessionId = uid
+                , ST.sbJsonDiagnostics = False
                 , ST.sbRunBlock = \_ -> pure ("", "")
                 , ST.sbRunBlockStreaming = \_ _ -> pure ("", "")
                 , ST.sbClose = pure ()
@@ -59,7 +62,9 @@ fakeBackend busy = do
                 , ST.sbQueryInfo = \_ -> pure ""
                 , ST.sbQueryKind = \_ -> pure ""
                 , ST.sbQueryBrowse = \_ -> pure ""
+                , ST.sbQueryBindings = pure ""
                 , ST.sbQueryDoc = \_ -> pure ""
+                , ST.sbQueryHoleFits = \_ -> pure ""
                 }
     pure backend
 
@@ -72,6 +77,8 @@ mkApp busy = do
     app <- newApp "." Set.empty (Just mgr) Nothing []
     backend <- fakeBackend busy
     setHaskellSession (appSessions app) (Just backend)
+    modifyNotebook (appNotebook app) $ \nb ->
+        nb{nbCells = [mkCell 1 "x = 1", mkCell 2 "y = 2"]}
     pure app
 
 -- | A throwaway 'AIStore' for driving 'executeTool' directly.
@@ -86,22 +93,26 @@ mkStore = do
                 }
     AIStore.newAIStore cfg mgr
 
-{- | A 'ReactiveNotebook' whose @rnRunCell@ broadcasts a compile-error
-'EvCellResult' for the given cell. The broadcast is delayed so
-'executeCell' has subscribed to the bus before the result lands.
+{- | A 'ReactiveNotebook' whose run broadcasts a compile-error 'EvCellResult'
+for the given cell. The broadcast is delayed so 'executeCell' has subscribed
+to the bus before the result lands. @execute_cell@ drives @rnRunCellForced@,
+so both run fields share the broadcaster.
 -}
 compileErrorRn :: App -> CellError -> ReactiveNotebook
 compileErrorRn app err =
     ReactiveNotebook
         { rnCellEdit = \_ _ -> pure ()
-        , rnRunCell = \cid -> void $ forkIO $ do
-            threadDelay 50000
-            broadcast (appEvents app) (EvCellResult cid [] Nothing [err])
+        , rnRunCell = runBroadcast
+        , rnRunCellForced = runBroadcast
         , rnRunAll = pure ()
         , rnReset = pure ()
         , rnRestartKernel = pure ()
         , rnWidgetCell = \_ -> pure ()
         }
+  where
+    runBroadcast cid = void $ forkIO $ do
+        threadDelay 50000
+        broadcast (appEvents app) (EvCellResult cid [] Nothing [err] [])
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o

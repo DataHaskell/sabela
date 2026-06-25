@@ -24,7 +24,9 @@ cli-skill/
         ├── SKILL.md                    # the prompt loaded into Claude when triggered
         └── scripts/
             ├── siza                    # shim over the compiled typed client (exe:siza)
-            └── siza.cmd                # Windows shim
+            ├── siza.cmd                # Windows shim
+            ├── siza-mcp                # shim: `siza mcp` (MCP stdio server)
+            └── siza-mcp.cmd            # Windows MCP shim
 ```
 
 Claude Code's plugin loader only discovers `SKILL.md` files at `<plugin>/skills/<name>/SKILL.md`. A bare `SKILL.md` at the plugin root is silently ignored.
@@ -91,6 +93,74 @@ The rest of the UI (browser notebook, SSE events, static files) stays unauthenti
 | `SABELA_AI_TOKEN` | server + client | Bearer token. Unset → local, no auth. |
 | `SABELA_URL` | client | Override auto-discovery (e.g. `http://host:3000`). |
 | `SABELA_SESSION` | client | `X-Sabela-Session` value; isolates `explore_result` handles. Defaults to a stable per-terminal id. |
+| `SABELA_TOOL_TIMEOUT` | client | Tool-call HTTP timeout in seconds; `0` = no timeout. Defaults to `60`. Set `0` for MCP so a long `execute_cell` is not abandoned. |
+
+## MCP server (`siza mcp`)
+
+`siza mcp` serves the same tool surface over the Model Context Protocol on
+stdio, so **any MCP client** (goose, Claude Desktop, opencode) drives the
+notebook with structured tool arguments. The model fills typed fields instead of
+building a shell command string, which is where weak/open models fail today.
+
+It reuses the client's auth, discovery, hub cookie/token, and the same
+client-side pre-flight gate as `siza tool`. A mutation that fails to parse comes
+back as an MCP tool error the model can fix rather than running against the
+kernel. Tool schemas are fetched live from `GET /api/ai/tools`, so the catalogue
+stays in sync with the server.
+
+Launch it via the `siza-mcp` / `siza-mcp.cmd` shim (or `siza mcp`). Set
+`SABELA_TOOL_TIMEOUT=0` so a long `execute_cell` is not abandoned, and prefer the
+**`execute_cell` then `await_idle` (don't retry)** idiom for long cells. A retry
+bounces `busy` or wedges the kernel.
+
+The spawned command must be able to locate the compiled binary. The `siza-mcp`
+shim resolves it via `$SIZA_BIN` or `$SABELA_REPO` (see the env table above), so
+pass those through your client's env block, or point the client straight at the
+binary with `args: ["mcp"]`.
+
+### goose
+
+Verified quick start (the model spawns the server for one run):
+
+```bash
+export SABELA_URL=http://localhost:3000 SABELA_TOOL_TIMEOUT=0
+export SIZA_BIN="$(cd /path/to/sabela && cabal list-bin exe:siza)"
+goose run --with-extension "/path/to/cli-skill/plugins/siza/skills/siza/scripts/siza-mcp" \
+  -t "Call list_cells, then insert a cell defining factorial :: Integer -> Integer and run it."
+```
+
+Persistent config (`~/.config/goose/config.yaml`); point `cmd` at the binary so
+it does not depend on the launch directory:
+
+```yaml
+extensions:
+  siza:
+    name: siza
+    type: stdio
+    cmd: /abs/path/to/siza        # cabal list-bin exe:siza
+    args: ["mcp"]
+    enabled: true
+    envs:
+      SABELA_URL: "http://localhost:3000"
+      SABELA_TOOL_TIMEOUT: "0"
+```
+
+### Claude Desktop (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "siza": {
+      "command": "siza-mcp",
+      "env": { "SABELA_URL": "http://localhost:3000", "SABELA_TOOL_TIMEOUT": "0" }
+    }
+  }
+}
+```
+
+**opencode** uses the same `command` / `env` shape under its MCP block. For a
+hub-hosted notebook set `SABELA_URL=https://<hub>` and run `siza login` first;
+the saved token / cookie is picked up automatically.
 
 ## Raw curl examples
 

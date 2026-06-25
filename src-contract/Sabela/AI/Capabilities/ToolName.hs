@@ -46,6 +46,7 @@ data ToolName
     | KernelRestart
     | AwaitIdle
     | ExportNotebook
+    | PeekData
     deriving (Show, Eq)
 
 parseToolName :: Text -> Maybe ToolName
@@ -68,6 +69,7 @@ parseToolName = \case
     "kernel_restart" -> Just KernelRestart
     "await_idle" -> Just AwaitIdle
     "export_notebook" -> Just ExportNotebook
+    "peek_data" -> Just PeekData
     _ -> Nothing
 
 {- | Wire-format spelling of a 'ToolName'. The inverse of 'parseToolName':
@@ -94,6 +96,7 @@ toolWireName = \case
     KernelRestart -> "kernel_restart"
     AwaitIdle -> "await_idle"
     ExportNotebook -> "export_notebook"
+    PeekData -> "peek_data"
 
 {- | Build a 'ToolDef' from a typed 'ToolName'. The wire-name string sent
 to Anthropic comes from 'toolWireName', the single source of truth that

@@ -1,5 +1,6 @@
 const editors = {}; // cellId → CodeMirror instance
 const cellErrors = {}; // cellId → [CellError]
+const cellWarnings = {}; // cellId → [CellError] (non-fatal diagnostics)
 const collapsedCells = new Set(); // cellId → collapsed
 let notebook = null;
 let evtSource = null;

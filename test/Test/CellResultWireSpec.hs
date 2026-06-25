@@ -102,13 +102,23 @@ spec = describe "CellResult typed carving (R2-2)" $ do
             wireOk (CellResult Succeeded [] []) `shouldBe` Just (Bool True)
             wireOk (CellResult (Raised "e") [] []) `shouldBe` Just (Bool False)
 
+    describe "notebookHealthy = all okCellResult" $ do
+        let ok = CellResult Succeeded [sampleOutput] []
+            bad = CellResult (Rejected [cerr]) [] []
+        it "all Succeeded => True" $
+            notebookHealthy [ok, ok, ok] `shouldBe` True
+        it "any non-Succeeded => False" $
+            notebookHealthy [ok, bad, ok] `shouldBe` False
+        it "empty => True" $
+            notebookHealthy [] `shouldBe` True
+
     describe "toCellResult drives the legacy ok agreement" $ do
         it "okCellResult iff legacy (null errs && isNothing error)" $ do
             let ers =
-                    [ ExecutionResult [sampleOutput] Nothing []
-                    , ExecutionResult [] (Just "e") []
-                    , ExecutionResult [] Nothing [cerr]
-                    , ExecutionResult [] (Just "e") [cerr]
+                    [ ExecutionResult [sampleOutput] Nothing [] []
+                    , ExecutionResult [] (Just "e") [] []
+                    , ExecutionResult [] Nothing [cerr] []
+                    , ExecutionResult [] (Just "e") [cerr] []
                     ]
             mapM_
                 ( \er ->
@@ -117,18 +127,21 @@ spec = describe "CellResult typed carving (R2-2)" $ do
                 )
                 ers
         it "Right with error text maps to Raised" $
-            outcomeTag (toCellResult (Right (ExecutionResult [] (Just "e") [])) [])
+            outcomeTag (toCellResult (Right (ExecutionResult [] (Just "e") [] [])) [])
                 `shouldBe` Just (String "Raised")
         it "Right with structured errors maps to Rejected" $
-            outcomeTag (toCellResult (Right (ExecutionResult [] Nothing [cerr])) [])
+            outcomeTag (toCellResult (Right (ExecutionResult [] Nothing [cerr] [])) [])
                 `shouldBe` Just (String "Rejected")
         it "Right clean maps to Succeeded" $
-            outcomeTag (toCellResult (Right (ExecutionResult [] Nothing [])) [])
+            outcomeTag (toCellResult (Right (ExecutionResult [] Nothing [] [])) [])
                 `shouldBe` Just (String "Succeeded")
+        it "warnings pass through to crWarnings, orthogonal to the outcome" $
+            crWarnings (toCellResult (Right (ExecutionResult [] Nothing [] [cerr])) [])
+                `shouldBe` [cerr]
         it "outputs pass through orthogonally to the outcome" $
             crOutputs
                 ( toCellResult
-                    (Right (ExecutionResult [sampleOutput] (Just "e") []))
+                    (Right (ExecutionResult [sampleOutput] (Just "e") [] []))
                     [sampleOutput]
                 )
                 `shouldBe` [sampleOutput]

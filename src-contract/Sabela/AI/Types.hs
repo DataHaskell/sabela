@@ -149,6 +149,7 @@ data ExecutionResult = ExecutionResult
     { erOutputs :: [OutputItem]
     , erError :: Maybe Text
     , erErrors :: [CellError]
+    , erWarnings :: [CellError]
     }
 
 ------------------------------------------------------------------------

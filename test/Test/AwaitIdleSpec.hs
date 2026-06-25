@@ -42,6 +42,7 @@ fakeBackend busy = do
     let backend =
             ST.SessionBackend
                 { ST.sbSessionId = uid
+                , ST.sbJsonDiagnostics = False
                 , ST.sbRunBlock = \_ -> pure ("", "")
                 , ST.sbRunBlockStreaming = \_ _ -> pure ("", "")
                 , ST.sbClose = pure ()
@@ -55,7 +56,9 @@ fakeBackend busy = do
                 , ST.sbQueryInfo = \_ -> pure ""
                 , ST.sbQueryKind = \_ -> pure ""
                 , ST.sbQueryBrowse = \_ -> pure ""
+                , ST.sbQueryBindings = pure ""
                 , ST.sbQueryDoc = \_ -> pure ""
+                , ST.sbQueryHoleFits = \_ -> pure ""
                 }
     pure backend
 
@@ -73,7 +76,7 @@ field _ _ = Nothing
 
 -- | A non-fence event used to flood the bus (never settles the long-poll).
 floodEvent :: NotebookEvent
-floodEvent = EvCellResult 1 [] Nothing []
+floodEvent = EvCellResult 1 [] Nothing [] []
 
 {- | Fork a thread that broadcasts a steady stream of @floodEvent@ until
 killed, returning its thread id so the caller can stop it.
@@ -118,7 +121,7 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         _ <- forkIO (execAwaitIdle app >>= putMVar done . toolOutcomeValue)
         threadDelay 50000
         -- a non-fence event must NOT settle the poll
-        broadcast (appEvents app) (EvCellResult 1 [] Nothing [])
+        broadcast (appEvents app) (EvCellResult 1 [] Nothing [] [])
         threadDelay 50000
         broadcast (appEvents app) EvExecutionDone
         v <- takeMVar done

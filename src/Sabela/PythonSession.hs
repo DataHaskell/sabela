@@ -125,6 +125,7 @@ pythonBackend :: PythonSession -> ST.SessionBackend
 pythonBackend sess =
     ST.SessionBackend
         { ST.sbSessionId = psId (pyProcSess sess)
+        , ST.sbJsonDiagnostics = False
         , ST.sbRunBlock = runBlock sess
         , ST.sbRunBlockStreaming = runBlockStreaming sess
         , ST.sbClose = closePythonSession sess
@@ -140,7 +141,9 @@ pythonBackend sess =
         , ST.sbQueryInfo = \_ -> pure ""
         , ST.sbQueryKind = \_ -> pure ""
         , ST.sbQueryBrowse = \_ -> pure ""
+        , ST.sbQueryBindings = pure ""
         , ST.sbQueryDoc = \_ -> pure ""
+        , ST.sbQueryHoleFits = \_ -> pure ""
         }
 
 interruptIfBusy :: PythonSession -> IO ()

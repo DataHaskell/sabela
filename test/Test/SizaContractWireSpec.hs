@@ -107,6 +107,7 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "execute_cell"
                     , "scratchpad"
                     , "ghci_query"
+                    , "peek_data"
                     , "api_reference"
                     , "explore_result"
                     , "kernel_status"
@@ -144,6 +145,8 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
             requiredOf "ghci_query" `shouldBe` ["arg", "op"]
         it "explore_result requires handle_id and op" $
             requiredOf "explore_result" `shouldBe` ["handle_id", "op"]
+        it "peek_data requires path" $
+            requiredOf "peek_data" `shouldBe` ["path"]
         it "api_reference requires nothing" $
             requiredOf "api_reference" `shouldBe` []
         it "the no-arg kernel tools require nothing" $
@@ -165,9 +168,9 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
             enumIn "insert_cell" "language" `shouldBe` ["Haskell", "Python"]
         it "scratchpad language enum is Haskell/Python" $
             enumIn "scratchpad" "language" `shouldBe` ["Haskell", "Python"]
-        it "ghci_query op enum is the five GHCi introspections" $
+        it "ghci_query op enum is the seven GHCi introspections" $
             enumIn "ghci_query" "op"
-                `shouldBe` ["browse", "doc", "info", "kind", "type"]
+                `shouldBe` ["bindings", "browse", "doc", "holefits", "info", "kind", "type"]
         it "explore_result op enum is head/tail/slice/grep" $
             enumIn "explore_result" "op"
                 `shouldBe` ["grep", "head", "slice", "tail"]
@@ -228,16 +231,16 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
         let cerr = CellError (Just 1) (Just 1) "boom"
             summaryOf res = toJSON (toCellResult res [])
         it "ok holds iff the outcome is Succeeded (legacy law preserved)" $ do
-            okCellResult (toCellResult (Right (ExecutionResult [] Nothing [])) [])
+            okCellResult (toCellResult (Right (ExecutionResult [] Nothing [] [])) [])
                 `shouldBe` True
-            okCellResult (toCellResult (Right (ExecutionResult [] Nothing [cerr])) [])
+            okCellResult (toCellResult (Right (ExecutionResult [] Nothing [cerr] [])) [])
                 `shouldBe` False
-            okCellResult (toCellResult (Right (ExecutionResult [] (Just "x") [])) [])
+            okCellResult (toCellResult (Right (ExecutionResult [] (Just "x") [] [])) [])
                 `shouldBe` False
         it "the execution summary carries outcome/outputs/warnings/ok — no legacy keys" $
             sort
                 ( objectKeys
-                    (summaryOf (Right (ExecutionResult [] Nothing [])))
+                    (summaryOf (Right (ExecutionResult [] Nothing [] [])))
                 )
                 `shouldBe` ["ok", "outcome", "outputs", "warnings"]
 

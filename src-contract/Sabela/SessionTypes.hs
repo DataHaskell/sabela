@@ -11,6 +11,10 @@ import GHC.Generics (Generic)
 data SessionBackend = SessionBackend
     { sbSessionId :: Unique
     -- ^ Identity of this backend instance, for swap-iff-same crash handling.
+    , sbJsonDiagnostics :: Bool
+    {- ^ Does this backend's compiler emit @-fdiagnostics-as-json@ (GHC ≥ 9.8)?
+    Selects the structured JSON diagnostic path over the textual fallback.
+    -}
     , sbRunBlock :: Text -> IO (Text, Text)
     -- ^ Execute a block of code, returning (stdout, stderr).
     , sbRunBlockStreaming :: Text -> (Text -> IO ()) -> IO (Text, Text)
@@ -43,6 +47,14 @@ data SessionBackend = SessionBackend
     -- ^ List a module's exports (GHCi :browse).
     , sbQueryDoc :: Text -> IO Text
     -- ^ Doc query (GHCi :doc).
+    , sbQueryHoleFits :: Text -> IO Text
+    {- ^ Valid-hole-fits query: set the hole-fit flags, then ask GHC which
+    in-scope names fit a concrete goal type (e.g. @_ :: [Int] -> Int@), so the
+    model picks a real name instead of inventing one. Runs on the introspection
+    lock like the other queries.
+    -}
+    , sbQueryBindings :: IO Text
+    -- ^ The session's interactive bindings and their types (GHCi @:show bindings@).
     }
 
 data CellLang = Haskell | Python

@@ -4,6 +4,7 @@ module Sabela.Deps (
     collectMetadata,
     collectMetadataFromContent,
     mergedMeta,
+    repairDeps,
     sabelaDefaultExts,
     ProjectSig (..),
     emptyProjectSig,
@@ -11,10 +12,12 @@ module Sabela.Deps (
     depsMatch,
 ) where
 
+import Data.Char (isAlpha, isAlphaNum)
 import Data.List (sort, sortOn)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
+import qualified Data.Text as T
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import qualified Sabela.SessionTypes as ST
 import ScriptHs.Markdown (Segment (..), parseMarkdown)
@@ -30,13 +33,59 @@ collectMetadata :: Notebook -> CabalMeta
 collectMetadata nb =
     let allCode =
             filter (\c -> cellType c == CodeCell && cellLang c == ST.Haskell) (nbCells nb)
-     in mergeMetas [(scriptMeta . parseScript) (cellSource c) | c <- allCode]
+     in repairMeta
+            (mergeMetas [(scriptMeta . parseScript) (cellSource c) | c <- allCode])
 
 collectMetadataFromContent :: Text -> CabalMeta
 collectMetadataFromContent content =
     let segs = parseMarkdown content
         codeSrcs = [src | CodeBlock _ src _ <- segs]
-     in mergeMetas (map (scriptMeta . parseScript) codeSrcs)
+     in repairMeta (mergeMetas (map (scriptMeta . parseScript) codeSrcs))
+
+{- | Normalise build-depends as metadata is collected, so the live session, the
+staleness check, and the exporters all see comma-separated dependencies.
+-}
+repairMeta :: CabalMeta -> CabalMeta
+repairMeta m = m{metaDeps = repairDeps (metaDeps m)}
+
+{- | Repair build-depends a model wrote space-separated rather than comma-
+separated (@text granite@ becomes @text@, @granite@), without breaking a version
+constraint, whose spaces are not boundaries (@dataframe == 2.3.0.0@,
+@text < 4 && < 5@). A space-mangled line otherwise reaches cabal as one bogus
+package and hangs the install.
+
+The repair is Cabal's dependency grammar. scripths has already split on commas,
+so the only boundary left inside an entry is the start of a new package name:
+
+>  build-depends      ::= dependency (',' dependency)*
+>  dependency         ::= package-name [version-constraint]
+>  package-name       ::= alphanumeric and hyphens, with at least one letter
+>  version-constraint ::= (operator | version)*    -- carries no letter
+
+A token whose leading package-name prefix carries a letter STARTS a new
+dependency; every other token (a version literal, or an operator possibly fused
+onto a name as in @dataframe==2.3.0.0@) attaches to the dependency in progress.
+-}
+repairDeps :: [Text] -> [Text]
+repairDeps = concatMap (map T.unwords . splitDeps . T.words)
+
+-- | Re-split an entry's tokens into dependencies at each package-name boundary.
+splitDeps :: [Text] -> [[Text]]
+splitDeps = reverse . map reverse . foldl step []
+  where
+    step acc tok
+        | startsDependency tok = [tok] : acc
+        | (d : ds) <- acc = (tok : d) : ds
+        | otherwise = [[tok]]
+
+{- | Does a token begin a new dependency? Its leading package-name prefix (the
+maximal run of alphanumerics and hyphens) must carry a letter, which is exactly
+Cabal's package-name rule and disambiguates a name from a version literal
+(@2.3.0.0@) or an operator (@==@, @&&@). The prefix test also catches a fused
+constraint: @dataframe==2.3.0.0@ begins with the name @dataframe@.
+-}
+startsDependency :: Text -> Bool
+startsDependency = T.any isAlpha . T.takeWhile (\c -> isAlphaNum c || c == '-')
 
 {- | Language extensions enabled by default in every notebook, on top of
 whatever a cell declares via @-- cabal: default-extensions:@. Injected by

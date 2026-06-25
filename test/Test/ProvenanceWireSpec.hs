@@ -71,6 +71,7 @@ inertBackend = do
     let backend =
             ST.SessionBackend
                 { ST.sbSessionId = uid
+                , ST.sbJsonDiagnostics = False
                 , ST.sbRunBlock = \_ -> pure ("", "")
                 , ST.sbRunBlockStreaming = \_ _ -> pure ("", "")
                 , ST.sbClose = pure ()
@@ -84,7 +85,9 @@ inertBackend = do
                 , ST.sbQueryInfo = \_ -> pure ""
                 , ST.sbQueryKind = \_ -> pure ""
                 , ST.sbQueryBrowse = \_ -> pure ""
+                , ST.sbQueryBindings = pure ""
                 , ST.sbQueryDoc = \_ -> pure ""
+                , ST.sbQueryHoleFits = \_ -> pure ""
                 }
     pure backend
 

@@ -7,7 +7,8 @@ module Test.ClassifyErrorSpec (spec) where
 
 import qualified Data.Text as T
 import Sabela.Errors (parseErrors)
-import Sabela.Handlers.Exec (classifyError)
+import Sabela.Handlers.Exec (classifyError, locateError)
+import Sabela.Model (CellError (..))
 import Test.Hspec
 
 classify :: T.Text -> Maybe T.Text
@@ -43,3 +44,12 @@ spec = describe "classifyError" $ do
     it "ordinary runtime stderr is still an error" $
         classify "boom: user exception\n"
             `shouldBe` Just "boom: user exception"
+
+    describe "locateError prefixes a diagnostic with cell + line" $ do
+        it "names the cell and the cell-relative line" $
+            locateError 12 (CellError (Just 1) (Just 1) "Variable not in scope: doule")
+                `shouldBe` "cell 12, line 1: Variable not in scope: doule"
+
+        it "omits the line when the diagnostic has no location" $
+            locateError 3 (CellError Nothing Nothing "Could not find module `X'")
+                `shouldBe` "cell 3: Could not find module `X'"

@@ -11,6 +11,7 @@ module Siza.Transport (
     newConn,
     callTool,
     getHealth,
+    getTools,
     aiHeaders,
 ) where
 
@@ -28,9 +29,11 @@ import Network.HTTP.Client (
     Request (..),
     RequestBody (RequestBodyLBS),
     Response (..),
+    ResponseTimeout,
     httpLbs,
     parseRequest,
     responseTimeoutMicro,
+    responseTimeoutNone,
  )
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.HTTP.Types.Header (Header)
@@ -38,6 +41,7 @@ import Sabela.AI.Capabilities.ToolName (ToolName, toolWireName)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.HubToken (TokenStatus (..), statusForUrl)
 import System.Environment (lookupEnv)
+import Text.Read (readMaybe)
 
 -- | Process-level configuration read once from the environment.
 data Env = Env
@@ -45,6 +49,7 @@ data Env = Env
     , envToken :: Maybe Text
     , envSession :: Text
     , envCookie :: Maybe Text
+    , envToolTimeout :: Int
     }
     deriving (Show)
 
@@ -66,6 +71,7 @@ resolveEnv = do
     mtok <- nonEmpty <$> lookupEnv "SABELA_AI_TOKEN"
     msess <- nonEmpty <$> lookupEnv "SABELA_SESSION"
     mcookie <- nonEmpty <$> lookupEnv "SABELA_COOKIE"
+    mtimeout <- (>>= readMaybe) <$> lookupEnv "SABELA_TOOL_TIMEOUT"
     hostName <- fromMaybe "host" . nonEmpty <$> lookupEnv "HOSTNAME"
     ppid <- fromMaybe "0" . nonEmpty <$> lookupEnv "PPID"
     let session = fromMaybe ("siza-" <> hostName <> "-" <> ppid) msess
@@ -75,6 +81,7 @@ resolveEnv = do
             , envToken = mtok
             , envSession = session
             , envCookie = mcookie
+            , envToolTimeout = fromMaybe 60 mtimeout
             }
   where
     nonEmpty = fmap T.pack . (>>= \s -> if null s then Nothing else Just s)
@@ -136,10 +143,37 @@ getHealth conn base = do
                 Left _ -> Nothing
                 Right r -> either (const Nothing) Just (eitherDecode (responseBody r))
 
+{- | @GET base/api/ai/tools@ → the @[ToolDef]@ catalogue as a raw JSON array,
+the source of truth an MCP @tools/list@ projects from. 'Nothing' on any error;
+10-second timeout.
+-}
+getTools :: Conn -> Text -> IO (Maybe Value)
+getTools conn base = do
+    let env = connEnv conn
+    er <-
+        try (mkGet env (base <> "/api/ai/tools")) ::
+            IO (Either SomeException Request)
+    case er of
+        Left _ -> pure Nothing
+        Right req0 -> do
+            let req = req0{responseTimeout = responseTimeoutMicro 10000000}
+            res <-
+                try (httpLbs req (connManager conn)) ::
+                    IO (Either SomeException (Response LBS.ByteString))
+            pure $ case res of
+                Left _ -> Nothing
+                Right r -> either (const Nothing) Just (eitherDecode (responseBody r))
+
 mkGet :: Env -> Text -> IO Request
 mkGet env url = do
     req <- parseRequest (T.unpack url)
     pure req{method = "GET", requestHeaders = aiHeaders env}
+
+-- | A tool-call response timeout: @0@ (or negative) means no timeout.
+toolTimeout :: Int -> ResponseTimeout
+toolTimeout n
+    | n <= 0 = responseTimeoutNone
+    | otherwise = responseTimeoutMicro (n * 1000000)
 
 {- | @POST base/api/ai/tool@ with body @{name, input}@, decoding the
 @{isError, result}@ envelope into a typed 'ToolOutcome'. 60-second timeout,
@@ -160,7 +194,7 @@ callTool conn base name input = do
                         { method = "POST"
                         , requestHeaders = aiHeaders env
                         , requestBody = RequestBodyLBS (A.encode body)
-                        , responseTimeout = responseTimeoutMicro 60000000
+                        , responseTimeout = toolTimeout (envToolTimeout env)
                         }
             res <-
                 try (httpLbs req (connManager conn)) ::

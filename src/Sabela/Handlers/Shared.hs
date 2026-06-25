@@ -102,7 +102,7 @@ broadcastCellErrorWith app cid msg errs =
     updateAndBroadcast
         app
         (\nb -> nb{nbCells = map (clearCellOutputs cid msg) (nbCells nb)})
-        (EvCellResult cid [] (Just msg) errs)
+        (EvCellResult cid [] (Just msg) errs [])
 
 clearCellOutputs :: Int -> Text -> Cell -> Cell
 clearCellOutputs targetCid errMsg c

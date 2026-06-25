@@ -1,0 +1,125 @@
+cabal-version:      3.0
+name:               siza-eval
+version:            0.1.0.0
+synopsis:           Neuro-symbolic eval harness: drive siza with a local model.
+description:        Runs a local Ollama model (gpt-oss:20b) as the siza agent
+                    against a live Sabela notebook, scores task success with an
+                    objective grader cell, and reports the pass rate. Phase 1 is
+                    the baseline (no type gate); the gate is the Phase 2 variable.
+build-type:         Simple
+license:            MIT
+author:             DataHaskell
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
+    exposed-modules:  Eval.Ollama
+                      Eval.Tools
+                      Eval.Bench
+                      Eval.Discover
+                      Eval.Sample
+                      Eval.Agent
+                      Eval.Chat
+                      Eval.HoleFit
+                      Eval.Messages
+                      Eval.Owned
+                      Eval.Render
+                      Eval.Repair
+                      Eval.Salvage
+                      Eval.Scaffold
+                      Eval.Transcript
+                      Eval.Task
+    build-depends:    base >= 4 && < 5
+                    , siza-client
+                    , sabela:sabela-contract >= 0.1 && < 0.2
+                    , http-client >= 0.7 && < 0.10
+                    , aeson >= 2.0 && < 3
+                    , bytestring >= 0.10 && < 0.13
+                    , text >= 1.2 && < 3
+                    , time >= 1.9 && < 2
+                    , containers >= 0.6.7 && < 0.9
+                    , process >= 1.6 && < 1.7
+                    , directory >= 1.3 && < 1.4
+                    , filepath >= 1.4 && < 1.6
+
+executable siza-eval
+    import:           warnings
+    hs-source-dirs:   app
+    main-is:          Main.hs
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    build-depends:    base >= 4 && < 5
+                    , siza-eval
+                    , siza-client
+                    , sabela:sabela-contract >= 0.1 && < 0.2
+                    , http-client >= 0.7 && < 0.10
+                    , http-client-tls >= 0.3 && < 0.4
+                    , aeson >= 2.0 && < 3
+                    , bytestring >= 0.10 && < 0.13
+                    , text >= 1.2 && < 3
+                    , time >= 1.9 && < 2
+                    , directory >= 1.3 && < 1.4
+
+executable siza-chat
+    import:           warnings
+    hs-source-dirs:   chat
+    main-is:          Main.hs
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    build-depends:    base >= 4 && < 5
+                    , siza-eval
+                    , siza-client
+                    , http-client-tls >= 0.3 && < 0.4
+                    , text >= 1.2 && < 3
+
+executable siza-bench
+    import:           warnings
+    hs-source-dirs:   bench
+    main-is:          Main.hs
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    build-depends:    base >= 4 && < 5
+                    , siza-eval
+                    , siza-client
+                    , http-client-tls >= 0.3 && < 0.4
+                    , text >= 1.2 && < 3
+
+test-suite siza-eval-test
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    other-modules:    Test.BenchSpec
+                      Test.ChatSpec
+                      Test.DiscoverSpec
+                      Test.GradeRenderSpec
+                      Test.HoleFitSpec
+                      Test.GrammarSpec
+                      Test.HealthGateSpec
+                      Test.RepairBudgetSpec
+                      Test.RepairSpec
+                      Test.SalvageSpec
+                      Test.ScaffoldSpec
+                      Test.SampleVerifySpec
+                      Test.SpecVerifierSpec
+                      Test.TaskSpec
+                      Test.ToolsSpec
+                      Test.TranscriptSpec
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
+    ghc-options:      -threaded
+    build-depends:    base >= 4 && < 5
+                    , siza-eval
+                    , sabela:sabela-contract >= 0.1 && < 0.2
+                    , aeson >= 2.0 && < 3
+                    , containers >= 0.6.7 && < 0.9
+                    , text >= 1.2 && < 3
+                    , hspec >= 2 && < 3

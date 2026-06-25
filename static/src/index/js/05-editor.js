@@ -37,6 +37,41 @@ function clearErrorMarkers(cellId) {
   if (el) el.classList.remove('has-error');
 }
 
+// ── Warning markers (gutter) ─────────────────────────────────────
+// A light amber nudge: gutter dot + hover tooltip, in its own gutter so a line
+// can show both a warning and an error. Warnings never print to the console.
+function applyWarningMarkers(cellId, warnings) {
+  cellWarnings[cellId] = warnings;
+  const cm = editors[cellId];
+  if (!cm) return;
+  cm.clearGutter('warn-gutter');
+  for (let i = 0; i < cm.lineCount(); i++) cm.removeLineClass(i, 'background', 'warn-line');
+
+  for (const w of warnings) {
+    if (w.ceLine != null) {
+      const line = w.ceLine - 1; // 0-indexed
+      if (line >= 0 && line < cm.lineCount()) {
+        const marker = document.createElement('div');
+        marker.className = 'warn-marker';
+        marker.textContent = '●';
+        marker.title = w.ceMessage;
+        marker.onmouseenter = (e) => showErrorTooltip(e, w.ceMessage);
+        marker.onmouseleave = hideErrorTooltip;
+        cm.setGutterMarker(line, 'warn-gutter', marker);
+        cm.addLineClass(line, 'background', 'warn-line');
+      }
+    }
+  }
+}
+
+function clearWarningMarkers(cellId) {
+  cellWarnings[cellId] = [];
+  const cm = editors[cellId];
+  if (!cm) return;
+  cm.clearGutter('warn-gutter');
+  for (let i = 0; i < cm.lineCount(); i++) cm.removeLineClass(i, 'background', 'warn-line');
+}
+
 let tooltipEl = null;
 function showErrorTooltip(e, msg) {
   hideErrorTooltip();

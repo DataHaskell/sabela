@@ -55,6 +55,7 @@ fakeBackend transcript respond = do
         backend =
             ST.SessionBackend
                 { ST.sbSessionId = uid
+                , ST.sbJsonDiagnostics = False
                 , ST.sbRunBlock = record
                 , ST.sbRunBlockStreaming = \t _ -> record t
                 , ST.sbClose = pure ()
@@ -68,7 +69,9 @@ fakeBackend transcript respond = do
                 , ST.sbQueryInfo = \_ -> pure ""
                 , ST.sbQueryKind = \_ -> pure ""
                 , ST.sbQueryBrowse = \_ -> pure ""
+                , ST.sbQueryBindings = pure ""
                 , ST.sbQueryDoc = \_ -> pure ""
+                , ST.sbQueryHoleFits = \_ -> pure ""
                 }
     pure backend
 

@@ -35,9 +35,11 @@ import Sabela.Api (errorJson)
 -- 'ToolOutcome' (and its smart constructors) is re-exported from
 -- 'Sabela.AI.Types' via the open import above; no explicit list needed.
 import Sabela.Deps (collectMetadataFromContent, mergedMeta)
+import Sabela.Diagnose (diagnose, guidancePairs)
 import Sabela.Output (displayPrelude)
 import Sabela.PythonSession (newPythonSession, pythonBackend)
 import Sabela.Session (
+    SessionConfig (..),
     mkSessionConfig,
     readErrorBuffer,
     runBlock,
@@ -160,9 +162,11 @@ execScratchpad app store input = do
                     stderrV <- compactMaybeText store (Just augErr)
                     let payload =
                             object
-                                [ "stdout" .= stdoutV
-                                , "stderr" .= stderrV
-                                ]
+                                ( [ "stdout" .= stdoutV
+                                  , "stderr" .= stderrV
+                                  ]
+                                    <> guidancePairs (diagnose stderr)
+                                )
                     pure $
                         if T.null stderr
                             then okOutcome payload
@@ -234,7 +238,10 @@ ensureScratchpad app store lang = do
                         (envLocalPackages (appEnv app))
                         projDir
                         meta
-                    cfg <- mkSessionConfig projDir spDir
+                    -- The scratchpad reports raw GHCi stderr to the model and
+                    -- runs textual diagnose/guidance over it, so keep it on the
+                    -- textual diagnostic path (no -fdiagnostics-as-json).
+                    cfg <- (\c -> c{scJsonDiagnostics = False}) <$> mkSessionConfig projDir spDir
                     sess <- newSession cfg
                     -- If GHCi/cabal dies during prelude injection, surface
                     -- the captured cabal/ghci stderr instead of the opaque

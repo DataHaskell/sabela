@@ -44,6 +44,7 @@ import Siza.Language (
     renderDiagnostic,
  )
 import Siza.Login (runLogin, runLogout)
+import Siza.Mcp (runMcp)
 import Siza.Preflight (preflight, vettedSource)
 import Siza.Provenance (Preflight (Preflight))
 import Siza.Security (Policy, advisoryPolicy, scanSource, strictPolicy)
@@ -71,6 +72,7 @@ data Command
     | Await Int
     | Login (Maybe Text)
     | Logout
+    | Mcp
     deriving (Show)
 
 -- | The full parser, with @--help@ and per-subcommand help.
@@ -104,6 +106,7 @@ subcommands =
         )
     , ("login", loginParser, "Authorize against a hub: siza login [HUB_URL].")
     , ("logout", pure Logout, "Forget the saved hub token.")
+    , ("mcp", pure Mcp, "Serve the AI tool surface over MCP on stdio.")
     ]
 
 {- | @siza login [HUB_URL]@: run the browser-approved device flow against the
@@ -195,6 +198,9 @@ runCommand = \case
     Await budget ->
         withConn $ \conn -> withFirstServer conn $ \srv ->
             runAwaitIdle conn (srvBaseUrl srv) budget
+    Mcp ->
+        withConn $ \conn -> withFirstServer conn $ \srv ->
+            runMcp conn (srvBaseUrl srv)
     Annotate cellId asSource ->
         withConn $ \conn -> withFirst conn $ \base ->
             runAnnotate conn base cellId asSource

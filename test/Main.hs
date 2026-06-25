@@ -11,6 +11,7 @@ import qualified Test.AtomicAdmissionSpec as AtomicAdmissionSpec
 import qualified Test.AwaitIdleSpec as AwaitIdleSpec
 import qualified Test.CacheControlSpec as CacheControlSpec
 import qualified Test.CellResultWireSpec as CellResultWireSpec
+import qualified Test.CellShapeSpec as CellShapeSpec
 import qualified Test.ClassifyErrorSpec as ClassifyErrorSpec
 import qualified Test.CompactResultSpec as CompactResultSpec
 import qualified Test.CompileEscalationSpec as CompileEscalationSpec
@@ -19,11 +20,19 @@ import qualified Test.ConfigurableTimeoutSpec as ConfigurableTimeoutSpec
 import qualified Test.CycleMsgSpec as CycleMsgSpec
 import qualified Test.DefaultExtsSpec as DefaultExtsSpec
 import qualified Test.DepsMatchSpec as DepsMatchSpec
+import qualified Test.DepsRepairSpec as DepsRepairSpec
+import qualified Test.DiagnoseSpec as DiagnoseSpec
+import qualified Test.ErrorsJsonSpec as ErrorsJsonSpec
+import qualified Test.EvCellResultWireSpec as EvCellResultWireSpec
+import qualified Test.ExecuteCellSpec as ExecuteCellSpec
 import qualified Test.ExportGoldenSpec as ExportGoldenSpec
 import qualified Test.ExportSpec as ExportSpec
 import qualified Test.GenerationSpec as GenerationSpec
+import qualified Test.GrammarRouteSpec as GrammarRouteSpec
+import qualified Test.HoleFitsSpec as HoleFitsSpec
 import Test.Hspec (hspec)
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
+import qualified Test.JsonDiagSpec as JsonDiagSpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
 import qualified Test.MarkerSpec as MarkerSpec
 import qualified Test.NotebookAnimSpec as NotebookAnimSpec
@@ -34,6 +43,7 @@ import qualified Test.OrphanSpec as OrphanSpec
 import qualified Test.OutputChokepointWireSpec as OutputChokepointWireSpec
 import qualified Test.OutputSpec as OutputSpec
 import qualified Test.ParseSpec as ParseSpec
+import qualified Test.PeekDataSpec as PeekDataSpec
 import qualified Test.PlatformSpec as PlatformSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
@@ -76,11 +86,20 @@ main = do
         CompiledPlanSpec.spec
         CompileEscalationSpec.spec
         ClassifyErrorSpec.spec
+        ErrorsJsonSpec.errorsJsonSpec
+        JsonDiagSpec.jsonDiagSpec
+        ExecuteCellSpec.spec
+        DiagnoseSpec.diagnoseSpec
+        GrammarRouteSpec.grammarRouteSpec
+        HoleFitsSpec.spec
         ExportSpec.spec
         DefaultExtsSpec.spec
         DepsMatchSpec.spec
+        DepsRepairSpec.depsRepairSpec
         NotebookExportSpec.spec
         ParseSpec.spec
+        PeekDataSpec.spec
+        CellShapeSpec.spec
         PlatformSpec.spec
         OutputSpec.spec
         PreinstalledSpec.spec
@@ -107,6 +126,7 @@ main = do
         AtomicAdmissionSpec.spec
         AwaitIdleSpec.spec
         KernelStateWireSpec.spec
+        EvCellResultWireSpec.spec
         ToolOutcomeWireSpec.spec
         ProvenanceWireSpec.spec
         MarkerSpec.spec

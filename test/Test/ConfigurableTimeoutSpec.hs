@@ -57,6 +57,7 @@ dummySessionWithConfig cfg = do
             , sessLock = lock
             , sessQueryLock = qlock
             , sessErrBuf = errRef
+            , sessBaselineBindings = errRef
             , sessCounter = ctrRef
             , sessConfig = cfg
             , sessErrCallback = cbRef

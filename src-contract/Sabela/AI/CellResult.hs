@@ -13,7 +13,10 @@ module Sabela.AI.CellResult (
     AbortReason (..),
     CellOutcome (..),
     CellResult (..),
+    CellId,
+    OwnedCells,
     okCellResult,
+    notebookHealthy,
     toCellResult,
     toToolOutcome,
     mergeToolOk,
@@ -33,6 +36,7 @@ import Data.Aeson (
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (Pair, Parser)
 import Data.Maybe (fromMaybe)
+import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Types (
@@ -41,9 +45,7 @@ import Sabela.AI.Types (
  )
 import Sabela.Model (CellError, OutputItem)
 
-{- | A non-fatal or fatal cell diagnostic. The 'Sabela.Errors' severity split
-(§1.2) is out of scope here, so this is the existing 'CellError'.
--}
+-- | A cell diagnostic (error or warning), carrying a cell-relative location.
 type Diagnostic = CellError
 
 {- | Why a cell never produced a result. Maps the three @executeCell@ @Left@
@@ -63,8 +65,8 @@ data CellOutcome
     | Aborted !AbortReason
     deriving (Show, Eq)
 
-{- | Outcome plus the orthogonal outputs and warnings. @crWarnings@ is @[]@
-until the severity split lands (§1.2).
+{- | Outcome plus the orthogonal outputs and warnings. @crWarnings@ carries the
+non-fatal diagnostics GHC reports alongside a successful (or failing) run.
 -}
 data CellResult = CellResult
     { crOutcome :: CellOutcome
@@ -77,19 +79,33 @@ data CellResult = CellResult
 okCellResult :: CellResult -> Bool
 okCellResult cr = crOutcome cr == Succeeded
 
+-- | A notebook cell identifier, matching @cellId@ in "Sabela.Model".
+type CellId = Int
+
+-- | The ids of cells an eval episode wrote, so the harness knows what it owns.
+type OwnedCells = Set CellId
+
+{- | Did every cell of this run succeed? The empty list is healthy: nothing
+red. Lets the harness decide when an episode is finished.
+-}
+notebookHealthy :: [CellResult] -> Bool
+notebookHealthy = all okCellResult
+
 {- | Map an @executeCell@ result to a 'CellResult'. The three @Left@ strings
 become 'Aborted' reasons; a @Right@ with @erError@ set is 'Raised', a
 non-empty @erErrors@ is 'Rejected', otherwise 'Succeeded'.
 -}
 toCellResult :: Either Text ExecutionResult -> [OutputItem] -> CellResult
 toCellResult res outputs =
-    CellResult (outcomeOf res) outputs []
+    CellResult (outcomeOf res) outputs (warningsOf res)
   where
     outcomeOf (Left msg) = Aborted (abortReason msg)
     outcomeOf (Right er)
         | Just e <- erError er = Raised e
         | not (null (erErrors er)) = Rejected (erErrors er)
         | otherwise = Succeeded
+    warningsOf (Left _) = []
+    warningsOf (Right er) = erWarnings er
 
 -- | The three @executeCell@ @Left@ strings, matched on the stable prefix.
 abortReason :: Text -> AbortReason

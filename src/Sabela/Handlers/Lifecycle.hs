@@ -48,6 +48,7 @@ import Sabela.Session.Process (
     ghciBackend,
     newSessionStreaming,
  )
+import Sabela.Session.Query (captureBindingsBaseline)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), clearCompiledModules, withBuilding)
 import Sabela.State.DependencyTracker (
@@ -239,6 +240,7 @@ injectPrelude app sess = do
             void (try (closeSession sess) :: IO (Either SomeException ()))
             pure False
         Right _ -> do
+            captureBindingsBaseline sess
             setHaskellSession (appSessions app) (Just (ghciBackend sess))
             broadcast app (EvSessionStatus SReady)
             pure True

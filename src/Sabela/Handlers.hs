@@ -12,6 +12,7 @@ module Sabela.Handlers (
     -- * Reactive notebook interface
     ReactiveNotebook (..),
     setupReactive,
+    cellRunnable,
 
     -- * Initialization
     initGlobalEnv,
@@ -99,6 +100,7 @@ initPreinstalledPackages _ pkgs = pure (S.fromList (map T.pack pkgs))
 data ReactiveNotebook = ReactiveNotebook
     { rnCellEdit :: Int -> Text -> IO ()
     , rnRunCell :: Int -> IO ()
+    , rnRunCellForced :: Int -> IO ()
     , rnRunAll :: IO ()
     , rnReset :: IO ()
     , rnRestartKernel :: IO ()
@@ -111,6 +113,7 @@ setupReactive app =
         ReactiveNotebook
             { rnCellEdit = handleCellEdit app
             , rnRunCell = handleRunCell app
+            , rnRunCellForced = handleRunCellForced app
             , rnRunAll = handleRunAll app
             , rnReset = handleReset app
             , rnRestartKernel = handleRestartKernel app
@@ -160,13 +163,21 @@ handleWidgetCell app cid = do
 successful run), in which case the click is a no-op.
 -}
 handleRunCell :: App -> Int -> IO ()
-handleRunCell app cid = do
+handleRunCell = handleRunCellWith False
+
+{- | Force a single cell to run even when clean — the @execute_cell@ tool's
+contract ("re-run an existing cell"). Without this an already-clean code cell
+is skipped and broadcasts no result, so the AI listener waits out its 130s
+timeout on an event that never fires.
+-}
+handleRunCellForced :: App -> Int -> IO ()
+handleRunCellForced = handleRunCellWith True
+
+handleRunCellWith :: Bool -> App -> Int -> IO ()
+handleRunCellWith force app cid = do
     debugLog app $ "[handler] handleRunCell: cell " <> T.pack (show cid)
     nb <- readNotebook (appNotebook app)
-    let runnable = case find (\c -> cellId c == cid) (nbCells nb) of
-            Just c -> cellType c /= CodeCell || cellStale c
-            Nothing -> False
-    if not runnable
+    if not (cellRunnable force (find (\c -> cellId c == cid) (nbCells nb)))
         then debugLog app "[handler] handleRunCell: cell unchanged; skipping"
         else do
             gen <- bumpGeneration app
@@ -174,6 +185,15 @@ handleRunCell app cid = do
                 void $
                     forkIO $
                         executeSingleCell app gen cid
+
+{- | Whether 'handleRunCell' dispatches a run. A forced run (the AI
+@execute_cell@ tool) executes an existing cell even when clean; an unforced
+run (browser / reactive flush) skips a clean code cell. A missing cell never
+runs.
+-}
+cellRunnable :: Bool -> Maybe Cell -> Bool
+cellRunnable _ Nothing = False
+cellRunnable force (Just c) = force || cellType c /= CodeCell || cellStale c
 
 handleRunAll :: App -> IO ()
 handleRunAll app = do

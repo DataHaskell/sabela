@@ -1,5 +1,5 @@
 {
   "name": "siza",
-  "description": "Sabela notebook pairing skill — a typed compiled client (list, read, run, edit cells; pre-flight parse + security scan; provenance) over the Sabela AI bridge.",
-  "version": "0.2.0"
+  "description": "Sabela notebook pairing skill — a typed compiled client (list, read, run, edit cells; pre-flight parse + security scan; provenance) over the Sabela AI bridge, plus an MCP stdio server (siza mcp) for any MCP client.",
+  "version": "0.3.0"
 }

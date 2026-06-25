@@ -1470,6 +1470,21 @@ body::before {
 .error-line {
   background: rgba(243, 139, 168, 0.08) !important;
 }
+
+/* Warning gutter markers — a lighter amber nudge, never in the output console */
+.warn-gutter {
+  width: 12px;
+}
+.warn-marker {
+  color: var(--yellow);
+  font-size: 14px;
+  line-height: 1.55;
+  cursor: pointer;
+  text-align: center;
+}
+.warn-line {
+  background: rgba(235, 203, 139, 0.07) !important;
+}
 .error-tooltip {
   position: absolute;
   z-index: 200;
@@ -3118,6 +3133,7 @@ button.palette-trigger kbd {
     <script>
 const editors = {}; // cellId → CodeMirror instance
 const cellErrors = {}; // cellId → [CellError]
+const cellWarnings = {}; // cellId → [CellError] (non-fatal diagnostics)
 const collapsedCells = new Set(); // cellId → collapsed
 let notebook = null;
 let evtSource = null;
@@ -3272,6 +3288,8 @@ function handleSSE(ev) {
       updateCellOutput(ev.cellId, ev.outputs || [], ev.error);
       if (ev.errors && ev.errors.length) applyErrorMarkers(ev.cellId, ev.errors);
       else clearErrorMarkers(ev.cellId);
+      if (ev.warnings && ev.warnings.length) applyWarningMarkers(ev.cellId, ev.warnings);
+      else clearWarningMarkers(ev.cellId);
       pulseCell(ev.cellId);
       break;
     case 'widget':
@@ -3487,6 +3505,41 @@ function clearErrorMarkers(cellId) {
   for (let i = 0; i < cm.lineCount(); i++) cm.removeLineClass(i, 'background', 'error-line');
   const el = document.querySelector(`.cell[data-id="${cellId}"]`);
   if (el) el.classList.remove('has-error');
+}
+
+// ── Warning markers (gutter) ─────────────────────────────────────
+// A light amber nudge: gutter dot + hover tooltip, in its own gutter so a line
+// can show both a warning and an error. Warnings never print to the console.
+function applyWarningMarkers(cellId, warnings) {
+  cellWarnings[cellId] = warnings;
+  const cm = editors[cellId];
+  if (!cm) return;
+  cm.clearGutter('warn-gutter');
+  for (let i = 0; i < cm.lineCount(); i++) cm.removeLineClass(i, 'background', 'warn-line');
+
+  for (const w of warnings) {
+    if (w.ceLine != null) {
+      const line = w.ceLine - 1; // 0-indexed
+      if (line >= 0 && line < cm.lineCount()) {
+        const marker = document.createElement('div');
+        marker.className = 'warn-marker';
+        marker.textContent = '●';
+        marker.title = w.ceMessage;
+        marker.onmouseenter = (e) => showErrorTooltip(e, w.ceMessage);
+        marker.onmouseleave = hideErrorTooltip;
+        cm.setGutterMarker(line, 'warn-gutter', marker);
+        cm.addLineClass(line, 'background', 'warn-line');
+      }
+    }
+  }
+}
+
+function clearWarningMarkers(cellId) {
+  cellWarnings[cellId] = [];
+  const cm = editors[cellId];
+  if (!cm) return;
+  cm.clearGutter('warn-gutter');
+  for (let i = 0; i < cm.lineCount(); i++) cm.removeLineClass(i, 'background', 'warn-line');
 }
 
 let tooltipEl = null;
@@ -5147,7 +5200,7 @@ function renderCodeCell(cell, cellNum) {
       indentUnit: 2,
       tabSize: 2,
       lineWrapping: true,
-      gutters: ['error-gutter'],
+      gutters: ['warn-gutter', 'error-gutter'],
       extraKeys: {
         'Shift-Enter': () => runCell(cell.cellId),
         'Ctrl-Enter': () => runCell(cell.cellId),

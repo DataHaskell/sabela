@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# siza-mcp — start the siza MCP stdio server for any MCP client (goose, Claude
+# Desktop, opencode). Delegates to the sibling `siza` shim (which locates the
+# compiled binary) with the `mcp` subcommand. Carries no logic of its own.
+set -euo pipefail
+exec "$(cd "$(dirname "$0")" && pwd)/siza" mcp "$@"

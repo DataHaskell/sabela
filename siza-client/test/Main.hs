@@ -10,6 +10,7 @@ import Test.LanguageSpec (
     securitySpec,
  )
 import Test.LoginSpec (loginSpec)
+import Test.McpSpec (mcpSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.TransportSpec (transportSpec)
 
@@ -26,3 +27,4 @@ main = hspec $ do
     transportSpec
     hubTokenSpec
     loginSpec
+    mcpSpec

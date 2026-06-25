@@ -50,6 +50,7 @@ import Sabela.Session.Process (
     resetSession,
     startupErrorMessage,
  )
+import Sabela.Session.Query (groupEntries, scrubBindings)
 import Sabela.Session.Reader (
     OutQueue,
     enqueueEof,
@@ -97,6 +98,7 @@ dummySession q errRef ctrRef cfg = do
             , sessLock = lock
             , sessQueryLock = qlock
             , sessErrBuf = errRef
+            , sessBaselineBindings = errRef
             , sessCounter = ctrRef
             , sessConfig = cfg
             , sessErrCallback = cbRef
@@ -140,6 +142,49 @@ withTimeout usec action = do
 
 spec :: Spec
 spec = do
+    describe "groupEntries (multi-line :show bindings entries)" $
+        it "absorbs indented continuation lines into one entry" $
+            groupEntries
+                ( T.unlines
+                    [ "scatterSelectWith ::"
+                    , "  String -> Input [Int] = _"
+                    , "total :: Int = 600"
+                    ]
+                )
+                `shouldBe` [ "scatterSelectWith ::\n  String -> Input [Int] = _"
+                           , "total :: Int = 600"
+                           ]
+
+    describe "scrubBindings (drops prelude-injected bindings)" $ do
+        let baseline =
+                groupEntries
+                    ( T.unlines
+                        [ "displaySvg :: String -> IO () = _"
+                        , "_sabelaWidgetRef :: IORef [(String, String)] = old"
+                        , "scatterSelectWith ::"
+                        , "  String -> Input [Int] = _"
+                        ]
+                    )
+            current =
+                T.unlines
+                    [ "displaySvg :: String -> IO () = _"
+                    , "_sabelaWidgetRef :: IORef [(String, String)] = mutated"
+                    , "scatterSelectWith ::"
+                    , "  String -> Input [Int] = _"
+                    , "total :: Int = 600"
+                    , "it :: () = ()"
+                    ]
+        it "keeps only the notebook's own binding" $
+            scrubBindings baseline current `shouldBe` "total :: Int = 600"
+        it "drops the GHCi it binding" $
+            ("it ::" `T.isInfixOf` scrubBindings baseline current) `shouldBe` False
+        it "drops an internal _sabela ref even when its value changed" $
+            ("_sabelaWidgetRef" `T.isInfixOf` scrubBindings baseline current)
+                `shouldBe` False
+        it "drops instance lines that drift with GHCi's GhciN counter" $
+            scrubBindings baseline (current <> "instance [safe] Functor Ghci4.Input\n")
+                `shouldBe` "total :: Int = 600"
+
     describe "resolveLocalPackages" $ do
         -- The sticky sabela-notebook support package is always prepended so
         -- every notebook can @import Sabela.Notebook.*@.

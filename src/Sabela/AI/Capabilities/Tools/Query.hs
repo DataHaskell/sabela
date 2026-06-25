@@ -14,7 +14,7 @@ queryTools :: [ToolDef]
 queryTools =
     [ mkTool
         GhciQuery
-        "Lightweight GHCi introspection against the live Haskell session: type, info, kind, doc, or browse a module. Much cheaper than execute_cell for syntax discovery. Use `browse` with a module name (e.g. \"DataFrame\") to list exports."
+        "Lightweight GHCi introspection against the live Haskell session: type, info, kind, doc, browse a module, holefits, or bindings. Much cheaper than execute_cell for syntax discovery. Use `browse` with a module name (e.g. \"DataFrame\") to list exports. Use `holefits` with a concrete goal type (e.g. \"_ :: [Int] -> Int\") to list in-scope names that fit it, so you pick a real name instead of inventing one. Use `bindings` to list every variable currently bound in the session with its type."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"
@@ -22,15 +22,18 @@ queryTools =
                     [ "op"
                         .= object
                             [ "type" .= ("string" :: Text)
-                            , "enum" .= (["type", "info", "kind", "browse", "doc"] :: [Text])
+                            , "enum"
+                                .= (["type", "info", "kind", "browse", "doc", "holefits", "bindings"] :: [Text])
                             , "description"
-                                .= ("Which GHCi command to run (:type, :info, :kind, :browse, :doc)." :: Text)
+                                .= ( "Which GHCi command to run (:type, :info, :kind, :browse, :doc, holefits, or bindings)." ::
+                                        Text
+                                   )
                             ]
                     , "arg"
                         .= object
                             [ "type" .= ("string" :: Text)
                             , "description"
-                                .= ( "For type/info/kind/doc: an expression, name, or type. For browse: a module name like \"DataFrame\"." ::
+                                .= ( "For type/info/kind/doc: an expression, name, or type. For browse: a module name like \"DataFrame\". For holefits: a concrete typed hole like \"_ :: [Int] -> Int\". For bindings: ignored (pass an empty string)." ::
                                         Text
                                    )
                             ]
@@ -117,6 +120,28 @@ queryTools =
         ExportNotebook
         "Return every cell's id, position, type, language, and source in one call, so a full notebook sync is a single request rather than N read_cell round-trips."
         noArgs
+    , mkTool
+        PeekData
+        "Peek at a delimited data file (CSV/TSV) in the work directory before loading it: returns the inferred delimiter, whether row one is a header, the first N rows, and a guessed type (Int|Double|Bool|Text) per column. Use this to shape a DataFrame read instead of guessing the schema."
+        ( object
+            [ "type" .= ("object" :: Text)
+            , "properties"
+                .= object
+                    [ "path"
+                        .= object
+                            [ "type" .= ("string" :: Text)
+                            , "description"
+                                .= ("Path to the file, relative to the work directory." :: Text)
+                            ]
+                    , "n"
+                        .= object
+                            [ "type" .= ("integer" :: Text)
+                            , "description" .= ("Number of data rows to return (default 10)." :: Text)
+                            ]
+                    ]
+            , "required" .= (["path"] :: [Text])
+            ]
+        )
     ]
 
 -- | Schema for a tool that takes no arguments.

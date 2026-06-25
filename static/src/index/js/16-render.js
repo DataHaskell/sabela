@@ -127,7 +127,7 @@ function renderCodeCell(cell, cellNum) {
       indentUnit: 2,
       tabSize: 2,
       lineWrapping: true,
-      gutters: ['error-gutter'],
+      gutters: ['warn-gutter', 'error-gutter'],
       extraKeys: {
         'Shift-Enter': () => runCell(cell.cellId),
         'Ctrl-Enter': () => runCell(cell.cellId),

@@ -13,8 +13,9 @@ import Control.Concurrent (
     tryTakeMVar,
     withMVar,
  )
-import Control.Exception (bracket_, finally, mask)
+import Control.Exception (SomeException, bracket_, finally, mask, try)
 import Control.Monad (when)
+import Data.Char (isDigit)
 import Data.IORef (
     IORef,
     atomicModifyIORef',
@@ -25,6 +26,7 @@ import Data.IORef (
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Read as TR
 import Data.Time (UTCTime, getCurrentTime)
 import Sabela.Session.Drain (
     DrainResult (..),
@@ -45,8 +47,14 @@ import Sabela.Session.Timeout (
     timedOutKilledMessage,
     timedOutMessage,
  )
+import System.Environment (lookupEnv)
+import System.Exit (ExitCode (..))
 import System.IO (Handle, hFlush, hPutStrLn)
-import System.Process (ProcessHandle, getProcessExitCode)
+import System.Process (
+    ProcessHandle,
+    getProcessExitCode,
+    readProcessWithExitCode,
+ )
 import System.Timeout (timeout)
 
 newtype Marker = Marker Text
@@ -69,6 +77,8 @@ data Session = Session
     -- ^ When the kernel last actually signalled an interrupt (case 25).
     , sessionGen :: IORef Int
     -- ^ Generation tag; bumps on restart so clients can discard stale results.
+    , sessBaselineBindings :: IORef [Text]
+    -- ^ Prelude-injected bindings, snapshotted at warmup so 'queryBindings' scrubs them.
     }
 
 data SessionConfig = SessionConfig
@@ -78,6 +88,8 @@ data SessionConfig = SessionConfig
     -- ^ Per-cell execution budget (microseconds), from 'mkSessionConfig'.
     , scResyncTimeoutUs :: Int
     -- ^ Post-timeout resync window (microseconds).
+    , scJsonDiagnostics :: Bool
+    -- ^ Session GHC supports @-fdiagnostics-as-json@ (GHC ≥ 9.8).
     }
     deriving (Show, Eq)
 
@@ -88,13 +100,41 @@ real caller routes through, so the live session and exports never drift.
 mkSessionConfig :: FilePath -> FilePath -> IO SessionConfig
 mkSessionConfig projDir workDir = do
     tc <- readTimeoutConfig
+    jsonDiag <- detectJsonDiagnostics
     pure
         SessionConfig
             { scProjectDir = projDir
             , scWorkDir = workDir
             , scExecutionTimeoutUs = tcExecutionUs tc
             , scResyncTimeoutUs = tcResyncUs tc
+            , scJsonDiagnostics = jsonDiag
             }
+
+{- | Does the session GHC support @-fdiagnostics-as-json@ (added in GHC 9.8.1)?
+Probe the resolved compiler — the @GHC@ env override 'ghciProcessSpec' honours,
+else @ghc@ — once at config time; assume no on any failure (textual fallback).
+-}
+detectJsonDiagnostics :: IO Bool
+detectJsonDiagnostics = do
+    ghc <- fromMaybe "ghc" <$> lookupEnv "GHC"
+    res <-
+        try (readProcessWithExitCode ghc ["--numeric-version"] "") ::
+            IO (Either SomeException (ExitCode, String, String))
+    pure $ case res of
+        Right (ExitSuccess, out, _) -> versionAtLeast [9, 8] (parseVersion out)
+        _ -> False
+
+-- | The numeric components of a @ghc --numeric-version@ string, e.g. [9,12,2].
+parseVersion :: String -> [Int]
+parseVersion s =
+    [ n
+    | p <- T.splitOn "." (T.pack (takeWhile (\c -> isDigit c || c == '.') s))
+    , Right (n, _) <- [TR.decimal p]
+    ]
+
+-- | Lexicographic @>=@ on version components, padding the candidate with zeros.
+versionAtLeast :: [Int] -> [Int] -> Bool
+versionAtLeast req v = take (length req) (v ++ repeat 0) >= req
 
 sessStdin :: Session -> Handle
 sessStdin = psStdin . sessProcSess

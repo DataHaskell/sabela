@@ -57,6 +57,7 @@ barrierBackend reachedRef gate = do
         backend =
             ST.SessionBackend
                 { ST.sbSessionId = uid
+                , ST.sbJsonDiagnostics = False
                 , ST.sbRunBlock = \_ -> pure ("", "")
                 , ST.sbRunBlockStreaming = \_ _ -> pure ("", "")
                 , ST.sbClose = pure ()
@@ -70,7 +71,9 @@ barrierBackend reachedRef gate = do
                 , ST.sbQueryInfo = \_ -> pure ""
                 , ST.sbQueryKind = \_ -> pure ""
                 , ST.sbQueryBrowse = \_ -> pure ""
+                , ST.sbQueryBindings = pure ""
                 , ST.sbQueryDoc = \_ -> pure ""
+                , ST.sbQueryHoleFits = \_ -> pure ""
                 }
     pure backend
 
@@ -99,6 +102,7 @@ inertRn =
     ReactiveNotebook
         { rnCellEdit = \_ _ -> pure ()
         , rnRunCell = \_ -> pure ()
+        , rnRunCellForced = \_ -> pure ()
         , rnRunAll = pure ()
         , rnReset = pure ()
         , rnRestartKernel = pure ()

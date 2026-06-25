@@ -58,6 +58,7 @@ import Sabela.AI.Capabilities.Query (
     execApiReference,
     execExploreResult,
     execGhciQuery,
+    execPeekData,
  )
 import Sabela.AI.Capabilities.Scratchpad (execScratchpadGuarded)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), parseToolName)
@@ -152,6 +153,7 @@ executeTool app store rn cancelTok toolName input =
         KernelRestart -> execKernelRestart rn
         AwaitIdle -> execAwaitIdle app
         ExportNotebook -> execExportNotebook app input
+        PeekData -> execPeekData app input
 
 -- | The busy wire shape returned by the live atomic admission gate.
 busyOutcome :: Value

@@ -57,6 +57,8 @@ function handleSSE(ev) {
       updateCellOutput(ev.cellId, ev.outputs || [], ev.error);
       if (ev.errors && ev.errors.length) applyErrorMarkers(ev.cellId, ev.errors);
       else clearErrorMarkers(ev.cellId);
+      if (ev.warnings && ev.warnings.length) applyWarningMarkers(ev.cellId, ev.warnings);
+      else clearWarningMarkers(ev.cellId);
       pulseCell(ev.cellId);
       break;
     case 'widget':

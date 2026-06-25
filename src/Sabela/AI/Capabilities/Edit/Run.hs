@@ -14,6 +14,7 @@ module Sabela.AI.Capabilities.Edit.Run (
     autoExecuteAfterMutation,
     execExecuteCell,
     executeCell,
+    missingCellError,
     abortCancelled,
     abortSuperseded,
     abortTimedOut,
@@ -22,8 +23,9 @@ module Sabela.AI.Capabilities.Edit.Run (
 import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM (atomically, readTChan)
-import Data.Aeson (Value, toJSON, (.=))
+import Data.Aeson (Value, (.=))
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime)
 import System.Timeout (timeout)
 
@@ -33,6 +35,7 @@ import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, isCancelled)
 import Sabela.Api (errorJson)
+import Sabela.Diagnose (cellResultWithGuidance, guidanceForCell, guidancePairs)
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model
 import qualified Sabela.SessionTypes as ST
@@ -52,21 +55,34 @@ autoExecuteAfterMutation ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Int -> IO Value
 autoExecuteAfterMutation app _store rn cancelTok cid = do
     res <- executeCell app rn cid cancelTok
-    pure (toJSON (toCellResult res (resultOutputs res)))
+    pure (cellResultWithGuidance (toCellResult res (resultOutputs res)))
 
 {- | @execute_cell@. @_store@ is the staged Output-chokepoint carrier — see
 'autoExecuteAfterMutation'; @crOutputs@ inline raw on this path.
 -}
 execExecuteCell ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Value -> IO ToolOutcome
-execExecuteCell app _store rn cancelTok input = do
-    let mcid = fieldInt "cell_id" input
-    case mcid of
+execExecuteCell app _store rn cancelTok input =
+    case fieldInt "cell_id" input of
         Nothing -> pure (errOutcome (errorJson "cell_id required"))
         Just cid -> do
-            result <- executeCell app rn cid cancelTok
-            let cr = toCellResult result (resultOutputs result)
-            pure (mergeToolOk cr ["cellId" .= cid])
+            nb <- readNotebook (appNotebook app)
+            case missingCellError (nbCells nb) cid of
+                Just msg -> pure (errOutcome (errorJson msg))
+                Nothing -> do
+                    result <- executeCell app rn cid cancelTok
+                    let cr = toCellResult result (resultOutputs result)
+                    pure (mergeToolOk cr (["cellId" .= cid] <> guidancePairs (guidanceForCell cr)))
+
+{- | The @execute_cell@ pre-check: a target id absent from the notebook fails
+fast with a clear, id-naming message. Without it the cell is never dispatched,
+so no @EvCellResult@ ever broadcasts and 'executeCell' waits out its full
+130s timeout before reporting a misleading abort.
+-}
+missingCellError :: [Cell] -> Int -> Maybe Text
+missingCellError cells cid
+    | any ((== cid) . cellId) cells = Nothing
+    | otherwise = Just ("No cell with id " <> T.pack (show cid))
 
 -- | Outputs an @executeCell@ result carried; @[]@ for an abort 'Left'.
 resultOutputs :: Either Text ExecutionResult -> [OutputItem]
@@ -87,12 +103,12 @@ executeCell app rn cid cancelTok = do
         let loop = do
                 ev <- atomically $ readTChan chan
                 case ev of
-                    EvCellResult rid outputs err errs
+                    EvCellResult rid outputs err errs warns
                         | rid == cid ->
-                            putMVar resultVar (ExecutionResult outputs err errs)
+                            putMVar resultVar (ExecutionResult outputs err errs warns)
                     _ -> loop
         loop
-    rnRunCell rn cid
+    rnRunCellForced rn cid
     mResult <- timeout 130000000 (takeMVar resultVar)
     killThread listenerThread
     cancelled <- isCancelled cancelTok

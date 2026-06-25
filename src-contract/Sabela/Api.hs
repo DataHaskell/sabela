@@ -10,7 +10,7 @@ import qualified Data.Aeson.Types as A
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
-import Sabela.Model (CellType, OutputItem)
+import Sabela.Model (CellError, CellType, OutputItem)
 import Sabela.SessionTypes (CellLang)
 
 -- ---------------------------------------------------------------------
@@ -191,6 +191,7 @@ data RunResult = RunResult
     { rrCellId :: Int
     , rrOutputs :: [OutputItem]
     , rrError :: Maybe Text
+    , rrWarnings :: [CellError]
     }
     deriving (Show, Generic)
 

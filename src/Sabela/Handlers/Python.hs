@@ -178,7 +178,7 @@ execPythonCell app cell = do
     mSess <- getPythonSession (appSessions app)
     case mSess of
         Nothing ->
-            pure (RunResult (cellId cell) [] (Just "No Python session"), [])
+            pure (RunResult (cellId cell) [] (Just "No Python session") [], [])
         Just backend -> runPythonBlock app backend cell
 
 runPythonBlock ::
@@ -203,7 +203,7 @@ parsePythonOutput app cid rawOut rawErr = do
     forM_ exports $ \(name, val) ->
         setBridgeValue (appBridge app) name (T.strip val)
     pure
-        (RunResult cid outputs (if T.null rawErr then Nothing else Just rawErr), [])
+        (RunResult cid outputs (if T.null rawErr then Nothing else Just rawErr) [], [])
 
 executePythonCell :: App -> Int -> Int -> IO ()
 executePythonCell app gen cid = do
@@ -245,7 +245,13 @@ tryExecAndBroadcast app gen cid cell = do
         updateAndBroadcast
             app
             (\nb' -> nb'{nbCells = map (applyResult result) (nbCells nb')})
-            (EvCellResult (rrCellId result) (rrOutputs result) (rrError result) errs)
+            ( EvCellResult
+                (rrCellId result)
+                (rrOutputs result)
+                (rrError result)
+                errs
+                (rrWarnings result)
+            )
 
 {- | Mirror of the GHCi crash handler: clear the slot only if it still
 holds the crashed backend, then tear it down (idempotent), so the next
@@ -265,7 +271,7 @@ handlePythonCrash app crashed = do
 unwrapExecResult ::
     Int -> Either SomeException (RunResult, [CellError]) -> (RunResult, [CellError])
 unwrapExecResult _ (Right r) = r
-unwrapExecResult cid (Left e) = (RunResult cid [] (Just (T.pack (show e))), [])
+unwrapExecResult cid (Left e) = (RunResult cid [] (Just (T.pack (show e))) [], [])
 
 executePythonCells :: App -> Int -> IO ()
 executePythonCells = executePythonCellsWhere (const True)

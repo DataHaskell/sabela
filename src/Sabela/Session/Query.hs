@@ -11,9 +11,16 @@ module Sabela.Session.Query (
     queryKind,
     queryBrowse,
     queryDoc,
+    queryHoleFits,
+    queryBindings,
+    captureBindingsBaseline,
+    scrubBindings,
+    groupEntries,
 ) where
 
 import Control.Concurrent (withMVar)
+import Data.Char (isSpace)
+import Data.IORef (readIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.Session (
@@ -61,6 +68,59 @@ queryBrowse sess mname = runQueryCommand sess (QueryBrowse mname)
 queryDoc :: Session -> Text -> IO Text
 queryDoc sess name = runQueryCommand sess (QueryDoc name)
 
+{- | Ask GHC which in-scope names fit a concrete goal type. The goal must be a
+typed hole expression, e.g. @_ :: [Int] -> Int@; GHC reports the fits in its
+error blob, which 'Sabela.AI.Capabilities.Query.parseHoleFits' parses.
+-}
+queryHoleFits :: Session -> Text -> IO Text
+queryHoleFits sess goal = runQueryCommand sess (QueryHoleFits goal)
+
+{- | List the session's interactive bindings, scrubbed of the prelude-injected
+ones, so only what the notebook defined remains (@:show bindings@).
+-}
+queryBindings :: Session -> IO Text
+queryBindings sess = do
+    raw <- runQueryCommand sess QueryBindings
+    baseline <- readIORef (sessBaselineBindings sess)
+    pure (scrubBindings baseline raw)
+
+{- | Snapshot the prelude-injected bindings as the baseline scrubbed from later
+'queryBindings' results. Call once, right after prelude injection.
+-}
+captureBindingsBaseline :: Session -> IO ()
+captureBindingsBaseline sess = do
+    raw <- runQueryCommand sess QueryBindings
+    writeIORef (sessBaselineBindings sess) (groupEntries raw)
+
+{- | Drop the prelude-injected bindings (those in the baseline), GHCi's @it@, and
+the internal @_sabela*@ refs from @:show bindings@ output, leaving the notebook's
+own bindings.
+-}
+scrubBindings :: [Text] -> Text -> Text
+scrubBindings baseline current =
+    T.intercalate "\n" (filter keep (groupEntries current))
+  where
+    keep e = e `notElem` baseline && not (isHidden (T.strip e))
+    -- @instance@ lines carry GHCi's @GhciN.@ counter, which bumps as cells run,
+    -- so they drift from the baseline; drop them (they are not value bindings).
+    isHidden s =
+        any
+            (`T.isPrefixOf` s)
+            ["it ::", "it =", "_sab", "instance "]
+
+{- | Split @:show bindings@ output into entries: an entry starts on a
+non-indented line and absorbs the indented continuation lines that follow it.
+-}
+groupEntries :: Text -> [Text]
+groupEntries = map (T.intercalate "\n") . collect . T.lines
+  where
+    collect [] = []
+    collect (l : ls)
+        | starts l = let (cont, rest) = span continues ls in (l : cont) : collect rest
+        | otherwise = collect ls
+    starts x = not (T.null x) && not (isSpace (T.head x))
+    continues x = not (T.null x) && isSpace (T.head x)
+
 {- | Serialise on 'sessQueryLock', not the cell run-lock: a query then
 never blocks at the lock level behind a draining cell (the busy gate stays
 admission control). The query lock still prevents query/query interleave,
@@ -88,7 +148,9 @@ data QueryCommand
     | QueryKind Text
     | QueryBrowse Text
     | QueryDoc Text
+    | QueryHoleFits Text
     | QueryComplete Text
+    | QueryBindings
 
 toText :: QueryCommand -> Text
 toText (QueryType t) = ":type " <> t
@@ -96,4 +158,9 @@ toText (QueryInfo t) = ":info " <> t
 toText (QueryKind t) = ":kind " <> t
 toText (QueryBrowse t) = ":browse " <> t
 toText (QueryDoc t) = ":doc " <> t
+toText (QueryHoleFits t) =
+    ":set -fno-max-valid-hole-fits -frefinement-level-hole-fits=2\
+    \ -fsort-by-subsumption-hole-fits\n"
+        <> t
 toText (QueryComplete t) = ":complete repl " <> t
+toText QueryBindings = ":show bindings"

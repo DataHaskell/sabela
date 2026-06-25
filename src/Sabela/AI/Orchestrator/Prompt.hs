@@ -22,6 +22,7 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 
 import Sabela.AI.Doc (defaultDocOpts, renderNotebookDoc)
+import Sabela.AI.Grammar (grammarPromptBlock)
 import Sabela.AI.ReferenceCard (apiReferenceCard)
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
@@ -51,6 +52,8 @@ systemPrompt =
         , "Read it instead of list_cells. Pass expected_hash on propose_edit."
         , ""
         , apiReferenceCard
+        , ""
+        , grammarPromptBlock
         , ""
         , "## Cell syntax (scripths — same rules in cells AND scratchpad)"
         , ""

@@ -27,6 +27,7 @@ import System.FilePath (takeDirectory, (</>))
 
 import Sabela.Compiled (CompilePlan (..), moduleFilePath)
 import Sabela.Errors (parseCompiledErrors)
+import Sabela.Errors.Json (parseJsonCompiled)
 import Sabela.Handlers.Lifecycle (handleKernelCrash)
 import Sabela.Handlers.Shared
 import Sabela.Model (
@@ -120,7 +121,9 @@ compileChanged app gen backend cplan affectedCells changed orphans = withBuildin
             clearCompiledModules app
             pure CompileFailed
         Right (rawOut, rawErr) -> do
-            let (perCell, loose) = parseCompiledErrors rawErr
+            let (perCell, loose)
+                    | ST.sbJsonDiagnostics backend = parseJsonCompiled rawErr
+                    | otherwise = parseCompiledErrors rawErr
                 failed = "Failed," `T.isInfixOf` rawOut || not (M.null perCell) || not (null loose)
             if failed
                 then do
@@ -167,7 +170,7 @@ broadcastCompiled app gen cells mElapsed = do
             updateAndBroadcast
                 app
                 (\nb -> nb{nbCells = map (applyCompiled (cellId c) [out] Nothing) (nbCells nb)})
-                (EvCellResult (cellId c) [out] Nothing [])
+                (EvCellResult (cellId c) [out] Nothing [] [])
 
 broadcastCompileErrors ::
     App -> Int -> [Cell] -> M.Map Int [CellError] -> [CellError] -> IO ()
@@ -186,7 +189,7 @@ broadcastCompileErrors app gen cells perCell loose = do
             updateAndBroadcast
                 app
                 (\nb -> nb{nbCells = map (applyCompiled cid [] (Just msg)) (nbCells nb)})
-                (EvCellResult cid [] (Just msg) errs)
+                (EvCellResult cid [] (Just msg) errs [])
 
 applyCompiled :: Int -> [OutputItem] -> Maybe Text -> Cell -> Cell
 applyCompiled cid outs err c

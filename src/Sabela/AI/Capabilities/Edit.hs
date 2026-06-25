@@ -44,6 +44,7 @@ import Sabela.Anthropic.Types (CancelToken)
 import Sabela.Api (InsertAt (..), errorJson, errorJsonWith)
 import Sabela.Handlers (ReactiveNotebook (..), insertCellAt)
 import Sabela.Model
+import Sabela.Parse (validateCellShape)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
 
@@ -90,7 +91,28 @@ applyReplaceCellSource ::
     Cell ->
     Text ->
     IO ToolOutcome
-applyReplaceCellSource app store rn cancelTok oldCell newSrc = do
+applyReplaceCellSource app store rn cancelTok oldCell newSrc =
+    case structuralReject oldCell newSrc of
+        Just msg -> pure (errOutcome (errorJson msg))
+        Nothing -> doReplace app store rn cancelTok oldCell newSrc
+
+{- | The pre-GHC structural rejection for a Haskell cell, if any. Non-Haskell
+cells are not shape-checked (the validator uses the Haskell parser).
+-}
+structuralReject :: Cell -> Text -> Maybe Text
+structuralReject c newSrc
+    | cellLang c == Haskell = validateCellShape (cellType c) newSrc
+    | otherwise = Nothing
+
+doReplace ::
+    App ->
+    AIStore ->
+    ReactiveNotebook ->
+    CancelToken ->
+    Cell ->
+    Text ->
+    IO ToolOutcome
+doReplace app store rn cancelTok oldCell newSrc = do
     let cid = cellId oldCell
         newCell =
             oldCell
@@ -214,6 +236,9 @@ execInsertCell app store rn cancelTok input = do
                         )
                     )
                 )
+        (Just _, Just cellTp, Just Haskell)
+            | Just msg <- validateCellShape cellTp src ->
+                pure (errOutcome (errorJson msg))
         (Just at, Just cellTp, Just lang) -> do
             nid <- freshCellId (appNotebook app)
             let cell = Cell nid cellTp lang src [] Nothing True

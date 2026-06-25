@@ -19,6 +19,7 @@ baseEnv =
         , envToken = Nothing
         , envSession = "siza-host-1"
         , envCookie = Nothing
+        , envToolTimeout = 60
         }
 
 transportSpec :: Spec

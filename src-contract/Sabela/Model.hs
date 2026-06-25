@@ -122,7 +122,8 @@ data NotebookEvent
     | -- | A compiled cell's module is being (re)compiled.
       EvCellCompiling Int
     | EvCellPartialOutput Int Text
-    | EvCellResult Int [OutputItem] (Maybe Text) [CellError]
+    | -- | cellId, outputs, holistic error, structured errors, structured warnings.
+      EvCellResult Int [OutputItem] (Maybe Text) [CellError] [CellError]
     | {- | cellId, widget name, value: a widget's value changed (browser→kernel,
       or set from Haskell), pushed so every open view reflects it.
       -}
@@ -187,13 +188,14 @@ instance ToJSON NotebookEvent where
     toJSON (EvCellPartialOutput cid line) =
         object
             ["type" .= ("cellPartialOutput" :: Text), "cellId" .= cid, "line" .= line]
-    toJSON (EvCellResult cid outputs err errs) =
+    toJSON (EvCellResult cid outputs err errs warns) =
         object
             [ "type" .= ("cellResult" :: Text)
             , "cellId" .= cid
             , "outputs" .= outputs
             , "error" .= err
             , "errors" .= errs
+            , "warnings" .= warns
             ]
     toJSON (EvWidget cid name value) =
         object

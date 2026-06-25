@@ -91,7 +91,7 @@ sendEvent chan write flush = do
 runCellH :: ReactiveNotebook -> Int -> Handler RunResult
 runCellH rn cid = liftIO $ do
     rnRunCell rn cid
-    pure (RunResult cid [] Nothing)
+    pure (RunResult cid [] Nothing [])
 
 runAllH :: ReactiveNotebook -> Handler RunAllResult
 runAllH rn = liftIO $ rnRunAll rn >> pure (RunAllResult [])
@@ -117,7 +117,7 @@ clearCellH :: App -> Int -> Handler NoContent
 clearCellH app cid = liftIO $ do
     modifyNotebook (appNotebook app) $ \nb ->
         nb{nbCells = map clr (nbCells nb)}
-    broadcast app (EvCellResult cid [] Nothing [])
+    broadcast app (EvCellResult cid [] Nothing [] [])
     pure NoContent
   where
     clr c
