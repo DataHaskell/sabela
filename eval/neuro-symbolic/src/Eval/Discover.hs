@@ -89,7 +89,7 @@ discoverModules tc
 
 browseCall :: Text -> ToolCall
 browseCall m =
-    ToolCall "ghci_query" (object ["op" .= ("browse" :: Text), "arg" .= m])
+    ToolCall "find_function" (object ["query" .= m])
 
 browseText :: Either Text ToolOutcome -> Text
 browseText (Right (ToolOk v)) = valueText v

@@ -106,7 +106,10 @@ allToolNames =
     , DeleteCell
     , ExecuteCell
     , Scratchpad
-    , GhciQuery
+    , ListBindings
+    , CheckType
+    , FindByType
+    , DescribeFunction
     , ApiReference
     , ExploreResult
     , KernelStatus
@@ -115,4 +118,7 @@ allToolNames =
     , AwaitIdle
     , ExportNotebook
     , PeekData
+    , FindPackage
+    , FindExampleCell
+    , FindFunction
     ]

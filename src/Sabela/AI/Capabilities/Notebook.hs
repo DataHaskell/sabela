@@ -10,10 +10,12 @@ module Sabela.AI.Capabilities.Notebook (
     execReadCell,
     execReadCellOutput,
     execFindCells,
+    cellDefines,
 ) where
 
 import Data.Aeson (Value, object, (.=))
 import Data.Maybe (isJust, mapMaybe)
+import qualified Data.Set as S
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Util (fieldInt, fieldText)
@@ -21,6 +23,8 @@ import Sabela.AI.Doc (cellHash)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
 import Sabela.Model
+import Sabela.Parse (cellNames)
+import Sabela.SessionTypes (CellLang (..))
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
 
@@ -38,11 +42,22 @@ execListCells app = do
             , "type" .= cellType c
             , "lang" .= cellLang c
             , "firstLine" .= T.take 80 (head' (T.lines (cellSource c)))
+            , "defines" .= cellDefines c
             , "hasError" .= isJust (cellError c)
             , "dirty" .= cellDirty c
             ]
     head' [] = ""
     head' (x : _) = x
+
+{- | Top-level binding names a Haskell code cell introduces — the @defines@
+field of @list_cells@, so the model reuses real names instead of inventing
+them. A pure projection of the parser's def set; empty for prose/Python cells.
+-}
+cellDefines :: Cell -> [T.Text]
+cellDefines c
+    | cellType c == CodeCell && cellLang c == Haskell =
+        S.toAscList (fst (cellNames (cellSource c)))
+    | otherwise = []
 
 execReadCell :: App -> Value -> IO ToolOutcome
 execReadCell app input = do

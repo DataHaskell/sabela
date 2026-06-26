@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Turn a compiler/runtime failure into structured, actionable guidance the
-model can act on, so domain knowledge lives in the environment rather than in
-the prompt. Generalizes the scratchpad's ad-hoc error hints to every tool.
-
-Each rule is a small, library-agnostic match over GHC's error text. The
-missing-module rule is backed by "Sabela.Diagnose.Packages", so a weak model
-that does not know Sabela's @-- cabal:@ mechanism is told exactly what to add.
--}
 module Sabela.Diagnose (
     Guidance (..),
     diagnose,
@@ -16,6 +8,8 @@ module Sabela.Diagnose (
     cellResultWithGuidance,
     topLevelLetMessage,
     holeFitGoal,
+    hiddenPackage,
+    neededExtension,
     GrammarRoute (..),
     routeFailure,
 ) where
@@ -23,7 +17,7 @@ module Sabela.Diagnose (
 import Data.Aeson (ToJSON (..), Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (Pair)
-import Data.Char (isDigit)
+import Data.Char (isAlphaNum, isDigit, isUpper)
 import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -119,6 +113,63 @@ missingModule err
 -- | The package named in GHC's "hidden package ‘pkg-1.2.3’", version stripped.
 hiddenPackage :: Text -> Maybe Text
 hiddenPackage err = packageFromHidden <$> afterPhrase "hidden package " err
+
+{- | The LANGUAGE extension GHC says is missing, from its "Perhaps you intended to
+use X" hint (X quoted or bare). GHC's token is authoritative, but it is validated
+against 'knownExtensions' so a misparse can never inject a bogus pragma; Nothing
+when no known extension is suggested.
+-}
+neededExtension :: Text -> Maybe Text
+neededExtension err = firstJust (concatMap fromLine (T.lines err))
+  where
+    fromLine l = [afterInfix m l >>= extOf | m <- ["intended to use ", "-X"]]
+    extOf rest =
+        let tok = T.takeWhile isAlphaNum (T.dropWhile (not . isUpper) rest)
+         in if tok `elem` knownExtensions then Just tok else Nothing
+
+{- | The GHC extensions auto-fix will enable when GHC suggests them — the ones a
+small model forgets most. A curated allow-list, not the full set: an unknown
+suggestion falls through to the model rather than risking a wrong pragma.
+-}
+knownExtensions :: [Text]
+knownExtensions =
+    [ "OverloadedStrings"
+    , "TemplateHaskell"
+    , "ScopedTypeVariables"
+    , "TypeApplications"
+    , "FlexibleContexts"
+    , "FlexibleInstances"
+    , "MultiParamTypeClasses"
+    , "RankNTypes"
+    , "GADTs"
+    , "DataKinds"
+    , "DeriveFunctor"
+    , "DeriveGeneric"
+    , "DeriveAnyClass"
+    , "GeneralizedNewtypeDeriving"
+    , "DerivingStrategies"
+    , "StandaloneDeriving"
+    , "TupleSections"
+    , "LambdaCase"
+    , "MultiWayIf"
+    , "RecordWildCards"
+    , "NamedFieldPuns"
+    , "BangPatterns"
+    , "ViewPatterns"
+    , "ConstraintKinds"
+    , "KindSignatures"
+    , "PolyKinds"
+    , "TypeFamilies"
+    , "TypeOperators"
+    , "InstanceSigs"
+    , "ExistentialQuantification"
+    , "FunctionalDependencies"
+    , "QuasiQuotes"
+    , "BlockArguments"
+    , "ImportQualifiedPost"
+    , "NumericUnderscores"
+    , "OverloadedLabels"
+    ]
 
 -- | "granite-0.7.3.0" -> "granite"; "foo-bar-1.0" -> "foo-bar".
 packageFromHidden :: Text -> Text

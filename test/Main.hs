@@ -10,6 +10,8 @@ import qualified Test.ApiWireSpec as ApiWireSpec
 import qualified Test.AtomicAdmissionSpec as AtomicAdmissionSpec
 import qualified Test.AwaitIdleSpec as AwaitIdleSpec
 import qualified Test.CacheControlSpec as CacheControlSpec
+import qualified Test.CapabilitySpec as CapabilitySpec
+import qualified Test.CellDefinesSpec as CellDefinesSpec
 import qualified Test.CellResultWireSpec as CellResultWireSpec
 import qualified Test.CellShapeSpec as CellShapeSpec
 import qualified Test.ClassifyErrorSpec as ClassifyErrorSpec
@@ -19,14 +21,18 @@ import qualified Test.CompiledPlanSpec as CompiledPlanSpec
 import qualified Test.ConfigurableTimeoutSpec as ConfigurableTimeoutSpec
 import qualified Test.CycleMsgSpec as CycleMsgSpec
 import qualified Test.DefaultExtsSpec as DefaultExtsSpec
+import qualified Test.DepRepairSpec as DepRepairSpec
 import qualified Test.DepsMatchSpec as DepsMatchSpec
 import qualified Test.DepsRepairSpec as DepsRepairSpec
 import qualified Test.DiagnoseSpec as DiagnoseSpec
+import qualified Test.DiscoverToolSpec as DiscoverToolSpec
 import qualified Test.ErrorsJsonSpec as ErrorsJsonSpec
 import qualified Test.EvCellResultWireSpec as EvCellResultWireSpec
+import qualified Test.ExampleSearchSpec as ExampleSearchSpec
 import qualified Test.ExecuteCellSpec as ExecuteCellSpec
 import qualified Test.ExportGoldenSpec as ExportGoldenSpec
 import qualified Test.ExportSpec as ExportSpec
+import qualified Test.ExtRepairSpec as ExtRepairSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import qualified Test.GrammarRouteSpec as GrammarRouteSpec
 import qualified Test.HoleFitsSpec as HoleFitsSpec
@@ -34,11 +40,14 @@ import Test.Hspec (hspec)
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
 import qualified Test.JsonDiagSpec as JsonDiagSpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
+import qualified Test.LibDiscoverSpec as LibDiscoverSpec
 import qualified Test.MarkerSpec as MarkerSpec
 import qualified Test.NotebookAnimSpec as NotebookAnimSpec
+import qualified Test.NotebookEditSpec as NotebookEditSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
+import qualified Test.NotebookViolationSpec as NotebookViolationSpec
 import qualified Test.OrphanSpec as OrphanSpec
 import qualified Test.OutputChokepointWireSpec as OutputChokepointWireSpec
 import qualified Test.OutputSpec as OutputSpec
@@ -49,6 +58,7 @@ import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.ProvenanceWireSpec as ProvenanceWireSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
+import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
 import qualified Test.RenderSpec as RenderSpec
 import qualified Test.ReplProjectSpec as ReplProjectSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
@@ -74,6 +84,7 @@ main = do
     setLocaleEncoding utf8
     hspec $ do
         NotebookFrpSpec.spec
+        NotebookEditSpec.spec
         NotebookPictureSpec.spec
         NotebookAnimSpec.spec
         WidgetsSpec.spec
@@ -89,9 +100,16 @@ main = do
         ErrorsJsonSpec.errorsJsonSpec
         JsonDiagSpec.jsonDiagSpec
         ExecuteCellSpec.spec
+        ExampleSearchSpec.spec
         DiagnoseSpec.diagnoseSpec
+        DiscoverToolSpec.spec
+        DepRepairSpec.spec
+        ExtRepairSpec.spec
+        CapabilitySpec.spec
+        NotebookViolationSpec.spec
         GrammarRouteSpec.grammarRouteSpec
         HoleFitsSpec.spec
+        LibDiscoverSpec.spec
         ExportSpec.spec
         DefaultExtsSpec.spec
         DepsMatchSpec.spec
@@ -100,6 +118,7 @@ main = do
         ParseSpec.spec
         PeekDataSpec.spec
         CellShapeSpec.spec
+        CellDefinesSpec.spec
         PlatformSpec.spec
         OutputSpec.spec
         PreinstalledSpec.spec
@@ -136,6 +155,7 @@ main = do
         ConfigurableTimeoutSpec.spec
         InterruptTimestampFilterSpec.spec
         QueryConcurrencySpec.spec
+        QueryGuidanceSpec.spec
         OrphanSpec.spec
         TimeoutEscalationSpec.spec
         SessionGenSpec.spec

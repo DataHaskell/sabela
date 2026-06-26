@@ -1,17 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | E1 on-the-fly grammar prompting. A small grammar of the notebook plotting
-idiom is synthesised from live @:browse@ output: each plotter combinator becomes
-a terminal, qualified names are normalised against how the sketch imports their
-module, and a type-directed display envelope wraps the call so the result shows
-in the notebook. The grammar block plus the worked (request, grammar, cell)
-few-shot triplets are injected into both the eval and the production system
-prompt so the model predicts the grammar first and then writes the cell against
-it, instead of falling back to generic Haskell.
-
-The verb-to-Granite sketch is the grammar's start symbol: a plot request
-expands to one plotter terminal applied to its series and options, then wrapped
-in the display envelope its result type selects.
+{- | Grammar primitives for the live-@:browse@ synth ('Sabela.AI.Grammar.Synth'):
+parse a browse into terminals, normalise a qualified name to the form the cell
+writes, and pick the type-directed display envelope. Plus 'grammarPromptBlock', a
+short prompt that points the model at the discovery search tools and the
+@-- cabal:@ mechanism, rather than carrying hard-coded worked examples.
 -}
 module Sabela.AI.Grammar (
     BrowseEntry (..),
@@ -21,8 +14,6 @@ module Sabela.AI.Grammar (
     normalizeName,
     displayEnvelope,
     applyEnvelope,
-    FewShot (..),
-    fewShots,
     grammarTerminals,
     grammarPromptBlock,
 ) where
@@ -136,160 +127,29 @@ applyEnvelope DisplaySvgUnpack call = "displaySvg (T.unpack (" <> call <> "))"
 applyEnvelope DisplayHtml call = "displayHtml (" <> call <> ")"
 applyEnvelope Hole call = "_ (" <> call <> ")"
 
-{- | A worked (request, minimal grammar, cell) triplet. @fsGrammar@ lists the
-plotter terminals the cell uses in their normalised (unqualified) form, so the
-coverage test can key each against the @:browse@ surface.
--}
-data FewShot = FewShot
-    { fsRequest :: Text
-    , fsGrammar :: [Text]
-    , fsCell :: Text
-    }
-    deriving (Eq, Show)
-
-{- | The gold few-shot triplets, lifted from @examples/plotting.md@. Each cell
-is the real working pattern; @fsGrammar@ records the normalised plotter
-terminals it stands on.
--}
-fewShots :: [FewShot]
-fewShots =
-    [ FewShot
-        "Bar chart of quarterly sales"
-        ["bars"]
-        ( T.unlines
-            [ "-- cabal: build-depends: text, granite"
-            , "{-# LANGUAGE OverloadedStrings #-}"
-            , "import qualified Data.Text as T"
-            , "import Granite.Svg"
-            , ""
-            , "displaySvg (T.unpack (bars [(\"Q1\",12),(\"Q2\",18),(\"Q3\",9)] defPlot {plotTitle=\"Sales\"}))"
-            ]
-        )
-    , FewShot
-        "Line chart of monthly trends"
-        ["lineGraph"]
-        ( T.unlines
-            [ "-- cabal: build-depends: text, granite"
-            , "{-# LANGUAGE OverloadedStrings #-}"
-            , "import qualified Data.Text as T"
-            , "import Granite.Svg"
-            , ""
-            , "displaySvg (T.unpack (lineGraph [(\"A\", [(1,100),(2,120),(3,115)])] defPlot {plotTitle=\"Trends\"}))"
-            ]
-        )
-    , FewShot
-        "Pie chart of market share"
-        ["pie"]
-        ( T.unlines
-            [ "-- cabal: build-depends: text, granite"
-            , "{-# LANGUAGE OverloadedStrings #-}"
-            , "import qualified Data.Text as T"
-            , "import Granite.Svg"
-            , ""
-            , "displaySvg (T.unpack (pie [(\"Alpha\",0.35),(\"Beta\",0.25),(\"Gamma\",0.4)] defPlot {plotTitle=\"Share\"}))"
-            ]
-        )
-    ]
-
-{- | Every plotter terminal the few-shots stand on, keyed on the normalised
-(unqualified) form. The coverage test asserts each is produced by @:browse@ plus
-normalisation plus the display surface.
+{- | The canonical plotter terminals the synth must surface from a Granite.Svg
+@:browse@; the generator coverage test keys each against that surface.
 -}
 grammarTerminals :: [Text]
-grammarTerminals = concatMap fsGrammar fewShots
+grammarTerminals = ["bars", "lineGraph", "pie"]
 
-{- | The grammar block plus worked few-shot triplets, ready to inject into the
-system prompt. The start symbol is the verb-to-Granite sketch; the productions
-name the discovered plotter terminals and the display envelope.
+{- | A short, single-screen reference to the discovery search tools and the
+@-- cabal:@ / display mechanics, so the prompt carries no long, easily-overfit
+list of hard-coded examples.
 -}
 grammarPromptBlock :: Text
 grammarPromptBlock =
-    T.unlines $
-        [ "## Plotting grammar (predict this first, then write the cell)"
+    T.unlines
+        [ "## Finding things — search, don't guess or recall from memory:"
         , ""
-        , "A plot request expands to the verb-to-Granite sketch:"
+        , "  find_package <task>        a package + its `-- cabal: build-depends:` line"
+        , "  find_function <name|mod>   a function by name/keyword, or a module's exports"
+        , "  find_by_type <type>        a function whose type fits, e.g. [Double] -> Picture"
+        , "  list_bindings              values/types already in scope this session — reuse them"
+        , "  check_type <expr>          the type of an expression or name"
+        , "  find_example_cell <idiom>  a paste-able cell, e.g. the typed-column CSV reader (a wrong column is a compile error)"
         , ""
-        , "  plot      ::= envelope (plotter series options)"
-        , "  plotter   ::= bars | lineGraph | pie | scatter | boxPlot | ..."
-        , "                (the real names :browse Granite.Svg surfaced;"
-        , "                 write them UNQUALIFIED, e.g. `bars`, dropping the"
-        , "                 module prefix the browse output prints)"
-        , "  options   ::= defPlot { plotTitle = ..., ... }"
-        , "  envelope  ::= displaySvg . T.unpack    -- when the plotter returns Text"
-        , "             |  <bare call>              -- when it returns IO ()"
-        , "             |  displayHtml              -- when it returns Html/SVG"
-        , ""
-        , "Predict the minimal grammar for the request, then write ONE cell"
-        , "against it. Do not write `main = do`, do not hand-parse CSV, do not"
-        , "reach for a plotting library the grammar did not name."
-        , ""
-        , "### Worked examples"
+        , "Install a package by running a cell whose FIRST line is `-- cabal: build-depends: <pkg>`."
+        , "A plotter returns Text — show it with `displaySvg (T.unpack (...))`."
+        , "Avoid `main = do`, a top-level `let`, hand-parsing data, and `:set -package`."
         ]
-            ++ concatMap renderFewShot fewShots
-            ++ dataFrameSection
-
-{- | The dataframe idiom for loading and reading a CSV in the working directory,
-verified against dataframe-2.3.0.0. Needs @TypeApplications@ and
-@OverloadedStrings@ (the latter for @D.col@'s name argument).
--}
-dataFrameSection :: [Text]
-dataFrameSection =
-    [ ""
-    , "## DataFrame grammar (load and read a CSV in the working directory)"
-    , ""
-    , "A data request over a named CSV expands to:"
-    , ""
-    , "  load   ::= df <- D.readCsv \"<file>.csv\""
-    , "  column ::= D.columnAsList (D.col @<Type> \"<name>\") df"
-    , "  result ::= a top-level binding over the column lists (sum, mean, zip, ...)"
-    , ""
-    , "### Worked examples"
-    ]
-        ++ renderCell
-            "Total revenue from revenue.csv (columns month, revenue)"
-            dfTotalCell
-        ++ renderCell
-            "Bar chart of revenue by month from revenue.csv"
-            dfChartCell
-
-renderCell :: Text -> [Text] -> [Text]
-renderCell request cell =
-    ["", "Request: " <> request, "Cell:", "```haskell"] ++ cell ++ ["```"]
-
-dfTotalCell :: [Text]
-dfTotalCell =
-    [ "-- cabal: build-depends: dataframe, text"
-    , "{-# LANGUAGE TypeApplications #-}"
-    , "{-# LANGUAGE OverloadedStrings #-}"
-    , "import qualified DataFrame as D"
-    , ""
-    , "df <- D.readCsv \"revenue.csv\""
-    , "revenueTotal :: Double"
-    , "revenueTotal = sum (D.columnAsList (D.col @Double \"revenue\") df)"
-    ]
-
-dfChartCell :: [Text]
-dfChartCell =
-    [ "-- cabal: build-depends: dataframe, granite, text"
-    , "{-# LANGUAGE TypeApplications #-}"
-    , "{-# LANGUAGE OverloadedStrings #-}"
-    , "import qualified DataFrame as D"
-    , "import qualified Data.Text as T"
-    , "import Granite.Svg"
-    , ""
-    , "df <- D.readCsv \"revenue.csv\""
-    , "displaySvg (T.unpack (bars (zip (D.columnAsList (D.col @T.Text \"month\") df) (D.columnAsList (D.col @Double \"revenue\") df)) defPlot {plotTitle = \"Monthly Revenue\"}))"
-    ]
-
-renderFewShot :: FewShot -> [Text]
-renderFewShot fs =
-    [ ""
-    , "Request: " <> fsRequest fs
-    , "Grammar: plot ::= displaySvg . T.unpack ("
-        <> T.intercalate " | " (fsGrammar fs)
-        <> " series options)"
-    , "Cell:"
-    , "```haskell"
-    ]
-        ++ T.lines (T.stripEnd (fsCell fs))
-        ++ ["```"]

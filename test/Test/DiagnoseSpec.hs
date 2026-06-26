@@ -9,7 +9,13 @@ module Test.DiagnoseSpec (diagnoseSpec) where
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.CellResult (CellOutcome (..), CellResult (..))
-import Sabela.Diagnose (Guidance (..), diagnose, guidanceForCell, guidancePairs)
+import Sabela.Diagnose (
+    Guidance (..),
+    diagnose,
+    guidanceForCell,
+    guidancePairs,
+    neededExtension,
+ )
 import Sabela.Diagnose.Packages (
     packageForModule,
     packageNameIndex,
@@ -35,6 +41,25 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
             packageForModule "DataFrame" `shouldBe` Just "dataframe-core"
         it "returns Nothing for an unknown / base module" $
             packageForModule "Data.List" `shouldBe` Nothing
+
+    describe "neededExtension (auto-fix detector)" $ do
+        it "reads the extension from GHC's bare 'intended to use' hint" $
+            neededExtension "Perhaps you intended to use TemplateHaskell"
+                `shouldBe` Just "TemplateHaskell"
+        it "handles GHC's real backquoted `Ext' phrasing and the :set -X hint" $ do
+            neededExtension "Perhaps you intended to use the `LambdaCase' extension"
+                `shouldBe` Just "LambdaCase"
+            neededExtension "You may enable this with:\n  :set -XTupleSections"
+                `shouldBe` Just "TupleSections"
+        it "reads it from a quoted suggestion" $
+            neededExtension
+                "Suggested fix: Perhaps you intended to use \8216OverloadedStrings\8217"
+                `shouldBe` Just "OverloadedStrings"
+        it "ignores a suggestion outside the known-extension allow-list" $
+            neededExtension "Perhaps you intended to use NotARealExtension"
+                `shouldBe` Nothing
+        it "is Nothing when no extension is suggested" $
+            neededExtension "Couldn't match Int with Bool" `shouldBe` Nothing
 
     describe "resolvePackageToken (fuzzy package-name index)" $ do
         it "passes a real package token through by exact membership" $ do

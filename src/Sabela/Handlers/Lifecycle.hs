@@ -15,6 +15,7 @@ module Sabela.Handlers.Lifecycle (
     ensureSessionAlive,
     sessionMetaMatches,
     installAndRestart,
+    hardResetKernel,
     handleKernelCrash,
     loadSabelaPrelude,
 
@@ -25,13 +26,19 @@ module Sabela.Handlers.Lifecycle (
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (SomeException, try)
-import Control.Monad (forM_, unless, void)
+import Control.Monad (forM_, unless, void, when)
 import Data.List (nub)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.Deps (ProjectSig, depsMatch, mergedMeta, projectSig)
+import Sabela.Deps (
+    ProjectSig,
+    collectMetadata,
+    depsMatch,
+    mergedMeta,
+    projectSig,
+ )
 import Sabela.Handlers.Shared
 import Sabela.Model (NotebookEvent (..), SessionStatus (..))
 import Sabela.Output (displayPrelude)
@@ -60,6 +67,7 @@ import Sabela.State.DependencyTracker (
     setHaskellProjectSig,
  )
 import Sabela.State.Environment (Environment (..))
+import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (
     forceResetAllSessions,
     getHaskellSession,
@@ -76,6 +84,23 @@ import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 killAllSessions :: App -> IO ()
 killAllSessions app =
     forceResetAllSessions (appSessions app)
+
+{- | Hard-reset the kernel: SIGKILL the GHCi process group ('killAllSessions',
+past a wedged cell's run-lock) and respawn reusing the built env, no rebuild/re-run.
+-}
+hardResetKernel :: App -> Int -> IO ()
+hardResetKernel app gen = whenCurrentGen app gen $ do
+    debugLog app "[handler] hardResetKernel: force-kill + respawn"
+    mSess <- getHaskellSession (appSessions app)
+    killAllSessions app
+    whenCurrentGen app gen $ do
+        let projDir = envTmpDir (appEnv app) </> "repl-project"
+        ok <- case mSess of
+            Just _ -> startSessionWith app projDir
+            Nothing ->
+                installAndRestart app gen . collectMetadata
+                    =<< readNotebook (appNotebook app)
+        when ok $ broadcast app EvExecutionDone
 
 {- | Server-exit teardown: polite closes plus the registry sweep that
 reclaims sessions no manager slot references (scratchpad, half-spawns).

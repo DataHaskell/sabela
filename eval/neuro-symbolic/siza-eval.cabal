@@ -98,6 +98,7 @@ test-suite siza-eval-test
     hs-source-dirs:   test
     main-is:          Main.hs
     other-modules:    Test.BenchSpec
+                      Test.BudgetRetrySpec
                       Test.ChatSpec
                       Test.DiscoverSpec
                       Test.GradeRenderSpec

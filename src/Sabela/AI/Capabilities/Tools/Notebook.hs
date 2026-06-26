@@ -125,17 +125,12 @@ notebookTools =
         )
     , mkTool
         InsertCell
-        "Insert a new cell into the notebook. Applied immediately."
+        "Append a new cell at the end of the notebook. Applied immediately. New cells always go at the end; execution order follows data dependencies, not position."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"
                 .= object
-                    [ "after_cell_id"
-                        .= object
-                            [ "type" .= ("integer" :: Text)
-                            , "description" .= ("Insert after this cell ID. Use -1 for beginning." :: Text)
-                            ]
-                    , "cell_type"
+                    [ "cell_type"
                         .= object
                             [ "type" .= ("string" :: Text)
                             , "enum" .= (["CodeCell", "ProseCell"] :: [Text])
@@ -151,7 +146,7 @@ notebookTools =
                             , "description" .= ("Source code or markdown" :: Text)
                             ]
                     ]
-            , "required" .= (["after_cell_id", "source"] :: [Text])
+            , "required" .= (["source"] :: [Text])
             ]
         )
     , mkTool

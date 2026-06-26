@@ -32,6 +32,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.Discover (execFindExampleCell, execFindPackage)
 import Sabela.AI.Capabilities.Edit (
     execDeleteCell,
     execExecuteCell,
@@ -48,6 +49,7 @@ import Sabela.AI.Capabilities.Kernel (
     execKernelStatus,
     haskellKernelBusy,
  )
+import Sabela.AI.Capabilities.ModuleSearch (execFindFunction)
 import Sabela.AI.Capabilities.Notebook (
     execFindCells,
     execListCells,
@@ -56,8 +58,11 @@ import Sabela.AI.Capabilities.Notebook (
  )
 import Sabela.AI.Capabilities.Query (
     execApiReference,
+    execCheckType,
+    execDescribeFunction,
     execExploreResult,
-    execGhciQuery,
+    execFindByType,
+    execListBindings,
     execPeekData,
  )
 import Sabela.AI.Capabilities.Scratchpad (execScratchpadGuarded)
@@ -68,7 +73,7 @@ import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, newCancelToken)
 import Sabela.Api (errorJson, errorJsonWith)
-import Sabela.Handlers (ReactiveNotebook (..))
+import Sabela.Handlers (ReactiveNotebook (..), setCellSourceChecked)
 import Sabela.Model
 import Sabela.Session (Admission (..))
 import Sabela.State
@@ -145,7 +150,10 @@ executeTool app store rn cancelTok toolName input =
         DeleteCell -> execDeleteCell app input
         ExecuteCell -> execExecuteCell app store rn cancelTok input
         Scratchpad -> execScratchpadGuarded app store input
-        GhciQuery -> execGhciQuery app input
+        ListBindings -> execListBindings app input
+        CheckType -> execCheckType app input
+        FindByType -> execFindByType app input
+        DescribeFunction -> execDescribeFunction app input
         ApiReference -> execApiReference input
         ExploreResult -> execExploreResult store input
         KernelStatus -> execKernelStatus app
@@ -154,6 +162,9 @@ executeTool app store rn cancelTok toolName input =
         AwaitIdle -> execAwaitIdle app
         ExportNotebook -> execExportNotebook app input
         PeekData -> execPeekData app input
+        FindPackage -> execFindPackage input
+        FindExampleCell -> execFindExampleCell input
+        FindFunction -> execFindFunction app input
 
 -- | The busy wire shape returned by the live atomic admission gate.
 busyOutcome :: Value
@@ -180,7 +191,11 @@ needsKernel = \case
     ExecuteCell -> True
     ReplaceCellSource -> True
     InsertCell -> True
-    GhciQuery -> True
+    ListBindings -> True
+    CheckType -> True
+    FindByType -> True
+    DescribeFunction -> True
+    FindFunction -> True
     _ -> False
 
 {- | Return the parse-error hint planted by the orchestrator when a streamed
@@ -210,27 +225,25 @@ acceptEdit app store rn eid = do
     case mEdit of
         Nothing -> pure Nothing
         Just edit -> do
-            modifyNotebook (appNotebook app) $ \nb ->
-                nb
-                    { nbCells =
-                        map
-                            ( \c ->
-                                if cellId c == aeCellId edit
-                                    then c{cellSource = aeNewSource edit, cellDirty = True}
-                                    else c
-                            )
-                            (nbCells nb)
-                    }
-            -- 'updateEditStatus' on a terminal state also removes the
-            -- entry from the pending-edits map.
-            updateEditStatus store (aeEditId edit) Accepted
-            broadcastNotebook app
-            -- Block on execution so the HTTP response / tool_result carries
-            -- the actual outputs instead of forcing the caller to poll.
-            ct <- newCancelToken
-            _ <- executeCell app rn (aeCellId edit) ct
-            nb <- readNotebook (appNotebook app)
-            pure (lookupCell (aeCellId edit) nb)
+            committed <- atomicEditNotebook (appNotebook app) $ \nb ->
+                case lookupCell (aeCellId edit) nb of
+                    Nothing -> (nb, False)
+                    Just c -> case setCellSourceChecked c (aeNewSource edit) nb of
+                        Left _ -> (nb, False)
+                        Right (nb', _) -> (nb', True)
+            if not committed
+                then pure Nothing
+                else do
+                    -- 'updateEditStatus' on a terminal state also removes the
+                    -- entry from the pending-edits map.
+                    updateEditStatus store (aeEditId edit) Accepted
+                    broadcastNotebook app
+                    -- Block on execution so the HTTP response / tool_result
+                    -- carries the actual outputs instead of forcing a poll.
+                    ct <- newCancelToken
+                    _ <- executeCell app rn (aeCellId edit) ct
+                    nb <- readNotebook (appNotebook app)
+                    pure (lookupCell (aeCellId edit) nb)
 
 revertEdit :: App -> AIStore -> EditId -> IO ()
 revertEdit app store eid = do

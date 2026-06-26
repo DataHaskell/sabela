@@ -114,9 +114,9 @@ field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
 queryInput :: Value
-queryInput = object ["op" .= ("type" :: Text), "arg" .= ("map" :: Text)]
+queryInput = object ["expr" .= ("map fst" :: Text)]
 
-{- | Race two @ghci_query@ calls through one shared 'AIStore' and
+{- | Race two @check_type@ calls through one shared 'AIStore' and
 'executeTool'. The barrier in the backend keeps the admitted caller inside
 the kernel while the loser is decided, so the simultaneity is real. Returns
 (outcomes, number of callers that actually reached the backend).
@@ -131,7 +131,7 @@ raceTwoQueries = do
     results <- newEmptyMVar
     let call = do
             ct <- newCancelToken
-            out <- executeTool app store inertRn ct "ghci_query" queryInput
+            out <- executeTool app store inertRn ct "check_type" queryInput
             putMVar results out
     _ <- forkIO call
     _ <- forkIO call
@@ -163,6 +163,6 @@ spec = describe "atomic admission at the real executeTool dispatch (§1.4)" $ do
         app <- mkApp backend
         store <- mkStore
         ct <- newCancelToken
-        out <- executeTool app store inertRn ct "ghci_query" queryInput
+        out <- executeTool app store inertRn ct "check_type" queryInput
         toolOutcomeIsError out `shouldBe` False
         readIORef reached `shouldReturn` 1

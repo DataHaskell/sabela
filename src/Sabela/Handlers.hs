@@ -35,7 +35,6 @@ module Sabela.Handlers (
 
 import Control.Concurrent (forkIO)
 import Control.Monad (void, when)
-import Data.Foldable (find)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -48,6 +47,7 @@ import qualified Sabela.AI.Types as AI
 import qualified Sabela.Anthropic.Types as AI (cancel)
 import Sabela.Deps (collectMetadataFromContent)
 import Sabela.Handlers.Lifecycle (
+    hardResetKernel,
     installAndRestart,
     killAllSessions,
     killSessionAsync,
@@ -58,7 +58,6 @@ import Sabela.Handlers.Lifecycle (
 import Sabela.Handlers.Plan (
     dispatchByLang,
     executeAffected,
-    executeFullRestart,
     executeRunAll,
     executeSingleCell,
     isSessionUpToDate,
@@ -225,7 +224,7 @@ handleRestartKernel app = do
     gen <- bumpGeneration app
     cleanupAI app False
     broadcast app (EvSessionStatus SReset)
-    void $ forkIO $ executeFullRestart app gen
+    void $ forkIO $ hardResetKernel app gen
 
 {- | Cleanup AI state on reset/restart.
 fullReset clears conversation and reverts edits; partial only kills scratchpad.

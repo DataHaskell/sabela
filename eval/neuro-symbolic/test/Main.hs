@@ -1,6 +1,7 @@
 module Main (main) where
 
 import qualified Test.BenchSpec as BenchSpec
+import qualified Test.BudgetRetrySpec as BudgetRetrySpec
 import qualified Test.ChatSpec as ChatSpec
 import qualified Test.DiscoverSpec as DiscoverSpec
 import qualified Test.GradeRenderSpec as GradeRenderSpec
@@ -21,6 +22,7 @@ import qualified Test.TranscriptSpec as TranscriptSpec
 main :: IO ()
 main = hspec $ do
     BenchSpec.spec
+    BudgetRetrySpec.spec
     ChatSpec.spec
     DiscoverSpec.spec
     GradeRenderSpec.spec

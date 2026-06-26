@@ -2,7 +2,12 @@
 
 module Test.ChatSpec (spec) where
 
-import Eval.Chat (extractTestExpr, interpretConfirm)
+import Eval.Chat (
+    CheckResult (..),
+    classifyCheck,
+    extractTestExpr,
+    interpretConfirm,
+ )
 import Test.Hspec
 
 spec :: Spec
@@ -38,3 +43,14 @@ spec = describe "siza-chat verify-gate helpers" $ do
                 "x == 1"
                 "This is not markdown and it doesn't print the dataframe."
                 `shouldBe` ""
+
+    describe "classifyCheck (covering-check marker output)" $ do
+        it "treats GRADE_PASS output as a passed check" $
+            classifyCheck "GRADE_PASS\n" `shouldBe` CheckPassed
+
+        it "treats GRADE_FAIL output as a failed check (a wrong answer)" $
+            classifyCheck "GRADE_FAIL\n" `shouldBe` CheckFailed
+
+        it "treats neither token (a non-compiling check) as uncheckable" $
+            classifyCheck "<interactive>:5:1: error: No instance for (Foldable ByteString)"
+                `shouldBe` CheckUncheckable

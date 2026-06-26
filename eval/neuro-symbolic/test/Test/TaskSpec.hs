@@ -3,8 +3,10 @@
 module Test.TaskSpec (spec) where
 
 import Data.Aeson (object, (.=))
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Maybe (isJust)
 import Data.Text (Text, isInfixOf)
+import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
 import Test.Hspec
 
@@ -13,8 +15,10 @@ import Eval.Task (
     Task (..),
     Verdict (..),
     findTask,
+    markerSrc,
     outputHasVerdict,
     renderVerdict,
+    runMarkerWith,
     stepsVerdict,
     taskTest,
     tasks,
@@ -115,6 +119,24 @@ spec = describe "plotting/dataframe tasks" $ do
         it "reports the earliest failure when several fail" $
             snd (stepsVerdict [(Withheld "a", "x"), (Withheld "b", "y")])
                 `shouldSatisfy` ("step 1" `isInfixOf`)
+
+    describe "runMarkerWith (grade off-notebook)" $
+        it "deletes the marker cell after grading so the notebook keeps no GRADE cell" $ do
+            calls <- newIORef []
+            let fake tn args = do
+                    modifyIORef' calls (++ [(tn, args)])
+                    pure . Right $ case tn of
+                        ListCells ->
+                            ToolOk (object ["cells" .= [object ["id" .= (5 :: Int)]]])
+                        ExecuteCell ->
+                            ToolOk
+                                (object ["outputs" .= [object ["oiOutput" .= ("GRADE_PASS" :: Text)]]])
+                        _ -> ToolOk (object [])
+            (green, _) <- runMarkerWith fake (markerSrc "True")
+            green `shouldBe` True
+            seen <- readIORef calls
+            map fst seen `shouldBe` [InsertCell, ListCells, ExecuteCell, DeleteCell]
+            lookup DeleteCell seen `shouldBe` Just (object ["cell_id" .= (5 :: Int)])
 
 isWithheld :: Verdict -> Bool
 isWithheld (Withheld _) = True

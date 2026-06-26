@@ -26,26 +26,22 @@ preprocess src = concatMap rewriteLine (T.lines src)
   where
     rewriteLine raw
         | shouldDrop trimmed = []
-        | Just rest <- T.stripPrefix "let " trimmed
+        | indented = [raw]
+        | Just rest <- T.stripPrefix "let " raw
         , noTopLevelIn rest =
-            [reindent raw rest]
-        | Just (binder, rhs) <- splitTopLevelArrow trimmed =
-            [reindent raw (binder <> " = " <> rhs)]
+            [rest]
+        | Just (binder, rhs) <- splitTopLevelArrow raw =
+            [binder <> " = " <> rhs]
         | otherwise = [raw]
       where
         trimmed = T.stripStart raw
+        indented = raw /= trimmed
 
     shouldDrop t =
         T.null t
             || ":" `T.isPrefixOf` t
             || "-- cabal:" `T.isPrefixOf` t
             || "--cabal:" `T.isPrefixOf` t
-
--- | Preserve original leading whitespace when rewriting a line's content.
-reindent :: Text -> Text -> Text
-reindent original newContent =
-    let leading = T.takeWhile (\c -> c == ' ' || c == '\t') original
-     in leading <> newContent
 
 {- | A statement-form @let@ has no top-level @in@. We treat any line that
 contains @ in @ at depth 0 as the regular expression-form @let ... in

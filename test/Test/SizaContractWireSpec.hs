@@ -106,7 +106,10 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "delete_cell"
                     , "execute_cell"
                     , "scratchpad"
-                    , "ghci_query"
+                    , "list_bindings"
+                    , "check_type"
+                    , "find_by_type"
+                    , "describe_function"
                     , "peek_data"
                     , "api_reference"
                     , "explore_result"
@@ -115,6 +118,9 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "kernel_restart"
                     , "await_idle"
                     , "export_notebook"
+                    , "find_package"
+                    , "find_example_cell"
+                    , "find_function"
                     ]
         it "has no duplicate tool names" $
             length (nub toolNames) `shouldBe` length toolNames
@@ -133,16 +139,26 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
             requiredOf "replace_cell_source" `shouldBe` ["cell_id", "new_source"]
         it "propose_edit requires cell_id and new_source" $
             requiredOf "propose_edit" `shouldBe` ["cell_id", "new_source"]
-        it "insert_cell requires after_cell_id and source" $
-            requiredOf "insert_cell" `shouldBe` ["after_cell_id", "source"]
+        it "insert_cell requires only source (append-only; no after_cell_id)" $ do
+            requiredOf "insert_cell" `shouldBe` ["source"]
+            (typeOf "after_cell_id" =<< schemaOf "insert_cell") `shouldBe` Nothing
         it "delete_cell requires cell_id" $
             requiredOf "delete_cell" `shouldBe` ["cell_id"]
         it "execute_cell requires cell_id" $
             requiredOf "execute_cell" `shouldBe` ["cell_id"]
         it "scratchpad requires code" $
             requiredOf "scratchpad" `shouldBe` ["code"]
-        it "ghci_query requires op and arg" $
-            requiredOf "ghci_query" `shouldBe` ["arg", "op"]
+        it "check_type requires expr" $
+            requiredOf "check_type" `shouldBe` ["expr"]
+        it "find_by_type requires goal" $
+            requiredOf "find_by_type" `shouldBe` ["goal"]
+        it "describe_function requires name" $
+            requiredOf "describe_function" `shouldBe` ["name"]
+        it "list_bindings requires nothing" $
+            requiredOf "list_bindings" `shouldBe` []
+        it "the find_* discovery tools require query" $
+            map requiredOf ["find_package", "find_example_cell", "find_function"]
+                `shouldBe` [["query"], ["query"], ["query"]]
         it "explore_result requires handle_id and op" $
             requiredOf "explore_result" `shouldBe` ["handle_id", "op"]
         it "peek_data requires path" $
@@ -168,9 +184,6 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
             enumIn "insert_cell" "language" `shouldBe` ["Haskell", "Python"]
         it "scratchpad language enum is Haskell/Python" $
             enumIn "scratchpad" "language" `shouldBe` ["Haskell", "Python"]
-        it "ghci_query op enum is the seven GHCi introspections" $
-            enumIn "ghci_query" "op"
-                `shouldBe` ["bindings", "browse", "doc", "holefits", "info", "kind", "type"]
         it "explore_result op enum is head/tail/slice/grep" $
             enumIn "explore_result" "op"
                 `shouldBe` ["grep", "head", "slice", "tail"]
@@ -179,9 +192,6 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
         it "cell_id fields are integer-typed" $ do
             (typeOf "cell_id" =<< schemaOf "read_cell") `shouldBe` Just "integer"
             (typeOf "cell_id" =<< schemaOf "execute_cell")
-                `shouldBe` Just "integer"
-        it "after_cell_id is integer-typed" $
-            (typeOf "after_cell_id" =<< schemaOf "insert_cell")
                 `shouldBe` Just "integer"
         it "new_source / pattern / code are string-typed" $ do
             (typeOf "new_source" =<< schemaOf "replace_cell_source")

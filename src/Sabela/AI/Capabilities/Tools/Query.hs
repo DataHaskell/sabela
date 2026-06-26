@@ -6,6 +6,7 @@ Sibling of "Sabela.AI.Capabilities.Tools.Notebook".
 module Sabela.AI.Capabilities.Tools.Query (queryTools) where
 
 import Data.Aeson (Value, object, (.=))
+import qualified Data.Aeson.Key as Key
 import Data.Text (Text)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), mkTool)
 import Sabela.Anthropic.Types (ToolDef)
@@ -13,37 +14,24 @@ import Sabela.Anthropic.Types (ToolDef)
 queryTools :: [ToolDef]
 queryTools =
     [ mkTool
-        GhciQuery
-        "Lightweight GHCi introspection against the live Haskell session: type, info, kind, doc, browse a module, holefits, or bindings. Much cheaper than execute_cell for syntax discovery. Use `browse` with a module name (e.g. \"DataFrame\") to list exports. Use `holefits` with a concrete goal type (e.g. \"_ :: [Int] -> Int\") to list in-scope names that fit it, so you pick a real name instead of inventing one. Use `bindings` to list every variable currently bound in the session with its type."
-        ( object
-            [ "type" .= ("object" :: Text)
-            , "properties"
-                .= object
-                    [ "op"
-                        .= object
-                            [ "type" .= ("string" :: Text)
-                            , "enum"
-                                .= (["type", "info", "kind", "browse", "doc", "holefits", "bindings"] :: [Text])
-                            , "description"
-                                .= ( "Which GHCi command to run (:type, :info, :kind, :browse, :doc, holefits, or bindings)." ::
-                                        Text
-                                   )
-                            ]
-                    , "arg"
-                        .= object
-                            [ "type" .= ("string" :: Text)
-                            , "description"
-                                .= ( "For type/info/kind/doc: an expression, name, or type. For browse: a module name like \"DataFrame\". For holefits: a concrete typed hole like \"_ :: [Int] -> Int\". For bindings: ignored (pass an empty string)." ::
-                                        Text
-                                   )
-                            ]
-                    ]
-            , "required" .= (["op", "arg"] :: [Text])
-            ]
-        )
+        ListBindings
+        "List the values, functions, and types already defined in the notebook session, each with its type. Use BEFORE writing a cell that builds on earlier work, to reuse an existing binding (a dataset, a model, a helper) instead of recomputing it. find_function searches library APIs, not your bindings."
+        noArgs
+    , mkTool
+        CheckType
+        "Get the type of an expression, or the kind/definition of a type or class you ALREADY know, without running anything. Pass an expression (\"map fst\"), a value name, or a type/class name. To find a name you do not know, use find_function or find_by_type."
+        (oneArg "expr" "An expression, value name, or type/class name.")
+    , mkTool
+        FindByType
+        "Find an installed function whose TYPE matches a goal type. Pass a type like \"[Int] -> Int\" (or a hole \"_ :: [Int] -> Int\"). Use when you know the type you need but not the name. Differs from find_function, which searches by name or keyword."
+        (oneArg "goal" "A goal type, e.g. \"[Int] -> Int\" or \"_ :: [Int] -> Int\".")
+    , mkTool
+        DescribeFunction
+        "Show the haddock documentation (the prose explanation) for an installed function or type, by name. Use when you know the name and want to understand what it DOES, beyond its type. For the type alone use check_type; to find a name use find_function."
+        (oneArg "name" "The function or type name.")
     , mkTool
         ApiReference
-        "Fetch signatures for DataFrame, DataFrame.Functions, DataFrame.Display.Web.Plot, Granite.Svg (legacy one-shot charts), or the grammar-of-graphics API (Granite.Spec, Granite.Render.Pipeline). Pass a module name (substring match on the section header) to get that module's section, or omit/empty to get all. Output is cleaned :browse output. Use this before writing dataframe or granite code if you're uncertain of a signature."
+        "Fetch the curated signature card for the dataframe and granite plotting APIs (DataFrame, DataFrame.Functions, Granite.Spec, Granite.Svg). Works even before any cell has run — no live session needed. Pass a module substring, or omit for the whole card. For a live search of installed modules use find_function."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"
@@ -110,7 +98,7 @@ queryTools =
         noArgs
     , mkTool
         KernelRestart
-        "Restart the Haskell kernel asynchronously. Returns immediately; poll kernel_status until the kernel is alive and idle again. Use when the kernel is wedged and interrupt did not free it."
+        "Hard-reset the Haskell kernel: force-kill the kernel process (even a wedged one that ignores interrupt) and respawn it clean — reusing the installed packages without rebuilding, and WITHOUT re-running any cells. Returns immediately; poll kernel_status until idle. This is how you recover a stuck or wedged kernel."
         noArgs
     , mkTool
         AwaitIdle
@@ -142,8 +130,41 @@ queryTools =
             , "required" .= (["path"] :: [Text])
             ]
         )
+    , mkTool
+        FindPackage
+        "Find which Haskell package provides a capability you have not installed yet. Query a task in words (e.g. \"linear regression\", \"read csv\", \"plot a bar chart\"); returns ranked packages, each with the `-- cabal: build-depends:` line for a cell's first line and the key modules. This is the FIRST step for a new capability; once installed, use find_function to find the function inside it."
+        ( queryArg
+            "A keyword or task, e.g. \"linear regression\", \"read csv\", \"plotting\"."
+        )
+    , mkTool
+        FindExampleCell
+        "Search runnable example cells for a cell-shape idiom (e.g. \"read csv\", \"typed column\"); returns the title and full source to paste and adapt. Covers loading data and typed column access. To find which package or function does a task, use find_package or find_function."
+        (queryArg "A shape idiom, e.g. \"read csv\" or \"typed column\".")
+    , mkTool
+        FindFunction
+        "Find a function by NAME or KEYWORD in the packages already installed in the session, or list a module's exports by passing a module name (\"DataFrame\", \"Granite.Svg\"). Covers the dataframe and granite plotting APIs. Returns the best-matching functions with their module and signature, ranked; nothing on a true miss. To find a function by its TYPE use find_by_type; for a value you already defined use list_bindings; for a capability you have not installed use find_package."
+        ( queryArg
+            "A keyword (\"animate\") or a module name (\"DataFrame\", \"Granite.Svg\")."
+        )
     ]
 
 -- | Schema for a tool that takes no arguments.
 noArgs :: Value
 noArgs = object ["type" .= ("object" :: Text), "properties" .= object []]
+
+-- | Schema for a tool taking one required free-text field of the given name.
+oneArg :: Text -> Text -> Value
+oneArg name desc =
+    object
+        [ "type" .= ("object" :: Text)
+        , "properties"
+            .= object
+                [ Key.fromText name
+                    .= object ["type" .= ("string" :: Text), "description" .= desc]
+                ]
+        , "required" .= ([name] :: [Text])
+        ]
+
+-- | Schema for a tool that takes one required free-text @query@ string.
+queryArg :: Text -> Value
+queryArg = oneArg "query"

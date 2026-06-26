@@ -7,4 +7,4 @@
 -- standalone.
 -- (Use explicit targets: cabal build lib:siza-client / exe:siza / lib:sabela /
 -- lib:sabela-notebook; never `cabal build all`.)
-packages: . siza-client/ sabela-notebook/
+packages: . siza-client/ sabela-notebook/ eval/neuro-symbolic/

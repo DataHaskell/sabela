@@ -24,6 +24,7 @@ import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM (atomically, readTChan)
 import Data.Aeson (Value, (.=))
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime)
@@ -31,12 +32,14 @@ import System.Timeout (timeout)
 
 import Sabela.AI.Capabilities.Util (fieldInt)
 import Sabela.AI.CellResult (mergeToolOk, toCellResult)
+import Sabela.AI.DepRepair (addBuildDepend, depFromResult)
+import Sabela.AI.ExtRepair (addExtension, extFromResult)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, isCancelled)
 import Sabela.Api (errorJson)
 import Sabela.Diagnose (cellResultWithGuidance, guidanceForCell, guidancePairs)
-import Sabela.Handlers (ReactiveNotebook (..))
+import Sabela.Handlers (ReactiveNotebook (..), updateCellSource)
 import Sabela.Model
 import qualified Sabela.SessionTypes as ST
 import Sabela.State
@@ -54,7 +57,7 @@ un-stashed on this path.
 autoExecuteAfterMutation ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Int -> IO Value
 autoExecuteAfterMutation app _store rn cancelTok cid = do
-    res <- executeCell app rn cid cancelTok
+    res <- executeWithRepair app rn cid cancelTok
     pure (cellResultWithGuidance (toCellResult res (resultOutputs res)))
 
 {- | @execute_cell@. @_store@ is the staged Output-chokepoint carrier — see
@@ -70,7 +73,7 @@ execExecuteCell app _store rn cancelTok input =
             case missingCellError (nbCells nb) cid of
                 Just msg -> pure (errOutcome (errorJson msg))
                 Nothing -> do
-                    result <- executeCell app rn cid cancelTok
+                    result <- executeWithRepair app rn cid cancelTok
                     let cr = toCellResult result (resultOutputs result)
                     pure (mergeToolOk cr (["cellId" .= cid] <> guidancePairs (guidanceForCell cr)))
 
@@ -119,6 +122,53 @@ executeCell app rn cid cancelTok = do
         | otherwise -> case mResult of
             Nothing -> pure (Left abortTimedOut)
             Just r -> pure (Right r)
+
+{- | Run a cell, and if it fails with an error an obvious fixer can repair — a
+missing package (add the @-- cabal: build-depends:@ line) or a missing LANGUAGE
+extension (add the pragma) — apply the fix and re-run. Bounded by 'repairCap';
+each fixer no-ops once its fix is already present, so a fix that does not help
+cannot loop. These are the deterministic repairs GHC's own error names, so the
+model never sees the noisy error for them.
+-}
+executeWithRepair ::
+    App ->
+    ReactiveNotebook ->
+    Int ->
+    CancelToken ->
+    IO (Either Text ExecutionResult)
+executeWithRepair app rn cid cancelTok = go repairCap
+  where
+    go n = do
+        res <- executeCell app rn cid cancelTok
+        if n <= 0
+            then pure res
+            else do
+                nb <- readNotebook (appNotebook app)
+                case lookupCell cid nb >>= (firstFix res . cellSource) of
+                    Nothing -> pure res
+                    Just newSrc -> do
+                        modifyNotebook (appNotebook app) (updateCellSource cid newSrc)
+                        broadcastNotebook app
+                        go (n - 1)
+
+{- | The deterministic source fixers, tried in order: the first whose rewrite
+actually changes the source wins this round. Each maps a failed run plus the cell
+source to a repaired source, or Nothing when it does not apply.
+-}
+repairFixers :: [Either Text ExecutionResult -> Text -> Maybe Text]
+repairFixers =
+    [ \res src -> (`addBuildDepend` src) <$> depFromResult res
+    , \res src -> (`addExtension` src) <$> extFromResult res
+    ]
+
+-- | The first fixer's rewrite that actually changes the source.
+firstFix :: Either Text ExecutionResult -> Text -> Maybe Text
+firstFix res src =
+    listToMaybe [s | fixer <- repairFixers, Just s <- [fixer res src], s /= src]
+
+-- | Most automatic deterministic repairs a single run will attempt.
+repairCap :: Int
+repairCap = 3
 
 {- | The three @executeCell@ @Left@ strings, named so 'Sabela.AI.CellResult'
 and its tests map the real producer output, not a re-typed literal.

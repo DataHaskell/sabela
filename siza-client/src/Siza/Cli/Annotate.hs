@@ -2,7 +2,7 @@
 session over the transport.
 
 'runAnnotate' reads the cell's source (@read_cell@), then runs the annotate
-pipeline with a 'TypeQuery' backed by @ghci_query {op:type}@. The pure
+pipeline with a 'TypeQuery' backed by @check_type {expr}@. The pure
 extraction + assembly lives in 'Siza.Annotate'; this module only wires it to
 the transport and renders the result, degrading gracefully on a cold session.
 -}
@@ -19,7 +19,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
-import Sabela.AI.Capabilities.ToolName (ToolName (GhciQuery, ReadCell))
+import Sabela.AI.Capabilities.ToolName (ToolName (CheckType, ReadCell))
 import Sabela.AI.Types (toolOutcomeIsError, toolOutcomeValue)
 import Siza.Annotate (
     AnnotateReport (AnnParseError, AnnReport),
@@ -65,7 +65,7 @@ readCellSource conn base cellId = do
                 Just s -> Right s
                 Nothing -> Left "read_cell returned no source"
 
-{- | A 'TypeQuery' backed by the live session: @ghci_query {op:type, arg}@.
+{- | A 'TypeQuery' backed by the live session: @check_type {expr}@.
 @Left@ — a cold session, a transport error, or a name GHCi cannot type —
 degrades the bind to an 'AnnFailed' line rather than failing the whole run.
 -}
@@ -75,8 +75,8 @@ sessionTypeQuery conn base name = do
         callTool
             conn
             base
-            GhciQuery
-            (object ["op" .= ("type" :: Text), "arg" .= name])
+            CheckType
+            (object ["expr" .= name])
     pure $ case res of
         Left e -> Left e
         Right o

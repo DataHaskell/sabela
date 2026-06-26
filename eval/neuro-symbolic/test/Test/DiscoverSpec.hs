@@ -76,7 +76,7 @@ spec = describe "D1 discover stage" $ do
             let disp tc@(ToolCall name a) = do
                     modifyIORef' calls (++ [tc])
                     pure $ case name of
-                        "ghci_query" -> Right (browseResult (argOf a))
+                        "find_function" -> Right (browseResult (argOf a))
                         _ -> Right (ToolOk (object ["cellId" .= (1 :: Int), "ok" .= True]))
                 chatRec msgs = do
                     modifyIORef' seen (++ [msgs])
@@ -92,7 +92,7 @@ spec = describe "D1 discover stage" $ do
             run <- runEpisodeWith openBudget driver dummyTask 10
             arStopped run `shouldBe` "done"
             issued <- readIORef calls
-            let browsed = [argOf a | ToolCall "ghci_query" a <- issued]
+            let browsed = [argOf a | ToolCall "find_function" a <- issued]
             browsed `shouldBe` ["Granite.Svg", "Data.Text"]
             contexts <- readIORef seen
             let lastCtx = renderMsgs (last contexts)
@@ -123,7 +123,7 @@ browseResult m =
             ]
 
 argOf :: Value -> Text
-argOf (Object o) = case KM.lookup "arg" o of
+argOf (Object o) = case KM.lookup "query" o of
     Just (String t) -> t
     _ -> ""
 argOf _ = ""

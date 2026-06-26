@@ -9,6 +9,8 @@ module Eval.Chat (
     runChat,
     extractTestExpr,
     interpretConfirm,
+    CheckResult (..),
+    classifyCheck,
 ) where
 
 import Control.Monad (when)
@@ -32,7 +34,7 @@ import Eval.Agent (
 import Eval.Discover (isOwningTool)
 import Eval.Ollama (ToolCall (..), Turn (..), chat, chatSeeded)
 import Eval.Salvage (salvageCell)
-import Eval.Task (Grader (..), Task (..), Verdict (..), grade)
+import Eval.Task (Grader (..), Task (..), grade)
 import Eval.Tools (catalogue, dispatch, renderOutcome)
 import Sabela.AI.Types (ToolOutcome)
 import Siza.Transport (Conn)
@@ -60,13 +62,14 @@ runChat debug budget maxTurns mgr conn base model = do
     turn userText = do
         gateRef <- newIORef Nothing
         wroteRef <- newIORef False
+        seenRef <- newIORef ([] :: [Text])
         let chatFn msgs = do
                 progress "\183 thinking\8230"
                 (if debug then chatSeeded True Nothing else chat) mgr model msgs catalogue
             driver =
                 Driver
                     { drvChat = chatFn
-                    , drvDispatch = tracedDispatch wroteRef (dispatch conn base)
+                    , drvDispatch = tracedDispatch wroteRef seenRef (dispatch conn base)
                     , drvNow = realToFrac <$> getPOSIXTime
                     , drvVerify = verifyGate mgr conn base model gateRef wroteRef
                     }
@@ -97,15 +100,40 @@ verifyGate mgr conn base model gateRef wroteRef = do
                     pure t
             runConfirmedTest conn base test
 
+{- | Run the confirmed covering check and decide whether to accept the turn.
+A check that compiles but is False is a real failure (keep working); one that does
+not compile has no clear target, so accept the clean-running cells and say so.
+-}
 runConfirmedTest :: Conn -> Text -> Text -> IO Bool
 runConfirmedTest conn base test
     | T.null test = pure True
     | otherwise = do
-        (v, _) <- grade conn base (Task "_chk" "" (ByValue test))
-        let ok = v == Surfaced
-            mark = if ok then "\10003 check passed: " else "\10007 check failed: "
-        TIO.putStrLn ("  " <> mark <> test)
-        pure ok
+        (_, out) <- grade conn base (Task "_chk" "" (ByValue test))
+        case classifyCheck out of
+            CheckPassed -> TIO.putStrLn ("  \10003 check passed: " <> test) >> pure True
+            CheckFailed -> TIO.putStrLn ("  \10007 check failed: " <> test) >> pure False
+            CheckUncheckable -> do
+                TIO.putStrLn
+                    ("  \9888 cannot verify \8212 the check does not compile: " <> test)
+                TIO.putStrLn
+                    "    accepting the clean-running cells; define a pure binding to check the value."
+                pure True
+
+{- | The three outcomes of a covering check, telling an invalid target (the check
+itself does not compile) apart from a genuinely failing one.
+-}
+data CheckResult = CheckPassed | CheckFailed | CheckUncheckable
+    deriving (Eq, Show)
+
+{- | Classify a covering-check marker's output: 'Eval.Task.markerSrc' prints
+GRADE_PASS / GRADE_FAIL when the check compiles, so neither token means the check
+itself did not compile — no clear target, not a wrong answer.
+-}
+classifyCheck :: Text -> CheckResult
+classifyCheck out
+    | "GRADE_PASS" `T.isInfixOf` out = CheckPassed
+    | "GRADE_FAIL" `T.isInfixOf` out = CheckFailed
+    | otherwise = CheckUncheckable
 
 proposeTest :: Manager -> Conn -> Text -> Text -> IO Text
 proposeTest mgr conn base model = do
@@ -193,15 +221,32 @@ inlineCode t = case T.breakOn "`" t of
 
 tracedDispatch ::
     IORef Bool ->
+    IORef [Text] ->
     (ToolCall -> IO (Either Text ToolOutcome)) ->
     ToolCall ->
     IO (Either Text ToolOutcome)
-tracedDispatch wroteRef dsp call = do
-    progress ("\8594 " <> tcName call)
+tracedDispatch wroteRef seenRef dsp call = do
+    repeated <- noteCall seenRef call
+    progress ("\8594 " <> tcName call <> repeated)
     out <- dsp call
     progress ("  " <> clip 100 (firstNonEmptyLine (renderOutcome out)))
     when (isOwningTool (tcName call)) (writeIORef wroteRef True)
     pure out
+
+{- | Record this call's (tool, args) signature and flag it when it repeats one
+already made this turn — the model going in circles (re-reading the same cell,
+re-applying the same failing edit) instead of making progress.
+-}
+noteCall :: IORef [Text] -> ToolCall -> IO Text
+noteCall seenRef call = do
+    seen <- readIORef seenRef
+    let sig = tcName call <> " " <> clip 160 (tshow (tcArgs call))
+        n = length (filter (== sig) seen)
+    writeIORef seenRef (sig : seen)
+    pure $
+        if n > 0
+            then "  \8635 repeat \215" <> tshow (n + 1) <> " \8212 going in circles?"
+            else ""
 
 progress :: Text -> IO ()
 progress = TIO.putStrLn . ("  " <>)

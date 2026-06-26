@@ -1,27 +1,30 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Lightweight introspection tools: GHCi @:type@/@:info@/@:kind@/@:browse@/@:doc@,
-the static API reference card, and 'explore_result' drill-down into
-handles returned by other tools.
+{- | Live-session introspection tools, split from the former @ghci_query@
+multiplexer into single-intent tools (@list_bindings@, @check_type@,
+@find_by_type@, @describe_function@), plus the static @api_reference@ card and
+'explore_result' drill-down into handles returned by other tools.
 -}
 module Sabela.AI.Capabilities.Query (
-    execGhciQuery,
+    execListBindings,
+    execCheckType,
+    execFindByType,
+    execDescribeFunction,
     execApiReference,
     execExploreResult,
     execPeekData,
 
     -- * Pieces
     runExplore,
-    GhciOp (..),
-    parseGhciOp,
     ExploreOp (..),
     parseExploreOp,
-    parseHoleFits,
+    guidedOutcome,
 ) where
 
 import Control.Exception (try)
 import Control.Exception.Base (IOException)
 import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson.Types (Pair)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -44,73 +47,105 @@ import Sabela.AI.ReferenceCard (sliceApiReference)
 import Sabela.AI.Store
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
+import Sabela.Diagnose (diagnose, guidancePairs)
 import Sabela.SessionTypes (SessionBackend (..))
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.SessionManager (getHaskellSession)
 
-{- | The GHCi introspection ops the schema declares an enum for.
-Parsed once at the boundary so the dispatcher is total.
+{- | Run @k@ against the live Haskell session, or return the "no session"
+error when GHCi has not started. The shared preamble for every introspection
+tool below.
 -}
-data GhciOp = OpType | OpInfo | OpKind | OpBrowse | OpDoc | OpHoleFits | OpBindings
-    deriving (Eq, Show)
-
-parseGhciOp :: Text -> Maybe GhciOp
-parseGhciOp "type" = Just OpType
-parseGhciOp "info" = Just OpInfo
-parseGhciOp "kind" = Just OpKind
-parseGhciOp "browse" = Just OpBrowse
-parseGhciOp "doc" = Just OpDoc
-parseGhciOp "holefits" = Just OpHoleFits
-parseGhciOp "bindings" = Just OpBindings
-parseGhciOp _ = Nothing
-
--- | Every op needs an argument except bindings, which lists the whole session.
-opNeedsArg :: GhciOp -> Bool
-opNeedsArg OpBindings = False
-opNeedsArg _ = True
-
-execGhciQuery :: App -> Value -> IO ToolOutcome
-execGhciQuery app input = do
-    let rawOp = fieldText "op" input
-        arg = fieldText "arg" input
-    case parseGhciOp rawOp of
+withBackend :: App -> (SessionBackend -> IO ToolOutcome) -> IO ToolOutcome
+withBackend app k = do
+    mBackend <- getHaskellSession (appSessions app)
+    case mBackend of
         Nothing ->
             pure
                 ( errOutcome
-                    ( errorJson
-                        ( "Unknown op: "
-                            <> rawOp
-                            <> " (use type|info|kind|browse|doc|holefits|bindings)"
-                        )
-                    )
+                    (errorJson "No live Haskell session — run a cell first to start GHCi.")
                 )
-        Just op
-            | opNeedsArg op && T.null arg ->
-                pure (errOutcome (errorJson "arg required"))
-            | otherwise -> do
-                mBackend <- getHaskellSession (appSessions app)
-                case mBackend of
-                    Nothing ->
-                        pure
-                            ( errOutcome
-                                (errorJson "No live Haskell session — run a cell first to start GHCi.")
-                            )
-                    Just backend -> do
-                        result <- runGhciOp backend op arg
-                        pure $
-                            okOutcome $
-                                object ["op" .= rawOp, "arg" .= arg, "result" .= result]
+        Just backend -> k backend
 
-runGhciOp :: SessionBackend -> GhciOp -> Text -> IO Text
-runGhciOp backend op arg = case op of
-    OpType -> sbQueryType backend arg
-    OpInfo -> sbQueryInfo backend arg
-    OpKind -> sbQueryKind backend arg
-    OpBrowse -> sbQueryBrowse backend arg
-    OpDoc -> sbQueryDoc backend arg
-    OpHoleFits -> sbQueryHoleFits backend arg
-    OpBindings -> sbQueryBindings backend
+{- | Shape an introspection result into its tool outcome, attaching the same
+@-- cabal:@ (and other) guidance a failed cell gets, diagnosed from the result.
+A hidden-package wall thus becomes the action the notebook needs (declare the
+dependency) rather than a misleading @:set -package@.
+-}
+guidedOutcome :: [Pair] -> Text -> ToolOutcome
+guidedOutcome fields result =
+    okOutcome $
+        object (fields <> ["result" .= result] <> guidancePairs (diagnose result))
+
+-- | @list_bindings@: every variable currently bound in the session, with types.
+execListBindings :: App -> Value -> IO ToolOutcome
+execListBindings app _ =
+    withBackend app $ \backend -> do
+        result <- sbQueryBindings backend
+        pure (guidedOutcome [] result)
+
+{- | @check_type@: the type of an expression, or the kind/definition of a type
+or class — without running anything. The BACKEND owns the dispatch (no @op@ for
+the model to get wrong): a multi-token expression goes to @:type@; a bare name
+tries @:type@ first (clean @name :: ty@ for a value) and falls back to @:info@
+when @:type@ cannot resolve it (a type or class). The answering command rides
+back in @via@.
+-}
+execCheckType :: App -> Value -> IO ToolOutcome
+execCheckType app input = do
+    let expr = T.strip (fieldText "expr" input)
+    if T.null expr
+        then
+            pure
+                ( errOutcome
+                    (errorJson "expr required (an expression, value, type, or class name)")
+                )
+        else withBackend app $ \backend -> do
+            (via, result) <- dispatchCheckType backend expr
+            pure (guidedOutcome ["expr" .= expr, "via" .= via] result)
+
+dispatchCheckType :: SessionBackend -> Text -> IO (Text, Text)
+dispatchCheckType backend expr
+    | length (T.words expr) > 1 = (,) "type" <$> sbQueryType backend expr
+    | otherwise = do
+        ty <- sbQueryType backend expr
+        if looksResolved ty
+            then pure ("type", ty)
+            else (,) "info" <$> sbQueryInfo backend expr
+
+-- | True when GHCi actually resolved the query (not empty / not-in-scope).
+looksResolved :: Text -> Bool
+looksResolved t =
+    not (T.null (T.strip t))
+        && not ("Not in scope" `T.isInfixOf` t)
+        && not ("error:" `T.isInfixOf` t)
+
+{- | @find_by_type@: in-scope names whose type fits a goal type. Accepts a bare
+type (@[Int] -> Int@) or a hole (@_ :: [Int] -> Int@); a bare type is wrapped
+into a hole for GHC's valid-hole-fits.
+-}
+execFindByType :: App -> Value -> IO ToolOutcome
+execFindByType app input = do
+    let goal = T.strip (fieldText "goal" input)
+    if T.null goal
+        then
+            pure
+                (errOutcome (errorJson "goal required (a type like \"[Int] -> Int\")"))
+        else withBackend app $ \backend -> do
+            let hole = if "_" `T.isPrefixOf` goal then goal else "_ :: " <> goal
+            result <- sbQueryHoleFits backend hole
+            pure (guidedOutcome ["goal" .= goal] result)
+
+-- | @describe_function@: the haddock documentation for a name (@:doc@ prose).
+execDescribeFunction :: App -> Value -> IO ToolOutcome
+execDescribeFunction app input = do
+    let name = T.strip (fieldText "name" input)
+    if T.null name
+        then pure (errOutcome (errorJson "name required"))
+        else withBackend app $ \backend -> do
+            result <- sbQueryDoc backend name
+            pure (guidedOutcome ["name" .= name] result)
 
 execApiReference :: Value -> IO ToolOutcome
 execApiReference input = do
@@ -208,62 +243,6 @@ execPeekData app input = do
                             pure $
                                 okOutcome $
                                     object ["path" .= relPath, "peek" .= peekResultJSON (peekData n raw)]
-
-{- | Parse GHC's @Valid hole fits include@ blob into @(name, type)@ pairs.
-
-Pinned by a captured-real-blob fixture (GHC-version sensitive). Only the plain
-valid fits are returned; the @Valid refinement hole fits include@ section is
-dropped, as a refinement fit is a partial application with its own holes rather
-than a name the model can drop in directly. Each entry is a @name :: type@ line
-at the fit indent, with any wrapped type-continuation lines folded back in; the
-@with@/@where@/@(imported …)@ provenance lines are discarded.
--}
-parseHoleFits :: Text -> [(Text, Text)]
-parseHoleFits blob = case dropToHeader (T.lines blob) of
-    [] -> []
-    fitLines -> collectFits (takeWhile (not . isRefinementHeader) fitLines)
-  where
-    dropToHeader = drop 1 . dropWhile (not . isValidHeader)
-    isValidHeader = T.isInfixOf "Valid hole fits include"
-    isRefinementHeader = T.isInfixOf "Valid refinement hole fits include"
-
-{- | Group the fit-section lines into entries. An entry starts on the first
-line carrying @::@ that is not a provenance line; subsequent deeper-indented
-type-continuation lines are folded into its signature; provenance lines are
-skipped.
--}
-collectFits :: [Text] -> [(Text, Text)]
-collectFits [] = []
-collectFits (l : ls)
-    | isEntryStart l =
-        let (cont, rest) = span isTypeContinuation ls
-            sig = T.unwords (map T.strip (l : cont))
-         in maybe id (:) (splitNameType sig) (collectFits rest)
-    | otherwise = collectFits ls
-  where
-    isEntryStart x = "::" `T.isInfixOf` x && not (isProvenance x)
-
--- | A wrapped type-signature line: indented, with no @::@ and not provenance.
-isTypeContinuation :: Text -> Bool
-isTypeContinuation x =
-    not (T.null (T.strip x))
-        && not ("::" `T.isInfixOf` x)
-        && not (isProvenance x)
-
--- | The @with@/@where@/@(imported …)@/@(and …)@ lines GHC appends to a fit.
-isProvenance :: Text -> Bool
-isProvenance x =
-    any (`T.isPrefixOf` T.strip x) ["with ", "where ", "(imported", "(and "]
-
--- | Split a @name :: type@ signature on its first @::@.
-splitNameType :: Text -> Maybe (Text, Text)
-splitNameType sig = case T.breakOn "::" sig of
-    (name, rest)
-        | not (T.null rest) ->
-            let n = T.strip name
-                t = T.strip (T.drop 2 rest)
-             in if T.null n || T.null t then Nothing else Just (n, t)
-    _ -> Nothing
 
 -- | True when @child@ is @parent@ or nested under it (case-folded, normalised).
 isWithinPath :: FilePath -> FilePath -> Bool

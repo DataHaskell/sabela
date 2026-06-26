@@ -21,6 +21,7 @@ module Sabela.AI.Capabilities.ToolName (
     parseToolName,
     toolWireName,
     mkTool,
+    actsOnNotebook,
 ) where
 
 import Data.Aeson (Value)
@@ -38,7 +39,10 @@ data ToolName
     | DeleteCell
     | ExecuteCell
     | Scratchpad
-    | GhciQuery
+    | ListBindings
+    | CheckType
+    | FindByType
+    | DescribeFunction
     | ApiReference
     | ExploreResult
     | KernelStatus
@@ -47,6 +51,9 @@ data ToolName
     | AwaitIdle
     | ExportNotebook
     | PeekData
+    | FindPackage
+    | FindExampleCell
+    | FindFunction
     deriving (Show, Eq)
 
 parseToolName :: Text -> Maybe ToolName
@@ -61,7 +68,10 @@ parseToolName = \case
     "delete_cell" -> Just DeleteCell
     "execute_cell" -> Just ExecuteCell
     "scratchpad" -> Just Scratchpad
-    "ghci_query" -> Just GhciQuery
+    "list_bindings" -> Just ListBindings
+    "check_type" -> Just CheckType
+    "find_by_type" -> Just FindByType
+    "describe_function" -> Just DescribeFunction
     "api_reference" -> Just ApiReference
     "explore_result" -> Just ExploreResult
     "kernel_status" -> Just KernelStatus
@@ -70,6 +80,9 @@ parseToolName = \case
     "await_idle" -> Just AwaitIdle
     "export_notebook" -> Just ExportNotebook
     "peek_data" -> Just PeekData
+    "find_package" -> Just FindPackage
+    "find_example_cell" -> Just FindExampleCell
+    "find_function" -> Just FindFunction
     _ -> Nothing
 
 {- | Wire-format spelling of a 'ToolName'. The inverse of 'parseToolName':
@@ -88,7 +101,10 @@ toolWireName = \case
     DeleteCell -> "delete_cell"
     ExecuteCell -> "execute_cell"
     Scratchpad -> "scratchpad"
-    GhciQuery -> "ghci_query"
+    ListBindings -> "list_bindings"
+    CheckType -> "check_type"
+    FindByType -> "find_by_type"
+    DescribeFunction -> "describe_function"
     ApiReference -> "api_reference"
     ExploreResult -> "explore_result"
     KernelStatus -> "kernel_status"
@@ -97,6 +113,9 @@ toolWireName = \case
     AwaitIdle -> "await_idle"
     ExportNotebook -> "export_notebook"
     PeekData -> "peek_data"
+    FindPackage -> "find_package"
+    FindExampleCell -> "find_example_cell"
+    FindFunction -> "find_function"
 
 {- | Build a 'ToolDef' from a typed 'ToolName'. The wire-name string sent
 to Anthropic comes from 'toolWireName', the single source of truth that
@@ -105,3 +124,16 @@ the dispatcher actually handles.
 -}
 mkTool :: ToolName -> Text -> Value -> ToolDef
 mkTool name desc schema = ToolDef (toolWireName name) desc schema Nothing
+
+{- | Whether a tool ACTS on the notebook (adds, edits, or runs a cell) versus
+read-only discovery. Used to bound consecutive discovery calls before nudging
+the model to act — keyed only on tool category, so it stays library- and
+task-agnostic.
+-}
+actsOnNotebook :: ToolName -> Bool
+actsOnNotebook InsertCell = True
+actsOnNotebook ReplaceCellSource = True
+actsOnNotebook DeleteCell = True
+actsOnNotebook ProposeEdit = True
+actsOnNotebook ExecuteCell = True
+actsOnNotebook _ = False

@@ -9,6 +9,8 @@ module Eval.Task (
     verdictFor,
     proposeTest,
     grade,
+    runMarkerWith,
+    markerSrc,
     renderVerdict,
     outputHasVerdict,
     stepsVerdict,
@@ -147,18 +149,27 @@ markerSrc check =
     "putStrLn (if (" <> check <> ") then \"GRADE_PASS\" else \"GRADE_FAIL\")"
 
 runMarker :: Conn -> Text -> Text -> IO (Bool, Text)
-runMarker conn base src = do
-    before <- maxId <$> listCells conn base
-    _ <-
-        callTool
-            conn
-            base
-            InsertCell
-            (withInsertDefaults before (object ["after_cell_id" .= before, "source" .= src]))
-    after <- maxId <$> listCells conn base
-    out <-
-        renderOutcome <$> callTool conn base ExecuteCell (object ["cell_id" .= after])
+runMarker conn base = runMarkerWith (callTool conn base)
+
+{- | Run a grading marker and report whether it greened, INJECTING the tool
+caller so the path is testable without a live server. Grades OFF-notebook: the
+marker has to run in the live session to see the notebook's bindings, but it is
+deleted afterwards so the notebook is never left holding a noisy
+GRADE_PASS/GRADE_FAIL acceptance cell.
+-}
+runMarkerWith ::
+    (ToolName -> Value -> IO (Either Text ToolOutcome)) -> Text -> IO (Bool, Text)
+runMarkerWith call src = do
+    _ <- call InsertCell (withInsertDefaults (object ["source" .= src]))
+    after <- maxId . listValue <$> call ListCells (object [])
+    out <- renderOutcome <$> call ExecuteCell (object ["cell_id" .= after])
+    _ <- call DeleteCell (object ["cell_id" .= after])
     pure (T.isInfixOf "GRADE_PASS" out, out)
+
+-- | Unwrap a @list_cells@ tool result to its cells 'Value' (or empty on error).
+listValue :: Either Text ToolOutcome -> Value
+listValue (Right (ToolOk v)) = v
+listValue _ = object []
 
 gradeOutputTask :: Conn -> Text -> IO (Verdict, Text)
 gradeOutputTask conn base = do

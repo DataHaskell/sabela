@@ -186,24 +186,28 @@ spec = do
                 `shouldBe` "total :: Int = 600"
 
     describe "resolveLocalPackages" $ do
-        -- The sticky sabela-notebook support package is always prepended so
-        -- every notebook can @import Sabela.Notebook.*@.
-        let support = "/work/.sabela/sabela-notebook"
-        it "always prepends the sticky support package dir" $
+        -- Since "siza and display separate packages", the sabela-notebook support
+        -- package is supplied as an operator overlay (SABELA_LOCAL_PACKAGES, or the
+        -- build-time source as a dev fallback), so it arrives through envLocals
+        -- rather than a staged work-dir path.
+        it "is empty with no overlays and no notebook packages" $
             resolveLocalPackages "/work" [] emptyMeta
-                `shouldBe` [support]
+                `shouldBe` []
+        it "passes the support overlay through (it arrives via envLocals)" $
+            resolveLocalPackages "/work" ["/dev/sabela-notebook"] emptyMeta
+                `shouldBe` ["/dev/sabela-notebook"]
         it "passes absolute notebook package dirs through unchanged" $
             resolveLocalPackages "/work" [] emptyMeta{metaPackages = ["/abs/pkg"]}
-                `shouldBe` [support, "/abs/pkg"]
+                `shouldBe` ["/abs/pkg"]
         it "resolves relative notebook dirs against the working dir" $
             resolveLocalPackages "/work" [] emptyMeta{metaPackages = ["../sibling"]}
-                `shouldBe` [support, "/work/../sibling"]
+                `shouldBe` ["/work/../sibling"]
         it "keeps operator overlays first and dedupes against notebook dirs" $
             resolveLocalPackages
                 "/work"
                 ["/op/over"]
                 emptyMeta{metaPackages = ["/abs/pkg", "/op/over"]}
-                `shouldBe` [support, "/op/over", "/abs/pkg"]
+                `shouldBe` ["/op/over", "/abs/pkg"]
 
     describe "error buffer helpers" $ do
         it "resetErrorBuffer clears, readErrorBuffer returns lines in original order" $ do

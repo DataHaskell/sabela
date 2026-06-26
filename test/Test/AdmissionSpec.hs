@@ -58,8 +58,8 @@ spec = do
     describe "needsKernel: which tools gate on the kernel" $ do
         it "a kernel-needing tool (ExecuteCell) needs the kernel" $
             needsKernel ExecuteCell `shouldBe` True
-        it "a kernel-needing tool (GhciQuery) needs the kernel" $
-            needsKernel GhciQuery `shouldBe` True
+        it "a kernel-needing tool (CheckType) needs the kernel" $
+            needsKernel CheckType `shouldBe` True
         it "a kernel-control tool (KernelStatus) does not gate on the kernel" $
             needsKernel KernelStatus `shouldBe` False
         it "a read-only tool (ListCells) does not gate on the kernel" $

@@ -8,13 +8,14 @@ import Control.Concurrent.STM (atomically, tryReadTChan)
 import Control.Monad (void)
 import Data.IORef (modifyIORef, newIORef, readIORef)
 import qualified Data.Set as Set
-import Sabela.Handlers (installAndRestart)
+import Sabela.Handlers (buildTimeSupportDir, installAndRestart)
 import Sabela.Model (NotebookEvent (..), SessionStatus (..))
 import Sabela.Server (newApp)
 import Sabela.State (App (..))
 import Sabela.State.EventBus (subscribeBroadcast)
 import ScriptHs.Parser (CabalMeta (..))
-import System.Directory (findExecutable)
+import System.Directory (doesFileExist, findExecutable)
+import System.FilePath ((</>))
 import Test.Hspec (Spec, describe, it, pendingWith, shouldSatisfy)
 
 spec :: Spec
@@ -24,8 +25,16 @@ spec = describe "preinstalled packages" $ do
         case cabal of
             Nothing -> pendingWith "cabal not found on PATH; skipping integration test"
             Just _ -> pure ()
+        -- The session build-depends on sabela-notebook; supply it as a local
+        -- overlay the way app/Main's locateSupportSource does, else skip.
+        supportPresent <-
+            doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
+        if supportPresent
+            then pure ()
+            else pendingWith "sabela-notebook support source not on disk; skipping"
         -- Build state with "containers" declared as a global (preinstalled) dep
-        app <- newApp "." (Set.fromList ["containers"]) Nothing Nothing []
+        app <-
+            newApp "." (Set.fromList ["containers"]) Nothing Nothing [buildTimeSupportDir]
         chan <- subscribeBroadcast (appEvents app)
 
         -- gen=0 matches the freshly-initialised generation IORef

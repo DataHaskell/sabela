@@ -12,8 +12,6 @@ import Sabela.AI.Grammar (
     ImportStyle (..),
     applyEnvelope,
     displayEnvelope,
-    fewShots,
-    fsGrammar,
     grammarPromptBlock,
     grammarTerminals,
     normalizeName,
@@ -110,28 +108,19 @@ spec = describe "E1 grammar prompting" $ do
                 (\t -> ("." `T.isInfixOf` t) `shouldBe` False)
                 grammarTerminals
 
-        it "grammarTerminals is exactly the union of the few-shot grammars" $
-            grammarTerminals `shouldBe` concatMap fsGrammar fewShots
-
-    describe "grammarPromptBlock" $ do
-        it "names the start symbol and each gold terminal unqualified" $ do
-            let block = grammarPromptBlock
-            ("verb-to-Granite sketch" `T.isInfixOf` block) `shouldBe` True
-            mapM_
-                (\t -> (t `T.isInfixOf` block) `shouldBe` True)
-                grammarTerminals
+    describe "grammarPromptBlock (short: points at the search tools)" $ do
+        let block = grammarPromptBlock
+        it "points at find_package and find_example_cell instead of dumping examples" $ do
+            ("find_package" `T.isInfixOf` block) `shouldBe` True
+            ("find_example_cell" `T.isInfixOf` block) `shouldBe` True
+        it "keeps the -- cabal: mechanism but carries no worked example cells" $ do
+            ("-- cabal: build-depends:" `T.isInfixOf` block) `shouldBe` True
+            ("D.readCsv \"revenue.csv\"" `T.isInfixOf` block) `shouldBe` False
             ("Granite.Svg.bars" `T.isInfixOf` block) `shouldBe` False
 
-        it "carries the verified dataframe idiom (readCsv, col, columnAsList)" $ do
-            let block = grammarPromptBlock
-            mapM_
-                (\t -> (t `T.isInfixOf` block) `shouldBe` True)
-                [ "import qualified DataFrame as D"
-                , "D.readCsv"
-                , "D.columnAsList (D.col @Double \"revenue\")"
-                , "TypeApplications"
-                , "OverloadedStrings"
-                ]
+        it "nudges toward the typed-column idiom for CSV column work" $ do
+            ("typed-column" `T.isInfixOf` block) `shouldBe` True
+            ("compile error" `T.isInfixOf` block) `shouldBe` True
 
     describe "synthesizeGrammar (live :browse -> grammar prior)" $ do
         let graniteBlock =

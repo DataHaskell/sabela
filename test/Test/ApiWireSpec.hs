@@ -112,7 +112,7 @@ spec = describe "Sabela.Api wire shapes" $ do
                 ( EvChatToolCall
                     (TurnId 1)
                     (ToolCallId "toolu_abc")
-                    "ghci_query"
+                    "check_type"
                     (object [])
                 )
                 `shouldBe` Just (String "toolu_abc")

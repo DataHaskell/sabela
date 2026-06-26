@@ -3,7 +3,7 @@ lack a signature (redesign 6.6 phase 4).
 
 'unsignedTopLevelBinds' finds, from the parsed cell, the top-level value
 binders with no 'Hs.TypeSig'. 'annotateCell' then asks a 'TypeQuery' — a
-@:type@ pull against the running GHCi via 'Sabela.AI.Capabilities.GhciQuery'
+@:type@ pull against the running GHCi via @check_type@
 — for each, and assembles an 'AnnotateReport'.
 
 The 'TypeQuery' is injected, so the assembly is testable without a server,

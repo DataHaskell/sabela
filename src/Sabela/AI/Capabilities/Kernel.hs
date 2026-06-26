@@ -83,8 +83,10 @@ execInterrupt app = do
     maybe (pure ()) ST.sbInterrupt mSess
     pure $ okOutcome $ object ["interrupted" .= True]
 
-{- | Restart the kernel without a human. Forked so the response returns
-immediately; the caller then polls 'execKernelStatus' until it is ready.
+{- | Hard-reset the kernel: force-kill the process (bypassing the run-lock a
+wedged cell holds) and respawn clean, reusing the env without rebuilding and
+without re-running cells. Forked so the response returns immediately; poll
+'execKernelStatus' until idle.
 -}
 execKernelRestart :: ReactiveNotebook -> IO ToolOutcome
 execKernelRestart rn = do

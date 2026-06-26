@@ -10,7 +10,6 @@ import Data.Aeson (Value (..), encode, object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
-import Data.Foldable (toList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -63,29 +62,56 @@ catalogue =
         "Run one cell by id; returns its outputs and any errors."
         (props [("cell_id", intProp "Cell to run.")] ["cell_id"])
     , fn
-        "ghci_query"
-        "Introspect the live session without mutating it: type/info/kind of an expression or name, browse a module's exports, doc a name, holefits a goal type, or list the session's bindings. Use browse <Module> to discover an installed package's real API. Use holefits with a concrete goal type to list in-scope names that fit it, so you pick a real name instead of inventing one. Use bindings to list every variable currently bound with its type."
-        ( props
-            [
-                ( "op"
-                , object
-                    [ "type" .= ("string" :: Text)
-                    , "enum"
-                        .= (["type", "info", "kind", "browse", "doc", "holefits", "bindings"] :: [Text])
-                    ]
-                )
-            ,
-                ( "arg"
-                , prop
-                    "Expression, name, or type; for browse a module name like \"DataFrame\"; for holefits a concrete typed hole like \"_ :: [Int] -> Int\"; for bindings, ignored."
-                )
-            ]
-            ["op", "arg"]
-        )
+        "list_bindings"
+        "List every value, function, and type already defined in the notebook session, with its type. Use BEFORE building on earlier work, to reuse an existing binding instead of recomputing it."
+        (props [] [])
+    , fn
+        "check_type"
+        "Get the type of an expression, or the kind/definition of a type or class you already know, without running it. To find a name you do not know, use find_function or find_by_type."
+        (props [("expr", prop "An expression, value name, or type/class name.")] ["expr"])
+    , fn
+        "find_by_type"
+        "Find an installed function whose TYPE matches a goal type (e.g. \"[Int] -> Int\"). Use when you know the type you need but not the name; differs from find_function, which searches by name/keyword."
+        (props [("goal", prop "A goal type, e.g. \"[Int] -> Int\".")] ["goal"])
     , fn
         "scratchpad"
         "Run a SELF-CONTAINED Haskell snippet in an isolated session (cannot see notebook bindings)."
         (props [("code", prop "Self-contained Haskell to evaluate.")] ["code"])
+    , fn
+        "find_package"
+        "Find which Haskell package provides a capability you have not installed yet. Query a keyword or description (e.g. \"linear regression\", \"read csv\", \"plot a bar chart\"); returns the packages, the -- cabal: build-depends: line for a cell's first line, and key modules. The FIRST step for a new capability."
+        ( props
+            [
+                ( "query"
+                , prop
+                    "A keyword or task, e.g. \"linear regression\", \"read csv\", \"plotting\"."
+                )
+            ]
+            ["query"]
+        )
+    , fn
+        "find_example_cell"
+        "Search runnable example cells for a cell-shape idiom (e.g. \"read csv\", \"typed column\"); returns source to paste and adapt. To find which package or function does a task, use find_package or find_function."
+        ( props
+            [("query", prop "A shape idiom, e.g. \"read csv\" or \"typed column\".")]
+            ["query"]
+        )
+    , fn
+        "find_function"
+        "Find a function by NAME or KEYWORD in the installed modules, or list a module's exports by passing a module name (\"DataFrame\", \"Granite.Svg\"). Returns the best-matching functions with module and signature, ranked; nothing on a true miss. To search by TYPE use find_by_type."
+        ( props
+            [
+                ( "query"
+                , prop
+                    "A keyword (\"animate\"), a type fragment (\"Double -> Picture\"), or a module name (\"Granite.Svg\")."
+                )
+            ]
+            ["query"]
+        )
+    , fn
+        "delete_cell"
+        "Delete a cell from the notebook. Use this to remove a cell you cannot fix in place — e.g. a failing cell that is blocking you from inserting a new one."
+        (props [("cell_id", prop "The id of the cell to delete.")] ["cell_id"])
     ]
 
 -- | Build an object schema from (name, schema) properties plus a required list.
@@ -101,9 +127,7 @@ dispatch :: Conn -> Text -> ToolCall -> IO (Either Text ToolOutcome)
 dispatch conn base (ToolCall name args) =
     case parseToolName name of
         Nothing -> pure (Left (unknownToolMsg name))
-        Just InsertCell -> do
-            anchor <- endAnchor conn base
-            callTool conn base InsertCell (withInsertDefaults anchor args)
+        Just InsertCell -> callTool conn base InsertCell (withInsertDefaults args)
         Just tn -> callTool conn base tn args
 
 unknownToolMsg :: Text -> Text
@@ -111,33 +135,20 @@ unknownToolMsg name =
     "unknown tool '"
         <> name
         <> "'. Valid tools: list_cells, read_cell, insert_cell, replace_cell_source, \
-           \execute_cell, ghci_query, scratchpad. To browse a module use ghci_query \
-           \with op=browse."
+           \execute_cell, delete_cell, list_bindings, check_type, find_by_type, \
+           \scratchpad, find_package, find_example_cell, find_function."
 
-withInsertDefaults :: Int -> Value -> Value
-withInsertDefaults anchor (Object o) =
+{- | Fill the cell_type/language defaults the eval model often omits. Placement
+needs no default: the server appends every new cell.
+-}
+withInsertDefaults :: Value -> Value
+withInsertDefaults (Object o) =
     Object $
-        def "after_cell_id" (Number (fromIntegral anchor)) $
-            def "cell_type" (String "CodeCell") $
-                def "language" (String "Haskell") o
+        def "cell_type" (String "CodeCell") $
+            def "language" (String "Haskell") o
   where
     def k val m = if KM.member k m then m else KM.insert k val m
-withInsertDefaults _ v = v
-
-endAnchor :: Conn -> Text -> IO Int
-endAnchor conn base = do
-    r <- callTool conn base ListCells (object [])
-    pure $ case r of
-        Right (ToolOk cells) -> let n = maxCellId cells in if n <= 0 then -1 else n
-        _ -> -1
-
-maxCellId :: Value -> Int
-maxCellId (Array a) = maximum (0 : [i | Object c <- toList a, Just i <- [idOf c]])
-  where
-    idOf c = case KM.lookup "id" c of
-        Just (Number s) -> Just (round s)
-        _ -> Nothing
-maxCellId _ = 0
+withInsertDefaults v = v
 
 renderOutcome :: Either Text ToolOutcome -> Text
 renderOutcome (Left e) = "transport error: " <> e

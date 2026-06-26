@@ -2,15 +2,18 @@
 
 module Eval.Repair (substituteAndVerify, repairRedCells) where
 
+import Control.Monad (unless, void)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import Data.List (nub)
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 
-import Eval.HoleFit (goalFromError, parseFitNames, substituteName)
+import Eval.HoleFit (goalFromError, substituteName)
 import Eval.Ollama (ToolCall (..))
 import Sabela.AI.CellResult (CellId)
+import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
 import Sabela.AI.Types (ToolOutcome (..))
 
 type Dispatch = ToolCall -> IO (Either Text ToolOutcome)
@@ -20,34 +23,56 @@ repairRedCells ::
 repairRedCells disp =
     fmap catMaybes . mapM (uncurry (substituteAndVerify disp))
 
+{- | Repair a red cell by name substitution from GHC hole-fits: query the goal
+the error implies, then try each plain fit in turn, keeping the first whose
+re-run compiles (a verify-and-backtrack search, not a first-fit guess). When no
+fit compiles, restore the original source and give up. Refinement skeletons are
+left for the sketch-completion path.
+-}
 substituteAndVerify ::
     Dispatch -> CellId -> Text -> IO (Maybe (ToolCall, Either Text ToolOutcome))
 substituteAndVerify disp cid errText = case goalFromError errText of
     Nothing -> pure Nothing
     Just (wrong, ty) -> do
         blob <- queryHoleFits disp ty
-        case parseFitNames blob of
-            [] -> pure Nothing
-            (fit : _) -> do
-                msrc <- readCellSource disp cid
-                case msrc of
-                    Nothing -> pure Nothing
-                    Just src
-                        | newSrc == src -> pure Nothing
-                        | otherwise -> do
-                            let call = replaceCall cid newSrc
-                            out <- disp call
-                            pure (Just (call, out))
-                      where
-                        newSrc = substituteName wrong fit src
+        msrc <- readCellSource disp cid
+        case msrc of
+            Nothing -> pure Nothing
+            Just src -> do
+                let names = [hfWrite f | f <- parseHoleFits blob, not (hfRefined f)]
+                    subs = nub [s | n <- names, let s = substituteName wrong n src, s /= src]
+                hit <- firstGreen disp cid subs
+                case hit of
+                    Just out -> pure (Just out)
+                    Nothing -> do
+                        unless (null subs) (void (disp (replaceCall cid src)))
+                        pure Nothing
+
+{- | Replace the cell with each candidate source in turn, returning the first
+whose re-run compiled; 'Nothing' if none did.
+-}
+firstGreen ::
+    Dispatch -> CellId -> [Text] -> IO (Maybe (ToolCall, Either Text ToolOutcome))
+firstGreen _ _ [] = pure Nothing
+firstGreen disp cid (newSrc : rest) = do
+    let call = replaceCall cid newSrc
+    out <- disp call
+    if compiled out then pure (Just (call, out)) else firstGreen disp cid rest
+
+-- | True when a cell-execution outcome reports a successful run (@execution.ok@).
+compiled :: Either Text ToolOutcome -> Bool
+compiled (Right (ToolOk (Object o))) = case KM.lookup "execution" o of
+    Just (Object e) -> KM.lookup "ok" e == Just (Bool True)
+    _ -> False
+compiled _ = False
 
 queryHoleFits :: Dispatch -> Text -> IO Text
 queryHoleFits disp ty = do
     out <-
         disp
             ( ToolCall
-                "ghci_query"
-                (object ["op" .= ("holefits" :: Text), "arg" .= ("_ :: " <> ty)])
+                "find_by_type"
+                (object ["goal" .= ("_ :: " <> ty)])
             )
     pure (strField "result" out)
 

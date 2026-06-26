@@ -36,6 +36,7 @@ module Sabela.Parse (
     CellSymbols (..),
     cellNames,
     cellSymbols,
+    staleBindings,
     validateCellShape,
 ) where
 
@@ -78,6 +79,15 @@ of 'cellSymbols' for the many callers that only need those two sets.
 -}
 cellNames :: Text -> (Set Text, Set Text)
 cellNames src = let s = cellSymbols src in (csDefs s, csUses s)
+
+{- | Top-level names the OLD cell source defined that the NEW source no longer
+does. GHCi cannot un-define a binding, so a @replace_cell_source@ leaves these
+lingering in the session as ghosts; surfacing them lets the model see they are
+stale rather than current (the "surface, don't drop" reconciliation).
+-}
+staleBindings :: Text -> Text -> [Text]
+staleBindings oldSrc newSrc =
+    S.toAscList (fst (cellNames oldSrc) `S.difference` fst (cellNames newSrc))
 
 {- | Full symbol extraction for a cell: defs, uses, instance-provided method
 names, and class-declared method names. See 'CellSymbols' for how the
@@ -130,15 +140,16 @@ proseCodeMessage =
     \ executable code in a CodeCell instead, or keep the prose free of\
     \ top-level bindings."
 
-{- | True if any line is a statement-form top-level @let@ (a @let x = e@ that
-is not part of a @let ... in ...@ expression). Mirrors the rewrite predicate
-in 'preprocess', applied to the original source before any rewrite.
+{- | True if any line is a statement-form top-level @let@ (a column-0 @let x = e@
+that is not part of a @let ... in ...@ expression). Only column-0 counts: an
+indented @let@ is nested in a @do@/@where@/expression and is valid, so we must
+not flag it. Mirrors the rewrite predicate in 'preprocess'.
 -}
 hasTopLevelLet :: Text -> Bool
 hasTopLevelLet = any isStmtLet . T.lines
   where
     isStmtLet raw =
-        maybe False noTopLevelIn (T.stripPrefix "let " (T.stripStart raw))
+        maybe False noTopLevelIn (T.stripPrefix "let " raw)
 
 -- ---------------------------------------------------------------------------
 -- Fallback: parse each chunk independently when full-module parse fails
