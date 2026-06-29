@@ -189,7 +189,7 @@ jobs:
           find sdist -maxdepth 1 -type f -name '*.tar.gz' -exec tar -C $GITHUB_WORKSPACE/unpacked -xzvf {} \;
       - name: generate cabal.project
         run: |
-          PKGDIR_sabela="$(find "$GITHUB_WORKSPACE/unpacked" -maxdepth 1 -type d -regex '.*/sabela-[0-9.]*')"
+          PKGDIR_sabela="$(find "$GITHUB_WORKSPACE/unpacked" -maxdepth 1 -type d -regex '.*/sabela-*')"
           echo "PKGDIR_sabela=${PKGDIR_sabela}" >> "$GITHUB_ENV"
           rm -f cabal.project cabal.project.local
           touch cabal.project

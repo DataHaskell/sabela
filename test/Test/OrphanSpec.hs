@@ -54,9 +54,7 @@ spec :: Spec
 spec = describe "orphan prevention (Windows)" $
     it "uses a Job Object (KILL_ON_JOB_CLOSE); runtime check is manual/CI" $
         pendingWith
-            "Implemented in Sabela.Session.ParentPoller via a Job Object \
-            \(KILL_ON_JOB_CLOSE); an automated kill-the-server runtime check \
-            \needs a Windows host — verify on the windows.yml CI runner."
+            "Implemented in Sabela.Session.ParentPoller via a Job Object (KILL_ON_JOB_CLOSE); an automated kill-the-server runtime check needs a Windows host — verify on the windows.yml CI runner."
 #else
 spec = describe "orphan reaper (stress case 31)" $
     it "group-kills the interpreter when the server dies ungracefully" $ do

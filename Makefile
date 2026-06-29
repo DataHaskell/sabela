@@ -2,7 +2,7 @@
 # `cabal` / `./scripts/*.sh` (see CLAUDE.md); this Makefile exists mainly
 # to make regenerating the embedded API reference discoverable.
 
-.PHONY: help api-reference frontend frontend-check hub-assets
+.PHONY: help api-reference frontend frontend-check hub-assets search-cache capability-index
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -28,3 +28,11 @@ hub-assets: ## Refresh the hub's WASM assets (sabela-hub/static/) so it builds/d
 api-reference: ## Regenerate data/api-reference.txt from dataframe/granite (rerun when those packages change)
 	./tools/gen-api-reference.sh
 	@echo "Now rebuild sabela (cabal build) so the embedded card picks up changes."
+
+search-cache: ## Build/refresh the LOCAL Hoogle + Hackage-names cache the resolver queries (no network at run time)
+	./tools/update-search-cache.sh
+	@echo "Cache refreshed. Queries hit the local DB only — never the public services."
+
+capability-index: ## Build/refresh the SHIP capability-search index (data/capability-*); needs a local ollama (nomic-embed-text)
+	./tools/update-search-cache.sh --capability-index
+	@echo "Capability index built under data/. search_capability uses tools/capability_search.hs over it."
