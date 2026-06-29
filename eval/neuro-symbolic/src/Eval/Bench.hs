@@ -17,6 +17,11 @@ module Eval.Bench (
     renderReportFull,
     runArm,
     runBench,
+    withFreshServer,
+    withFreshServerEnv,
+    waitHealth,
+    round1,
+    tshow,
 ) where
 
 import Control.Concurrent (threadDelay)
@@ -29,10 +34,11 @@ import qualified Data.Text.IO as TIO
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Network.HTTP.Client (Manager)
 import System.Directory (createDirectoryIfMissing)
+import System.Environment (getEnvironment)
 import System.FilePath ((</>))
 import System.IO (IOMode (WriteMode), hClose, openFile)
 import System.Process (
-    CreateProcess (std_err, std_out),
+    CreateProcess (env, std_err, std_out),
     StdStream (UseHandle),
     createProcess,
     proc,
@@ -176,10 +182,11 @@ data BenchConfig = BenchConfig
 
 runArm :: BenchConfig -> Text -> GrammarMode -> Int -> Task -> IO RunStat
 runArm cfg base mode seed task = do
+    cat <- catalogue
     let driver =
             Driver
                 { drvChat =
-                    \msgs -> chatSeeded False (Just seed) (bcManager cfg) (bcModel cfg) msgs catalogue
+                    \msgs -> chatSeeded False (Just seed) (bcManager cfg) (bcModel cfg) msgs cat
                 , drvDispatch = dispatch (bcConn cfg) base
                 , drvNow = realToFrac <$> getPOSIXTime
                 , drvVerify = (== Surfaced) . fst <$> grade (bcConn cfg) base task
@@ -236,7 +243,15 @@ renderReport outcomes =
     rate r = tshow (arPasses r) <> "/" <> tshow (arRuns r)
 
 withFreshServer :: BenchConfig -> Int -> (Text -> IO a) -> IO a
-withFreshServer cfg port action = do
+withFreshServer cfg port = withFreshServerEnv cfg port []
+
+{- | As 'withFreshServer' but appends @extra@ to the spawned server's environment
+(inheriting the parent env first). The gate uses this to set the search lever
+flag on the ON arm only.
+-}
+withFreshServerEnv ::
+    BenchConfig -> Int -> [(String, String)] -> (Text -> IO a) -> IO a
+withFreshServerEnv cfg port extra action = do
     let dir = "/tmp/siza-bench-" <> show port
         base = "http://localhost:" <> T.pack (show port)
     createDirectoryIfMissing True dir
@@ -245,11 +260,15 @@ withFreshServer cfg port action = do
         (dir </> "revenue.csv")
         "month,revenue\nJan,100.0\nFeb,200.0\nMar,300.0\n"
     devnull <- openFile "/dev/null" WriteMode
+    procEnv <- case extra of
+        [] -> pure Nothing
+        _ -> Just . (++ extra) <$> getEnvironment
     (_, _, _, ph) <-
         createProcess
             (proc (bcBinary cfg) [show port, dir, dir </> "global.md"])
                 { std_out = UseHandle devnull
                 , std_err = UseHandle devnull
+                , env = procEnv
                 }
     waitHealth (bcConn cfg) base
     action base `finally` (terminateProcess ph >> hClose devnull)

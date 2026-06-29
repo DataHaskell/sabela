@@ -21,6 +21,7 @@ module Sabela.Session.Query (
 import Control.Concurrent (withMVar)
 import Data.Char (isSpace)
 import Data.IORef (readIORef, writeIORef)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.Session (
@@ -34,14 +35,24 @@ import Sabela.Session (
     sessLines,
  )
 import Sabela.Session.Drain (drainResultText, drainUntilMarker)
+import System.Environment (lookupEnv)
 import System.Timeout (timeout)
 
 queryTimeoutUs :: Int
 queryTimeoutUs = 10 * 1000000
 
+{- | GHCi @:complete repl@ defaults to ~250 matches returned ALPHABETICALLY, so
+for the bare @import @ prefix the discovery-relevant namespaces (@DataFrame.*@,
+@Granite.*@) sort past the cap and never appear — leaving @find_function@ unable
+to discover a re-exported verb like @fit@. With @SABELA_INSTANCE_SURFACING@ set we
+ask for the full list (high count); unset keeps the default cap (the baseline the
+A/B's OFF arm measures against). No module names are hardcoded.
+-}
 queryComplete :: Session -> Text -> IO [Text]
 queryComplete sess prefix = do
-    res <- runQueryCommand sess (QueryComplete ("\"" <> prefix <> "\""))
+    surfacing <- isJust <$> lookupEnv "SABELA_INSTANCE_SURFACING"
+    let countArg = if surfacing then "1000000 " else ""
+    res <- runQueryCommand sess (QueryComplete (countArg <> "\"" <> prefix <> "\""))
     pure (concatMap parseCompletionLine (T.lines res))
 
 parseCompletionLine :: Text -> [Text]

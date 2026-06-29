@@ -47,7 +47,6 @@ import qualified Sabela.AI.Types as AI
 import qualified Sabela.Anthropic.Types as AI (cancel)
 import Sabela.Deps (collectMetadataFromContent)
 import Sabela.Handlers.Lifecycle (
-    hardResetKernel,
     installAndRestart,
     killAllSessions,
     killSessionAsync,
@@ -58,6 +57,7 @@ import Sabela.Handlers.Lifecycle (
 import Sabela.Handlers.Plan (
     dispatchByLang,
     executeAffected,
+    executeFullRestart,
     executeRunAll,
     executeSingleCell,
     isSessionUpToDate,
@@ -74,6 +74,7 @@ import Sabela.Model (
 import Sabela.Reactivity (
     cellStale,
     haskellCodeCells,
+    markAllDirty,
     markDependentsDirty,
     runAllNeedsRun,
  )
@@ -218,13 +219,19 @@ handleReset app = do
     modifyNotebook (appNotebook app) clearAllOutputs
     broadcast app (EvSessionStatus SReset)
 
+{- | Restart the kernel to a CONSISTENT state: a fresh GHCi has none of the
+notebook's bindings, so we mark every cell dirty and re-run the whole notebook
+('executeFullRestart'). Without the re-run a "restart" leaves the kernel empty
+while cells read clean — bindings gone, downstream work hanging on them.
+-}
 handleRestartKernel :: App -> IO ()
 handleRestartKernel app = do
     debugLog app "[handler] handleRestartKernel"
     gen <- bumpGeneration app
     cleanupAI app False
+    modifyNotebook (appNotebook app) markAllDirty
     broadcast app (EvSessionStatus SReset)
-    void $ forkIO $ hardResetKernel app gen
+    void $ forkIO $ executeFullRestart app gen
 
 {- | Cleanup AI state on reset/restart.
 fullReset clears conversation and reverts edits; partial only kills scratchpad.

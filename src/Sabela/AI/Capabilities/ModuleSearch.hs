@@ -8,6 +8,9 @@ installed modules. A keyword query ranks every exposed function with
 module Sabela.AI.Capabilities.ModuleSearch (execFindFunction) where
 
 import Data.Aeson (Value, object, (.=))
+import Data.Char (isUpper)
+import Data.List (nub)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -23,9 +26,12 @@ import Sabela.AI.Capability (
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
 import Sabela.Diagnose (diagnose, guidancePairs)
+import Sabela.Model (Cell (..), Notebook (..))
 import Sabela.SessionTypes (SessionBackend (..))
 import Sabela.State (App (..))
+import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
+import System.Environment (lookupEnv)
 
 {- | @query@ is a keyword (@animate@) or a module name (which returns that
 module's raw exports). Ranks the installed modules' functions; returns nothing
@@ -49,21 +55,90 @@ execFindFunction app input =
                         )
                 Just backend -> do
                     mods <- sbQueryComplete backend "import "
-                    if q `elem` mods
+                    -- A module-name query browses that module DIRECTLY — :browse works on
+                    -- any installed module even when it's absent from the import-completion
+                    -- list (so an unimported module like DataFrame.Model is still reachable).
+                    if q `elem` mods || looksLikeModule q
                         then do
                             raw <- sbQueryBrowse backend q
-                            pure (browseOutcome q raw)
-                        else do
-                            caps <- buildIndex backend (take maxIndexModules (filter interesting mods))
-                            pure (matchesOutcome q (searchCapabilities defaultSynonyms caps q))
+                            if browseEmpty raw
+                                then keywordSearch backend mods
+                                else pure (browseOutcome q raw)
+                        else keywordSearch backend mods
   where
+    keywordSearch backend mods = do
+        surfacing <- isJust <$> lookupEnv "SABELA_INSTANCE_SURFACING"
+        let baseMods = filter interesting mods
+        -- ON: also index the submodules of the session's own namespaces (e.g.
+        -- DataFrame.*), enumerated via prefixed :complete — the bare import-completion
+        -- caps at ~250 and omits RE-EXPORTED modules, so the generic `fit` is otherwise
+        -- undiscoverable by keyword. OFF: the capped bare list (the status-quo baseline).
+        toBrowse <-
+            if surfacing
+                then do
+                    nss <- notebookNamespaces app
+                    extra <- namespaceSubmodules backend nss
+                    pure (nub (baseMods ++ filter interesting extra))
+                else pure (take maxIndexModules baseMods)
+        caps <- buildIndex backend toBrowse
+        pure (matchesOutcome q (searchCapabilities defaultSynonyms caps q))
     q =
         let qq = fieldText "query" input
          in if T.null qq then fieldText "module" input else qq
 
--- | Cap on modules browsed per keyword search, to bound the round-trip cost.
+{- | A dotted, uppercase-headed token with no spaces — a module name to browse
+directly (@DataFrame.Model@), not a keyword.
+-}
+looksLikeModule :: Text -> Bool
+looksLikeModule t =
+    T.isInfixOf "." t
+        && not (T.any (== ' ') t)
+        && maybe False (isUpper . fst) (T.uncons t)
+
+-- | A @:browse@ that resolved to nothing usable (empty or a scope/parse error).
+browseEmpty :: Text -> Bool
+browseEmpty raw =
+    let s = T.toLower (T.strip raw)
+     in T.null s || "not in scope" `T.isInfixOf` s || "error:" `T.isInfixOf` s
+
+{- | Cap on modules browsed per keyword search (the OFF / baseline arm), to bound
+the round-trip cost. Surfacing ON lifts it to index every importable module.
+-}
 maxIndexModules :: Int
 maxIndexModules = 120
+
+{- | The top-level namespaces the NOTEBOOK imports (the first dotted component of
+each @import@ in any cell — e.g. @DataFrame@ from @import DataFrame@). The bare
+import-completion only lists boot/base modules, so these come from the notebook's
+own imports, not from completion. No module names are hardcoded.
+-}
+notebookNamespaces :: App -> IO [Text]
+notebookNamespaces app = do
+    nb <- readNotebook (appNotebook app)
+    let imports =
+            [ m
+            | c <- nbCells nb
+            , l <- T.lines (cellSource c)
+            , Just m <- [importedModule l]
+            ]
+    pure (nub (map (T.takeWhile (/= '.')) imports))
+
+-- | The module a one-line @import [qualified] M ...@ brings in, if any.
+importedModule :: Text -> Maybe Text
+importedModule line = case T.words (T.strip line) of
+    ("import" : rest) -> case dropWhile (== "qualified") rest of
+        (m : _) | not (T.null m) && isUpper (T.head m) -> Just m
+        _ -> Nothing
+    _ -> Nothing
+
+{- | Submodules under each given namespace, enumerated via prefixed @:complete@
+(e.g. @import DataFrame@ → every @DataFrame.*@). A namespace-prefixed completion
+returns RE-EXPORTED modules the bare list omits, so @find_function@ can discover
+a re-exported verb like @fit@.
+-}
+namespaceSubmodules :: SessionBackend -> [Text] -> IO [Text]
+namespaceSubmodules backend namespaces =
+    concat <$> mapM (\ns -> sbQueryComplete backend ("import " <> ns)) namespaces
 
 {- | Browse each module once and parse its value bindings into capabilities: the
 per-call index the keyword search ranks over.

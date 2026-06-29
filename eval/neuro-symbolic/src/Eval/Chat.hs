@@ -63,9 +63,10 @@ runChat debug budget maxTurns mgr conn base model = do
         gateRef <- newIORef Nothing
         wroteRef <- newIORef False
         seenRef <- newIORef ([] :: [Text])
+        cat <- catalogue
         let chatFn msgs = do
                 progress "\183 thinking\8230"
-                (if debug then chatSeeded True Nothing else chat) mgr model msgs catalogue
+                (if debug then chatSeeded True Nothing else chat) mgr model msgs cat
             driver =
                 Driver
                     { drvChat = chatFn

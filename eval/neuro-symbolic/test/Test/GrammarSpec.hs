@@ -152,3 +152,17 @@ spec = describe "E1 grammar prompting" $ do
             mapM_
                 (\n -> ((n <> " ::") `T.isInfixOf` graniteBlock) `shouldBe` True)
                 normalised
+
+        it "drops noise terminals (error/diagnostic, trace, internal currency)" $ do
+            let noisy =
+                    T.unlines
+                        [ "D.readCsv :: FilePath -> IO D.DataFrame"
+                        , "D.columnNotFound :: T.Text -> T.Text -> [T.Text] -> String"
+                        , "D.ttrace :: String -> a -> a"
+                        , "D.combineAndVec :: D.CondVec -> D.CondVec -> D.CondVec"
+                        ]
+                block = synthesizeGrammar [Surface "DataFrame" (QualifiedAs "D") noisy]
+            ("readCsv ::" `T.isInfixOf` block) `shouldBe` True
+            ("columnNotFound" `T.isInfixOf` block) `shouldBe` False
+            ("ttrace" `T.isInfixOf` block) `shouldBe` False
+            ("combineAndVec" `T.isInfixOf` block) `shouldBe` False

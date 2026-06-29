@@ -10,6 +10,9 @@ module Sabela.Diagnose (
     holeFitGoal,
     hiddenPackage,
     neededExtension,
+    misnamedModule,
+    notInScopeName,
+    packageNeedsFlag,
     GrammarRoute (..),
     routeFailure,
 ) where
@@ -170,6 +173,38 @@ knownExtensions =
     , "NumericUnderscores"
     , "OverloadedLabels"
     ]
+
+{- | A wrong module name GHC offered a correction for: "Could not find module 'X'.
+Perhaps you meant Y" → (X, Y), Y the first suggested module. Drives the import-name
+auto-fix; Nothing when GHC made no suggestion (then we cannot safely rename).
+-}
+misnamedModule :: Text -> Maybe (Text, Text)
+misnamedModule err = do
+    wrong <- afterPhrase "Could not find module " err
+    right <- moduleAfter "Perhaps you meant" err
+    pure (wrong, right)
+
+{- | The first module-name token after a phrase: skip to the first uppercase, then
+take the dotted identifier (stops at the space before GHC's "(needs flag …)").
+-}
+moduleAfter :: Text -> Text -> Maybe Text
+moduleAfter phrase err = do
+    rest <- afterInfix phrase err
+    let tok = T.takeWhile isModChar (T.dropWhile (not . isUpper) rest)
+    if T.null tok then Nothing else Just tok
+  where
+    isModChar c = isAlphaNum c || c == '.' || c == '_' || c == '\''
+
+{- | The package in GHC's "(needs flag -package-id pkg-1.2.3 …)" note, version
+stripped — the dependency an import-rename also needs declared.
+-}
+packageNeedsFlag :: Text -> Maybe Text
+packageNeedsFlag err = do
+    rest <- afterInfix "-package-id " err
+    let tok = T.takeWhile pkgChar (T.stripStart rest)
+    if T.null tok then Nothing else Just (packageFromHidden tok)
+  where
+    pkgChar c = isAlphaNum c || c == '-' || c == '.'
 
 -- | "granite-0.7.3.0" -> "granite"; "foo-bar-1.0" -> "foo-bar".
 packageFromHidden :: Text -> Text

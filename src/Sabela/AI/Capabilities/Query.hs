@@ -19,12 +19,15 @@ module Sabela.AI.Capabilities.Query (
     ExploreOp (..),
     parseExploreOp,
     guidedOutcome,
+    typeConstructors,
+    recordDecl,
 ) where
 
 import Control.Exception (try)
 import Control.Exception.Base (IOException)
 import Data.Aeson (Value (..), object, (.=))
 import Data.Aeson.Types (Pair)
+import Data.Char (isUpper)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -111,15 +114,79 @@ dispatchCheckType backend expr
     | otherwise = do
         ty <- sbQueryType backend expr
         if looksResolved ty
-            then pure ("type", ty)
+            then do
+                struct <- typeStructure backend ty
+                pure ("type", if T.null struct then ty else ty <> "\n\n" <> struct)
             else (,) "info" <$> sbQueryInfo backend expr
 
--- | True when GHCi actually resolved the query (not empty / not-in-scope).
+{- | True when @:type@ actually resolved the query, so we keep its answer rather
+than falling back to @:info@. Matches GHC's "didn't resolve" forms
+case-insensitively: a bare type/class name fails @:type@ with "not in scope" or
+"Illegal term-level use of the type constructor", and we want @:info@ then.
+-}
 looksResolved :: Text -> Bool
 looksResolved t =
-    not (T.null (T.strip t))
-        && not ("Not in scope" `T.isInfixOf` t)
-        && not ("error:" `T.isInfixOf` t)
+    let lt = T.toLower t
+     in not (T.null (T.strip t))
+            && not ("not in scope" `T.isInfixOf` lt)
+            && not ("error:" `T.isInfixOf` lt)
+            && not ("illegal term-level" `T.isInfixOf` lt)
+
+{- | When @check_type@ resolves a value to a record type, surface that type's
+constructors and FIELD names, so the model can record-update the value in one
+go instead of looping to recover the fields (the observed weak-model failure).
+Best-effort: @:info@ the type constructors in the resolved type and return the
+first that is an ADT with record fields; @""@ when none qualifies.
+-}
+typeStructure :: SessionBackend -> Text -> IO Text
+typeStructure backend = go . take 4 . candidates
+  where
+    go [] = pure ""
+    go (c : cs) = do
+        decl <- recordDecl <$> sbQueryInfo backend c
+        maybe (go cs) pure decl
+    candidates = concatMap variants . typeConstructors
+    variants t =
+        let bare = lastSeg t
+         in if bare == t then [t] else [t, bare]
+
+-- | Last dot-separated segment of a (possibly qualified) name.
+lastSeg :: Text -> Text
+lastSeg = last . T.splitOn "."
+
+{- | Type-constructor atoms (uppercase-headed, qualifier allowed) on the RHS of
+a @name :: ty@ result (or a bare type), in order, deduped. The value name before
+@::@ is dropped so its qualifier is never mistaken for a constructor.
+-}
+typeConstructors :: Text -> [Text]
+typeConstructors s = nubKeep (filter isCtorAtom atoms)
+  where
+    rhs = case T.breakOn "::" s of
+        (_, r) | not (T.null r) -> T.drop 2 r
+        _ -> s
+    atoms =
+        filter (not . T.null) $
+            T.split (`elem` (" \t\n[]()->,!{}=|" :: String)) rhs
+    isCtorAtom t = maybe False (isUpper . fst) (T.uncons (lastSeg t))
+    nubKeep = foldr (\x acc -> x : filter (/= x) acc) []
+
+{- | Filter a GHCi @:info@ dump to just the data/newtype declaration — its
+constructors and record fields — dropping instance lines and @-- Defined in@
+provenance. @Nothing@ unless the result is an ADT declaration carrying fields.
+-}
+recordDecl :: Text -> Maybe Text
+recordDecl info
+    | hasAdt && hasField = Just kept
+    | otherwise = Nothing
+  where
+    kept = T.intercalate "\n" (filter keep (T.lines info))
+    keep l =
+        let t = T.strip l
+         in not (T.null t)
+                && not ("instance " `T.isPrefixOf` t)
+                && not ("-- Defined in" `T.isInfixOf` t)
+    hasAdt = "data " `T.isInfixOf` kept || "newtype " `T.isInfixOf` kept
+    hasField = "{" `T.isInfixOf` kept
 
 {- | @find_by_type@: in-scope names whose type fits a goal type. Accepts a bare
 type (@[Int] -> Int@) or a hole (@_ :: [Int] -> Int@); a bare type is wrapped

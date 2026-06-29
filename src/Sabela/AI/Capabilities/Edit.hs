@@ -255,7 +255,8 @@ execInsertCell app store rn cancelTok input = do
     let src = fieldText "source" input
         rawType = fieldText "cell_type" input
         rawLang = fieldText "language" input
-    case (parseCellType rawType, parseCellLang rawLang) of
+        mLang = if T.null rawLang then Just Haskell else parseCellLang rawLang
+    case (parseCellType rawType, mLang) of
         (Nothing, _) ->
             pure
                 ( errOutcome

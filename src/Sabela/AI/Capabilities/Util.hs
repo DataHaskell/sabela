@@ -9,6 +9,7 @@ module Sabela.AI.Capabilities.Util (
     field,
     fieldText,
     fieldInt,
+    fieldBool,
 
     -- * Typed enum parsing
     parseCellLang,
@@ -43,6 +44,10 @@ fieldInt :: Text -> Value -> Maybe Int
 fieldInt key v = case field key v of
     Just (Number n) -> Just (round n)
     _ -> Nothing
+
+-- | A boolean tool-arg flag, defaulting to 'False' when absent or non-boolean.
+fieldBool :: Text -> Value -> Bool
+fieldBool key v = field key v == Just (Bool True)
 
 {- | Total parser for the AI tool @language@ field. The schemas declare
 @enum: [\"Haskell\", \"Python\"]@; an unrecognised value is a tool-call

@@ -27,11 +27,14 @@ module Sabela.AI.Capabilities (
 ) where
 
 import Control.Exception (SomeException, try)
+import Control.Monad (void)
 import Data.Aeson (Value (..), (.=))
+import Data.IORef (readIORef)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.CapabilitySearch (execSearchCapability)
 import Sabela.AI.Capabilities.Discover (execFindExampleCell, execFindPackage)
 import Sabela.AI.Capabilities.Edit (
     execDeleteCell,
@@ -74,9 +77,11 @@ import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, newCancelToken)
 import Sabela.Api (errorJson, errorJsonWith)
 import Sabela.Handlers (ReactiveNotebook (..), setCellSourceChecked)
+import Sabela.Handlers.Lifecycle (ensureSessionAlive)
 import Sabela.Model
 import Sabela.Session (Admission (..))
 import Sabela.State
+import ScriptHs.Parser (CabalMeta (..))
 
 ------------------------------------------------------------------------
 -- Tool execution dispatch
@@ -123,10 +128,12 @@ executeTool app store rn cancelTok toolName input =
                     Ran r -> pure r
         | otherwise = guarded tool
 
-    {- Within the held AI gate: a non-AI run (browser/widget) may still hold
-    the kernel run-lock, so bounce on 'haskellKernelBusy' rather than block. -}
+    {- Within the held AI gate: warm a cold base GHCi once so discovery tools
+    work pre-first-cell, then bounce if a non-AI run (browser/widget) holds the
+    kernel run-lock rather than block. -}
     kernelGuarded :: ToolName -> IO ToolOutcome
     kernelGuarded tool = do
+        warmKernel app
         busy <- haskellKernelBusy app
         if busy then pure (errOutcome busyOutcome) else guarded tool
 
@@ -140,7 +147,7 @@ executeTool app store rn cancelTok toolName input =
 
     runTool :: ToolName -> IO ToolOutcome
     runTool = \case
-        ListCells -> execListCells app
+        ListCells -> execListCells app input
         ReadCell -> execReadCell app input
         ReadCellOutput -> execReadCellOutput app input
         FindCellsByContent -> execFindCells app input
@@ -165,6 +172,34 @@ executeTool app store rn cancelTok toolName input =
         FindPackage -> execFindPackage input
         FindExampleCell -> execFindExampleCell input
         FindFunction -> execFindFunction app input
+        SearchCapability -> execSearchCapability app input
+
+{- | Spawn a base GHCi if none is live so kernel-needing discovery tools
+(check_type, list_bindings, …) work before the first cell is run. Idempotent:
+a no-op when a session already exists, so it never disturbs live work. Warms
+with empty metadata at the current generation; a later @-- cabal:@ cell rebuilds
+through the normal cell-run path.
+-}
+warmKernel :: App -> IO ()
+warmKernel app = do
+    mSess <- getHaskellSession (appSessions app)
+    case mSess of
+        Just _ -> pure ()
+        Nothing -> do
+            gen <- readIORef (ebGeneration (appEvents app))
+            void (ensureSessionAlive app gen emptyMeta)
+  where
+    emptyMeta =
+        CabalMeta
+            { metaDeps = []
+            , metaExts = []
+            , metaGhcOptions = []
+            , metaExtraLibDirs = []
+            , metaExtraIncludeDirs = []
+            , metaPackages = []
+            , metaSourceRepos = []
+            , metaUnknownKeys = []
+            }
 
 -- | The busy wire shape returned by the live atomic admission gate.
 busyOutcome :: Value

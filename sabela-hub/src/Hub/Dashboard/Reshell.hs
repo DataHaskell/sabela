@@ -7,8 +7,8 @@ replaced by @window.__SABELA_STATIC__ = <json>;@ (plus, for notebook-mode
 exports, the render-mode flag and the markdown literal). When the template's
 chrome moves on, an old export keeps its stale chrome. 'reshell' lifts the
 injected data out of the old export and drops it into the current template, so
-the outputs are preserved exactly with no re-run. Port of the former
-@tools\/reshell-dashboard.py@.
+the outputs are preserved exactly with no re-run. Shares its logic with the
+standalone cabal script @tools\/reshell-dashboard.hs@.
 -}
 module Hub.Dashboard.Reshell (
     reshell,

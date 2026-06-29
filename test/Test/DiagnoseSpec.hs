@@ -14,7 +14,9 @@ import Sabela.Diagnose (
     diagnose,
     guidanceForCell,
     guidancePairs,
+    misnamedModule,
     neededExtension,
+    packageNeedsFlag,
  )
 import Sabela.Diagnose.Packages (
     packageForModule,
@@ -60,6 +62,21 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
                 `shouldBe` Nothing
         it "is Nothing when no extension is suggested" $
             neededExtension "Couldn't match Int with Bool" `shouldBe` Nothing
+
+    describe "misnamedModule + packageNeedsFlag (import auto-fix)" $ do
+        let misnamedErr =
+                T.unlines
+                    [ "Could not find module `Data.Frame'."
+                    , "Perhaps you meant"
+                    , "  DataFrame (needs flag -package-id dataframe-0.7.0.0)"
+                    , "  DataFrame (needs flag -package-id dataframe-0.3.3.7)"
+                    ]
+        it "reads the wrong module and GHC's suggested correction" $
+            misnamedModule misnamedErr `shouldBe` Just ("Data.Frame", "DataFrame")
+        it "reads the package from the needs-flag note, version stripped" $
+            packageNeedsFlag misnamedErr `shouldBe` Just "dataframe"
+        it "is Nothing when GHC offered no module suggestion" $
+            misnamedModule "Could not find module `Foo.Bar'." `shouldBe` Nothing
 
     describe "resolvePackageToken (fuzzy package-name index)" $ do
         it "passes a real package token through by exact membership" $ do

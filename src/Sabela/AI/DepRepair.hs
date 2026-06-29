@@ -5,12 +5,13 @@ module Sabela.AI.DepRepair (
     depFromResult,
 ) where
 
+import Control.Applicative ((<|>))
 import Data.Maybe (listToMaybe, mapMaybe, maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Types (ExecutionResult (..))
-import Sabela.Diagnose (hiddenPackage)
+import Sabela.Diagnose (hiddenPackage, packageNeedsFlag)
 import Sabela.Model (CellError (..))
 
 {- | Merge @pkg@ into a cell's @-- cabal: build-depends:@ line: append it to an
@@ -41,6 +42,7 @@ a missing package (so the repair only fires on the deterministic case).
 depFromResult :: Either Text ExecutionResult -> Maybe Text
 depFromResult (Left _) = Nothing
 depFromResult (Right er) =
-    listToMaybe (mapMaybe hiddenPackage errorTexts)
+    listToMaybe (mapMaybe pkgFrom errorTexts)
   where
     errorTexts = maybeToList (erError er) ++ map ceMessage (erErrors er)
+    pkgFrom t = hiddenPackage t <|> packageNeedsFlag t

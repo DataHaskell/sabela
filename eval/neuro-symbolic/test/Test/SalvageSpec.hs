@@ -41,6 +41,18 @@ spec = describe "Rank 3 code-fence salvage" $ do
         it "ignores a fence tagged as another language" $
             salvageCell "```python\nprint(1)\n```" `shouldBe` Nothing
 
+        it "drops a stray bare tool-call line inside the fence" $
+            salvageCell "```haskell\ninsert_cell()\nrevenueTotal = 600\n```"
+                `shouldBe` Just "revenueTotal = 600"
+
+        it "drops a spaced bare tool-call line (scratchpad ())" $
+            salvageCell "```haskell\nscratchpad ()\nx = 1\n```"
+                `shouldBe` Just "x = 1"
+
+        it "leaves real Haskell that merely mentions a tool name untouched" $
+            salvageCell "```haskell\nresult = read_cell 1 ++ go (x)\n```"
+                `shouldBe` Just "result = read_cell 1 ++ go (x)"
+
     describe "runEpisodeWith (salvage harvests an echoed cell)" $ do
         it "harvests a block the model echoed without inserting, then stops done" $ do
             driver <- scriptedDriver alwaysHealthy [echoTurn, doneTurn]
@@ -86,7 +98,10 @@ echoTurn =
 
 callTurn :: Text -> Turn
 callTurn name =
-    Turn (object ["role" .= ("assistant" :: Text)]) "" [ToolCall name (object [])]
+    Turn
+        (object ["role" .= ("assistant" :: Text)])
+        "```haskell\nrevenueTotal = 600\n```"
+        [ToolCall name (object [])]
 
 doneTurn :: Turn
 doneTurn = Turn (object ["role" .= ("assistant" :: Text)]) "done" []

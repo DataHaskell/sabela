@@ -55,9 +55,10 @@ spec = describe "Agent loop discipline (N4 budget, N10 retry)" $ do
             run <- runEpisodeWith' GrammarOff openBudget driver dummyTask 5
             arStopped run `shouldBe` "error"
 
-    describe "no-progress verify guard (the stuck verify spin)" $
-        it
-            "stops as 'stuck' when the model declares done, the check never passes, and nothing changes" $ do
+    describe "no-progress verify guard (the stuck verify spin)"
+        $ it
+            "stops as 'stuck' when the model declares done, the check never passes, and nothing changes"
+        $ do
             let stuckDriver =
                     Driver
                         { drvChat = \_ -> pure (Right doneTurn)

@@ -132,7 +132,10 @@ dummyTask = Task "t" "do the thing" (ByValue "True")
 
 callTurn :: Text -> Turn
 callTurn name =
-    Turn (object ["role" .= ("assistant" :: Text)]) "" [ToolCall name (object [])]
+    Turn
+        (object ["role" .= ("assistant" :: Text)])
+        "```haskell\nx = 1\n```"
+        [ToolCall name (object [])]
 
 doneTurn :: Turn
 doneTurn = Turn (object ["role" .= ("assistant" :: Text)]) "done" []

@@ -6,8 +6,18 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
+import Sabela.AI.Capabilities.Util (parseCellLang)
+import Sabela.SessionTypes (CellLang (..))
 import qualified ScriptHs.Parser as Scripths
 import qualified ScriptHs.Render as Scripths
+
+{- | Mirror of the empty-language default applied in Scratchpad.hs /
+Edit.hs: an empty @language@ field defaults to Haskell at the AI tool
+chokepoint; a non-empty unrecognised value still rejects.
+-}
+defaultLang :: Text -> Maybe CellLang
+defaultLang rawLang =
+    if T.null rawLang then Just Haskell else parseCellLang rawLang
 
 {- | Mirror of Orchestrator/Capabilities.renderHaskellForGhci. Kept here so the
 test has no dependency on internals.
@@ -81,3 +91,16 @@ spec = do
         it "does not annotate unrelated errors" $ do
             let err = "Variable not in scope: undefinedName"
             augmentGhciError err `shouldBe` err
+
+    describe "language field default (scratchpad / insert chokepoint)" $ do
+        it "defaults an empty language field to Haskell" $
+            defaultLang "" `shouldBe` Just Haskell
+
+        it "parses an explicit Haskell language" $
+            defaultLang "Haskell" `shouldBe` Just Haskell
+
+        it "parses an explicit Python language" $
+            defaultLang "Python" `shouldBe` Just Python
+
+        it "rejects a non-empty unrecognised language" $
+            defaultLang "Ruby" `shouldBe` Nothing

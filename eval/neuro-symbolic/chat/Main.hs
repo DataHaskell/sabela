@@ -13,14 +13,48 @@ module Main (main) where
 import Data.Maybe (fromMaybe, isNothing)
 import qualified Data.Text as T
 import Network.HTTP.Client.TLS (newTlsManager)
-import System.Environment (lookupEnv)
+import System.Directory (doesFileExist, getCurrentDirectory)
+import System.Environment (getArgs, lookupEnv)
+import System.FilePath (takeDirectory, (</>))
+import System.Process (callProcess)
 
 import Eval.Agent (EpisodeBudget (..), defaultBudget)
 import Eval.Chat (runChat)
 import Siza.Transport (Conn (..), Env (..), newConn)
 
 main :: IO ()
-main = do
+main =
+    getArgs >>= \case
+        ("update" : rest) -> runUpdate rest
+        _ -> runChatSession
+
+{- | @siza-chat update [--names-only|--hoogle-only]@ refreshes the LOCAL Hoogle +
+Hackage-names search cache the resolver queries (never the public services). It
+runs the repo's tools/update-search-cache.sh, located by walking up from the cwd.
+-}
+runUpdate :: [String] -> IO ()
+runUpdate flags = do
+    cwd <- getCurrentDirectory
+    mScript <- findUp cwd ("tools" </> "update-search-cache.sh")
+    case mScript of
+        Nothing ->
+            putStrLn
+                "could not find tools/update-search-cache.sh above the current \
+                \directory; run siza-chat update from inside the sabela repo"
+        Just script -> callProcess "bash" (script : flags)
+
+-- | The nearest ancestor of @dir@ (inclusive) containing @rel@, if any.
+findUp :: FilePath -> FilePath -> IO (Maybe FilePath)
+findUp dir rel = do
+    hit <- doesFileExist (dir </> rel)
+    if hit
+        then pure (Just (dir </> rel))
+        else
+            let parent = takeDirectory dir
+             in if parent == dir then pure Nothing else findUp parent rel
+
+runChatSession :: IO ()
+runChatSession = do
     model <- T.pack . fromMaybe "gpt-oss:20b" <$> lookupEnv "SIZA_EVAL_MODEL"
     debug <- isNothing <$> lookupEnv "SIZA_EVAL_QUIET"
     maxTurns <- maybe 100 read <$> lookupEnv "SIZA_EVAL_MAX_TURNS"

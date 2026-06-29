@@ -10,10 +10,13 @@ import qualified Test.ApiWireSpec as ApiWireSpec
 import qualified Test.AtomicAdmissionSpec as AtomicAdmissionSpec
 import qualified Test.AwaitIdleSpec as AwaitIdleSpec
 import qualified Test.CacheControlSpec as CacheControlSpec
+import qualified Test.CapabilityApiSpec as CapabilityApiSpec
+import qualified Test.CapabilitySearchSpec as CapabilitySearchSpec
 import qualified Test.CapabilitySpec as CapabilitySpec
 import qualified Test.CellDefinesSpec as CellDefinesSpec
 import qualified Test.CellResultWireSpec as CellResultWireSpec
 import qualified Test.CellShapeSpec as CellShapeSpec
+import qualified Test.CheckTypeStructSpec as CheckTypeStructSpec
 import qualified Test.ClassifyErrorSpec as ClassifyErrorSpec
 import qualified Test.CompactResultSpec as CompactResultSpec
 import qualified Test.CompileEscalationSpec as CompileEscalationSpec
@@ -26,6 +29,7 @@ import qualified Test.DepsMatchSpec as DepsMatchSpec
 import qualified Test.DepsRepairSpec as DepsRepairSpec
 import qualified Test.DiagnoseSpec as DiagnoseSpec
 import qualified Test.DiscoverToolSpec as DiscoverToolSpec
+import qualified Test.DiscoveryToolsPreSessionSpec as DiscoveryToolsPreSessionSpec
 import qualified Test.ErrorsJsonSpec as ErrorsJsonSpec
 import qualified Test.EvCellResultWireSpec as EvCellResultWireSpec
 import qualified Test.ExampleSearchSpec as ExampleSearchSpec
@@ -36,7 +40,9 @@ import qualified Test.ExtRepairSpec as ExtRepairSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import qualified Test.GrammarRouteSpec as GrammarRouteSpec
 import qualified Test.HoleFitsSpec as HoleFitsSpec
+import qualified Test.HoogleResolveSpec as HoogleResolveSpec
 import Test.Hspec (hspec)
+import qualified Test.ImportRepairSpec as ImportRepairSpec
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
 import qualified Test.JsonDiagSpec as JsonDiagSpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
@@ -61,6 +67,7 @@ import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
 import qualified Test.RenderSpec as RenderSpec
 import qualified Test.ReplProjectSpec as ReplProjectSpec
+import qualified Test.ResolveSpec as ResolveSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
 import qualified Test.SessionGenSpec as SessionGenSpec
 import qualified Test.SessionLiveSpec as SessionLiveSpec
@@ -105,6 +112,10 @@ main = do
         DiscoverToolSpec.spec
         DepRepairSpec.spec
         ExtRepairSpec.spec
+        ImportRepairSpec.spec
+        HoogleResolveSpec.spec
+        CapabilitySearchSpec.spec
+        CapabilityApiSpec.spec
         CapabilitySpec.spec
         NotebookViolationSpec.spec
         GrammarRouteSpec.grammarRouteSpec
@@ -119,6 +130,7 @@ main = do
         PeekDataSpec.spec
         CellShapeSpec.spec
         CellDefinesSpec.spec
+        CheckTypeStructSpec.spec
         PlatformSpec.spec
         OutputSpec.spec
         PreinstalledSpec.spec
@@ -143,6 +155,7 @@ main = do
         CellResultWireSpec.spec
         AdmissionSpec.spec
         AtomicAdmissionSpec.spec
+        DiscoveryToolsPreSessionSpec.spec
         AwaitIdleSpec.spec
         KernelStateWireSpec.spec
         EvCellResultWireSpec.spec
@@ -150,6 +163,7 @@ main = do
         ProvenanceWireSpec.spec
         MarkerSpec.spec
         RenderSpec.spec
+        ResolveSpec.spec
         ReplProjectSpec.spec
         ExportGoldenSpec.spec
         ConfigurableTimeoutSpec.spec

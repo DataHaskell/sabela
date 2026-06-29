@@ -15,11 +15,23 @@ notebookTools :: [ToolDef]
 notebookTools =
     [ mkTool
         ListCells
-        "List all cells in the notebook with their IDs, types, languages, first line of source, and whether they have errors. Use this for a quick overview."
-        (object ["type" .= ("object" :: Text), "properties" .= object []])
+        "Map of EVERY cell in the notebook (the whole notebook in one call): each cell's ID, position, type, language, the bindings it `defines`, and whether it errored. By default each cell shows only its first line (a compact preview that always lists all cells); pass `full: true` to include each cell's source too. To find which cell defines or uses a name, scan `defines` here or use find_cells_by_content; to read one cell in depth use read_cell."
+        ( object
+            [ "type" .= ("object" :: Text)
+            , "properties"
+                .= object
+                    [ "full"
+                        .= object
+                            [ "type" .= ("boolean" :: Text)
+                            , "description"
+                                .= ("Include each cell's source (default false: first-line preview)." :: Text)
+                            ]
+                    ]
+            ]
+        )
     , mkTool
         ReadCell
-        "Read the full source code and outputs of a specific cell."
+        "Read one cell's full SOURCE and error by ID. Outputs (which can be large rendered HTML/SVG) are omitted by default — a `hasOutputs` flag signals them; pass `full: true` to include `outputs`."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"
@@ -28,6 +40,11 @@ notebookTools =
                         .= object
                             [ "type" .= ("integer" :: Text)
                             , "description" .= ("The cell ID to read" :: Text)
+                            ]
+                    , "full"
+                        .= object
+                            [ "type" .= ("boolean" :: Text)
+                            , "description" .= ("Include the cell's outputs (default false)." :: Text)
                             ]
                     ]
             , "required" .= (["cell_id"] :: [Text])
@@ -51,7 +68,7 @@ notebookTools =
         )
     , mkTool
         FindCellsByContent
-        "Search cell sources for a pattern (substring match). Returns matching cell IDs with context."
+        "Search the NOTEBOOK's own cell sources for a substring (e.g. `model`, `fitDecisionTree`). Returns matching cell IDs with the matching lines. This is how you find which cell defines or uses something so you can edit it — unlike find_function/find_by_type, which search installed LIBRARIES, not your notebook."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"

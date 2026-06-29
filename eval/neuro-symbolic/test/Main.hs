@@ -2,13 +2,17 @@ module Main (main) where
 
 import qualified Test.BenchSpec as BenchSpec
 import qualified Test.BudgetRetrySpec as BudgetRetrySpec
+import qualified Test.CapabilityCorpusSpec as CapabilityCorpusSpec
 import qualified Test.ChatSpec as ChatSpec
+import qualified Test.CodePathSpec as CodePathSpec
 import qualified Test.DiscoverSpec as DiscoverSpec
+import qualified Test.GateResultSpec as GateResultSpec
 import qualified Test.GradeRenderSpec as GradeRenderSpec
 import qualified Test.GrammarSpec as GrammarSpec
 import qualified Test.HealthGateSpec as HealthGateSpec
 import qualified Test.HoleFitSpec as HoleFitSpec
 import Test.Hspec (hspec)
+import qualified Test.ReasoningCorpusSpec as ReasoningCorpusSpec
 import qualified Test.RepairBudgetSpec as RepairBudgetSpec
 import qualified Test.RepairSpec as RepairSpec
 import qualified Test.SalvageSpec as SalvageSpec
@@ -23,12 +27,16 @@ main :: IO ()
 main = hspec $ do
     BenchSpec.spec
     BudgetRetrySpec.spec
+    CapabilityCorpusSpec.spec
     ChatSpec.spec
+    CodePathSpec.spec
     DiscoverSpec.spec
+    GateResultSpec.spec
     GradeRenderSpec.spec
     GrammarSpec.spec
     HoleFitSpec.spec
     HealthGateSpec.spec
+    ReasoningCorpusSpec.spec
     RepairBudgetSpec.spec
     RepairSpec.spec
     SalvageSpec.spec

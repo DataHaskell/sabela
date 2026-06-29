@@ -6,6 +6,7 @@ module Sabela.Reactivity (
     runAllNeedsRun,
     computeExecutionPlan,
     markDependentsDirty,
+    markAllDirty,
     markAllInterpretedDirty,
     computeFullExecutionPlan,
     computeStaleExecutionPlan,
@@ -138,6 +139,17 @@ computePlanCore mRoots allCode nb =
             , epDefMap = defMap
             , epCellPositions = posMap
             }
+
+{- | Mark every code cell dirty. After a kernel restart the fresh GHCi has none
+of the notebook's bindings, but the cells still read clean, so a run-plan would
+compute "nothing to run" and leave the session empty (downstream work then hangs
+waiting on bindings that never get rebuilt). Marking all dirty forces the
+restart's run to re-evaluate the whole notebook back to a consistent state.
+-}
+markAllDirty :: Notebook -> Notebook
+markAllDirty nb = nb{nbCells = map dirty (nbCells nb)}
+  where
+    dirty c = c{cellDirty = True}
 
 {- | Mark every cell transitively downstream of @cid@ dirty, so graph
 staleness survives a later solo run of the root (which clears only the

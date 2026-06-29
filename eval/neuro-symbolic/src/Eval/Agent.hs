@@ -62,7 +62,11 @@ import Eval.Salvage (salvageCell)
 import Eval.Sample (SampleResult (..), SampleVerify (..), sampleVerifyOne)
 import Eval.Scaffold (scaffoldCall, scaffoldNote)
 import Eval.Task (Task (..), Verdict (..), grade)
-import Eval.Tools (catalogue, dispatch, renderOutcome)
+import Eval.Tools (
+    catalogue,
+    dispatch,
+    renderOutcome,
+ )
 import Eval.Transcript (renderMessage)
 
 data AgentRun = AgentRun
@@ -118,16 +122,16 @@ defaultBudget = EpisodeBudget{ebMaxRepairs = 4, ebDeadlineSecs = 600}
 
 runEpisode ::
     EpisodeBudget -> Manager -> Conn -> Text -> Text -> Task -> Int -> IO AgentRun
-runEpisode budget mgr conn base model task maxTurns =
+runEpisode budget mgr conn base model task maxTurns = do
+    cat <- catalogue
+    let driver =
+            Driver
+                { drvChat = \msgs -> chat mgr model msgs cat
+                , drvDispatch = dispatch conn base
+                , drvNow = realToFrac <$> getPOSIXTime
+                , drvVerify = (== Surfaced) . fst <$> grade conn base task
+                }
     runEpisodeWith budget driver task maxTurns
-  where
-    driver =
-        Driver
-            { drvChat = \msgs -> chat mgr model msgs catalogue
-            , drvDispatch = dispatch conn base
-            , drvNow = realToFrac <$> getPOSIXTime
-            , drvVerify = (== Surfaced) . fst <$> grade conn base task
-            }
 
 runEpisodeWith :: EpisodeBudget -> Driver -> Task -> Int -> IO AgentRun
 runEpisodeWith = runEpisodeWith' GrammarOn
@@ -243,16 +247,21 @@ runEpisodeTraced emit mode budget driver task maxTurns = do
                                     owned'
                                     (msgs ++ [turnRaw t, msg] ++ redisc)
                         else do
-                            outcomes <- mapM (drvDispatch driver) (turnCalls t)
-                            discovered <- runDiscover mode (drvDispatch driver) (turnCalls t)
+                            results <- mapM dispatchCall (turnCalls t)
+                            let dispatched = [c | (c, Right _) <- results]
+                            discovered <- runDiscover mode (drvDispatch driver) dispatched
                             -- N4: nudge the model to act after too many
                             -- consecutive read-only/discovery calls.
-                            nudge <- updateBudget consec (turnCalls t)
-                            let owned' = foldr recordOwned owned (zip (turnCalls t) outcomes)
-                                toolMsgs = zipWith toolMsg (turnCalls t) (map renderOutcome outcomes)
+                            nudge <- updateBudget consec dispatched
+                            let owned' =
+                                    foldr recordOwned owned [(c, o) | (c, Right o) <- results]
+                                toolMsgs =
+                                    [ toolMsg c (either id renderOutcome o)
+                                    | (c, o) <- results
+                                    ]
                                 msgs' = msgs ++ [turnRaw t] ++ toolMsgs ++ discovered ++ nudge
                             writeIORef stuck 0
-                            go start' (turn + 1) (nCalls + length (turnCalls t)) repairs owned' msgs'
+                            go start' (turn + 1) (nCalls + length dispatched) repairs owned' msgs'
     go start 0 0 0 owned0 (initial ++ pre ++ proactive)
   where
     initial =
@@ -267,6 +276,12 @@ runEpisodeTraced emit mode budget driver task maxTurns = do
                 ( Map.empty
                 , [object ["role" .= ("user" :: Text), "content" .= scaffoldNote]]
                 )
+    -- Code tools read their source straight from the (recovered) tool-call args;
+    -- the recovery layer in 'Eval.Ollama.parseTurn' has already repaired any
+    -- unescaped backslash or content-channel tool-call JSON before this point.
+    dispatchCall call = do
+        outcome <- drvDispatch driver call
+        pure (call, Right outcome)
     repairReds owned reds = do
         fixes <-
             repairRedCells
@@ -359,13 +374,13 @@ runEpisodeDebug ::
     Task ->
     Int ->
     IO AgentRun
-runEpisodeDebug emit budget mgr conn base model task maxTurns =
+runEpisodeDebug emit budget mgr conn base model task maxTurns = do
+    cat <- catalogue
+    let driver =
+            Driver
+                { drvChat = \msgs -> chatSeeded True Nothing mgr model msgs cat
+                , drvDispatch = dispatch conn base
+                , drvNow = realToFrac <$> getPOSIXTime
+                , drvVerify = (== Surfaced) . fst <$> grade conn base task
+                }
     runEpisodeTraced emit GrammarOn budget driver task maxTurns
-  where
-    driver =
-        Driver
-            { drvChat = \msgs -> chatSeeded True Nothing mgr model msgs catalogue
-            , drvDispatch = dispatch conn base
-            , drvNow = realToFrac <$> getPOSIXTime
-            , drvVerify = (== Surfaced) . fst <$> grade conn base task
-            }

@@ -17,7 +17,7 @@ module Sabela.AI.Capability (
 import Control.Monad (guard)
 import Data.Char (isAlphaNum)
 import Data.List (nubBy, sortOn)
-import Data.Maybe (catMaybes, listToMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -44,8 +44,9 @@ data Hit = Hit
 -- | Query-vocabulary → API-vocabulary bridges, all lower-case.
 type Synonyms = [(Text, [Text])]
 
--- | Query-word → API-word bridges for cases substring matching misses
--- (e.g. "classification" → "logistic").
+{- | Query-word → API-word bridges for cases substring matching misses
+(e.g. "classification" → "logistic").
+-}
 defaultSynonyms :: Synonyms
 defaultSynonyms =
     [ ("animation", ["anim"])
@@ -118,10 +119,94 @@ continuation lines (coalesced). Skips type/data/class declarations.
 -}
 parseCapabilities :: Text -> Text -> [Capability]
 parseCapabilities modName raw =
-    [ Capability modName (unqualify nm) (cleanType ty)
-    | ent <- coalesce (T.lines raw)
-    , Just (nm, ty) <- [valueBinding ent]
-    ]
+    concat
+        [ case valueBinding ent of
+            Just (nm, ty) -> [Capability modName (unqualify nm) (cleanType ty)]
+            Nothing -> recordSelectors modName ent ++ classMethods modName ent
+        | ent <- coalesce (T.lines raw)
+        ]
+
+{- | Class methods from a coalesced @class C ... where m :: T@ declaration, so
+@find_function@ finds a polymorphic verb like @fit@ / @predict@ — buried inside
+the @class@ block, not a top-level binding. The method type is prefixed with the
+class context so the model sees what it ranges over. Empty for non-class lines.
+-}
+classMethods :: Text -> Text -> [Capability]
+classMethods modName line
+    | "class " `T.isPrefixOf` line
+    , (_, afterWhere) <- T.breakOn " where " line
+    , not (T.null afterWhere) =
+        [ Capability modName (unqualify nm) (ctx <> cleanType ty)
+        | (nm, ty) <- methodSigs (T.drop 7 afterWhere)
+        ]
+    | otherwise = []
+  where
+    -- The class head ("Fit cfg input model") becomes the method's constraint.
+    classHead = T.strip (T.takeWhile (/= '|') (afterClass (fst (T.breakOn " where " line))))
+    ctx = "(" <> cleanType classHead <> ") => "
+    afterClass l = fromMaybe l (T.stripPrefix "class " l)
+
+{- | Split a class body's @m1 :: T1 m2 :: T2@ run into @(name, type)@ pairs. The
+token just before each @::@ is the next method name; the rest is the prior
+method's type (GHCi prints one method per line, coalesced to one run here).
+-}
+methodSigs :: Text -> [(Text, Text)]
+methodSigs body = case T.splitOn " :: " body of
+    (n0 : rest) -> pair n0 rest
+    [] -> []
+  where
+    pair _ [] = []
+    pair nm [ty] = [(T.strip nm, T.strip ty)]
+    pair nm (chunk : more) =
+        (T.strip nm, T.strip (T.dropWhileEnd (/= ' ') chunk))
+            : pair (lastWord chunk) more
+    lastWord = T.takeWhileEnd (/= ' ')
+
+{- | Record field selectors from a coalesced @data@/@newtype@ declaration —
+@field :: Record -> FieldType@ — so @find_function@ finds a field by name
+(e.g. @maxTreeDepth@) even though @:browse@ buries it inside the data block,
+not as a top-level binding. Empty for non-record declarations.
+-}
+recordSelectors :: Text -> Text -> [Capability]
+recordSelectors modName line
+    | isData
+    , Just braces <- betweenBraces line =
+        [ Capability
+            modName
+            (unqualify (T.strip nm))
+            (tyName <> " -> " <> cleanType (T.strip ty))
+        | grp <- groupFields (T.splitOn ", " braces)
+        , let (nm, rest) = T.breakOn " :: " grp
+        , not (T.null rest)
+        , let ty = T.drop 4 rest
+        ]
+    | otherwise = []
+  where
+    isData = "data " `T.isPrefixOf` line || "newtype " `T.isPrefixOf` line
+    tyName = unqualify (T.takeWhile (\c -> c /= ' ' && c /= '=') (afterKeyword line))
+    afterKeyword l
+        | Just r <- T.stripPrefix "data " l = r
+        | Just r <- T.stripPrefix "newtype " l = r
+        | otherwise = l
+
+-- | The text between the first @{@ and the next @}@, if any.
+betweenBraces :: Text -> Maybe Text
+betweenBraces t = case T.breakOn "{" t of
+    (_, r) | not (T.null r) -> Just (T.takeWhile (/= '}') (T.drop 1 r))
+    _ -> Nothing
+
+{- | Regroup brace pieces split on @", "@ so a field type carrying its own comma
+(e.g. @[(Text, Text)]@) stays whole: a piece without @::@ continues the field
+before it rather than starting a new one.
+-}
+groupFields :: [Text] -> [Text]
+groupFields = reverse . foldl step []
+  where
+    step acc p
+        | " :: " `T.isInfixOf` p = p : acc
+        | otherwise = case acc of
+            (cur : rest) -> (cur <> ", " <> p) : rest
+            [] -> [p]
 
 -- | Join indented continuation lines into the entry they continue.
 coalesce :: [Text] -> [Text]

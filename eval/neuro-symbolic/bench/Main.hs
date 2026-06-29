@@ -10,6 +10,8 @@ import Text.Read (readMaybe)
 
 import Eval.Agent (defaultBudget)
 import Eval.Bench (BenchConfig (..), renderReportFull, runBench)
+import qualified Eval.Corpus as Corpus
+import qualified Eval.Corpus.Reasoning as Reasoning
 import Eval.Task (Grader (..), Task (..))
 import Siza.Transport (newConn)
 
@@ -69,13 +71,35 @@ benchTasks =
         \DataFrame in one cell. Then in a second cell, plot revenue by month as a \
         \bar chart with the granite library and show the chart."
         (BySteps [ByOutputHas ["Jan", "Feb", "Mar"], ByRender])
+    , Task
+        "nycTaxiStats"
+        "Download a sample of the NYC yellow taxi trip dataset (a CSV from a public \
+        \URL) and, using the dataframe library, show descriptive statistics (count, \
+        \mean, min, max) for the trip distance and fare amount columns."
+        Untested
+    , Task
+        "symbolicRegression"
+        "Implement a simple symbolic regression in Haskell: given the points \
+        \[(1.0, 1.0), (2.0, 4.0), (3.0, 9.0), (4.0, 16.0)], search over simple \
+        \arithmetic expressions built from x, +, *, and numeric constants to find one \
+        \whose predictions fit the points, and print the best expression and its \
+        \total squared error."
+        Untested
+    , Task
+        "movieLensClassify"
+        "Download the MovieLens 100k dataset and train a simple model to predict \
+        \whether a user rates a movie above 3 stars; report the classification \
+        \accuracy on a held-out split."
+        Untested
     ]
 
 main :: IO ()
 main = do
     model <- T.pack . fromMaybe "gpt-oss:20b" <$> lookupEnv "SIZA_EVAL_MODEL"
     seeds <- parseSeeds <$> lookupEnv "SIZA_BENCH_SEEDS"
-    tasks <- selectTasks <$> lookupEnv "SIZA_BENCH_TASKS"
+    pool <-
+        corpusPool <$> lookupEnv "SIZA_BENCH_CORPUS" <*> lookupEnv "SIZA_BENCH_FOLD"
+    tasks <- selectTasks pool <$> lookupEnv "SIZA_BENCH_TASKS"
     bin <- fromMaybe defaultBin <$> lookupEnv "SABELA_BIN"
     transcripts <-
         fromMaybe "/tmp/siza-bench-transcripts" <$> lookupEnv "SIZA_BENCH_TRANSCRIPTS"
@@ -105,11 +129,25 @@ parseSeeds = maybe dflt (orDefault dflt . mapMaybe (readMaybe . trim) . splitCom
   where
     dflt = [1, 2, 3]
 
--- | Tasks selected by id from @SIZA_BENCH_TASKS@ (comma list), defaulting to all.
-selectTasks :: Maybe String -> [Task]
-selectTasks Nothing = benchTasks
-selectTasks (Just s) =
-    orDefault benchTasks (filter ((`elem` want) . T.unpack . taskId) benchTasks)
+{- | Choose the task pool: @SIZA_BENCH_CORPUS=hard@ swaps in the Phase-0.1 hard
+corpus (filtered by @SIZA_BENCH_FOLD=in-index|held-out|all@ via 'Corpus.selectFold');
+@SIZA_BENCH_CORPUS=reasoning@ swaps in the reasoning corpus (filtered by
+@SIZA_BENCH_FOLD@ with a category name via 'Reasoning.selectReasoning');
+anything else keeps the original 'benchTasks'.
+-}
+corpusPool :: Maybe String -> Maybe String -> [Task]
+corpusPool (Just "hard") fold = Corpus.selectFold (T.pack . trim <$> fold)
+corpusPool (Just "reasoning") fold =
+    Reasoning.selectReasoning (T.pack . trim <$> fold)
+corpusPool _ _ = benchTasks
+
+{- | Tasks selected by id from @SIZA_BENCH_TASKS@ (comma list), defaulting to the
+whole pool.
+-}
+selectTasks :: [Task] -> Maybe String -> [Task]
+selectTasks pool Nothing = pool
+selectTasks pool (Just s) =
+    orDefault pool (filter ((`elem` want) . T.unpack . taskId) pool)
   where
     want = map trim (splitComma s)
 

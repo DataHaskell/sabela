@@ -54,6 +54,7 @@ data ToolName
     | FindPackage
     | FindExampleCell
     | FindFunction
+    | SearchCapability
     deriving (Show, Eq)
 
 parseToolName :: Text -> Maybe ToolName
@@ -83,6 +84,7 @@ parseToolName = \case
     "find_package" -> Just FindPackage
     "find_example_cell" -> Just FindExampleCell
     "find_function" -> Just FindFunction
+    "search_capability" -> Just SearchCapability
     _ -> Nothing
 
 {- | Wire-format spelling of a 'ToolName'. The inverse of 'parseToolName':
@@ -116,6 +118,7 @@ toolWireName = \case
     FindPackage -> "find_package"
     FindExampleCell -> "find_example_cell"
     FindFunction -> "find_function"
+    SearchCapability -> "search_capability"
 
 {- | Build a 'ToolDef' from a typed 'ToolName'. The wire-name string sent
 to Anthropic comes from 'toolWireName', the single source of truth that

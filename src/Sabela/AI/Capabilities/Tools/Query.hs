@@ -19,7 +19,7 @@ queryTools =
         noArgs
     , mkTool
         CheckType
-        "Get the type of an expression, or the kind/definition of a type or class you ALREADY know, without running anything. Pass an expression (\"map fst\"), a value name, or a type/class name. To find a name you do not know, use find_function or find_by_type."
+        "Get the type of an expression, or the kind/definition of a type or class you ALREADY know, without running anything. Pass an expression (\"map fst\"), a value name, or a type/class name. When a value's type is a record, this ALSO returns that type's constructors and FIELD names — so to discover a config's fields for a record update (e.g. `cfg{maxTreeDepth=10}`), just check_type the value. To find a name you do not know, use find_function or find_by_type."
         (oneArg "expr" "An expression, value name, or type/class name.")
     , mkTool
         FindByType
@@ -146,6 +146,10 @@ queryTools =
         ( queryArg
             "A keyword (\"animate\") or a module name (\"DataFrame\", \"Granite.Svg\")."
         )
+    , mkTool
+        SearchCapability
+        "Search ALL of Hackage by plain-language description, type signature, or keyword to DISCOVER packages you don't know. e.g. \"generate a QR code from text\", or a type \"Text -> Text -> Int\", or a name. Returns ranked candidate PACKAGES, each enriched with what you need to actually CALL it: its `-- cabal: build-depends:` line (paste as a cell's first line), the module(s) to import, and its KEY functions with type signatures (ranked to your query, so an action query surfaces the right function, not data accessors). Use this to find AND wire up the right library before importing it."
+        (queryArg "A description, a type signature, or a name.")
     ]
 
 -- | Schema for a tool that takes no arguments.

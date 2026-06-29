@@ -123,31 +123,25 @@ discoverEnvelope content =
         , "content" .= content
         ]
 
+{- | Every cell's source for discovery. @list_cells@ now carries the full
+@source@ per cell, so this is a single call — no per-cell @read_cell@ round-trip
+(the storm that dominated the transcript and context).
+-}
 notebookSources :: Dispatch -> IO [Text]
 notebookSources dispatch = do
     listed <- dispatch (ToolCall "list_cells" (object []))
-    mapM (readSource dispatch) (cellIds (outcomeValue listed))
-
-readSource :: Dispatch -> Int -> IO Text
-readSource dispatch cid = do
-    out <- dispatch (ToolCall "read_cell" (object ["cell_id" .= cid]))
-    pure (sourceField (outcomeValue out))
+    pure (cellSources (outcomeValue listed))
 
 outcomeValue :: Either Text ToolOutcome -> Value
 outcomeValue (Right (ToolOk v)) = v
 outcomeValue _ = Null
 
-cellIds :: Value -> [Int]
-cellIds (Array a) =
-    [round s | Object c <- toList a, Just (Number s) <- [KM.lookup "id" c]]
-cellIds (Object o) = maybe [] cellIds (KM.lookup "cells" o)
-cellIds _ = []
-
-sourceField :: Value -> Text
-sourceField (Object o) = case KM.lookup "source" o of
-    Just (String s) -> s
-    _ -> ""
-sourceField _ = ""
+-- | The @source@ field of each cell in a @list_cells@ result.
+cellSources :: Value -> [Text]
+cellSources (Array a) =
+    [s | Object c <- toList a, Just (String s) <- [KM.lookup "source" c]]
+cellSources (Object o) = maybe [] cellSources (KM.lookup "cells" o)
+cellSources _ = []
 
 toolCallSource :: ToolCall -> Text
 toolCallSource = cellSource . tcArgs

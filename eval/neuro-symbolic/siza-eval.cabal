@@ -21,6 +21,8 @@ library
     exposed-modules:  Eval.Ollama
                       Eval.Tools
                       Eval.Bench
+                      Eval.Gate
+                      Eval.GateResult
                       Eval.Discover
                       Eval.Sample
                       Eval.Agent
@@ -34,10 +36,18 @@ library
                       Eval.Scaffold
                       Eval.Transcript
                       Eval.Task
+                      Eval.Corpus
+                      Eval.Corpus.Tasks
+                      Eval.Corpus.Capability
+                      Eval.Corpus.Reasoning
+                      Eval.Corpus.Reasoning.Competition
+                      Eval.Corpus.Reasoning.Design
+                      Eval.Corpus.Reasoning.Logic
     build-depends:    base >= 4 && < 5
                     , siza-client
                     , sabela:sabela-contract >= 0.1 && < 0.2
                     , http-client >= 0.7 && < 0.10
+                    , http-client-tls >= 0.3 && < 0.4
                     , aeson >= 2.0 && < 3
                     , bytestring >= 0.10 && < 0.13
                     , text >= 1.2 && < 3
@@ -78,10 +88,26 @@ executable siza-chat
                     , siza-client
                     , http-client-tls >= 0.3 && < 0.4
                     , text >= 1.2 && < 3
+                    , process >= 1.6 && < 1.7
+                    , directory >= 1.3 && < 1.4
+                    , filepath >= 1.4 && < 1.6
 
 executable siza-bench
     import:           warnings
     hs-source-dirs:   bench
+    main-is:          Main.hs
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    build-depends:    base >= 4 && < 5
+                    , siza-eval
+                    , siza-client
+                    , http-client-tls >= 0.3 && < 0.4
+                    , text >= 1.2 && < 3
+
+executable siza-gate
+    import:           warnings
+    hs-source-dirs:   gate
     main-is:          Main.hs
     default-language: Haskell2010
     default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
@@ -98,13 +124,17 @@ test-suite siza-eval-test
     hs-source-dirs:   test
     main-is:          Main.hs
     other-modules:    Test.BenchSpec
+                      Test.CapabilityCorpusSpec
+                      Test.GateResultSpec
                       Test.BudgetRetrySpec
                       Test.ChatSpec
+                      Test.CodePathSpec
                       Test.DiscoverSpec
                       Test.GradeRenderSpec
                       Test.HoleFitSpec
                       Test.GrammarSpec
                       Test.HealthGateSpec
+                      Test.ReasoningCorpusSpec
                       Test.RepairBudgetSpec
                       Test.RepairSpec
                       Test.SalvageSpec

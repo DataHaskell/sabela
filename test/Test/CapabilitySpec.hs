@@ -21,12 +21,27 @@ import Test.Hspec
 
 idx :: [Capability]
 idx =
-    [ Capability "Sabela.Notebook.Anim" "animate" "Double -> (Double -> Picture) -> IO ()"
-    , Capability "Sabela.Notebook.Anim" "animateB" "Double -> Behavior Picture -> IO ()"
-    , Capability "DataFrame.LinearModel.Logistic" "defaultLogisticConfig" "LogisticConfig"
-    , Capability "DataFrame.LinearModel.Regression" "defaultLinearConfig" "LinearConfig"
+    [ Capability
+        "Sabela.Notebook.Anim"
+        "animate"
+        "Double -> (Double -> Picture) -> IO ()"
+    , Capability
+        "Sabela.Notebook.Anim"
+        "animateB"
+        "Double -> Behavior Picture -> IO ()"
+    , Capability
+        "DataFrame.LinearModel.Logistic"
+        "defaultLogisticConfig"
+        "LogisticConfig"
+    , Capability
+        "DataFrame.LinearModel.Regression"
+        "defaultLinearConfig"
+        "LinearConfig"
     , Capability "DataFrame.Model" "fit" "cfg -> Expr Double -> DataFrame -> model"
-    , Capability "Granite.Svg" "lineGraph" "[(Text, [(Double, Double)])] -> Plot -> Text"
+    , Capability
+        "Granite.Svg"
+        "lineGraph"
+        "[(Text, [(Double, Double)])] -> Plot -> Text"
     , Capability "Granite.Svg" "bars" "[(Text, Double)] -> Plot -> Text"
     ]
 
@@ -58,7 +73,8 @@ spec = describe "Sabela.AI.Capability.searchCapabilities" $ do
         via "Double -> Picture" `shouldBe` Just ByType
 
     it "a synonym bridges the vocabulary (classification -> logistic)" $ do
-        top "classification" `shouldBe` Just ("DataFrame.LinearModel.Logistic", "defaultLogisticConfig")
+        top "classification"
+            `shouldBe` Just ("DataFrame.LinearModel.Logistic", "defaultLogisticConfig")
         via "classification" `shouldBe` Just BySynonym
 
     it "a module-ish keyword surfaces that module's functions" $ do
@@ -87,8 +103,53 @@ spec = describe "Sabela.AI.Capability.searchCapabilities" $ do
                 (h : _) -> (capName (hitCap h), hitVia h) `shouldBe` ("animate", ByName)
                 [] -> expectationFailure "no match for animate"
 
--- | Real @:browse Sabela.Notebook.Anim@ output: fully-qualified names, the
--- 'animate' signature wrapped across continuation lines, package-qualified atoms.
+        it "extracts record field selectors as Record -> Field capabilities" $ do
+            ("animFps" `elem` names) `shouldBe` True
+            lookup "animFps" [(capName c, capType c) | c <- caps]
+                `shouldBe` Just "AnimOpts -> Int"
+
+        it "find_function can now locate a record field by name" $
+            case searchCapabilities defaultSynonyms caps "animFps" of
+                (h : _) -> capName (hitCap h) `shouldBe` "animFps"
+                [] -> expectationFailure "no match for the record field animFps"
+
+        it "keeps a field type carrying its own comma whole" $ do
+            let recCaps =
+                    parseCapabilities
+                        "M"
+                        "data M.Cfg = M.Cfg {M.pairs :: [(Int, Int)], M.n :: Int}"
+            lookup "pairs" [(capName c, capType c) | c <- recCaps]
+                `shouldBe` Just "Cfg -> [(Int, Int)]"
+
+        it "extracts a class method as a capability (the polymorphic verb)" $ do
+            let cs =
+                    parseCapabilities
+                        "DataFrame.Model"
+                        "class Fit cfg input model where\n  fit :: cfg -> input -> DataFrame -> model"
+            ("fit" `elem` map capName cs) `shouldBe` True
+            lookup "fit" [(capName c, capType c) | c <- cs]
+                `shouldBe` Just "(Fit cfg input model) => cfg -> input -> DataFrame -> model"
+
+        it "find_function locates the class method fit by name" $ do
+            let cs =
+                    parseCapabilities
+                        "DataFrame.Model"
+                        "class Fit cfg input model where\n  fit :: cfg -> input -> DataFrame -> model"
+            case searchCapabilities defaultSynonyms cs "fit" of
+                (h : _) -> capName (hitCap h) `shouldBe` "fit"
+                [] -> expectationFailure "no match for the class method fit"
+
+        it "splits a two-method class into both methods" $ do
+            let cs =
+                    parseCapabilities
+                        "M"
+                        "class Predict model r where\n  predict :: model -> Expr r\n  predictProba :: model -> Expr Double"
+            map capName cs `shouldContain` ["predict"]
+            map capName cs `shouldContain` ["predictProba"]
+
+{- | Real @:browse Sabela.Notebook.Anim@ output: fully-qualified names, the
+'animate' signature wrapped across continuation lines, package-qualified atoms.
+-}
 animBrowse :: Text
 animBrowse =
     T.unlines

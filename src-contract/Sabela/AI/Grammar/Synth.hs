@@ -45,11 +45,7 @@ synthesizeGrammar surfaces =
     T.unlines (header ++ concatMap renderSurface surfaces)
   where
     header =
-        [ "## Live API grammar (synthesised from :browse — use ONLY these names)"
-        , ""
-        , "A request expands to one discovered terminal applied to its arguments,"
-        , "then shown through the envelope its result type selects. Write each name"
-        , "in the form below; do not invent a name or reach for another library."
+        [ "## Live API grammar (synthesised from :browse — use ONLY these names; find_function searches the rest)"
         ]
 
 renderSurface :: Surface -> [Text]
@@ -57,7 +53,39 @@ renderSurface (Surface m style browse) =
     [ ""
     , "### " <> m <> "  (" <> importHint style <> ")"
     ]
-        ++ map (renderTerminal style) (parseBrowse browse)
+        ++ map (renderTerminal style) (filter (not . isNoise) (parseBrowse browse))
+
+{- | Drop bindings that are never part of the notebook DSL and only bloat the
+grammar (it rides in context every turn): error/diagnostic @String@ helpers,
+debug @trace@, and internal type-currency (CART/condition-synthesis plumbing).
+Keeps the user-facing surface — readers, transforms, @Expr@/chart builders.
+-}
+isNoise :: BrowseEntry -> Bool
+isNoise (BrowseEntry name typ) =
+    resultHead typ == "String"
+        || "trace" `T.isSuffixOf` lastSeg name
+        || "Error" `T.isSuffixOf` lastSeg name
+        || any (`T.isInfixOf` typ) internalMarkers
+
+-- | Internal type names that mark a binding as library plumbing, not DSL.
+internalMarkers :: [Text]
+internalMarkers =
+    ["CondVec", "CondCache", "NumExpr", "CartFeature", "CarePoint", ".Internal."]
+
+{- | Head type constructor of a signature's RESULT, after class context and
+arrows, stripped of list/tuple punctuation and any module qualifier.
+-}
+resultHead :: Text -> Text
+resultHead typ =
+    case T.words (T.filter (`notElem` ("[]()" :: String)) res) of
+        (t : _) -> lastSeg t
+        [] -> ""
+  where
+    res = last (T.splitOn "->" (last (T.splitOn "=>" typ)))
+
+-- | Last dot-separated segment of a (possibly qualified) name.
+lastSeg :: Text -> Text
+lastSeg = last . T.splitOn "."
 
 renderTerminal :: ImportStyle -> BrowseEntry -> Text
 renderTerminal style (BrowseEntry name typ) =

@@ -52,20 +52,23 @@ spec = describe "preinstalled packages" $ do
 
         void $ forkIO $ void $ installAndRestart app 0 meta
 
-        -- Poll the broadcast channel for up to 30 s, stop when SReady arrives
+        -- Drain the broadcast channel until SReady, with a wall-clock deadline.
+        -- Budget is spent ONLY while waiting (the threadDelay branch), never per
+        -- event — under load the session emits a burst of status/log events, and
+        -- decrementing on each would exhaust the budget long before SReady,
+        -- failing spuriously. 180 s covers a contended cabal-install + restart.
         eventsRef <- newIORef ([] :: [NotebookEvent])
         let poll 0 = pure ()
             poll remaining = do
-                threadDelay 100_000 -- 100 ms
                 mev <- atomically (tryReadTChan chan)
                 case mev of
-                    Nothing -> poll (remaining - 1)
+                    Nothing -> threadDelay 100_000 >> poll (remaining - 1)
                     Just ev -> do
                         modifyIORef eventsRef (ev :)
                         case ev of
                             EvSessionStatus SReady -> pure () -- done
-                            _ -> poll (remaining - 1)
-        poll (300 :: Int) -- 300 × 100 ms = 30 s
+                            _ -> poll remaining
+        poll (1800 :: Int) -- 1800 × 100 ms idle ticks = 180 s wall-clock
         events <- readIORef eventsRef
 
         let statuses = [s | EvSessionStatus s <- events]

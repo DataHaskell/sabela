@@ -15,6 +15,7 @@ import Sabela.Session.Reader (
     enqueueEof,
     enqueueLine,
     markerNonceBase,
+    markerNumberIn,
     mkMarkerText,
     newOutQueue,
  )
@@ -59,3 +60,18 @@ spec = describe "marker forgery resistance (stress case 1)" $ do
         case res of
             DrainOk out -> out `shouldSatisfy` T.isInfixOf "keepme"
             DrainEof _ -> expectationFailure "ended at EOF, not the real marker"
+
+    -- Phase 0.0 confounder 3 verdict: the "pretty phantom" is a model-error
+    -- (a genuinely non-exhaustive case in model-written code), not a marker
+    -- collision. These pin the parser the boundary logic relies on.
+    describe "markerNumberIn parses the first well-formed marker only" $ do
+        it "extracts the number despite a garbage prefix" $
+            markerNumberIn "garbage ---SABELA_MARKER_100001---"
+                `shouldBe` Just 100001
+
+        it "extracts the number with trailing junk after the marker" $
+            markerNumberIn "---SABELA_MARKER_99999--- ignored"
+                `shouldBe` Just 99999
+
+        it "rejects a non-digit marker tail as ordinary output" $
+            markerNumberIn "---SABELA_MARKER_abc---" `shouldBe` Nothing

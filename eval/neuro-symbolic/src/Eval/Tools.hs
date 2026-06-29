@@ -10,12 +10,14 @@ import Data.Aeson (Value (..), encode, object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Sabela.AI.Capabilities.ToolName (ToolName (..), parseToolName)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Transport (Conn, callTool)
+import System.Environment (lookupEnv)
 
 import Eval.Ollama (ToolCall (..))
 
@@ -34,26 +36,72 @@ prop d = object ["type" .= ("string" :: Text), "description" .= d]
 intProp :: Text -> Value
 intProp d = object ["type" .= ("integer" :: Text), "description" .= d]
 
-catalogue :: [Value]
-catalogue =
+boolProp :: Text -> Value
+boolProp d = object ["type" .= ("boolean" :: Text), "description" .= d]
+
+{- | The model-facing tool catalogue. @search_capability@ is gated behind the
+@SABELA_CAPABILITY_SEARCH@ env var (the A/B lever): the ON arm sets it and the
+model sees the tool; with it unset the tool is omitted entirely so the OFF arm's
+model never knows it exists. The rest of the catalogue is constant.
+-}
+catalogue :: IO [Value]
+catalogue = do
+    capSearch <- isJust <$> lookupEnv "SABELA_CAPABILITY_SEARCH"
+    pure (baseCatalogue ++ [searchCapabilityTool | capSearch])
+
+searchCapabilityTool :: Value
+searchCapabilityTool =
+    fn
+        "search_capability"
+        "Search ALL of Hackage by plain-language description, type signature, or keyword to DISCOVER functions/packages you don't know. e.g. \"compute how different two strings are\", or a type \"Text -> Text -> Int\", or a name. Returns ranked candidate packages, each with its cabal build-depends line, the modules to import, its key exported functions with signatures, and a paste-able usage example (import line plus a call skeleton for the top function). Use this to find the right library AND see how to call it before importing it."
+        ( props
+            [("query", prop "A description, a type signature, or a name.")]
+            ["query"]
+        )
+
+baseCatalogue :: [Value]
+baseCatalogue =
     [ fn
         "list_cells"
-        "List all cells: id, type, language, hasError, first line."
-        (props [] [])
+        "Map of EVERY cell in the notebook (the whole notebook in one call): each cell's id, position, type, language, the bindings it `defines`, and whether it errored. By default each cell shows only its first line; pass `full: true` to include each cell's source. To find which cell defines or uses a name, scan `defines` here or use find_cells_by_content."
+        ( props
+            [
+                ( "full"
+                , boolProp "Include each cell's source (default false: first-line preview)."
+                )
+            ]
+            []
+        )
     , fn
         "read_cell"
-        "Read a cell's full source and outputs."
-        (props [("cell_id", intProp "Cell id from list_cells.")] ["cell_id"])
+        "Read ONE cell's full SOURCE and error by id. Its outputs (often large rendered HTML/SVG) are omitted by default — a `hasOutputs` flag signals them; pass `full: true` to include outputs."
+        ( props
+            [ ("cell_id", intProp "Cell id from list_cells.")
+            , ("full", boolProp "Include the cell's outputs (default false).")
+            ]
+            ["cell_id"]
+        )
+    , fn
+        "find_cells_by_content"
+        "Search the NOTEBOOK's own cell sources for a substring (e.g. \"model\", \"fitDecisionTree\"); returns matching cell ids and the matching lines. This is how you locate which cell defines or uses something so you can edit it — unlike find_function/find_by_type, which search installed LIBRARIES, not your notebook."
+        ( props
+            [
+                ( "pattern"
+                , prop "A substring to find in cell sources, e.g. \"fitDecisionTree\"."
+                )
+            ]
+            ["pattern"]
+        )
     , fn
         "insert_cell"
-        "Append a new Haskell cell with the given source and run it. Use this to add code."
-        (props [("source", prop "Full Haskell source for the new cell.")] ["source"])
+        "Append a new Haskell cell and run it. Put the cell's full Haskell source in the `source` argument. Use this to add code."
+        (props [("source", prop "The full Haskell source for the new cell.")] ["source"])
     , fn
         "replace_cell_source"
-        "Replace a cell's entire source and re-run it. Use to fix an existing cell."
+        "Replace a cell's entire source and re-run it. Pass the cell_id and the replacement Haskell source. Use to fix an existing cell."
         ( props
             [ ("cell_id", intProp "Cell to replace.")
-            , ("new_source", prop "Replacement Haskell source.")
+            , ("new_source", prop "The replacement Haskell source.")
             ]
             ["cell_id", "new_source"]
         )
@@ -75,8 +123,8 @@ catalogue =
         (props [("goal", prop "A goal type, e.g. \"[Int] -> Int\".")] ["goal"])
     , fn
         "scratchpad"
-        "Run a SELF-CONTAINED Haskell snippet in an isolated session (cannot see notebook bindings)."
-        (props [("code", prop "Self-contained Haskell to evaluate.")] ["code"])
+        "Run a SELF-CONTAINED Haskell snippet in an isolated session (cannot see notebook bindings). Put the snippet in the `code` argument."
+        (props [("code", prop "The self-contained Haskell snippet to run.")] ["code"])
     , fn
         "find_package"
         "Find which Haskell package provides a capability you have not installed yet. Query a keyword or description (e.g. \"linear regression\", \"read csv\", \"plot a bar chart\"); returns the packages, the -- cabal: build-depends: line for a cell's first line, and key modules. The FIRST step for a new capability."
@@ -98,7 +146,7 @@ catalogue =
         )
     , fn
         "find_function"
-        "Find a function by NAME or KEYWORD in the installed modules, or list a module's exports by passing a module name (\"DataFrame\", \"Granite.Svg\"). Returns the best-matching functions with module and signature, ranked; nothing on a true miss. To search by TYPE use find_by_type."
+        "Find a function by NAME or KEYWORD in the installed LIBRARIES, or list a library module's exports by passing a module name (\"DataFrame\", \"Granite.Svg\"). Returns ranked matches with module and signature; nothing on a true miss. This searches installed libraries, NOT your notebook — to find where something is defined or used in your notebook, use find_cells_by_content or list_cells. To search by TYPE use find_by_type."
         ( props
             [
                 ( "query"
@@ -134,9 +182,10 @@ unknownToolMsg :: Text -> Text
 unknownToolMsg name =
     "unknown tool '"
         <> name
-        <> "'. Valid tools: list_cells, read_cell, insert_cell, replace_cell_source, \
-           \execute_cell, delete_cell, list_bindings, check_type, find_by_type, \
-           \scratchpad, find_package, find_example_cell, find_function."
+        <> "'. Valid tools: list_cells, read_cell, find_cells_by_content, insert_cell, \
+           \replace_cell_source, execute_cell, delete_cell, list_bindings, check_type, \
+           \find_by_type, scratchpad, find_package, find_example_cell, find_function, \
+           \search_capability."
 
 {- | Fill the cell_type/language defaults the eval model often omits. Placement
 needs no default: the server appends every new cell.

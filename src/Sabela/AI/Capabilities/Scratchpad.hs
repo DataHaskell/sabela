@@ -121,7 +121,8 @@ execScratchpad :: App -> AIStore -> Value -> IO ToolOutcome
 execScratchpad app store input = do
     let rawCode = fieldText "code" input
         rawLang = fieldText "language" input
-    case (T.null rawCode, parseCellLang rawLang) of
+        mLang = if T.null rawLang then Just Haskell else parseCellLang rawLang
+    case (T.null rawCode, mLang) of
         (True, _) -> pure (errOutcome (errorJson "code required"))
         (_, Nothing) ->
             pure
