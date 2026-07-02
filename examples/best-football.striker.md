@@ -1,11 +1,10 @@
 ```haskell
--- cabal: build-depends: dataframe ==2.1.0.3, dataframe-hasktorch ==0.2.0.1, hasktorch, text, random, granite
--- cabal: source-repository-package: https://github.com/kutyel/granite.git 0474178eeee4a9e4b4f732ebbf18fe9c231c99b0 
+-- cabal: build-depends: dataframe ==2.1.0.3, dataframe-hasktorch ==0.2.0.1, hasktorch, text, random, granite ==0.7.4.0
 -- cabal: default-extensions: BangPatterns, NumericUnderscores, OverloadedStrings, ScopedTypeVariables, TemplateHaskell, TypeApplications
 import qualified DataFrame as D
 
-raw <- D.readCsv "./examples/data/top5_attackers.csv"
-df = D.parseDefaults D.defaultParseOptions raw
+df <- D.readCsv "./examples/data/top5_attackers.csv"
+$(D.declareColumns df)
 D.dimensions df
 ```
 
@@ -36,17 +35,17 @@ df |> D.take 5
 The viral version of this chart is a few lines of `pandas` + `numpy`: take every
 attacker in the top-5 leagues (here the 2018-19 season), look at goals + assists
 per 90 minutes, and measure how many standard deviations each player sits above
-the average. The freaks of the distribution — the ones living out at 4σ, 5σ —
+the average. The freaks of the distribution (the ones living out at 4σ, 5σ)
 are the elite. Spoiler: Messi is alone out there.
 
 We tell the same story in Haskell: `dataframe` for the data, **hasktorch**
 tensors for the mean / standard deviation / z-scores, and
-[`granite`](https://github.com/mchav/granite)'s brand-new `gauss` helper — a
-one-call bell-curve-with-markers chart — for the plot.
+[`granite`](https://github.com/mchav/granite)'s `gauss` helper (a one-call
+bell-curve-with-markers chart) for the plot.
 
 ## Qualify the sample
 
-Per-90 rates are meaningless for someone who played four minutes — one lucky
+Per-90 rates are meaningless for someone who played four minutes. One lucky
 goal would read as an absurd rate. So we keep only players with a real sample:
 at least ten full matches (`minutes_90s >= 10`, i.e. 900+ minutes), then pull
 goals-plus-assists-per-90 out as a plain list of `Double`s.
@@ -55,9 +54,9 @@ goals-plus-assists-per-90 out as a plain list of `Double`s.
 import qualified DataFrame.Functions as F
 import Data.Text (Text)
 
-qualified = df |> D.filter (F.col @Double "minutes_90s") (>= 10)
+qualified = df |> D.filter minutes_90s (>= 10)
 
-ga90 = D.columnAsList (F.col @Double "goals_assists_per90") qualified :: [Double]
+ga90 = D.columnAsList goals_assists_per90 qualified
 
 (D.dimensions qualified, Prelude.take 5 ga90)
 ```
@@ -100,7 +99,7 @@ withZ = qualified |> D.insert "z" (map realToFrac zScores :: [Double])
 
 leaders = withZ |> D.sortBy [D.Desc (F.col @Double "z")] |> D.take 8
 
-leaders |> D.select ["player", "team", "goals_assists_per90", "z"]
+leaders |> D.select [F.name player, F.name team, F.name goals_assists_per90, "z"]
         |> D.toMarkdown'
         |> displayMarkdown
 ```
@@ -121,11 +120,10 @@ leaders |> D.select ["player", "team", "goals_assists_per90", "z"]
 
 Now the plot. The original chart is one image: the right-skewed hump every
 attacker lives inside, with a handful of marquee names laddered up the right
-edge, and Messi alone out past 5σ. `granite` ships a helper built for exactly
-this shape — `gauss` — so we don't draw it by hand. We just hand it the
-population and the names we want called out; it fits the bell curve, labels the
-x-axis in σ units, and drops a lollipop on each marker (highlighting the
-furthest-out one). First we pick the marquee players out of the data:
+edge, and Messi alone out past 5σ. We use `granite`'s `gauss` function to plot
+a bell curve that labels the x-axis in σ units and drops a lollipop on each
+name we ask it to call out (highlighting the furthest-out one). First we pick
+the marquee players out of the data:
 
 ```haskell
 import Data.Text (Text)
@@ -137,11 +135,11 @@ isMarquee p = Prelude.any (`T.isInfixOf` p) marquee
 
 stars =
     withZ
-        |> D.filter (F.col @(Maybe Text) "player") (maybe False isMarquee)
+        |> D.filter player (maybe False isMarquee)
         |> D.sortBy [D.Desc (F.col @Double "z")]
 
-starName = map (fromMaybe "?") (D.columnAsList (F.col @(Maybe Text) "player") stars) :: [Text]
-starGa90 = D.columnAsList (F.col @Double "goals_assists_per90") stars :: [Double]
+starName = map (fromMaybe "?") (D.columnAsList player stars) :: [Text]
+starGa90 = D.columnAsList goals_assists_per90 stars :: [Double]
 
 markers = zip starName starGa90 :: [(Text, Double)]
 markers
@@ -150,10 +148,10 @@ markers
 > <!-- scripths:mime text/plain -->
 > [("Lionel Messi",1.63),("Kylian Mbapp\233",1.54),("Neymar",1.38),("Cristiano Ronaldo",0.97),("Robert Lewandowski",0.88),("Mohamed Salah",0.83)]
 
-That's the whole input: `ga90` (every qualified attacker — the population that
+That's the whole input: `ga90` (every qualified attacker, the population that
 fixes μ and σ) and `markers` (the names to call out, as `(label, value)`).
 `gauss` re-derives the same mean and standard deviation we computed in hasktorch
-and turns the lot into one chart — no manual bins, no layers, no laddering.
+and draws the whole chart from those two arguments.
 
 ```haskell
 import qualified Granite.Svg as G
