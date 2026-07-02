@@ -128,17 +128,16 @@ the marquee players out of the data:
 ```haskell
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Maybe (fromMaybe)
 
 marquee = ["Messi", "Ronaldo", "Mbappé", "Neymar", "Lewandowski", "Salah"] :: [Text]
 isMarquee p = Prelude.any (`T.isInfixOf` p) marquee
 
 stars =
     withZ
-        |> D.filter player (maybe False isMarquee)
+        |> D.filter player isMarquee
         |> D.sortBy [D.Desc (F.col @Double "z")]
 
-starName = map (fromMaybe "?") (D.columnAsList player stars) :: [Text]
+starName = D.columnAsList player stars :: [Text]
 starGa90 = D.columnAsList goals_assists_per90 stars :: [Double]
 
 markers = zip starName starGa90 :: [(Text, Double)]
