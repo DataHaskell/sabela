@@ -4,13 +4,9 @@
 
 Adapted from **Learn You a Haskell for Great Good!** by Miran Lipovača, licensed under [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/). This Sabela port preserves that license.
 
-
 ```haskell
 -- cabal: build-depends: base, containers
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 In the previous chapters, we covered some existing Haskell types and typeclasses.
 In this chapter, we'll learn how to make our own and how to put them to work!
@@ -23,13 +19,9 @@ But how do we make our own?
 Well, one way is to use the `data` keyword to define a type.
 Let's see how the `Bool` type is defined in the standard library.
 
-
 ```haskell
 data Bool = False | True
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 `data` means that we're defining a new data type.
 The part before the `=` denotes the type, which is `Bool`.
@@ -41,7 +33,7 @@ Both the type name and the value constructors have to be capital cased.
 
 In a similar fashion, we can think of the `Int` type as being defined like this:
 
-```text
+```haskell
 data Int = -2147483648 | -2147483647 | ... | -1 | 0 | 1 | 2 | ... | 2147483647
 ```
 
@@ -58,13 +50,9 @@ A better solution would be to make our own type to represent a shape.
 Let's say that a shape can be a circle or a rectangle.
 Here it is:
 
-
 ```haskell
 data Shape = Circle Float Float Float | Rectangle Float Float Float Float
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Now what's this?
 Think of it like this.
@@ -78,26 +66,24 @@ Now when I say fields, I actually mean parameters.
 Value constructors are actually functions that ultimately return a value of a data type.
 Let's take a look at the type signatures for these two value constructors.
 
-```text
-ghci> :t Circle
-Circle :: Float -> Float -> Float -> Shape
-ghci> :t Rectangle
-Rectangle :: Float -> Float -> Float -> Float -> Shape
+```haskell
+:t Circle
+:t Rectangle
 ```
+
+> <!-- scripths:mime text/plain -->
+> Circle :: Float -> Float -> Float -> Shape
+> Rectangle :: Float -> Float -> Float -> Float -> Shape
 
 Cool, so value constructors are functions like everything else.
 Who would have thought?
 Let's make a function that takes a shape and returns its surface.
-
 
 ```haskell
 surface :: Shape -> Float
 surface (Circle _ _ r) = pi * r ^ 2
 surface (Rectangle x1 y1 x2 y2) = (abs $ x2 - x1) * (abs $ y2 - y1)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 The first notable thing here is the type declaration.
 It says that the function takes a shape and returns a float.
@@ -108,12 +94,15 @@ We pattern matched against constructors before (all the time actually) when we p
 We just write a constructor and then bind its fields to names.
 Because we're interested in the radius, we don't actually care about the first two fields, which tell us where the circle is.
 
-```text
-ghci> surface $ Circle 10 20 10
-314.15927
-ghci> surface $ Rectangle 0 0 100 100
-10000.0
+```haskell
+surface $ Circle 10 20 10
+
+surface $ Rectangle 0 0 100 100
 ```
+
+> <!-- scripths:mime text/plain -->
+> 314.15927
+> 10000.0
 
 Yay, it works!
 But if we try to just print out `Circle 10 20 5` in the prompt, we'll get an error.
@@ -121,45 +110,42 @@ That's because Haskell doesn't know how to display our data type as a string (ye
 Remember, when we try to print a value out in the prompt, Haskell first runs the `show` function to get the string representation of our value and then it prints that out to the terminal.
 To make our `Shape` type part of the `Show` typeclass, we modify it like this:
 
-
 ```haskell
-data Shape = Circle Float Float Float | Rectangle Float Float Float Float deriving (Show)
+data Shape' = Circle' Float Float Float | Rectangle' Float Float Float Float deriving (Show)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We won't concern ourselves with deriving too much for now.
 Let's just say that if we add `deriving (Show)` at the end of a `data` declaration, Haskell automagically makes that type part of the `Show` typeclass.
 So now, we can do this:
 
-```text
-ghci> Circle 10 20 5
-Circle 10.0 20.0 5.0
-ghci> Rectangle 50 230 60 90
-Rectangle 50.0 230.0 60.0 90.0
+```haskell
+Circle' 10 20 5
+
+Rectangle' 50 230 60 90
 ```
+
+> <!-- scripths:mime text/plain -->
+> Circle' 10.0 20.0 5.0
+> Rectangle' 50.0 230.0 60.0 90.0
 
 Value constructors are functions, so we can map them and partially apply them and everything.
 If we want a list of concentric circles with different radii, we can do this.
 
-```text
-ghci> map (Circle 10 20) [4,5,6,6]
-[Circle 10.0 20.0 4.0,Circle 10.0 20.0 5.0,Circle 10.0 20.0 6.0,Circle 10.0 20.0 6.0]
+```haskell
+map (Circle' 10 20) [4,5,6,6]
 ```
+
+> <!-- scripths:mime text/plain -->
+> [Circle' 10.0 20.0 4.0,Circle' 10.0 20.0 5.0,Circle' 10.0 20.0 6.0,Circle' 10.0 20.0 6.0]
 
 Our data type is good, although it could be better.
 Let's make an intermediate data type that defines a point in two-dimensional space.
 Then we can use that to make our shapes more understandable.
 
-
 ```haskell
 data Point = Point Float Float deriving (Show)
-data Shape = Circle Point Float | Rectangle Point Point deriving (Show)
+data Shape'' = Circle'' Point Float | Rectangle'' Point Point deriving (Show)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Notice that when defining a point, we used the same name for the data type and the value constructor.
 This has no special meaning, although it's common to use the same name as the type if there's only one value constructor.
@@ -168,67 +154,62 @@ This makes it easier to understand what's what.
 Same goes for the rectangle.
 We have to adjust our `surface` function to reflect these changes.
 
-
 ```haskell
-surface :: Shape -> Float
-surface (Circle _ r) = pi * r ^ 2
-surface (Rectangle (Point x1 y1) (Point x2 y2)) = (abs $ x2 - x1) * (abs $ y2 - y1)
+surface' :: Shape'' -> Float
+surface' (Circle'' _ r) = pi * r ^ 2
+surface' (Rectangle'' (Point x1 y1) (Point x2 y2)) = (abs $ x2 - x1) * (abs $ y2 - y1)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 The only thing we had to change were the patterns.
 We disregarded the whole point in the circle pattern.
 In the rectangle pattern, we just used a nested pattern matching to get the fields of the points.
 If we wanted to reference the points themselves for some reason, we could have used as-patterns.
 
-```text
-ghci> surface (Rectangle (Point 0 0) (Point 100 100))
-10000.0
-ghci> surface (Circle (Point 0 0) 24)
-1809.5574
+```haskell
+surface' (Rectangle'' (Point 0 0) (Point 100 100))
+
+surface' (Circle'' (Point 0 0) 24)
 ```
+
+> <!-- scripths:mime text/plain -->
+> 10000.0
+> 1809.5574
 
 How about a function that nudges a shape?
 It takes a shape, the amount to move it on the x axis and the amount to move it on the y axis and then returns a new shape that has the same dimensions, only it's located somewhere else.
 
-
 ```haskell
-nudge :: Shape -> Float -> Float -> Shape
-nudge (Circle (Point x y) r) a b = Circle (Point (x+a) (y+b)) r
-nudge (Rectangle (Point x1 y1) (Point x2 y2)) a b = Rectangle (Point (x1+a) (y1+b)) (Point (x2+a) (y2+b))
+nudge :: Shape'' -> Float -> Float -> Shape''
+nudge (Circle'' (Point x y) r) a b = Circle'' (Point (x+a) (y+b)) r
+nudge (Rectangle'' (Point x1 y1) (Point x2 y2)) a b = Rectangle'' (Point (x1+a) (y1+b)) (Point (x2+a) (y2+b))
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Pretty straightforward.
 We add the nudge amounts to the points that denote the position of the shape.
 
-```text
-ghci> nudge (Circle (Point 34 34) 10) 5 10
-Circle (Point 39.0 44.0) 10.0
-```
-
-If we don't want to deal directly with points, we can make some auxiliary functions that create shapes of some size at the zero coordinates and then nudge those.
-
-
 ```haskell
-baseCircle :: Float -> Shape
-baseCircle r = Circle (Point 0 0) r
-
-baseRect :: Float -> Float -> Shape
-baseRect width height = Rectangle (Point 0 0) (Point width height)
+nudge (Circle'' (Point 34 34) 10) 5 10
 ```
 
 > <!-- scripths:mime text/plain -->
+> Circle'' (Point 39.0 44.0) 10.0
 
+If we don't want to deal directly with points, we can make some auxiliary functions that create shapes of some size at the zero coordinates and then nudge those.
 
-```text
-ghci> nudge (baseRect 40 100) 60 23
-Rectangle (Point 60.0 23.0) (Point 100.0 123.0)
+```haskell
+baseCircle :: Float -> Shape''
+baseCircle r = Circle'' (Point 0 0) r
+
+baseRect :: Float -> Float -> Shape''
+baseRect width height = Rectangle'' (Point 0 0) (Point width height)
 ```
+
+```haskell
+nudge (baseRect 40 100) 60 23
+```
+
+> <!-- scripths:mime text/plain -->
+> Rectangle'' (Point 60.0 23.0) (Point 100.0 123.0)
 
 You can, of course, export your data types in your modules.
 To do that, just write your type along with the functions you are exporting and then add some parentheses and in them specify the value constructors that you want to export for it, separated by commas.
@@ -236,15 +217,15 @@ If you want to export all the value constructors for a given type, just write `.
 
 If we wanted to export the functions and types that we defined here in a module, we could start it off like this:
 
-```text
-module Shapes
-( Point(..)
-, Shape(..)
-, surface
-, nudge
-, baseCircle
-, baseRect
-) where
+```haskell
+-- module Shapes
+-- ( Point(..)
+-- , Shape(..)
+-- , surface
+-- , nudge
+-- , baseCircle
+-- , baseRect
+-- ) where
 ```
 
 By doing `Shape(..)`, we exported all the value constructors for `Shape`, so that means that whoever imports our module can make shapes by using the `Rectangle` and `Circle` value constructors.
@@ -270,29 +251,26 @@ The info that we want to store about that person is: first name, last name, age,
 I don't know about you, but that's all I ever want to know about a person.
 Let's give it a go!
 
-
 ```haskell
 data Person = Person String String Int Float String String deriving (Show)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 O-kay.
 The first field is the first name, the second is the last name, the third is the age and so on.
 Let's make a person.
 
-```text
-ghci> let guy = Person "Buddy" "Finklestein" 43 184.2 "526-2928" "Chocolate"
-ghci> guy
-Person "Buddy" "Finklestein" 43 184.2 "526-2928" "Chocolate"
+```haskell
+guy = Person "Buddy" "Finklestein" 43 184.2 "526-2928" "Chocolate"
+guy
 ```
+
+> <!-- scripths:mime text/plain -->
+> Person "Buddy" "Finklestein" 43 184.2 "526-2928" "Chocolate"
 
 That's kind of cool, although slightly unreadable.
 What if we want to create a function to get separate info from a person?
 A function that gets some person's first name, a function that gets some person's last name, etc.
 Well, we'd have to define them kind of like this.
-
 
 ```haskell
 firstName :: Person -> String
@@ -314,22 +292,21 @@ flavor :: Person -> String
 flavor (Person _ _ _ _ _ flavor) = flavor
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Whew!
 I certainly did not enjoy writing that!
 Despite being very cumbersome and BORING to write, this method works.
 
-```text
-ghci> let guy = Person "Buddy" "Finklestein" 43 184.2 "526-2928" "Chocolate"
-ghci> firstName guy
-"Buddy"
-ghci> height guy
-184.2
-ghci> flavor guy
-"Chocolate"
+```haskell
+guy' = Person "Buddy" "Finklestein" 43 184.2 "526-2928" "Chocolate"
+firstName guy'
+height guy'
+flavor guy'
 ```
+
+> <!-- scripths:mime text/plain -->
+> "Buddy"
+> 184.2
+> "Chocolate"
 
 There must be a better way, you say!
 Well no, there isn't, sorry.
@@ -339,7 +316,6 @@ Hahaha!
 The makers of Haskell were very smart and anticipated this scenario.
 They included an alternative way to write data types.
 Here's how we could achieve the above functionality with record syntax.
-
 
 ```haskell
 data Person = Person { firstName :: String
@@ -351,16 +327,13 @@ data Person = Person { firstName :: String
                      } deriving (Show)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 So instead of just naming the field types one after another and separating them with spaces, we use curly brackets.
 First we write the name of the field, for instance, `firstName` and then we write a double colon `::` (also called Paamayim Nekudotayim, haha) and then we specify the type.
 The resulting data type is exactly the same.
 The main benefit of this is that it creates functions that lookup fields in the data type.
 By using record syntax to create this data type, Haskell automatically made these functions: `firstName`, `lastName`, `age`, `height`, `phoneNumber` and `flavor`.
 
-```text
+```haskell
 ghci> :t flavor
 flavor :: Person -> String
 ghci> :t firstName
@@ -373,30 +346,25 @@ Say we have a type that represents a car.
 We want to keep track of the company that made it, the model name and its year of production.
 Watch.
 
-
 ```haskell
 data Car = Car String String Int deriving (Show)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 ghci> Car "Ford" "Mustang" 1967
 Car "Ford" "Mustang" 1967
 ```
 
-If we define it using record syntax, we can make a new car like this.
+> <!-- scripths:mime text/plain -->
+> Car "Ford" "Mustang" 1967
 
+If we define it using record syntax, we can make a new car like this.
 
 ```haskell
 data Car = Car {company :: String, model :: String, year :: Int} deriving (Show)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 ghci> Car {company="Ford", model="Mustang", year=1967}
 Car {company = "Ford", model = "Mustang", year = 1967}
 ```
@@ -417,13 +385,9 @@ This might sound a bit too meta at first, but it's not that complicated.
 If you're familiar with templates in C++, you'll see some parallels.
 To get a clear picture of what type parameters work like in action, let's take a look at how a type we've already met is implemented.
 
-
 ```haskell
 data Maybe a = Nothing | Just a
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 ![yeti](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/making-our-own-types-and-typeclasses/yeti.png)
 
@@ -443,7 +407,7 @@ Values can have an `[Int]` type, a `[Char]` type, a `[[String]]` type, but you c
 
 Let's play around with the `Maybe` type.
 
-```text
+```haskell
 ghci> Just "Haha"
 Just "Haha"
 ghci> Just 84
@@ -474,7 +438,6 @@ Usually we use them when our data type would work regardless of the type of the 
 If our type acts as some kind of box, it's good to use them.
 We could change our `Car` data type from this:
 
-
 ```haskell
 data Car = Car { company :: String
                , model :: String
@@ -482,11 +445,7 @@ data Car = Car { company :: String
                } deriving (Show)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 To this:
-
 
 ```haskell
 data Car a b c = Car { company :: a
@@ -495,41 +454,37 @@ data Car a b c = Car { company :: a
                      } deriving (Show)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 But would we really benefit?
 The answer is: probably no, because we'd just end up defining functions that only work on the `Car String String Int` type.
 For instance, given our first definition of `Car`, we could make a function that displays the car's properties in a nice little text.
 
-```text
+```haskell
 tellCar :: Car -> String
 tellCar (Car {company = c, model = m, year = y}) = "This " ++ c ++ " " ++ m ++ " was made in " ++ show y
 ```
 
-```text
+```haskell
 ghci> let stang = Car {company="Ford", model="Mustang", year=1967}
 ghci> tellCar stang
 "This Ford Mustang was made in 1967"
 ```
 
+> <!-- scripths:mime text/plain -->
+> "This Ford Mustang was made in 1967"
+
 A cute little function!
 The type declaration is cute and it works nicely.
 Now what if `Car` was `Car a b c`?
-
 
 ```haskell
 tellCar :: (Show a) => Car String String a -> String
 tellCar (Car {company = c, model = m, year = y}) = "This " ++ c ++ " " ++ m ++ " was made in " ++ show y
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 We'd have to force this function to take a `Car` type of `(Show a) => Car String String a`.
 You can see that the type signature is more complicated and the only benefit we'd actually get would be that we can use any type that's an instance of the `Show` typeclass as the type for `c`.
 
-```text
+```haskell
 ghci> tellCar (Car "Ford" "Mustang" 1967)
 "This Ford Mustang was made in 1967"
 ghci> tellCar (Car "Ford" "Mustang" "nineteen sixty seven")
@@ -539,6 +494,10 @@ Car "Ford" "Mustang" 1967 :: (Num t) => Car [Char] [Char] t
 ghci> :t Car "Ford" "Mustang" "nineteen sixty seven"
 Car "Ford" "Mustang" "nineteen sixty seven" :: Car [Char] [Char] [Char]
 ```
+
+> <!-- scripths:mime text/plain -->
+> "This Ford Mustang was made in 1967"
+> "This Ford Mustang was made in \"nineteen sixty seven\""
 
 ![meekrat](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/making-our-own-types-and-typeclasses/meekrat.png)
 
@@ -556,7 +515,7 @@ This is a good example of where type parameters are very useful.
 Having maps parameterized enables us to have mappings from any type to any other type, as long as the type of the key is part of the `Ord` typeclass.
 If we were defining a mapping type, we could add a typeclass constraint in the `data` declaration:
 
-```text
+```haskell
 data (Ord k) => Map k v = ...
 ```
 
@@ -574,7 +533,7 @@ So don't put type constraints into `data` declarations even if it seems to make 
 Let's implement a 3D vector type and add some operations for it.
 We'll be using a parameterized type because even though it will usually contain numeric types, it will still support several of them.
 
-```text
+```haskell
 data Vector a = Vector a a a deriving (Show)
 
 vplus :: (Num t) => Vector t -> Vector t -> Vector t
@@ -599,7 +558,7 @@ When declaring a data type, the part before the `=` is the type constructor and 
 Giving a function a type of `Vector t t t -> Vector t t t -> t` would be wrong, because we have to put types in type declaration and the vector **type** constructor takes only one parameter, whereas the value constructor takes three.
 Let's play around with our vectors.
 
-```text
+```haskell
 ghci> Vector 3 5 8 `vplus` Vector 9 2 8
 Vector 12 7 16
 ghci> Vector 3 5 8 `vplus` Vector 9 2 8 `vplus` Vector 0 2 3
@@ -611,6 +570,13 @@ ghci> Vector 4 9 5 `scalarMult` Vector 9.0 2.0 4.0
 ghci> Vector 2 9 3 `vectMult` (Vector 4 9 5 `scalarMult` Vector 9 2 4)
 Vector 148 666 222
 ```
+
+> <!-- scripths:mime text/plain -->
+> Vector 12 7 16
+> Vector 12 9 19
+> Vector 30 90 70
+> 74.0
+> Vector 148 666 222
 
 ## Derived instances
 
@@ -639,16 +605,12 @@ Haskell can derive the behavior of our types in these contexts if we use the `de
 
 Consider this data type:
 
-
 ```haskell
 data Person = Person { firstName :: String
                      , lastName :: String
                      , age :: Int
                      }
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 It describes a person.
 Let's assume that no two people have the same combination of first name, last name and age.
@@ -658,7 +620,6 @@ We can try to equate them and see if they're equal or not.
 That's why it would make sense for this type to be part of the `Eq` typeclass.
 We'll derive the instance.
 
-
 ```haskell
 data Person = Person { firstName :: String
                      , lastName :: String
@@ -666,15 +627,12 @@ data Person = Person { firstName :: String
                      } deriving (Eq)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 When we derive the `Eq` instance for a type and then try to compare two values of that type with `==` or `/=`, Haskell will see if the value constructors match (there's only one value constructor here though) and then it will check if all the data contained inside matches by testing each pair of fields with `==`.
 There's only one catch though, the types of all the fields also have to be part of the `Eq` typeclass.
 But since both `String` and `Int` are, we're OK.
 Let's test our `Eq` instance.
 
-```text
+```haskell
 ghci> let mikeD = Person {firstName = "Michael", lastName = "Diamond", age = 43}
 ghci> let adRock = Person {firstName = "Adam", lastName = "Horovitz", age = 41}
 ghci> let mca = Person {firstName = "Adam", lastName = "Yauch", age = 44}
@@ -690,7 +648,7 @@ True
 
 Of course, since `Person` is now in `Eq`, we can use it as the `a` for all functions that have a class constraint of `Eq a` in their type signature, such as `elem`.
 
-```text
+```haskell
 ghci> let beastieBoys = [mca, adRock, mikeD]
 ghci> mikeD `elem` beastieBoys
 True
@@ -700,7 +658,6 @@ The `Show` and `Read` typeclasses are for things that can be converted to or fro
 Like with `Eq`, if a type's constructors have fields, their type has to be a part of `Show` or `Read` if we want to make our type an instance of them.
 Let's make our `Person` data type a part of `Show` and `Read` as well.
 
-
 ```haskell
 data Person = Person { firstName :: String
                      , lastName :: String
@@ -708,18 +665,18 @@ data Person = Person { firstName :: String
                      } deriving (Eq, Show, Read)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Now we can print a person out to the terminal.
 
-```text
+```haskell
 ghci> let mikeD = Person {firstName = "Michael", lastName = "Diamond", age = 43}
 ghci> mikeD
 Person {firstName = "Michael", lastName = "Diamond", age = 43}
 ghci> "mikeD is: " ++ show mikeD
 "mikeD is: Person {firstName = \"Michael\", lastName = \"Diamond\", age = 43}"
 ```
+
+> <!-- scripths:mime text/plain -->
+> "mikeD is: Person {firstName = \"Michael\", lastName = \"Diamond\", age = 43}"
 
 Had we tried to print a person on the terminal before making the `Person` data type part of `Show`, Haskell would have complained at us, claiming it doesn't know how to represent a person as a string.
 But now that we've derived a `Show` instance for it, it does know.
@@ -729,14 +686,14 @@ But now that we've derived a `Show` instance for it, it does know.
 Remember though, when we use the `read` function, we have to use an explicit type annotation to tell Haskell which type we want to get as a result.
 If we don't make the type we want as a result explicit, Haskell doesn't know which type we want.
 
-```text
+```haskell
 ghci> read "Person {firstName =\"Michael\", lastName =\"Diamond\", age = 43}" :: Person
 Person {firstName = "Michael", lastName = "Diamond", age = 43}
 ```
 
 If we use the result of our `read` later on in a way that Haskell can infer that it should read it as a person, we don't have to use type annotation.
 
-```text
+```haskell
 ghci> read "Person {firstName =\"Michael\", lastName =\"Diamond\", age = 43}" == mikeD
 True
 ```
@@ -749,13 +706,13 @@ If we compare two values of the same type that were made using different constru
 For instance, consider the `Bool` type, which can have a value of either `False` or `True`.
 For the purpose of seeing how it behaves when compared, we can think of it as being implemented like this:
 
-```text
+```haskell
 data Bool = False | True deriving (Ord)
 ```
 
 Because the `False` value constructor is specified first and the `True` value constructor is specified after it, we can consider `True` as greater than `False`.
 
-```text
+```haskell
 ghci> True `compare` False
 GT
 ghci> True > False
@@ -764,10 +721,13 @@ ghci> True < False
 False
 ```
 
+> <!-- scripths:mime text/plain -->
+> GT
+
 In the `Maybe a` data type, the `Nothing` value constructor is specified before the `Just` value constructor, so a value of `Nothing` is always smaller than a value of `Just something`, even if that something is minus one billion trillion.
 But if we compare two `Just` values, then it goes to compare what's inside them.
 
-```text
+```haskell
 ghci> Nothing < Just 100
 True
 ghci> Nothing > Just (-49999)
@@ -778,36 +738,31 @@ ghci> Just 100 > Just 50
 True
 ```
 
+> <!-- scripths:mime text/plain -->
+> GT
+
 But we can't do something like `Just (*3) > Just (*2)`, because `(*3)` and `(*2)` are functions, which aren't instances of `Ord`.
 
 We can easily use algebraic data types to make enumerations and the `Enum` and `Bounded` typeclasses help us with that.
 Consider the following data type:
 
-
 ```haskell
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Because all the value constructors are nullary (take no parameters, i.e. fields), we can make it part of the `Enum` typeclass.
 The `Enum` typeclass is for things that have predecessors and successors.
 We can also make it part of the `Bounded` typeclass, which is for things that have the lowest possible value and highest possible value.
 And while we're at it, let's also make it an instance of all the other derivable typeclasses and see what we can do with it.
 
-
 ```haskell
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
            deriving (Eq, Ord, Show, Read, Bounded, Enum)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Because it's part of the `Show` and `Read` typeclasses, we can convert values of this type to and from strings.
 
-```text
+```haskell
 ghci> Wednesday
 Wednesday
 ghci> show Wednesday
@@ -816,9 +771,12 @@ ghci> read "Saturday" :: Day
 Saturday
 ```
 
+> <!-- scripths:mime text/plain -->
+> "Wednesday"
+
 Because it's part of the `Eq` and `Ord` typeclasses, we can compare or equate days.
 
-```text
+```haskell
 ghci> Saturday == Sunday
 False
 ghci> Saturday == Saturday
@@ -829,9 +787,12 @@ ghci> Monday `compare` Wednesday
 LT
 ```
 
+> <!-- scripths:mime text/plain -->
+> LT
+
 It's also part of `Bounded`, so we can get the lowest and highest day.
 
-```text
+```haskell
 ghci> minBound :: Day
 Monday
 ghci> maxBound :: Day
@@ -841,7 +802,7 @@ Sunday
 It's also an instance of `Enum`.
 We can get predecessors and successors of days and we can make list ranges from them!
 
-```text
+```haskell
 ghci> succ Monday
 Tuesday
 ghci> pred Saturday
@@ -861,13 +822,9 @@ That's implemented with **type synonyms**.
 Type synonyms don't really do anything per se, they're just about giving some types different names so that they make more sense to someone reading our code and documentation.
 Here's how the standard library defines `String` as a synonym for `[Char]`.
 
-
 ```haskell
 type String = [Char]
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 ![chicken](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/making-our-own-types-and-typeclasses/chicken.png)
 
@@ -881,7 +838,6 @@ When we were dealing with the `Data.Map` module, we first represented a phoneboo
 As we've already found out, an association list is a list of key-value pairs.
 Let's look at a phonebook that we had.
 
-
 ```haskell
 phoneBook :: [(String,String)]
 phoneBook =
@@ -894,24 +850,16 @@ phoneBook =
     ]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 We see that the type of `phoneBook` is `[(String,String)]`.
 That tells us that it's an association list that maps from strings to strings, but not much else.
 Let's make a type synonym to convey some more information in the type declaration.
-
 
 ```haskell
 type PhoneBook = [(String,String)]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Now the type declaration for our phonebook can be `phoneBook :: PhoneBook`.
 Let's make a type synonym for `String` as well.
-
 
 ```haskell
 type PhoneNumber = String
@@ -919,14 +867,11 @@ type Name = String
 type PhoneBook = [(Name,PhoneNumber)]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Giving the `String` type synonyms is something that Haskell programmers do when they want to convey more information about what strings in their functions should be used as and what they represent.
 
 So now, when we implement a function that takes a name and a number and sees if that name and number combination is in our phonebook, we can give it a very pretty and descriptive type declaration.
 
-```text
+```haskell
 inPhoneBook :: Name -> PhoneNumber -> PhoneBook -> Bool
 inPhoneBook name pnumber pbook = (name,pnumber) `elem` pbook
 ```
@@ -939,13 +884,9 @@ We introduce type synonyms either to describe what some existing type represents
 Type synonyms can also be parameterized.
 If we want a type that represents an association list type but still want it to be general so it can use any type as the keys and values, we can do this:
 
-
 ```haskell
 type AssocList k v = [(k,v)]
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Now, a function that gets the value by a key in an association list can have a type of `(Eq k) => k -> AssocList k v -> Maybe v`.
 `AssocList` is a type constructor that takes two types and produces a concrete type, like `AssocList Int String`, for instance.
@@ -961,13 +902,13 @@ Just like we can partially apply functions to get new functions, we can partiall
 Just like we call a function with too few parameters to get back a new function, we can specify a type constructor with too few type parameters and get back a partially applied type constructor.
 If we wanted a type that represents a map (from `Data.Map`) from integers to something, we could either do this:
 
-```text
+```haskell
 type IntMap v = Map Int v
 ```
 
 Or we could do it like this:
 
-```text
+```haskell
 type IntMap = Map Int
 ```
 
@@ -989,19 +930,15 @@ The `::` is in type declarations or in type annotations.
 Another cool data type that takes two types as its parameters is the `Either a b` type.
 This is roughly how it's defined:
 
-
 ```haskell
 data Either a b = Left a | Right b deriving (Eq, Ord, Read, Show)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 It has two value constructors.
 If the `Left` is used, then its contents are of type `a` and if `Right` is used, then its contents are of type `b`.
 So we can use this type to encapsulate a value of one type or another and then when we get a value of type `Either a b`, we usually pattern match on both `Left` and `Right` and we different stuff based on which one of them it was.
 
-```text
+```haskell
 ghci> Right 20
 Right 20
 ghci> Left "w00t"
@@ -1011,6 +948,11 @@ Right 'a' :: Either a Char
 ghci> :t Left True
 Left True :: Either Bool b
 ```
+
+> <!-- scripths:mime text/plain -->
+> Right 20
+> Left "w00t"
+> Right 'a'
 
 So far, we've seen that `Maybe a` was mostly used to represent the results of computations that could have either failed or not.
 But sometimes, `Maybe a` isn't good enough because `Nothing` doesn't really convey much information other than that something has failed.
@@ -1026,7 +968,6 @@ However, if someone is already using that locker, he can't tell them the code fo
 We'll use a map from `Data.Map` to represent the lockers.
 It'll map from locker numbers to a pair of whether the locker is in use or not and the locker code.
 
-
 ```haskell
 import qualified Data.Map as Map
 
@@ -1037,9 +978,6 @@ type Code = String
 type LockerMap = Map.Map Int (LockerState, Code)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Simple stuff.
 We introduce a new data type to represent whether a locker is taken or free and we make a type synonym for the locker code.
 We also make a type synonym for the type that maps from integers to pairs of locker state and code.
@@ -1047,7 +985,7 @@ And now, we're going to make a function that searches for the code in a locker m
 We're going to use an `Either String Code` type to represent our result, because our lookup can fail in two ways --- the locker can be taken, in which case we can't tell the code or the locker number might not exist at all.
 If the lookup fails, we're just going to use a `String` to tell what's happened.
 
-```text
+```haskell
 lockerLookup :: Int -> LockerMap -> Either String Code
 lockerLookup lockerNumber map =
     case Map.lookup lockerNumber map of
@@ -1065,7 +1003,6 @@ If it isn't, then return a value of type `Right Code`, in which we give the stud
 It's actually a `Right String`, but we introduced that type synonym to introduce some additional documentation into the type declaration.
 Here's an example map:
 
-
 ```haskell
 lockers :: LockerMap
 lockers = Map.fromList
@@ -1078,12 +1015,9 @@ lockers = Map.fromList
     ]
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Now let's try looking up some locker codes.
 
-```text
+```haskell
 ghci> lockerLookup 101 lockers
 Right "JAH3I"
 ghci> lockerLookup 100 lockers
@@ -1095,6 +1029,13 @@ Left "Locker 110 is already taken!"
 ghci> lockerLookup 105 lockers
 Right "QOTSA"
 ```
+
+> <!-- scripths:mime text/plain -->
+> Right "JAH3I"
+> Left "Locker 100 is already taken!"
+> Left "Locker number 102 doesn't exist!"
+> Left "Locker 110 is already taken!"
+> Right "QOTSA"
 
 We could have used a `Maybe a` to represent the result but then we wouldn't know why we couldn't get the code.
 But now, we have information about the failure in our result type.
@@ -1120,25 +1061,17 @@ We could say that a list can be an empty list or it can be an element joined tog
 
 Let's use algebraic data types to implement our own list then!
 
-
 ```haskell
 data List a = Empty | Cons a (List a) deriving (Show, Read, Eq, Ord)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 This reads just like our definition of lists from one of the previous paragraphs.
 It's either an empty list or a combination of a head with some value and a list.
 If you're confused about this, you might find it easier to understand in record syntax.
 
-
 ```haskell
 data List a = Empty | Cons { listHead :: a, listTail :: List a} deriving (Show, Read, Eq, Ord)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 You might also be confused about the `Cons` constructor here.
 *cons* is another word for `:`.
@@ -1147,7 +1080,7 @@ We can already use our new list type!
 In other words, it has two fields.
 One field is of the type of `a` and the other is of the type `[a]`.
 
-```text
+```haskell
 ghci> Empty
 Empty
 ghci> 5 `Cons` Empty
@@ -1158,6 +1091,12 @@ ghci> 3 `Cons` (4 `Cons` (5 `Cons` Empty))
 Cons 3 (Cons 4 (Cons 5 Empty))
 ```
 
+> <!-- scripths:mime text/plain -->
+> Empty
+> Cons 5 Empty
+> Cons 4 (Cons 5 Empty)
+> Cons 3 (Cons 4 (Cons 5 Empty))
+
 We called our `Cons` constructor in an infix manner so you can see how it's just like `:`.
 `Empty` is like `[]` and ``4 `Cons` (5 `Cons` Empty)`` is like `4:(5:[])`.
 
@@ -1165,7 +1104,7 @@ We can define functions to be automatically infix by having them consist only of
 We can also do the same with constructors, since they're just functions that return a data type.
 So check this out.
 
-```text
+```haskell
 infixr 5 :-:
 data List a = Empty | a :-: (List a) deriving (Show, Read, Eq, Ord)
 ```
@@ -1179,7 +1118,7 @@ That means that they're both left-associative (`4 * 3 * 2` is `(4 * 3) * 2`) but
 Otherwise, we just wrote `a :-: (List a)` instead of `Cons a (List a)`.
 Now, we can write out lists in our list type like so:
 
-```text
+```haskell
 ghci> 3 :-: 4 :-: 5 :-: Empty
 (:-:) 3 ((:-:) 4 ((:-:) 5 Empty))
 ghci> let a = 3 :-: 4 :-: 5 :-: Empty
@@ -1192,7 +1131,7 @@ When deriving `Show` for our type, Haskell will still display it as if the const
 Let's make a function that adds two of our lists together.
 This is how `++` is defined for normal lists:
 
-```text
+```haskell
 infixr 5  ++
 (++) :: [a] -> [a] -> [a]
 []     ++ ys = ys
@@ -1202,7 +1141,7 @@ infixr 5  ++
 So we'll just steal that for our own list.
 We'll name the function `.++`.
 
-```text
+```haskell
 infixr 5  .++
 (.++) :: List a -> List a -> List a
 Empty .++ ys = ys
@@ -1211,7 +1150,7 @@ Empty .++ ys = ys
 
 And let's see if it works ...
 
-```text
+```haskell
 ghci> let a = 3 :-: 4 :-: 5 :-: Empty
 ghci> let b = 6 :-: 7 :-: Empty
 ghci> a .++ b
@@ -1247,13 +1186,9 @@ But right now, we'll just be implementing normal binary search trees.
 Here's what we're going to say: a tree is either an empty tree or it's an element that contains some value and two trees.
 Sounds like a perfect fit for an algebraic data type!
 
-
 ```haskell
 data Tree a = EmptyTree | Node a (Tree a) (Tree a) deriving (Show, Read, Eq)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Okay, good, this is good.
 Instead of manually building a tree, we're going to make a function that takes a tree and an element and inserts an element.
@@ -1270,7 +1205,6 @@ This might seem like it's inefficient but laziness takes care of that problem.
 So, here are two functions.
 One is a utility function for making a singleton tree (a tree with just one node) and a function to insert an element into a tree.
 
-
 ```haskell
 singleton :: a -> Tree a
 singleton x = Node x EmptyTree EmptyTree
@@ -1282,9 +1216,6 @@ treeInsert x (Node a left right)
     | x < a  = Node a (treeInsert x left) right
     | x > a  = Node a left (treeInsert x right)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 The `singleton` function is just a shortcut for making a node that has something and then two empty subtrees.
 In the insertion function, we first have the edge condition as a pattern.
@@ -1307,7 +1238,6 @@ Well, we can take advantage of knowing that all the left elements are smaller th
 So if the element we're looking for is smaller than the root node, check to see if it's in the left subtree.
 If it's bigger, check to see if it's in the right subtree.
 
-
 ```haskell
 treeElem :: (Ord a) => a -> Tree a -> Bool
 treeElem x EmptyTree = False
@@ -1317,21 +1247,21 @@ treeElem x (Node a left right)
     | x > a  = treeElem x right
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 All we had to do was write up the previous paragraph in code.
 Let's have some fun with our trees!
 Instead of manually building one (although we could), we'll use a fold to build up a tree from a list.
 Remember, pretty much everything that traverses a list one by one and then returns some sort of value can be implemented with a fold!
 We're going to start with the empty tree and then approach a list from the right and just insert element after element into our accumulator tree.
 
-```text
+```haskell
 ghci> let nums = [8,6,4,1,7,3,5]
 ghci> let numsTree = foldr treeInsert EmptyTree nums
 ghci> numsTree
 Node 5 (Node 3 (Node 1 EmptyTree EmptyTree) (Node 4 EmptyTree EmptyTree)) (Node 7 (Node 6 EmptyTree EmptyTree) (Node 8 EmptyTree EmptyTree))
 ```
+
+> <!-- scripths:mime text/plain -->
+> Node 5 (Node 3 (Node 1 EmptyTree EmptyTree) (Node 4 EmptyTree EmptyTree)) (Node 7 (Node 6 EmptyTree EmptyTree) (Node 8 EmptyTree EmptyTree))
 
 In that `foldr`, `treeInsert` was the folding function (it takes a tree and a list element and produces a new tree) and `EmptyTree` was the starting accumulator.
 `nums`, of course, was the list we were folding over.
@@ -1339,7 +1269,7 @@ In that `foldr`, `treeInsert` was the folding function (it takes a tree and a li
 When we print our tree to the console, it's not very readable, but if we try, we can make out its structure.
 We see that the root node is 5 and then it has two subtrees, one of which has the root node of 3 and the other a 7, etc.
 
-```text
+```haskell
 ghci> 8 `treeElem` numsTree
 True
 ghci> 100 `treeElem` numsTree
@@ -1378,7 +1308,7 @@ If we have a type (say, `Car`) and comparing two cars with the equality function
 
 This is how the `Eq` class is defined in the standard prelude:
 
-```text
+```haskell
 class Eq a where
     (==) :: a -> a -> Bool
     (/=) :: a -> a -> Bool
@@ -1408,20 +1338,16 @@ Well, not much, really.
 But once we start making types instances of that class, we start getting some nice functionality.
 So check out this type:
 
-
 ```haskell
 data TrafficLight = Red | Yellow | Green
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 It defines the states of a traffic light.
 Notice how we didn't derive any class instances for it.
 That's because we're going to write up some instances by hand, even though we could derive them for types like `Eq` and `Show`.
 Here's how we make it an instance of `Eq`.
 
-```text
+```haskell
 instance Eq TrafficLight where
     Red == Red = True
     Green == Green = True
@@ -1440,15 +1366,11 @@ That's called the minimal complete definition for the typeclass --- the minimum 
 To fulfill the minimal complete definition for `Eq`, we have to overwrite either one of `==` or `/=`.
 If `Eq` was defined simply like this:
 
-
 ```haskell
 class Eq a where
     (==) :: a -> a -> Bool
     (/=) :: a -> a -> Bool
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 we'd have to implement both of these functions when making a type an instance of it, because Haskell wouldn't know how these two functions are related.
 The minimal complete definition would then be: both `==` and `/=`.
@@ -1459,7 +1381,6 @@ Since there are many more cases where two lights aren't equal, we specified the 
 Let's make this an instance of `Show` by hand, too.
 To satisfy the minimal complete definition for `Show`, we just have to implement its `show` function, which takes a value and turns it into a string.
 
-
 ```haskell
 instance Show TrafficLight where
     show Red = "Red light"
@@ -1467,13 +1388,10 @@ instance Show TrafficLight where
     show Green = "Green light"
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Once again, we used pattern matching to achieve our goals.
 Let's see how it works in action:
 
-```text
+```haskell
 ghci> Red == Red
 True
 ghci> Red == Yellow
@@ -1492,7 +1410,7 @@ But if we want lights to appear like `"Red light"`, then we have to make the ins
 You can also make typeclasses that are subclasses of other typeclasses.
 The `class` declaration for `Num` is a bit long, but here's the first part:
 
-```text
+```haskell
 class (Eq a) => Num a where
    ...
 ```
@@ -1508,7 +1426,7 @@ But how are the `Maybe` or list types made as instances of typeclasses?
 What makes `Maybe` different from, say, `TrafficLight` is that `Maybe` in itself isn't a concrete type, it's a type constructor that takes one type parameter (like `Char` or something) to produce a concrete type (like `Maybe Char`).
 Let's take a look at the `Eq` typeclass again:
 
-```text
+```haskell
 class Eq a where
     (==) :: a -> a -> Bool
     (/=) :: a -> a -> Bool
@@ -1519,7 +1437,7 @@ class Eq a where
 From the type declarations, we see that the `a` is used as a concrete type because all the types in functions have to be concrete (remember, you can't have a function of the type `a -> Maybe` but you can have a function of `a -> Maybe a` or `Maybe Int -> Maybe String`).
 That's why we can't do something like
 
-```text
+```haskell
 instance Eq Maybe where
     ...
 ```
@@ -1529,7 +1447,7 @@ It's a type constructor that takes one parameter and then produces a concrete ty
 It would also be tedious to write `instance Eq (Maybe Int) where`, `instance Eq (Maybe Char) where`, etc. for every type ever.
 So we could write it out like so:
 
-```text
+```haskell
 instance Eq (Maybe m) where
     Just x == Just y = x == y
     Nothing == Nothing = True
@@ -1547,16 +1465,12 @@ Can you spot it?
 We use `==` on the contents of the `Maybe` but we have no assurance that what the `Maybe` contains can be used with `Eq`!
 That's why we have to modify our `instance` declaration like this:
 
-
 ```haskell
 instance (Eq m) => Eq (Maybe m) where
     Just x == Just y = x == y
     Nothing == Nothing = True
     _ == _ = False
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We had to add a class constraint!
 With this `instance` declaration, we say this: we want all types of the form `Maybe m` to be part of the `Eq` typeclass, but only those types where the `m` (so what's contained inside the `Maybe`) is also a part of `Eq`.
@@ -1592,14 +1506,10 @@ Even though strictly using `Bool` for boolean semantics works better in Haskell,
 For fun!
 Let's start out with a `class` declaration.
 
-
 ```haskell
 class YesNo a where
     yesno :: a -> Bool
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Pretty simple.
 The `YesNo` typeclass defines one function.
@@ -1609,18 +1519,13 @@ Notice that from the way we use the `a` in the function, `a` has to be a concret
 Next up, let's define some instances.
 For numbers, we'll assume that (like in JavaScript) any number that isn't 0 is true-ish and 0 is false-ish.
 
-
 ```haskell
 instance YesNo Int where
     yesno 0 = False
     yesno _ = True
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Empty lists (and by extensions, strings) are a no-ish value, while non-empty lists are a yes-ish value.
-
 
 ```haskell
 instance YesNo [a] where
@@ -1628,21 +1533,14 @@ instance YesNo [a] where
     yesno _ = True
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Notice how we just put in a type parameter `a` in there to make the list a concrete type, even though we don't make any assumptions about the type that's contained in the list.
 What else, hmm ...
 I know, `Bool` itself also holds true-ness and false-ness and it's pretty obvious which is which.
-
 
 ```haskell
 instance YesNo Bool where
     yesno = id
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Huh?
 What's `id`?
@@ -1650,15 +1548,11 @@ It's just a standard library function that takes a parameter and returns the sam
 
 Let's make `Maybe a` an instance too.
 
-
 ```haskell
 instance YesNo (Maybe a) where
     yesno (Just _) = True
     yesno Nothing = False
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 We didn't need a class constraint because we made no assumptions about the contents of the `Maybe`.
 We just said that it's true-ish if it's a `Just` value and false-ish if it's a `Nothing`.
@@ -1668,15 +1562,11 @@ Still, this is really cool because now, any type of the form `Maybe something` i
 Previously, we defined a `Tree a` type, that represented a binary search tree.
 We can say an empty tree is false-ish and anything that's not an empty tree is true-ish.
 
-
 ```haskell
 instance YesNo (Tree a) where
     yesno EmptyTree = False
     yesno _ = True
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Can a traffic light be a yes or no value?
 Sure.
@@ -1685,19 +1575,15 @@ If it's green, you go.
 If it's yellow?
 Eh, I usually run the yellows because I live for adrenaline.
 
-
 ```haskell
 instance YesNo TrafficLight where
     yesno Red = False
     yesno _ = True
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
 Cool, now that we have some instances, let's go play!
 
-```text
+```haskell
 ghci> yesno $ length []
 False
 ghci> yesno "haha"
@@ -1721,7 +1607,7 @@ yesno :: (YesNo a) => a -> Bool
 Right, it works!
 Let's make a function that mimics the if statement, but it works with `YesNo` values.
 
-```text
+```haskell
 yesnoIf :: (YesNo y) => y -> a -> a -> a
 yesnoIf yesnoVal yesResult noResult = if yesno yesnoVal then yesResult else noResult
 ```
@@ -1730,7 +1616,7 @@ Pretty straightforward.
 It takes a yes-no-ish value and two things.
 If the yes-no-ish value is more of a yes, it returns the first of the two things, otherwise it returns the second of them.
 
-```text
+```haskell
 ghci> yesnoIf [] "YEAH!" "NO!"
 "NO!"
 ghci> yesnoIf [2,3,4] "YEAH!" "NO!"
@@ -1742,6 +1628,13 @@ ghci> yesnoIf (Just 500) "YEAH!" "NO!"
 ghci> yesnoIf Nothing "YEAH!" "NO!"
 "NO!"
 ```
+
+> <!-- scripths:mime text/plain -->
+> "NO!"
+> "YEAH!"
+> "YEAH!"
+> "YEAH!"
+> "NO!"
 
 ## The Functor typeclass
 
@@ -1757,14 +1650,10 @@ And you're right, the list type is part of the `Functor` typeclass.
 What better way to get to know the `Functor` typeclass than to see how it's implemented?
 Let's take a peek.
 
-
 ```haskell
 class Functor f where
     fmap :: (a -> b) -> f a -> f b
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 ![I AM FUNCTOOOOR!!!](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/making-our-own-types-and-typeclasses/functor.png)
 
@@ -1787,14 +1676,10 @@ My friends, I think we have ourselves a functor!
 In fact, `map` is just a `fmap` that works only on lists.
 Here's how the list is an instance of the `Functor` typeclass.
 
-
 ```haskell
 instance Functor [] where
     fmap = map
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 That's it!
 Notice how we didn't write `instance Functor [a] where`, because from `fmap :: (a -> b) -> f a -> f b`, we see that the `f` has to be a type constructor that takes one type.
@@ -1802,13 +1687,17 @@ Notice how we didn't write `instance Functor [a] where`, because from `fmap :: (
 
 Since for lists, `fmap` is just `map`, we get the same results when using them on lists.
 
-```text
+```haskell
 map :: (a -> b) -> [a] -> [b]
 ghci> fmap (*2) [1..3]
 [2,4,6]
 ghci> map (*2) [1..3]
 [2,4,6]
 ```
+
+> <!-- scripths:mime text/plain -->
+> [2,4,6]
+> [2,4,6]
 
 What happens when we `map` or `fmap` over an empty list?
 Well, of course, we get an empty list.
@@ -1821,15 +1710,11 @@ For one, the `Maybe a` type.
 In a way, it's like a box that can either hold nothing, in which case it has the value of `Nothing`, or it can hold one item, like `"HAHA"`, in which case it has a value of `Just "HAHA"`.
 Here's how `Maybe` is a functor.
 
-
 ```haskell
 instance Functor Maybe where
     fmap f (Just x) = Just (f x)
     fmap f Nothing = Nothing
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Again, notice how we wrote `instance Functor Maybe where` instead of `instance Functor (Maybe m) where`, like we did when we were dealing with `Maybe` and `YesNo`.
 `Functor` wants a type constructor that takes one type and not a concrete type.
@@ -1843,7 +1728,7 @@ It makes sense.
 Just like if we map over an empty list, we get back an empty list.
 If it's not an empty value, but rather a single value packed up in a `Just`, then we apply the function on the contents of the `Just`.
 
-```text
+```haskell
 ghci> fmap (++ " HEY GUYS IM INSIDE THE JUST") (Just "Something serious.")
 Just "Something serious. HEY GUYS IM INSIDE THE JUST"
 ghci> fmap (++ " HEY GUYS IM INSIDE THE JUST") Nothing
@@ -1861,22 +1746,22 @@ We're going to use recursion on this one.
 Mapping over an empty tree will produce an empty tree.
 Mapping over a non-empty tree will be a tree consisting of our function applied to the root value and its left and right subtrees will be the previous subtrees, only our function will be mapped over them.
 
-
 ```haskell
 instance Functor Tree where
     fmap f EmptyTree = EmptyTree
     fmap f (Node x leftsub rightsub) = Node (f x) (fmap f leftsub) (fmap f rightsub)
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 ghci> fmap (*2) EmptyTree
 EmptyTree
 ghci> fmap (*4) (foldr treeInsert EmptyTree [5,7,3,2,1,7])
 Node 28 (Node 4 EmptyTree (Node 8 EmptyTree (Node 12 EmptyTree (Node 20 EmptyTree EmptyTree)))) EmptyTree
 ```
+
+> <!-- scripths:mime text/plain -->
+> EmptyTree
+> Node 28 (Node 4 EmptyTree (Node 8 EmptyTree (Node 12 EmptyTree (Node 20 EmptyTree EmptyTree)))) EmptyTree
 
 Nice!
 Now how about `Either a b`?
@@ -1886,15 +1771,11 @@ Hmmm!
 I know, we'll partially apply `Either` by feeding it only one parameter so that it has one free parameter.
 Here's how `Either a` is a functor in the standard libraries:
 
-
 ```haskell
 instance Functor (Either a) where
     fmap f (Right x) = Right (f x)
     fmap f (Left x) = Left x
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Well well, what did we do here?
 You can see how we made `Either a` an instance instead of just `Either`.
@@ -1904,13 +1785,9 @@ In the implementation, we mapped in the case of a `Right` value constructor, but
 Why is that?
 Well, if we look back at how the `Either a b` type is defined, it's kind of like:
 
-
 ```haskell
 data Either a b = Left a | Right b
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Well, if we wanted to map one function over both of them, `a` and `b` would have to be the same type.
 I mean, if we tried to map a function that takes a string and returns a string and the `b` was a string but the `a` was a number, that wouldn't really work out.
@@ -1958,7 +1835,7 @@ This may sound a bit weird and confusing, but it's actually a really cool concep
 What are kinds and what are they good for?
 Well, let's examine the kind of a type by using the `:k` command in GHCi.
 
-```text
+```haskell
 ghci> :k Int
 Int :: *
 ```
@@ -1972,7 +1849,7 @@ If I had to read `*` out loud (I haven't had to do that so far), I'd say *star* 
 
 Okay, now let's see what the kind of `Maybe` is.
 
-```text
+```haskell
 ghci> :k Maybe
 Maybe :: * -> *
 ```
@@ -1982,7 +1859,7 @@ And that's what this kind tells us.
 Just like `Int -> Int` means that a function takes an `Int` and returns an `Int`, `* -> *` means that the type constructor takes one concrete type and returns a concrete type.
 Let's apply the type parameter to `Maybe` and see what the kind of that type is.
 
-```text
+```haskell
 ghci> :k Maybe Int
 Maybe Int :: *
 ```
@@ -1998,7 +1875,7 @@ Like we said, types are the labels of values and kinds are the labels of types a
 
 Let's look at another kind.
 
-```text
+```haskell
 ghci> :k Either
 Either :: * -> * -> *
 ```
@@ -2007,7 +1884,7 @@ Aha, this tells us that `Either` takes two concrete types as type parameters to 
 It also looks kind of like a type declaration of a function that takes two values and returns something.
 Type constructors are curried (just like functions), so we can partially apply them.
 
-```text
+```haskell
 ghci> :k Either String
 Either String :: * -> *
 ghci> :k Either String Int
@@ -2018,14 +1895,10 @@ When we wanted to make `Either` a part of the `Functor` typeclass, we had to par
 In other words, `Functor` wants types of kind `* -> *` and so we had to partially apply `Either` to get a type of kind `* -> *` instead of its original kind `* -> * -> *`.
 If we look at the definition of `Functor` again
 
-
 ```haskell
 class Functor f where
     fmap :: (a -> b) -> f a -> f b
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 we see that the `f` type variable is used as a type that takes one concrete type to produce a concrete type.
 We know it has to produce a concrete type because it's used as the type of a value in a function.
@@ -2034,14 +1907,10 @@ And from that, we can deduce that types that want to be friends with `Functor` h
 Now, let's do some type-foo.
 Take a look at this typeclass that I'm just going to make up right now:
 
-
 ```haskell
 class Tofu t where
     tofu :: j a -> t a j
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 Man, that looks weird.
 How would we make a type that could be an instance of that strange typeclass?
@@ -2056,13 +1925,9 @@ Wow.
 OK, so let's make a type with a kind of `* -> (* -> *) -> *`.
 Here's one way of going about it.
 
-
 ```haskell
 data Frank a b  = Frank {frankField :: b a} deriving (Show)
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 How do we know this type has a kind of `* -> (* -> *) - > *`?
 Well, fields in ADTs are made to hold values, so they must be of kind `*`, obviously.
@@ -2070,7 +1935,7 @@ We assume `*` for `a`, which means that `b` takes one type parameter and so its 
 Now we know the kinds of both `a` and `b` and because they're parameters for `Frank`, we see that `Frank` has a kind of `* -> (* -> *) -> *` The first `*` represents `a` and the `(* -> *)` represents `b`.
 Let's make some `Frank` values and check out their types.
 
-```text
+```haskell
 ghci> :t Frank {frankField = Just "HAHA"}
 Frank {frankField = Just "HAHA"} :: Frank [Char] Maybe
 ghci> :t Frank {frankField = Node 'a' EmptyTree EmptyTree}
@@ -2078,6 +1943,10 @@ Frank {frankField = Node 'a' EmptyTree EmptyTree} :: Frank Char Tree
 ghci> :t Frank {frankField = "YES"}
 Frank {frankField = "YES"} :: Frank Char []
 ```
+
+> <!-- scripths:mime text/plain -->
+> Frank {frankField = Node 'a' EmptyTree EmptyTree}
+> Frank {frankField = "YES"}
 
 Hmm.
 Because `frankField` has a type of form `a b`, its values must have types that are of a similar form as well.
@@ -2090,33 +1959,28 @@ Making `Frank` an instance of `Tofu` is pretty simple.
 We see that `tofu` takes a `j a` (so an example type of that form would be `Maybe Int`) and returns a `t a j`.
 So if we replace `t` with `Frank`, `a` with `Int`, and `j` with `Maybe`, the result type would be `Frank Int Maybe`.
 
-
 ```haskell
 instance Tofu Frank where
     tofu x = Frank x
 ```
 
-> <!-- scripths:mime text/plain -->
-
-
-```text
+```haskell
 ghci> tofu (Just 'a') :: Frank Char Maybe
 Frank {frankField = Just 'a'}
 ghci> tofu ["HELLO"] :: Frank [Char] []
 Frank {frankField = ["HELLO"]}
 ```
 
+> <!-- scripths:mime text/plain -->
+> Frank {frankField = ["HELLO"]}
+
 Not very useful, but we did flex our type muscles.
 Let's do some more type-foo.
 We have this data type:
 
-
 ```haskell
 data Barry t k p = Barry { yabba :: p, dabba :: t k }
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 And now we want to make it an instance of `Functor`.
 `Functor` wants types of kind `* -> *` but `Barry` doesn't look like it has that kind.
@@ -2127,7 +1991,7 @@ For `k`, we assume `*` and so by extension, `t` has a kind of `* -> *`.
 Now let's just replace those kinds with the *somethings* that we used as placeholders and we see it has a kind of `(* -> *) -> * -> * -> *`.
 Let's check that with GHCi.
 
-```text
+```haskell
 ghci> :k Barry
 Barry :: (* -> *) -> * -> * -> *
 ```
@@ -2139,14 +2003,10 @@ That means that the start of the instance declaration will be: `instance Functor
 If we look at `fmap` as if it was made specifically for `Barry`, it would have a type of `fmap :: (a -> b) -> Barry c d a -> Barry c d b`, because we just replace the `Functor`'s `f` with `Barry c d`.
 The third type parameter from `Barry` will have to change and we see that it's conveniently in its own field.
 
-
 ```haskell
 instance Functor (Barry a b) where
     fmap f (Barry {yabba = x, dabba = y}) = Barry {yabba = f x, dabba = y}
 ```
-
-> <!-- scripths:mime text/plain -->
-
 
 There we go!
 We just mapped the `f` over the first field.

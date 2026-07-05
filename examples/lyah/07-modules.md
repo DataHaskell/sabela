@@ -46,13 +46,13 @@ You can also put the functions of modules into the global namespace when using G
 If you're in GHCi and you want to be able to call the functions exported by `Data.List`, do this:
 
 ```haskell
-ghci> :m + Data.List
+:m + Data.List
 ```
 
 If we want to load up the names from several modules inside GHCi, we don't have to do `:m +` several times, we can just load up several modules at once.
 
 ```haskell
-ghci> :m + Data.List Data.Map Data.Set
+:m + Data.List Data.Map Data.Set
 ```
 
 However, if you've loaded a script that already imports a module, you don't need to use `:m +` to get access to it.
@@ -595,9 +595,11 @@ find (>9) [1,2,3,4,5,6]
 > Nothing
 
 ```haskell
-ghci> :t find
-find :: (a -> Bool) -> [a] -> Maybe a
+:t find
 ```
+
+> <!-- scripths:mime text/plain -->
+> find :: Foldable t => (a -> Bool) -> t a -> Maybe a
 
 Notice the type of `find`.
 Its result is `Maybe a`.
@@ -617,9 +619,11 @@ It maybe returns the index of the element we're looking for.
 If that element isn't in our list, it returns a `Nothing`.
 
 ```haskell
-ghci> :t elemIndex
-elemIndex :: (Eq a) => a -> [a] -> Maybe Int
+:t elemIndex
 ```
+
+> <!-- scripths:mime text/plain -->
+> elemIndex :: Eq a => a -> [a] -> Maybe Int
 
 ```haskell
 4 `elemIndex` [1,2,3,4,5,6]
@@ -916,8 +920,13 @@ So doing ``(==) `on` (> 0)`` returns an equality function that looks like `\x y 
 `on` is used a lot with the *By* functions because with it, we can do:
 
 ```haskell
+import Data.Function
+
 groupBy ((==) `on` (> 0)) values
 ```
+
+> <!-- scripths:mime text/plain -->
+> [[-4.3,-2.4,-1.2],[0.4,2.3,5.9,10.5,29.1,5.3],[-2.4,-14.5],[2.9,2.3]]
 
 Very readable indeed!
 You can read it out loud: Group this by equality on whether the elements are greater than zero.
@@ -940,6 +949,9 @@ let xs = [[5,4,5,4,4],[1,2,3],[3,5,4,3],[],[2],[2,2]]
 ```haskell
 sortBy (compare `on` length) xs
 ```
+
+> <!-- scripths:mime text/plain -->
+> [[],[2],[2,2],[1,2,3],[3,5,4,3],[5,4,5,4,4]]
 
 Awesome!
 ``compare `on` length`` ... man, that reads almost like real English!
@@ -1008,12 +1020,20 @@ For instance, let's say we're making a program that takes a username consisting 
 We can use the `Data.List` function `all` in combination with the `Data.Char` predicates to determine if the username is alright.
 
 ```haskell
+import Data.Char
+
 all isAlphaNum "bobby283"
 ```
+
+> <!-- scripths:mime text/plain -->
+> True
 
 ```haskell
 all isAlphaNum "eddy the fish!"
 ```
+
+> <!-- scripths:mime text/plain -->
+> False
 
 Kewl.
 In case you don't remember, `all` takes a predicate and a list and returns `True` only if that predicate holds for every element in the list.
@@ -1031,13 +1051,19 @@ words "hey folks its me"
 groupBy ((==) `on` isSpace) "hey folks its me"
 ```
 
+> <!-- scripths:mime text/plain -->
+> ["hey"," ","folks"," ","its"," ","me"]
+
 Hmmm, well, it kind of does what `words` does but we're left with elements of only spaces.
 Hmm, whatever shall we do?
 I know, let's filter that sucker.
 
 ```haskell
-filter (not . any isSpace) . groupBy ((==) `on` isSpace) $ "hey folks its me"
+Prelude.filter (not . any isSpace) . groupBy ((==) `on` isSpace) $ "hey folks its me"
 ```
+
+> <!-- scripths:mime text/plain -->
+> ["hey","folks","its","me"]
 
 Ah.
 
@@ -1055,25 +1081,43 @@ There are about 31 categories so we won't list them all here, but let's play aro
 generalCategory ' '
 ```
 
+> <!-- scripths:mime text/plain -->
+> Space
+
 ```haskell
 generalCategory 'A'
 ```
+
+> <!-- scripths:mime text/plain -->
+> UppercaseLetter
 
 ```haskell
 generalCategory 'a'
 ```
 
+> <!-- scripths:mime text/plain -->
+> LowercaseLetter
+
 ```haskell
 generalCategory '.'
 ```
+
+> <!-- scripths:mime text/plain -->
+> OtherPunctuation
 
 ```haskell
 generalCategory '9'
 ```
 
+> <!-- scripths:mime text/plain -->
+> DecimalNumber
+
 ```haskell
-map generalCategory " \t\nA9?|"
+Prelude.map generalCategory " \t\nA9?|"
 ```
+
+> <!-- scripths:mime text/plain -->
+> [Space,Control,Control,UppercaseLetter,DecimalNumber,OtherPunctuation,MathSymbol]
 
 Since the `GeneralCategory` type is part of the `Eq` typeclass, we can also test for stuff like `generalCategory c == Space`.
 
@@ -1089,12 +1133,18 @@ For most characters, title-case is the same as upper-case.
 To succeed, the character must be in the ranges `'0'..'9'`, `'a'..'f'` or `'A'..'F'`.
 
 ```haskell
-map digitToInt "34538"
+Prelude.map digitToInt "34538"
 ```
 
+> <!-- scripths:mime text/plain -->
+> [3,4,5,3,8]
+
 ```haskell
-map digitToInt "FF85AB"
+Prelude.map digitToInt "FF85AB"
 ```
+
+> <!-- scripths:mime text/plain -->
+> [15,15,8,5,10,11]
 
 `intToDigit` is the inverse function of `digitToInt`.
 It takes an `Int` in the range of `0..15` and converts it to a lower-case character.
@@ -1103,9 +1153,15 @@ It takes an `Int` in the range of `0..15` and converts it to a lower-case charac
 intToDigit 15
 ```
 
+> <!-- scripths:mime text/plain -->
+> 'f'
+
 ```haskell
 intToDigit 5
 ```
+
+> <!-- scripths:mime text/plain -->
+> '5'
 
 The `ord` and `chr` functions convert characters to their corresponding numbers and vice versa:
 
@@ -1113,13 +1169,22 @@ The `ord` and `chr` functions convert characters to their corresponding numbers 
 ord 'a'
 ```
 
+> <!-- scripths:mime text/plain -->
+> 97
+
 ```haskell
 chr 97
 ```
 
+> <!-- scripths:mime text/plain -->
+> 'a'
+
 ```haskell
-map ord "abcdefgh"
+Prelude.map ord "abcdefgh"
 ```
+
+> <!-- scripths:mime text/plain -->
+> [97,98,99,100,101,102,103,104]
 
 The difference between the `ord` values of two characters is equal to how far apart they are in the Unicode table.
 
@@ -1129,9 +1194,9 @@ We can easily create a sort of Caesar cipher of our own, only we won't constrict
 ```haskell
 encode :: Int -> String -> String
 encode shift msg =
-    let ords = map ord msg
-        shifted = map (+ shift) ords
-    in  map chr shifted
+    let ords = Prelude.map ord msg
+        shifted = Prelude.map (+ shift) ords
+    in  Prelude.map chr shifted
 ```
 
 Here, we first convert the string to a list of numbers.
@@ -1143,17 +1208,29 @@ Let's try encoding a few messages.
 encode 3 "Heeeeey"
 ```
 
+> <!-- scripths:mime text/plain -->
+> "Khhhhh|"
+
 ```haskell
 encode 4 "Heeeeey"
 ```
+
+> <!-- scripths:mime text/plain -->
+> "Liiiii}"
 
 ```haskell
 encode 1 "abcd"
 ```
 
+> <!-- scripths:mime text/plain -->
+> "bcde"
+
 ```haskell
 encode 5 "Marry Christmas! Ho ho ho!"
 ```
+
+> <!-- scripths:mime text/plain -->
+> "Rfww~%Hmwnxyrfx&%Mt%mt%mt&"
 
 That's encoded alright.
 Decoding a message is basically just shifting it back by the number of places it was shifted by in the first place.
@@ -1167,13 +1244,22 @@ decode shift msg = encode (negate shift) msg
 encode 3 "Im a little teapot"
 ```
 
+> <!-- scripths:mime text/plain -->
+> "Lp#d#olwwoh#whdsrw"
+
 ```haskell
 decode 3 "Lp#d#olwwoh#whdsrw"
 ```
 
+> <!-- scripths:mime text/plain -->
+> "Im a little teapot"
+
 ```haskell
 decode 5 . encode 5 $ "This is a sentence"
 ```
+
+> <!-- scripths:mime text/plain -->
+> "This is a sentence"
 
 ## Data.Map
 
@@ -1243,18 +1329,21 @@ findKey "tenzing" phoneBook
 ```
 
 > <!-- scripths:mime text/plain -->
-> "853-2492"
+> Just "853-2492"
 
 ```haskell
 findKey "amelia" phoneBook
 ```
 
 > <!-- scripths:mime text/plain -->
-> "555-2938"
+> Just "555-2938"
 
 ```haskell
 findKey "christopher" phoneBook
 ```
+
+> <!-- scripths:mime text/plain -->
+> Nothing
 
 ![legomap](https://raw.githubusercontent.com/learnyouahaskell/learnyouahaskell.github.io/main/static/assets/images/modules/legomap.png)
 
