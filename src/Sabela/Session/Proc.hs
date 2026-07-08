@@ -39,11 +39,13 @@ import Data.Unique (Unique, newUnique)
 import Sabela.Session.Reader (OutQueue, drainToEof, newOutQueue, readLoop)
 import System.IO (
     BufferMode (LineBuffering),
+    noNewlineTranslation,
     Handle,
     hClose,
     hSetBinaryMode,
     hSetBuffering,
     hSetEncoding,
+    hSetNewlineMode,
     mkTextEncoding,
  )
 import System.IO.Unsafe (unsafePerformIO)
@@ -141,6 +143,7 @@ read as raw bytes and decoded leniently by the reader.
 configureSessionHandles :: Handle -> Handle -> Handle -> IO ()
 configureSessionHandles hIn hOut hErr = do
     hSetBuffering hIn LineBuffering
+    hSetNewlineMode hOut noNewlineTranslation
     enc <- mkTextEncoding "UTF-8//TRANSLIT"
     hSetEncoding hIn enc
     forM_ [hOut, hErr] $ \h -> hSetBinaryMode h True

@@ -203,10 +203,13 @@ boundedLines cap h emit = go [] 0 False BS.empty
                             else emitLine (end : acc) False
                 consume rest [] 0 False BS.empty
     emitLine revChunks truncated = do
-        let bs = BS.concat (reverse revChunks)
+        let bs = dropTrailingCR (BS.concat (reverse revChunks))
             txt = TE.decodeUtf8With TE.lenientDecode bs
             txt' = if truncated then txt <> truncNotice else txt
         emit (BS.length bs) txt'
+    dropTrailingCR b
+        | not (BS.null b) && BS.last b == 13 = BS.init b
+        | otherwise = b
     truncNotice = " …[line truncated by sabela]"
     capTail = BS.takeEnd (BS.length markerPrefixBS + 26)
 

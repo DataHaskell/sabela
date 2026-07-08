@@ -121,7 +121,7 @@ detectJsonDiagnostics = do
         try (readProcessWithExitCode ghc ["--numeric-version"] "") ::
             IO (Either SomeException (ExitCode, String, String))
     pure $ case res of
-        Right (ExitSuccess, out, _) -> versionAtLeast [9, 8] (parseVersion out)
+        Right (ExitSuccess, out, _) -> versionAtLeast [9, 10] (parseVersion out)
         _ -> False
 
 -- | The numeric components of a @ghc --numeric-version@ string, e.g. [9,12,2].

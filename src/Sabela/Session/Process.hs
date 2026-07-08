@@ -218,6 +218,7 @@ mkSessionNonce = do
 initializeGhci :: Session -> (Text -> IO ()) -> IO ()
 initializeGhci sess onLine = do
     clearGhciPrompt sess
+    forceUtf8Output sess
     sendRaw sess (":cd " ++ scWorkDir (sessConfig sess))
     mk <- getMarker sess
     placeMarker sess mk
@@ -246,6 +247,11 @@ startupErrSettleUs = 200000
 
 clearGhciPrompt :: Session -> IO ()
 clearGhciPrompt sess = mapM_ (sendRaw sess) [":set prompt \"\"", ":set prompt-cont \"\""]
+
+forceUtf8Output :: Session -> IO ()
+forceUtf8Output sess = let
+        setUtf8 d = "System.IO.hSetEncoding System.IO." ++ d ++ " System.IO.utf8"
+    in mapM_ (sendRaw sess) (map setUtf8 ["stdout", "stderr"])
 
 {- | Kill and respawn the kernel, seeding the replacement with a strictly
 higher generation than the session it replaces so a client can detect the
