@@ -30,8 +30,10 @@ spec = describe "AI config wire shapes" $ do
             keysOf (configJson "k" "m" "p" 4096 7)
                 `shouldBe` ["anthropicKey", "anthropicModel", "numCtx", "provider", "toolLimit"]
         it "carries the key, model, provider, and both knobs" $ do
-            field "anthropicKey" (configJson "K" "M" "P" 4096 7) `shouldBe` Just (String "K")
-            field "anthropicModel" (configJson "K" "M" "P" 4096 7) `shouldBe` Just (String "M")
+            field "anthropicKey" (configJson "K" "M" "P" 4096 7)
+                `shouldBe` Just (String "K")
+            field "anthropicModel" (configJson "K" "M" "P" 4096 7)
+                `shouldBe` Just (String "M")
             field "provider" (configJson "K" "M" "P" 4096 7) `shouldBe` Just (String "P")
             field "numCtx" (configJson "K" "M" "P" 4096 7) `shouldBe` Just (Number 4096)
             field "toolLimit" (configJson "K" "M" "P" 4096 7) `shouldBe` Just (Number 7)

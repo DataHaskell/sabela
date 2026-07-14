@@ -80,7 +80,8 @@ chat = chatSeeded False Nothing
 overrides the @OLLAMA_NUM_CTX@ env fallback 'chatSeeded' would otherwise read.
 Used by the in-notebook Ollama provider so the setting is per-workspace.
 -}
-chatWith :: Int -> Manager -> Text -> [Value] -> [Value] -> IO (Either Text Turn)
+chatWith ::
+    Int -> Manager -> Text -> [Value] -> [Value] -> IO (Either Text Turn)
 chatWith numCtx = chatCore False Nothing numCtx
 
 {- | Chat once. @think@ asks Ollama for the model's reasoning channel (nested in

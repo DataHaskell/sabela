@@ -9,7 +9,6 @@ module Test.HoogleResolveSpec (spec) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.Capabilities.Edit.Run (countErrorsInResult, shouldKeep)
 import Sabela.AI.HoogleResolve (
     HoogleHit (..),
     parseHoogleBlob,
@@ -17,9 +16,7 @@ import Sabela.AI.HoogleResolve (
     rankResolveTopK,
  )
 import Sabela.AI.ImportRepair (addImport)
-import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (notInScopeName)
-import Sabela.Model (CellError (..))
 import Test.Hspec
 
 {- | A hoogle @search --json@ array blob: an exact @runConduit@ hit in conduit,
@@ -64,12 +61,6 @@ ambiguousBlob =
         , ",\"module\":{\"name\":\"Network.Pusher\"}"
         , ",\"package\":{\"name\":\"pusher-http-haskell\"}}]"
         ]
-
-raisingErrs :: Maybe Text -> [CellError] -> Either Text ExecutionResult
-raisingErrs err errs = Right (ExecutionResult [] err errs [])
-
-cellErr :: Text -> CellError
-cellErr = CellError Nothing Nothing
 
 spec :: Spec
 spec = describe "Sabela.AI.HoogleResolve" $ do
@@ -150,24 +141,6 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
         it "caps the shortlist at K" $
             length (rankResolveTopK 1 "decode" (parseHoogleBlob ambiguousBlob))
                 `shouldBe` 1
-
-    describe "countErrorsInResult" $ do
-        it "is a large sentinel on a Left (abort/timeout/superseded)" $
-            countErrorsInResult (Left "Cancelled") `shouldBe` 1000000
-
-        it "counts erError plus erErrors on a Right" $
-            countErrorsInResult (raisingErrs (Just "boom") [cellErr "a", cellErr "b"])
-                `shouldBe` 3
-
-        it "is zero on a clean Right (no error, no errors)" $
-            countErrorsInResult (raisingErrs Nothing []) `shouldBe` 0
-
-    describe "shouldKeep" $ do
-        it "keeps a strict improvement" $ shouldKeep 3 2 `shouldBe` True
-        it "keeps a clean compile even if count is unchanged at zero" $
-            shouldKeep 0 0 `shouldBe` True
-        it "reverts an unchanged non-zero count" $ shouldKeep 2 2 `shouldBe` False
-        it "reverts a regression" $ shouldKeep 1 1000000 `shouldBe` False
 
     describe "notInScopeName feeds the resolver" $
         it "extracts the name the resolver then queries" $

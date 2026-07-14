@@ -15,8 +15,6 @@ module Sabela.AI.Capabilities.Edit.Run (
     execExecuteCell,
     executeCell,
     missingCellError,
-    countErrorsInResult,
-    shouldKeep,
     abortCancelled,
     abortSuperseded,
     abortTimedOut,
@@ -26,7 +24,8 @@ import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM (atomically, readTChan)
 import Data.Aeson (Value, (.=))
-import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.List (nub)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime)
@@ -37,6 +36,19 @@ import Sabela.AI.Capabilities.Util (fieldInt)
 import Sabela.AI.CellResult (mergeToolOk, toCellResult)
 import Sabela.AI.DepRepair (addBuildDepend, depFromResult)
 import Sabela.AI.ExtRepair (addExtension, extFromResult)
+import Sabela.AI.Health (
+    healthOfResult,
+    healthOfTypeQuery,
+    improvesHealth,
+    isClean,
+ )
+import Sabela.AI.HoleRepair (
+    goalFromError,
+    holeFitNames,
+    orderBySimilarity,
+    substituteName,
+    suggestedNames,
+ )
 import Sabela.AI.HoogleResolve (hoogleResolveTopK)
 import Sabela.AI.ImportRepair (addScopedImport, moduleRenameFix)
 import Sabela.AI.Store
@@ -49,6 +61,7 @@ import Sabela.Diagnose (
     guidancePairs,
     notInScopeName,
  )
+import Sabela.Errors.Json (parseJsonInteractive)
 import Sabela.Handlers (ReactiveNotebook (..), updateCellSource)
 import Sabela.Model
 import qualified Sabela.SessionTypes as ST
@@ -163,8 +176,16 @@ executeWithRepair app rn cid cancelTok = do
                         cands <- hoogleCandidates res (cellSource cell)
                         kept <- verifyAndRevert n res (cellSource cell) cands
                         case kept of
-                            Nothing -> pure res
                             Just newRes -> go (n - 1) newRes
+                            Nothing -> do
+                                -- Speculative hole-fit repair: pick a candidate
+                                -- by a compile-only :type check (no execution),
+                                -- then commit + run only the winner (critique R1).
+                                holeCands <- holeFitCandidates app res (cellSource cell)
+                                mWin <- selectByTypeCheck app holeCands
+                                case mWin of
+                                    Nothing -> pure res
+                                    Just winSrc -> applyAndLoop n winSrc
     applyAndLoop n newSrc = do
         modifyNotebook (appNotebook app) (updateCellSource cid newSrc)
         broadcastNotebook app
@@ -172,34 +193,22 @@ executeWithRepair app rn cid cancelTok = do
         go (n - 1) newRes
 
     {- Try each candidate with APPLY → RE-RUN → KEEP-IFF-IMPROVES, else REVERT
-    to priorSrc. 'Just' the kept run for the first candidate that strictly
-    reduces the error count (or compiles clean); 'Nothing' when none improve. -}
+    to priorSrc. 'Just' the kept run for the first candidate whose diagnostics
+    are a genuine improvement ('improvesHealth': no NEW diagnostic and at least
+    one removed, or compiles clean); 'Nothing' when none improve. Comparing
+    diagnostic SETS (not counts) rejects a candidate that trades one error for
+    another. -}
     verifyAndRevert _ _ _ [] = pure Nothing
     verifyAndRevert n res priorSrc (cand : rest) = do
-        let oldCount = countErrorsInResult res
         modifyNotebook (appNotebook app) (updateCellSource cid cand)
         broadcastNotebook app
         newRes <- executeCell app rn cid cancelTok
-        if shouldKeep oldCount (countErrorsInResult newRes)
+        if improvesHealth (healthOfResult res) (healthOfResult newRes)
             then pure (Just newRes)
             else do
                 modifyNotebook (appNotebook app) (updateCellSource cid priorSrc)
                 broadcastNotebook app
                 verifyAndRevert n res priorSrc rest
-
-{- | The error count of a run, used to decide whether a candidate improved. A
-@Left@ (abort/timeout/superseded) is WORSE than any @Right@ — a large sentinel —
-so a candidate that turns a compile error into an abort is always reverted. A
-@Right@ counts its holistic error (0/1) plus its structured error list.
--}
-countErrorsInResult :: Either Text ExecutionResult -> Int
-countErrorsInResult (Left _) = 1000000
-countErrorsInResult (Right er) =
-    (if isJust (erError er) then 1 else 0) + length (erErrors er)
-
--- | Keep a candidate iff it strictly improves the count or compiles clean.
-shouldKeep :: Int -> Int -> Bool
-shouldKeep oldCount newCount = newCount < oldCount || newCount == 0
 
 {- | The flag-gated local-Hoogle candidate sources, tried only after every pure
 fixer declines. With @SABELA_HOOGLE_RESOLVE@ unset this is the empty list, so the
@@ -233,6 +242,84 @@ topKFromEnv :: IO Int
 topKFromEnv = do
     mk <- lookupEnv "SABELA_HOOGLE_TOP_K"
     pure (maybe defaultTopK (max 1) (mk >>= readMaybe))
+
+{- | Speculative hole-fit candidates for a red not-in-scope-with-type cell: query
+GHC hole fits for the inferred goal type and substitute the wrong name. Empty
+unless the error carries a goal type. Candidates are checked compile-only before
+any is committed (see 'selectByTypeCheck').
+-}
+holeFitCandidates :: App -> Either Text ExecutionResult -> Text -> IO [Text]
+holeFitCandidates app res src = do
+    enabled <- lookupEnv "SABELA_HOLE_FIT"
+    let errText = resultErrorText res
+    case enabled >> goalFromError errText of
+        Nothing -> pure []
+        Just (wrong, ty) -> do
+            mBackend <- getHaskellSession (appSessions app)
+            case mBackend of
+                Nothing -> pure []
+                Just backend -> do
+                    blob <- ST.sbQueryHoleFits backend ("_ :: " <> ty)
+                    -- The live session emits -fdiagnostics-as-json, so the fits
+                    -- arrive JSON-escaped; decode to the plain text holeFitNames
+                    -- parses. A plain-text session falls through the residual.
+                    let (errs, _, rest) = parseJsonInteractive blob
+                        fitText = T.unlines (map ceMessage errs) <> rest
+                        -- GHC's did-you-mean first, then hole fits, all ranked by
+                        -- spelling closeness to the wrong name, so a typo heals to
+                        -- the nearest valid name (length), not an arbitrary
+                        -- same-typed fit (product).
+                        names =
+                            orderBySimilarity
+                                wrong
+                                (nub (suggestedNames errText ++ holeFitNames fitText))
+                    pure $
+                        nub
+                            [ s
+                            | n <- names
+                            , let s = substituteName wrong n src
+                            , s /= src
+                            ]
+
+{- | The first candidate whose expression @:type@-checks clean, WITHOUT running
+it. 'Nothing' when none check clean (or there is no session).
+-}
+selectByTypeCheck :: App -> [Text] -> IO (Maybe Text)
+selectByTypeCheck _ [] = pure Nothing
+selectByTypeCheck app cands = do
+    mBackend <- getHaskellSession (appSessions app)
+    case mBackend of
+        Nothing -> pure Nothing
+        Just backend -> firstClean backend cands
+  where
+    firstClean _ [] = pure Nothing
+    firstClean backend (c : cs) = do
+        out <- ST.sbQueryType backend (typeCheckTarget c)
+        if isClean (healthOfTypeQuery out)
+            then pure (Just c)
+            else firstClean backend cs
+
+{- | The expression to @:type@ for a candidate source: the RHS of a simple
+single-line @x = expr@ binding, else the whole (stripped) source. A candidate
+that is not a checkable expression fails @:type@ and is skipped — safe, since
+selection requires a CLEAN check, so only a missed repair results, never a bad
+repair kept.
+-}
+typeCheckTarget :: Text -> Text
+typeCheckTarget src
+    | T.count "\n" stripped == 0
+    , (_, rhs) <- T.breakOn " = " stripped
+    , not (T.null rhs) =
+        T.strip (T.drop 3 rhs)
+    | otherwise = stripped
+  where
+    stripped = T.strip src
+
+-- | A failed run's error text (holistic error plus structured messages).
+resultErrorText :: Either Text ExecutionResult -> Text
+resultErrorText (Left e) = e
+resultErrorText (Right er) =
+    T.unlines (maybe [] pure (erError er) ++ map ceMessage (erErrors er))
 
 -- | The first not-in-scope name across a failed run's error and error list.
 notInScopeFromResult :: Either Text ExecutionResult -> Maybe Text

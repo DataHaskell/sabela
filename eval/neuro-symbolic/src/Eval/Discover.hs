@@ -21,6 +21,7 @@ import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Discover (importedModules, rediscoverModules)
 import Sabela.AI.Grammar (ImportStyle (..))
 import Sabela.AI.Grammar.Synth (Surface (..), synthesizeGrammar)
 import Sabela.AI.Types (ToolOutcome (..))
@@ -53,21 +54,12 @@ proactiveDiscover GrammarOn dispatch = do
   where
     asInsert s = ToolCall "insert_cell" (object ["source" .= s])
 
-rediscoverModules :: Text -> Text -> [(Text, ImportStyle)]
-rediscoverModules src err
-    | grammarImplicated err = importedModules src
-    | otherwise = []
-
 seamDiscover :: GrammarMode -> Dispatch -> [(Text, Text)] -> IO [Value]
 seamDiscover GrammarOff _ _ = pure []
 seamDiscover GrammarOn dispatch redCells =
     discoverSurfaces GrammarOn dispatch (nub targets)
   where
     targets = concat [rediscoverModules src err | (src, err) <- redCells]
-
-grammarImplicated :: Text -> Bool
-grammarImplicated err =
-    any (`T.isInfixOf` T.toLower err) ["not in scope", "no instance for"]
 
 discoverMessages :: GrammarMode -> [Surface] -> [Value]
 discoverMessages _ [] = []
@@ -156,16 +148,3 @@ cellSource _ = ""
 declaresDeps :: Text -> Bool
 declaresDeps src =
     any (("-- cabal:" `T.isPrefixOf`) . T.strip) (T.lines src)
-
-importedModules :: Text -> [(Text, ImportStyle)]
-importedModules src =
-    [m | l <- T.lines src, Just m <- [importedModule (T.strip l)]]
-
-importedModule :: Text -> Maybe (Text, ImportStyle)
-importedModule l = case T.words l of
-    ("import" : "qualified" : m : rest) -> Just (m, QualifiedAs (alias m rest))
-    ("import" : m : _) | m /= "qualified" -> Just (m, Unqualified)
-    _ -> Nothing
-  where
-    alias _ ("as" : p : _) = p
-    alias m _ = m

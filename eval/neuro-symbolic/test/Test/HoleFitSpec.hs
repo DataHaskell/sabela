@@ -5,7 +5,13 @@ module Test.HoleFitSpec (spec) where
 import Data.Text (Text)
 import Test.Hspec
 
-import Eval.HoleFit (goalFromError, parseFitNames, substituteName)
+import Eval.HoleFit (
+    goalFromError,
+    holeFitNames,
+    orderBySimilarity,
+    substituteName,
+    suggestedNames,
+ )
 
 blob :: Text
 blob =
@@ -31,6 +37,14 @@ spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
             goalFromError "Variable not in scope: D.getCol :: [Double]"
                 `shouldBe` Just ("D.getCol", "[Double]")
 
+        it "reads GHC's multi-line form (name + type on the next line)" $
+            goalFromError
+                "<interactive>:1:14: error: [GHC-88464]\n\
+                \    Variable not in scope:\n\
+                \      foldrr :: (a -> a -> a) -> t -> [Int] -> b\n\
+                \    Suggested fix: Perhaps use `foldr'"
+                `shouldBe` Just ("foldrr", "(a -> a -> a) -> t -> [Int] -> b")
+
         it "is Nothing for a bare not-in-scope with no printed type" $
             goalFromError "Not in scope: type constructor or class \8216Frame\8217"
                 `shouldBe` Nothing
@@ -38,12 +52,28 @@ spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
         it "is Nothing for benign output" $
             goalFromError "all good" `shouldBe` Nothing
 
-    describe "parseFitNames" $ do
-        it "keeps the plain fit names in order, dropping provenance and refinement" $
-            parseFitNames blob `shouldBe` ["columnAsList", "toColumn"]
+    describe "holeFitNames" $ do
+        it "keeps the plain fit names, dropping provenance and refinement" $
+            holeFitNames blob `shouldBe` ["columnAsList", "toColumn"]
 
         it "excludes the refinement fit 'apply'" $
-            ("apply" `elem` parseFitNames blob) `shouldBe` False
+            ("apply" `elem` holeFitNames blob) `shouldBe` False
+
+    describe "suggestedNames (GHC's did-you-mean)" $ do
+        it "reads the backtick-quoted name GHC suggests" $
+            suggestedNames
+                "Variable not in scope: lengthh :: [Int] -> Int\n\
+                \Perhaps use `length' (imported from Prelude)"
+                `shouldBe` ["length"]
+        it "is empty when GHC offers no suggestion" $
+            suggestedNames "Variable not in scope: zzz" `shouldBe` []
+
+    describe "orderBySimilarity (edit distance)" $ do
+        it "ranks the spelling-nearest name first" $
+            head (orderBySimilarity "lengthh" ["product", "sum", "length", "head"])
+                `shouldBe` "length"
+        it "keeps an exact match ahead of a far one" $
+            orderBySimilarity "map" ["concatMap", "map"] `shouldBe` ["map", "concatMap"]
 
     describe "substituteName" $ do
         it "replaces the wrong name with the fit" $

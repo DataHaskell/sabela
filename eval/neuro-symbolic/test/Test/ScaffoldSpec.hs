@@ -82,7 +82,8 @@ spec = describe "Rank 1 type scaffold" $ do
                     , object ["role" .= ("user" :: Text), "content" .= ("earlier" :: Text)]
                     , object ["role" .= ("assistant" :: Text), "content" .= ("reply" :: Text)]
                     ]
-            _ <- runEpisodeSeeded prior (const (pure ())) GrammarOff openBudget driver dfTask 10
+            _ <-
+                runEpisodeSeeded prior (const (pure ())) GrammarOff openBudget driver dfTask 10
             firstMsgs <- head <$> readIORef seen
             -- prior transcript carried verbatim, exactly one new user turn appended,
             -- no re-injected system prompt.

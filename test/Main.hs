@@ -30,6 +30,7 @@ import qualified Test.DepRepairSpec as DepRepairSpec
 import qualified Test.DepsMatchSpec as DepsMatchSpec
 import qualified Test.DepsRepairSpec as DepsRepairSpec
 import qualified Test.DiagnoseSpec as DiagnoseSpec
+import qualified Test.DiscoverGrammarSpec as DiscoverGrammarSpec
 import qualified Test.DiscoverToolSpec as DiscoverToolSpec
 import qualified Test.DiscoveryToolsPreSessionSpec as DiscoveryToolsPreSessionSpec
 import qualified Test.ErrorsJsonSpec as ErrorsJsonSpec
@@ -41,6 +42,7 @@ import qualified Test.ExportSpec as ExportSpec
 import qualified Test.ExtRepairSpec as ExtRepairSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import qualified Test.GrammarRouteSpec as GrammarRouteSpec
+import qualified Test.HealthSpec as HealthSpec
 import qualified Test.HoleFitsSpec as HoleFitsSpec
 import qualified Test.HoogleResolveSpec as HoogleResolveSpec
 import Test.Hspec (hspec)
@@ -60,6 +62,7 @@ import qualified Test.OrchestratorLoopSpec as OrchestratorLoopSpec
 import qualified Test.OrphanSpec as OrphanSpec
 import qualified Test.OutputChokepointWireSpec as OutputChokepointWireSpec
 import qualified Test.OutputSpec as OutputSpec
+import qualified Test.OwnedSpec as OwnedSpec
 import qualified Test.ParseSpec as ParseSpec
 import qualified Test.PeekDataSpec as PeekDataSpec
 import qualified Test.PlatformSpec as PlatformSpec
@@ -118,6 +121,9 @@ main = do
         DepRepairSpec.spec
         ExtRepairSpec.spec
         ImportRepairSpec.spec
+        HealthSpec.spec
+        OwnedSpec.spec
+        DiscoverGrammarSpec.spec
         HoogleResolveSpec.spec
         CapabilitySearchSpec.spec
         CapabilityApiSpec.spec
