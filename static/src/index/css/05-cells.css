@@ -188,13 +188,13 @@
   border-color: var(--accent-dim);
 }
 .cell.code.running {
-  border-color: var(--yellow);
+  border-color: var(--accent-dim);
 }
 .cell.code.has-error {
   border-color: var(--red);
 }
 .cell.code.dirty {
-  border-left: 3px solid var(--yellow);
+  border-left: 2px solid var(--accent);
 }
 .cell.code .cell-gutter {
   display: flex;
@@ -372,7 +372,7 @@
   transition-delay: 200ms;
 }
 .cell-stream {
-  border-top: 1px solid var(--yellow);
+  border-top: 1px solid var(--accent);
   padding: 8px 14px;
   background: var(--bg-output);
   font-family: var(--font-mono);
@@ -385,9 +385,9 @@
   margin: 0;
 }
 .cell-output.running-indicator {
-  color: var(--yellow);
+  color: var(--accent);
   font-style: italic;
-  border-top: 1px solid var(--yellow);
+  border-top: 1px solid var(--accent);
 }
 .cell-output.mime-html {
   white-space: normal;

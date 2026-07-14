@@ -56,15 +56,20 @@
 }
 
 /* ── Toolbar ───────────────────────────────── */
+/* Floating pill toolbar: detached from the edges, fully rounded, lifted with a
+   soft shadow so it reads as a command bar hovering over the workspace. */
 .toolbar {
   flex-shrink: 0;
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 7px;
+  margin: 10px 12px 4px;
+  padding: 6px 8px 6px 16px;
   background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
   font-family: var(--font-mono);
   font-size: 13px;
 }
@@ -79,9 +84,9 @@
   white-space: nowrap;
   max-width: 200px;
 }
-/* The warm-lambda brand mark, matching the hub front page (terracotta λ, mono). */
+/* The lambda brand mark (Haskell), in the theme's gold accent. */
 .toolbar-title .lam {
-  color: #c2674a;
+  color: var(--accent);
   font-family: var(--font-mono);
 }
 .toolbar button,
@@ -102,21 +107,22 @@
   background: var(--bg-cell);
   border-color: var(--accent-dim);
 }
+/* Run is the one saturated signal — Ndebele green, as in Replit/IntelliJ. */
 .toolbar .primary {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
-  font-weight: 500;
-  height: 30px;
+  background: var(--green);
+  color: #10140f;
+  border-color: var(--green);
+  font-weight: 600;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 14px;
+  padding: 0 13px;
 }
 .toolbar .primary:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent-soft);
-  color: #000;
+  background: color-mix(in srgb, var(--green) 82%, #ffffff);
+  border-color: color-mix(in srgb, var(--green) 82%, #ffffff);
+  color: #10140f;
   opacity: 1;
 }
 .toolbar .sep {

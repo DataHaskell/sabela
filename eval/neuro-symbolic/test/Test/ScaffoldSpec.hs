@@ -2,7 +2,7 @@
 
 module Test.ScaffoldSpec (spec) where
 
-import Data.Aeson (object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -12,7 +12,9 @@ import Test.Hspec
 import Eval.Agent (
     Driver (..),
     EpisodeBudget (..),
+    GrammarMode (..),
     defaultBudget,
+    runEpisodeSeeded,
     runEpisodeWith,
  )
 import Eval.Ollama (ToolCall (..), Turn (..))
@@ -61,6 +63,34 @@ spec = describe "Rank 1 type scaffold" $ do
             _ <- runEpisodeWith openBudget driver dfTask 10
             dispatched <- readIORef calls
             take 1 (map tcName dispatched) `shouldBe` ["insert_cell"]
+
+    describe "runEpisodeSeeded (continuation carries the transcript)" $
+        it "continues from the prior transcript + one new user turn, no re-scaffold" $ do
+            calls <- newIORef ([] :: [ToolCall])
+            seen <- newIORef ([] :: [[Value]])
+            let disp c =
+                    modifyIORef' calls (++ [c])
+                        >> pure (Right (ToolOk (object [])))
+            driver0 <- scriptedDriver disp [doneTurn]
+            let driver =
+                    driver0
+                        { drvChat = \msgs ->
+                            modifyIORef' seen (++ [msgs]) >> drvChat driver0 msgs
+                        }
+                prior =
+                    [ object ["role" .= ("system" :: Text), "content" .= ("S" :: Text)]
+                    , object ["role" .= ("user" :: Text), "content" .= ("earlier" :: Text)]
+                    , object ["role" .= ("assistant" :: Text), "content" .= ("reply" :: Text)]
+                    ]
+            _ <- runEpisodeSeeded prior (const (pure ())) GrammarOff openBudget driver dfTask 10
+            firstMsgs <- head <$> readIORef seen
+            -- prior transcript carried verbatim, exactly one new user turn appended,
+            -- no re-injected system prompt.
+            take (length prior) firstMsgs `shouldBe` prior
+            length firstMsgs `shouldBe` length prior + 1
+            -- a dataframe task would normally scaffold-insert first; on a
+            -- continuation the scaffold is skipped.
+            readIORef calls >>= (`shouldBe` [])
 
 openBudget :: EpisodeBudget
 openBudget = defaultBudget{ebMaxRepairs = maxBound, ebDeadlineSecs = 1 / 0}

@@ -2,15 +2,15 @@
 
 {- | Live-session introspection tools, split from the former @ghci_query@
 multiplexer into single-intent tools (@list_bindings@, @check_type@,
-@find_by_type@, @describe_function@), plus the static @api_reference@ card and
-'explore_result' drill-down into handles returned by other tools.
+@find_by_type@, @describe_function@), plus 'explore_result' drill-down into
+handles returned by other tools. (@api_reference@ lives in the sibling
+"Sabela.AI.Capabilities.ApiRef".)
 -}
 module Sabela.AI.Capabilities.Query (
     execListBindings,
     execCheckType,
     execFindByType,
     execDescribeFunction,
-    execApiReference,
     execExploreResult,
     execPeekData,
 
@@ -25,7 +25,7 @@ module Sabela.AI.Capabilities.Query (
 
 import Control.Exception (try)
 import Control.Exception.Base (IOException)
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
 import Data.Char (isUpper)
 import Data.Maybe (fromMaybe)
@@ -35,7 +35,7 @@ import qualified Data.Text.IO as TIO
 import System.Directory (canonicalizePath)
 import System.FilePath (normalise, splitDirectories, (</>))
 
-import Sabela.AI.Capabilities.Util (field, fieldInt, fieldText)
+import Sabela.AI.Capabilities.Util (fieldInt, fieldText)
 import Sabela.AI.Handles (
     HandleId (..),
     LargeResult (..),
@@ -46,7 +46,6 @@ import Sabela.AI.Handles (
     tailLines,
  )
 import Sabela.AI.PeekData (peekData, peekResultJSON)
-import Sabela.AI.ReferenceCard (sliceApiReference)
 import Sabela.AI.Store
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
@@ -213,14 +212,6 @@ execDescribeFunction app input = do
         else withBackend app $ \backend -> do
             result <- sbQueryDoc backend name
             pure (guidedOutcome ["name" .= name] result)
-
-execApiReference :: Value -> IO ToolOutcome
-execApiReference input = do
-    let mName = case field "module" input of
-            Just (String s) -> s
-            _ -> ""
-        body = sliceApiReference mName
-    pure $ okOutcome $ object ["module" .= mName, "reference" .= body]
 
 execExploreResult :: AIStore -> Value -> IO ToolOutcome
 execExploreResult store input = do

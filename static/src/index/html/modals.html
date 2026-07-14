@@ -27,17 +27,36 @@
       Enter your Anthropic API key to enable the AI assistant. Your key is stored in your workspace and never sent
       anywhere except Anthropic's API.
     </p>
-    <label for="ai-modal-key">
-      API key
-      <span id="ai-modal-key-hint" style="color: var(--fg-dim)"></span>
-    </label>
-    <input type="password" id="ai-modal-key" placeholder="sk-ant-..." autocomplete="off" />
+    <label for="ai-modal-provider">Provider</label>
+    <select id="ai-modal-provider" onchange="onProviderChange()">
+      <option value="anthropic">Anthropic (Claude)</option>
+      <option value="ollama">Ollama (local)</option>
+    </select>
+    <div id="ai-modal-key-wrap">
+      <label for="ai-modal-key">
+        API key
+        <span id="ai-modal-key-hint" style="color: var(--fg-dim)"></span>
+      </label>
+      <input type="password" id="ai-modal-key" placeholder="sk-ant-..." autocomplete="off" />
+    </div>
     <label for="ai-modal-model">Model</label>
     <select id="ai-modal-model" onchange="onModelChange()"></select>
     <div class="model-desc" id="ai-modal-model-desc"></div>
     <div class="custom-model" id="ai-modal-custom-wrap">
       <label for="ai-modal-custom">Custom model ID</label>
       <input type="text" id="ai-modal-custom" placeholder="claude-..." />
+    </div>
+    <label for="ai-modal-toollimit">
+      Tool-use limit
+      <span style="color: var(--fg-dim)">(tool-call rounds per turn)</span>
+    </label>
+    <input type="number" id="ai-modal-toollimit" min="1" max="1000" step="1" placeholder="25" />
+    <div id="ai-modal-numctx-wrap">
+      <label for="ai-modal-numctx">
+        Context size
+        <span style="color: var(--fg-dim)">(num_ctx tokens)</span>
+      </label>
+      <input type="number" id="ai-modal-numctx" min="512" max="1048576" step="512" placeholder="32768" />
     </div>
     <div class="ai-modal-actions">
       <button class="secondary" onclick="closeAIModal()">Cancel</button>

@@ -20,6 +20,7 @@ import System.Process (callProcess)
 
 import Eval.Agent (EpisodeBudget (..), defaultBudget)
 import Eval.Chat (runChat)
+import Eval.Preflight (ensureOllama)
 import Siza.Transport (Conn (..), Env (..), newConn)
 
 main :: IO ()
@@ -60,8 +61,9 @@ runChatSession = do
     maxTurns <- maybe 100 read <$> lookupEnv "SIZA_EVAL_MAX_TURNS"
     budget <- envBudget
     mgr <- newTlsManager
+    ensureOllama mgr
     conn <- newConn
-    let base = fromMaybe "http://localhost:3007" (envSabelaUrl (connEnv conn))
+    let base = fromMaybe "http://localhost:3000" (envSabelaUrl (connEnv conn))
     runChat debug budget maxTurns mgr conn base model
 
 {- | Episode budget over 'defaultBudget' with chat-generous defaults (50 repair

@@ -8,7 +8,64 @@
   --sidebar-w: 240px;
   --panel-w: 320px;
 
-  /* default: Nord — Polar Night + Frost (frost-cyan accent) */
+  /* default identity: Great Zimbabwe — warm granite dark, Ndebele beadwork
+     accents. Gold = brand/UI/respond, green = execute. Mirrored in the
+     [data-theme='gzim'] block below so the picker can round-trip to it. */
+  --bg: #1b1a17;
+  --bg-cell: #232019;
+  --bg-output: #1f1d18;
+  --bg-sidebar: #151310;
+  --bg-panel: #151310;
+  --fg: #e9e3d6;
+  --fg-dim: #8c8474;
+  --fg-bright: #fbf7ee;
+  --accent: #d69a3c;
+  --accent-rgb: 214, 154, 60;
+  --accent-soft: #ecc887;
+  --accent-dim: #3a3121;
+  --green: #57a95c;
+  --red: #c85a4f;
+  --yellow: #e0b24a;
+  --peach: #cf7a55;
+  --mauve: #a678a1;
+  --border: #2e2a22;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --error-tooltip-bg: #33241f;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #1b1a17;
+}
+
+/* Great Zimbabwe — the default. Warm stone ground, gold + green Ndebele
+   beadwork accents; a dentelle chevron frieze is the signature. */
+:root[data-theme='gzim'] {
+  --bg: #1b1a17;
+  --bg-cell: #232019;
+  --bg-output: #1f1d18;
+  --bg-sidebar: #151310;
+  --bg-panel: #151310;
+  --fg: #e9e3d6;
+  --fg-dim: #8c8474;
+  --fg-bright: #fbf7ee;
+  --accent: #d69a3c;
+  --accent-rgb: 214, 154, 60;
+  --accent-soft: #ecc887;
+  --accent-dim: #3a3121;
+  --green: #57a95c;
+  --red: #c85a4f;
+  --yellow: #e0b24a;
+  --peach: #cf7a55;
+  --mauve: #a678a1;
+  --border: #2e2a22;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --error-tooltip-bg: #33241f;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #1b1a17;
+}
+
+/* legacy: Nord — Polar Night + Frost (frost-cyan accent) */
+:root[data-theme='nord'] {
   --bg: #2e3440;
   --bg-cell: #3b4252;
   --bg-output: #353c4a;
@@ -187,15 +244,10 @@ body {
 }
 body {
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 14px;
   color: var(--fg);
-  background: radial-gradient(
-      1200px 540px at 72% -14%,
-      rgba(var(--accent-rgb), 0.07),
-      transparent 72%
-    ),
-    var(--bg);
-  line-height: 1.65;
+  background: var(--bg);
+  line-height: 1.55;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;

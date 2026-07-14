@@ -6,6 +6,7 @@ import qualified Test.AiDocSpec as AiDocSpec
 import qualified Test.AiHandlesSpec as AiHandlesSpec
 import qualified Test.AiHistorySpec as AiHistorySpec
 import qualified Test.AiRestSpec as AiRestSpec
+import qualified Test.ApiRefSpec as ApiRefSpec
 import qualified Test.ApiWireSpec as ApiWireSpec
 import qualified Test.AtomicAdmissionSpec as AtomicAdmissionSpec
 import qualified Test.AwaitIdleSpec as AwaitIdleSpec
@@ -21,6 +22,7 @@ import qualified Test.ClassifyErrorSpec as ClassifyErrorSpec
 import qualified Test.CompactResultSpec as CompactResultSpec
 import qualified Test.CompileEscalationSpec as CompileEscalationSpec
 import qualified Test.CompiledPlanSpec as CompiledPlanSpec
+import qualified Test.ConfigWireSpec as ConfigWireSpec
 import qualified Test.ConfigurableTimeoutSpec as ConfigurableTimeoutSpec
 import qualified Test.CycleMsgSpec as CycleMsgSpec
 import qualified Test.DefaultExtsSpec as DefaultExtsSpec
@@ -54,6 +56,7 @@ import qualified Test.NotebookExportSpec as NotebookExportSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.NotebookViolationSpec as NotebookViolationSpec
+import qualified Test.OrchestratorLoopSpec as OrchestratorLoopSpec
 import qualified Test.OrphanSpec as OrphanSpec
 import qualified Test.OutputChokepointWireSpec as OutputChokepointWireSpec
 import qualified Test.OutputSpec as OutputSpec
@@ -63,6 +66,8 @@ import qualified Test.PlatformSpec as PlatformSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.ProvenanceWireSpec as ProvenanceWireSpec
+import qualified Test.ProviderAdapterSpec as ProviderAdapterSpec
+import qualified Test.ProviderSelectSpec as ProviderSelectSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
 import qualified Test.RenderSpec as RenderSpec
@@ -141,6 +146,11 @@ main = do
         AiHistorySpec.spec
         AiRestSpec.spec
         CacheControlSpec.spec
+        ProviderAdapterSpec.spec
+        ConfigWireSpec.spec
+        OrchestratorLoopSpec.spec
+        ProviderSelectSpec.spec
+        ApiRefSpec.spec
         CompactResultSpec.spec
         OutputChokepointWireSpec.spec
         CycleMsgSpec.spec

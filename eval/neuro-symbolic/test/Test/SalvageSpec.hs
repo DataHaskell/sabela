@@ -5,6 +5,7 @@ module Test.SalvageSpec (spec) where
 import Data.Aeson (object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text, isInfixOf)
+import qualified Data.Text as T
 import Sabela.AI.Types (ToolOutcome (..))
 import Test.Hspec
 
@@ -18,7 +19,7 @@ import Eval.Agent (
     runEpisodeWith,
  )
 import Eval.Ollama (ToolCall (..), Turn (..))
-import Eval.Salvage (salvageCell)
+import Eval.Salvage (salvageCell, salvageInsertSource)
 import Eval.Task (Grader (..), Task (..))
 
 spec :: Spec
@@ -52,6 +53,25 @@ spec = describe "Rank 3 code-fence salvage" $ do
         it "leaves real Haskell that merely mentions a tool name untouched" $
             salvageCell "```haskell\nresult = read_cell 1 ++ go (x)\n```"
                 `shouldBe` Just "result = read_cell 1 ++ go (x)"
+
+    describe "salvageInsertSource (product policy)" $ do
+        it "salvages one fenced block when no tool ran this turn" $
+            salvageInsertSource 0 "here:\n```haskell\ntotal = 600\n```"
+                `shouldBe` Just "total = 600"
+        it "does not salvage once any tool ran this turn" $
+            salvageInsertSource 1 "```haskell\ntotal = 600\n```" `shouldBe` Nothing
+        it "rejects ambiguous multiple blocks" $
+            salvageInsertSource
+                0
+                "```haskell\nx = 1\n```\nand\n```haskell\ny = 2\n```"
+                `shouldBe` Nothing
+        it "returns Nothing when there is no fenced block" $
+            salvageInsertSource 0 "I would define total as a fold." `shouldBe` Nothing
+        it "rejects a block over the size cap" $
+            salvageInsertSource
+                0
+                ("```haskell\n" <> T.replicate 5000 "x" <> "\n```")
+                `shouldBe` Nothing
 
     describe "runEpisodeWith (salvage harvests an echoed cell)" $ do
         it "harvests a block the model echoed without inserting, then stops done" $ do

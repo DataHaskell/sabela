@@ -18,6 +18,33 @@
   animation: cell-respond 1.05s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
+/* While a cell runs, a column of gold chevrons flows down its left spine —
+     the same dentelle motif as the toolbar frieze, animated as "response". */
+.cell.code.running::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  z-index: 6;
+  pointer-events: none;
+  background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='6'%3E%3Cpath d='M0 0 L1.5 3 L3 0 Z' fill='%23000'/%3E%3C/svg%3E")
+    repeat-y;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='6'%3E%3Cpath d='M0 0 L1.5 3 L3 0 Z' fill='%23000'/%3E%3C/svg%3E")
+    repeat-y;
+  -webkit-mask-size: 3px 6px;
+  mask-size: 3px 6px;
+  animation: spine-flow 0.8s linear infinite;
+}
+@keyframes spine-flow {
+  to {
+    -webkit-mask-position: 0 6px;
+    mask-position: 0 6px;
+  }
+}
+
 /* One-time staggered reveal on first paint (gated by .intro, which the
      renderer adds only on the initial load — never on reactive re-renders). */
 @keyframes cell-rise {
@@ -69,6 +96,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cell.responding,
+  .cell.code.running::before,
   .notebook.intro > * {
     animation: none !important;
   }

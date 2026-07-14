@@ -12,6 +12,7 @@ import Eval.Agent (defaultBudget)
 import Eval.Bench (BenchConfig (..), renderReportFull, runBench)
 import qualified Eval.Corpus as Corpus
 import qualified Eval.Corpus.Reasoning as Reasoning
+import Eval.Preflight (ensureOllama)
 import Eval.Task (Grader (..), Task (..))
 import Siza.Transport (newConn)
 
@@ -104,6 +105,7 @@ main = do
     transcripts <-
         fromMaybe "/tmp/siza-bench-transcripts" <$> lookupEnv "SIZA_BENCH_TRANSCRIPTS"
     mgr <- newTlsManager
+    ensureOllama mgr
     conn <- newConn
     let cfg = BenchConfig mgr conn model defaultBudget 12 bin 3100 transcripts
     TIO.putStrLn

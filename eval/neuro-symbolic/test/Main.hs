@@ -12,6 +12,9 @@ import qualified Test.GrammarSpec as GrammarSpec
 import qualified Test.HealthGateSpec as HealthGateSpec
 import qualified Test.HoleFitSpec as HoleFitSpec
 import Test.Hspec (hspec)
+import qualified Test.OllamaBodySpec as OllamaBodySpec
+import qualified Test.PreflightSpec as PreflightSpec
+import qualified Test.ProviderMapSpec as ProviderMapSpec
 import qualified Test.ReasoningCorpusSpec as ReasoningCorpusSpec
 import qualified Test.RepairBudgetSpec as RepairBudgetSpec
 import qualified Test.RepairSpec as RepairSpec
@@ -36,6 +39,9 @@ main = hspec $ do
     GrammarSpec.spec
     HoleFitSpec.spec
     HealthGateSpec.spec
+    OllamaBodySpec.spec
+    ProviderMapSpec.spec
+    PreflightSpec.spec
     ReasoningCorpusSpec.spec
     RepairBudgetSpec.spec
     RepairSpec.spec

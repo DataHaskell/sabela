@@ -19,6 +19,7 @@ async function sendChatMessage() {
   currentAssistantBubble = null;
   document.getElementById('chat-send').style.display = 'none';
   document.getElementById('chat-cancel').style.display = 'inline-block';
+  showChatThinking();
   // Send to backend
   try {
     await fetch('/api/chat', {
@@ -33,6 +34,7 @@ async function sendChatMessage() {
 }
 
 function appendChatTextDelta(text) {
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   if (!currentAssistantBubble) {
     currentAssistantBubble = document.createElement('div');
@@ -52,6 +54,7 @@ function appendChatTextDelta(text) {
 }
 
 function showChatToolCall(toolCallId, toolName, input) {
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-tool-indicator active';
@@ -84,6 +87,7 @@ function revealChatPanel() {
 
 function showChatEditProposal(editId, cellId, oldSource, newSource) {
   revealChatPanel();
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-edit-proposal';
@@ -147,6 +151,7 @@ function resolveChatEditProposal(editId, cellId, status) {
 }
 
 function showChatError(message) {
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-error';
@@ -155,7 +160,26 @@ function showChatError(message) {
   container.scrollTop = container.scrollHeight;
 }
 
+// A placeholder bubble shown from turn start until the first content arrives, so
+// a non-streaming provider (Ollama) doesn't look dead while it generates.
+function showChatThinking() {
+  const container = document.getElementById('chat-messages');
+  if (!container || document.getElementById('chat-thinking')) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg assistant chat-thinking';
+  div.id = 'chat-thinking';
+  div.textContent = 'Thinking';
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function removeChatThinking() {
+  const el = document.getElementById('chat-thinking');
+  if (el) el.remove();
+}
+
 function finishChatTurn(label) {
+  removeChatThinking();
   chatStreaming = false;
   currentAssistantBubble = null;
   document.getElementById('chat-send').style.display = 'inline-block';

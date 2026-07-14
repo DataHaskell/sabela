@@ -15,6 +15,7 @@ module Sabela.Server.Ai (
     -- * Config
     getAIConfigH,
     setAIConfigH,
+    knownModels,
 
     -- * REST bridge
     aiHealthH,
@@ -24,7 +25,7 @@ module Sabela.Server.Ai (
 ) where
 
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Result (..), Value (..), fromJSON, object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (for_)
@@ -42,7 +43,7 @@ import Sabela.AI.Orchestrator (
     handleClearChat,
  )
 import Sabela.AI.Provenance (Actor (..), recordToolCall)
-import Sabela.AI.Store (getAIConfig)
+import Sabela.AI.Store (getAIConfig, getAIProvider)
 import qualified Sabela.AI.Store as AIStore
 import Sabela.AI.Types (EditId (..), toolOutcomeIsError, toolOutcomeValue)
 import Sabela.Anthropic.Types (AnthropicConfig (..), ToolDef, newCancelToken)
@@ -53,7 +54,10 @@ import Sabela.Model
 import Sabela.State (
     AIConfigUpdate (..),
     App (..),
+    getAINumCtx,
     getAIStore,
+    getAIToolLimit,
+    providerNameOf,
     resolveCliHandleStore,
     setAIStore,
     updateAIConfig,
@@ -67,23 +71,30 @@ import Sabela.State.NotebookStore (readNotebook)
 
 getAIConfigH :: App -> Handler Value
 getAIConfigH app = liftIO $ do
+    numCtx <- getAINumCtx app
+    toolLimit <- getAIToolLimit app
+    let knobs = ["numCtx" .= numCtx, "toolLimit" .= toolLimit]
     mStore <- getAIStore app
     case mStore of
         Nothing ->
             pure $
-                object
+                object $
                     [ "configured" .= False
                     , "model" .= (Nothing :: Maybe Text)
                     , "models" .= knownModels
                     ]
+                        ++ knobs
         Just store -> do
             cfg <- getAIConfig store
+            provider <- providerNameOf <$> getAIProvider store
             pure $
-                object
+                object $
                     [ "configured" .= True
+                    , "provider" .= provider
                     , "model" .= acModel cfg
                     , "models" .= knownModels
                     ]
+                        ++ knobs
 
 -- | Suggested model IDs shown in the picker. Custom values are also accepted.
 knownModels :: [Value]
@@ -109,32 +120,60 @@ knownModels =
 
 setAIConfigH :: App -> Value -> Handler Value
 setAIConfigH app (Object o) = liftIO $ do
-    let mKey = case KM.lookup (Key.fromText "apiKey") o of
+    let strField k = case KM.lookup (Key.fromText k) o of
             Just (String s) | not (T.null s) -> Just s
             _ -> Nothing
-        mModel = case KM.lookup (Key.fromText "model") o of
-            Just (String s) | not (T.null s) -> Just s
+        intField k = case KM.lookup (Key.fromText k) o of
+            Just v -> jsonInt v
             _ -> Nothing
-    if isNothing mKey && isNothing mModel
-        then pure $ errorJson "apiKey or model is required"
+        mKey = strField "apiKey"
+        mModel = strField "model"
+        mProvider = strField "provider"
+        mNumCtx = intField "numCtx"
+        mToolLimit = intField "toolLimit"
+    if all isNothing [mKey, mModel, mProvider]
+        && isNothing mNumCtx
+        && isNothing mToolLimit
+        then
+            pure $ errorJson "apiKey, model, provider, numCtx, or toolLimit is required"
         else do
             result <-
                 updateAIConfig
                     app
-                    AIConfigUpdate{aicuApiKey = mKey, aicuModel = mModel}
+                    AIConfigUpdate
+                        { aicuApiKey = mKey
+                        , aicuModel = mModel
+                        , aicuProvider = mProvider
+                        , aicuNumCtx = mNumCtx
+                        , aicuToolLimit = mToolLimit
+                        }
             case result of
                 Right () -> do
+                    numCtx <- getAINumCtx app
+                    toolLimit <- getAIToolLimit app
                     mStore <- getAIStore app
-                    currentModel <- case mStore of
-                        Just store -> Just . acModel <$> getAIConfig store
-                        Nothing -> pure Nothing
+                    (curModel, curProvider) <- case mStore of
+                        Just store -> do
+                            m <- acModel <$> getAIConfig store
+                            p <- providerNameOf <$> getAIProvider store
+                            pure (Just m, Just p)
+                        Nothing -> pure (Nothing, Nothing)
                     pure $
                         object
                             [ "configured" .= True
-                            , "model" .= currentModel
+                            , "model" .= curModel
+                            , "provider" .= curProvider
+                            , "numCtx" .= numCtx
+                            , "toolLimit" .= toolLimit
                             ]
                 Left err -> pure $ errorJson err
 setAIConfigH _ _ = pure $ errorJson "Invalid request body"
+
+-- | A JSON value as an @Int@ (via aeson's own decoder); 'Nothing' if not integral.
+jsonInt :: Value -> Maybe Int
+jsonInt v = case fromJSON v of
+    Success i -> Just i
+    Error _ -> Nothing
 
 ------------------------------------------------------------------------
 -- Chat (AI assistant) handlers

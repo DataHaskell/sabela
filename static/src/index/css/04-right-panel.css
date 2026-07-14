@@ -1,9 +1,13 @@
 /* ── Right panel (info / examples) ─────────── */
+/* Floating card, matching the pill nav and the file sidebar. */
 .right-panel {
   width: var(--panel-w);
   min-width: var(--panel-w);
+  margin: 4px 12px 10px 4px;
   background: var(--bg-sidebar);
-  border-left: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
   font-family: var(--font-mono);
@@ -24,7 +28,9 @@
 .right-panel.collapsed {
   width: 0;
   min-width: 0;
-  border-left: none;
+  margin: 0;
+  border: none;
+  box-shadow: none;
 }
 
 /* On narrow / split-screen viewports the panel floats over the notebook
@@ -37,6 +43,8 @@
     bottom: 0;
     z-index: 60;
     max-width: 92vw;
+    margin: 0;
+    border-radius: 0;
   }
   .right-panel.chat-active {
     width: min(480px, 92vw);
@@ -201,6 +209,14 @@
   100% {
     content: '...';
   }
+}
+.chat-msg.assistant.chat-thinking {
+  color: var(--fg-dim);
+  font-style: italic;
+}
+.chat-msg.assistant.chat-thinking::after {
+  content: '...';
+  animation: dots 1.5s infinite;
 }
 .chat-edit-proposal {
   background: var(--bg-cell);

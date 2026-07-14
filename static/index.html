@@ -7,7 +7,7 @@
     <title>Sabela Notebook</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%231b1a17'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23d69a3c'%20stroke-width='3'%20fill='none'%20stroke-linecap='square'%20stroke-linejoin='miter'/%3E%3Cpath%20d='M6%2029L9%2026L12%2029L15%2026L18%2029L21%2026L24%2029'%20stroke='%23d69a3c'%20stroke-width='1.6'%20fill='none'/%3E%3C/svg%3E"
     />
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
@@ -22,14 +22,14 @@
 // Theme bootstrap — runs before any rendering to avoid FOUC.
 // Default palette is the original blue (Original Dark / Light by OS).
 (() => {
-  const KNOWN = ['warm', 'nord', 'nord-light', 'nord-aurora', 'nord-ember', 'vscode'];
+  const KNOWN = ['gzim', 'warm', 'nord', 'nord-light', 'nord-aurora', 'nord-ember', 'vscode'];
   const stored = localStorage.getItem('sabela-theme');
   let theme;
   if (KNOWN.includes(stored)) {
     theme = stored;
   } else {
-    // Default to the shared Warm Paper palette for everyone.
-    theme = 'warm';
+    // Default to the Great Zimbabwe palette for everyone.
+    theme = 'gzim';
   }
   document.documentElement.dataset.theme = theme;
   window.__sabelaThemePinned = !!stored;
@@ -46,7 +46,64 @@
   --sidebar-w: 240px;
   --panel-w: 320px;
 
-  /* default: Nord — Polar Night + Frost (frost-cyan accent) */
+  /* default identity: Great Zimbabwe — warm granite dark, Ndebele beadwork
+     accents. Gold = brand/UI/respond, green = execute. Mirrored in the
+     [data-theme='gzim'] block below so the picker can round-trip to it. */
+  --bg: #1b1a17;
+  --bg-cell: #232019;
+  --bg-output: #1f1d18;
+  --bg-sidebar: #151310;
+  --bg-panel: #151310;
+  --fg: #e9e3d6;
+  --fg-dim: #8c8474;
+  --fg-bright: #fbf7ee;
+  --accent: #d69a3c;
+  --accent-rgb: 214, 154, 60;
+  --accent-soft: #ecc887;
+  --accent-dim: #3a3121;
+  --green: #57a95c;
+  --red: #c85a4f;
+  --yellow: #e0b24a;
+  --peach: #cf7a55;
+  --mauve: #a678a1;
+  --border: #2e2a22;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --error-tooltip-bg: #33241f;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #1b1a17;
+}
+
+/* Great Zimbabwe — the default. Warm stone ground, gold + green Ndebele
+   beadwork accents; a dentelle chevron frieze is the signature. */
+:root[data-theme='gzim'] {
+  --bg: #1b1a17;
+  --bg-cell: #232019;
+  --bg-output: #1f1d18;
+  --bg-sidebar: #151310;
+  --bg-panel: #151310;
+  --fg: #e9e3d6;
+  --fg-dim: #8c8474;
+  --fg-bright: #fbf7ee;
+  --accent: #d69a3c;
+  --accent-rgb: 214, 154, 60;
+  --accent-soft: #ecc887;
+  --accent-dim: #3a3121;
+  --green: #57a95c;
+  --red: #c85a4f;
+  --yellow: #e0b24a;
+  --peach: #cf7a55;
+  --mauve: #a678a1;
+  --border: #2e2a22;
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --error-tooltip-bg: #33241f;
+  --output-html-bg: #ffffff;
+  --output-html-fg: #1b1a17;
+}
+
+/* legacy: Nord — Polar Night + Frost (frost-cyan accent) */
+:root[data-theme='nord'] {
   --bg: #2e3440;
   --bg-cell: #3b4252;
   --bg-output: #353c4a;
@@ -225,15 +282,10 @@ body {
 }
 body {
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 14px;
   color: var(--fg);
-  background: radial-gradient(
-      1200px 540px at 72% -14%,
-      rgba(var(--accent-rgb), 0.07),
-      transparent 72%
-    ),
-    var(--bg);
-  line-height: 1.65;
+  background: var(--bg);
+  line-height: 1.55;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
@@ -321,15 +373,20 @@ body::before {
 }
 
 /* ── Toolbar ───────────────────────────────── */
+/* Floating pill toolbar: detached from the edges, fully rounded, lifted with a
+   soft shadow so it reads as a command bar hovering over the workspace. */
 .toolbar {
   flex-shrink: 0;
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 7px;
+  margin: 10px 12px 4px;
+  padding: 6px 8px 6px 16px;
   background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
   font-family: var(--font-mono);
   font-size: 13px;
 }
@@ -344,9 +401,9 @@ body::before {
   white-space: nowrap;
   max-width: 200px;
 }
-/* The warm-lambda brand mark, matching the hub front page (terracotta λ, mono). */
+/* The lambda brand mark (Haskell), in the theme's gold accent. */
 .toolbar-title .lam {
-  color: #c2674a;
+  color: var(--accent);
   font-family: var(--font-mono);
 }
 .toolbar button,
@@ -367,21 +424,22 @@ body::before {
   background: var(--bg-cell);
   border-color: var(--accent-dim);
 }
+/* Run is the one saturated signal — Ndebele green, as in Replit/IntelliJ. */
 .toolbar .primary {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
-  font-weight: 500;
-  height: 30px;
+  background: var(--green);
+  color: #10140f;
+  border-color: var(--green);
+  font-weight: 600;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 14px;
+  padding: 0 13px;
 }
 .toolbar .primary:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent-soft);
-  color: #000;
+  background: color-mix(in srgb, var(--green) 82%, #ffffff);
+  border-color: color-mix(in srgb, var(--green) 82%, #ffffff);
+  color: #10140f;
   opacity: 1;
 }
 .toolbar .sep {
@@ -508,11 +566,16 @@ body::before {
 }
 
 /* ── Sidebar ───────────────────────────────── */
+/* Floating card, matching the pill nav: detached from the edges, rounded,
+   lifted by a soft shadow. */
 .sidebar {
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
+  margin: 4px 4px 10px 12px;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
   font-family: var(--font-mono);
@@ -525,8 +588,10 @@ body::before {
 .sidebar.collapsed {
   width: 0;
   min-width: 0;
+  margin: 0;
   overflow: hidden;
-  border-right: none;
+  border: none;
+  box-shadow: none;
 }
 .sidebar-header {
   display: flex;
@@ -697,11 +762,15 @@ body::before {
   opacity: 0.85;
 }
 /* ── Right panel (info / examples) ─────────── */
+/* Floating card, matching the pill nav and the file sidebar. */
 .right-panel {
   width: var(--panel-w);
   min-width: var(--panel-w);
+  margin: 4px 12px 10px 4px;
   background: var(--bg-sidebar);
-  border-left: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
   font-family: var(--font-mono);
@@ -722,7 +791,9 @@ body::before {
 .right-panel.collapsed {
   width: 0;
   min-width: 0;
-  border-left: none;
+  margin: 0;
+  border: none;
+  box-shadow: none;
 }
 
 /* On narrow / split-screen viewports the panel floats over the notebook
@@ -735,6 +806,8 @@ body::before {
     bottom: 0;
     z-index: 60;
     max-width: 92vw;
+    margin: 0;
+    border-radius: 0;
   }
   .right-panel.chat-active {
     width: min(480px, 92vw);
@@ -899,6 +972,14 @@ body::before {
   100% {
     content: '...';
   }
+}
+.chat-msg.assistant.chat-thinking {
+  color: var(--fg-dim);
+  font-style: italic;
+}
+.chat-msg.assistant.chat-thinking::after {
+  content: '...';
+  animation: dots 1.5s infinite;
 }
 .chat-edit-proposal {
   background: var(--bg-cell);
@@ -1371,13 +1452,13 @@ body::before {
   border-color: var(--accent-dim);
 }
 .cell.code.running {
-  border-color: var(--yellow);
+  border-color: var(--accent-dim);
 }
 .cell.code.has-error {
   border-color: var(--red);
 }
 .cell.code.dirty {
-  border-left: 3px solid var(--yellow);
+  border-left: 2px solid var(--accent);
 }
 .cell.code .cell-gutter {
   display: flex;
@@ -1555,7 +1636,7 @@ body::before {
   transition-delay: 200ms;
 }
 .cell-stream {
-  border-top: 1px solid var(--yellow);
+  border-top: 1px solid var(--accent);
   padding: 8px 14px;
   background: var(--bg-output);
   font-family: var(--font-mono);
@@ -1568,9 +1649,9 @@ body::before {
   margin: 0;
 }
 .cell-output.running-indicator {
-  color: var(--yellow);
+  color: var(--accent);
   font-style: italic;
-  border-top: 1px solid var(--yellow);
+  border-top: 1px solid var(--accent);
 }
 .cell-output.mime-html {
   white-space: normal;
@@ -2272,14 +2353,17 @@ input:focus-visible {
   color: var(--red);
 }
 /* ── Icon system ────────────────────────────── */
+/* Geometric IDE icons: squared caps + mitred joins (not Lucide-round) so the
+   set reads hard-edged, echoing the Ndebele/Great Zimbabwe chevron vocabulary. */
 .icon-svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.75;
   fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-miterlimit: 6;
   flex-shrink: 0;
   vertical-align: -3px;
 }
@@ -2302,9 +2386,9 @@ button.icon-btn,
   background: transparent;
   border: 1px solid transparent !important;
   color: var(--fg-dim);
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
   cursor: pointer;
   padding: 0;
   transition:
@@ -2529,6 +2613,33 @@ button.palette-trigger kbd {
   animation: cell-respond 1.05s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
+/* While a cell runs, a column of gold chevrons flows down its left spine —
+     the same dentelle motif as the toolbar frieze, animated as "response". */
+.cell.code.running::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  z-index: 6;
+  pointer-events: none;
+  background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='6'%3E%3Cpath d='M0 0 L1.5 3 L3 0 Z' fill='%23000'/%3E%3C/svg%3E")
+    repeat-y;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='6'%3E%3Cpath d='M0 0 L1.5 3 L3 0 Z' fill='%23000'/%3E%3C/svg%3E")
+    repeat-y;
+  -webkit-mask-size: 3px 6px;
+  mask-size: 3px 6px;
+  animation: spine-flow 0.8s linear infinite;
+}
+@keyframes spine-flow {
+  to {
+    -webkit-mask-position: 0 6px;
+    mask-position: 0 6px;
+  }
+}
+
 /* One-time staggered reveal on first paint (gated by .intro, which the
      renderer adds only on the initial load — never on reactive re-renders). */
 @keyframes cell-rise {
@@ -2580,6 +2691,7 @@ button.palette-trigger kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .cell.responding,
+  .cell.code.running::before,
   .notebook.intro > * {
     animation: none !important;
   }
@@ -2729,7 +2841,10 @@ button.palette-trigger kbd {
           <line x1="4.93" y1="19.07" x2="6.34" y2="17.66" />
           <line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
         </symbol>
-        <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 4 A8 8 0 0 1 12 20 Z" fill="currentColor" stroke="none" />
+        </symbol>
         <symbol id="i-download" viewBox="0 0 24 24">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <polyline points="7 10 12 15 17 10" />
@@ -2825,17 +2940,36 @@ button.palette-trigger kbd {
       Enter your Anthropic API key to enable the AI assistant. Your key is stored in your workspace and never sent
       anywhere except Anthropic's API.
     </p>
-    <label for="ai-modal-key">
-      API key
-      <span id="ai-modal-key-hint" style="color: var(--fg-dim)"></span>
-    </label>
-    <input type="password" id="ai-modal-key" placeholder="sk-ant-..." autocomplete="off" />
+    <label for="ai-modal-provider">Provider</label>
+    <select id="ai-modal-provider" onchange="onProviderChange()">
+      <option value="anthropic">Anthropic (Claude)</option>
+      <option value="ollama">Ollama (local)</option>
+    </select>
+    <div id="ai-modal-key-wrap">
+      <label for="ai-modal-key">
+        API key
+        <span id="ai-modal-key-hint" style="color: var(--fg-dim)"></span>
+      </label>
+      <input type="password" id="ai-modal-key" placeholder="sk-ant-..." autocomplete="off" />
+    </div>
     <label for="ai-modal-model">Model</label>
     <select id="ai-modal-model" onchange="onModelChange()"></select>
     <div class="model-desc" id="ai-modal-model-desc"></div>
     <div class="custom-model" id="ai-modal-custom-wrap">
       <label for="ai-modal-custom">Custom model ID</label>
       <input type="text" id="ai-modal-custom" placeholder="claude-..." />
+    </div>
+    <label for="ai-modal-toollimit">
+      Tool-use limit
+      <span style="color: var(--fg-dim)">(tool-call rounds per turn)</span>
+    </label>
+    <input type="number" id="ai-modal-toollimit" min="1" max="1000" step="1" placeholder="25" />
+    <div id="ai-modal-numctx-wrap">
+      <label for="ai-modal-numctx">
+        Context size
+        <span style="color: var(--fg-dim)">(num_ctx tokens)</span>
+      </label>
+      <input type="number" id="ai-modal-numctx" min="512" max="1048576" step="512" placeholder="32768" />
     </div>
     <div class="ai-modal-actions">
       <button class="secondary" onclick="closeAIModal()">Cancel</button>
@@ -5619,6 +5753,7 @@ function kbd(...parts) {
 }
 // ── Theme handling ───────────────────────────────────────────────
 const THEMES = [
+  { id: 'gzim', name: 'Great Zimbabwe', mode: 'dark', bg: '#1b1a17', accent: '#d69a3c' },
   { id: 'warm', name: 'Warm Paper', mode: 'light', bg: '#f7f3ec', accent: '#c2674a' },
   { id: 'nord', name: 'Nord', mode: 'dark', bg: '#2e3440', accent: '#88c0d0' },
   { id: 'nord-light', name: 'Nord Light', mode: 'light', bg: '#eceff4', accent: '#5e81ac' },
@@ -5635,7 +5770,7 @@ const THEMES = [
 ];
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
-  return THEMES.some((x) => x.id === t) ? t : 'warm';
+  return THEMES.some((x) => x.id === t) ? t : 'gzim';
 }
 function themeMode(id) {
   return (THEMES.find((x) => x.id === id) || THEMES[0]).mode;
@@ -6149,6 +6284,10 @@ async function openAIModal() {
     aiModels = info.models || [];
     aiCurrentModel = info.model || null;
     populateModelSelect(aiModels, aiCurrentModel);
+    document.getElementById('ai-modal-provider').value = info.provider || 'anthropic';
+    document.getElementById('ai-modal-toollimit').value = info.toolLimit ?? '';
+    document.getElementById('ai-modal-numctx').value = info.numCtx ?? '';
+    onProviderChange();
     if (info.configured) {
       title.textContent = 'AI settings';
       desc.textContent = 'Change the model, or paste a new API key to replace the stored one.';
@@ -6161,8 +6300,29 @@ async function openAIModal() {
     }
   } catch (e) {
     populateModelSelect(aiModels, aiCurrentModel);
+    document.getElementById('ai-modal-provider').value = 'anthropic';
+    onProviderChange();
   }
   setTimeout(() => keyInput.focus(), 50);
+}
+
+// The API key is only needed for Anthropic; Ollama is a local server. Also nudge
+// the model away from a Claude id when the user first switches to Ollama.
+function onProviderChange() {
+  const provider = document.getElementById('ai-modal-provider').value;
+  const isOllama = provider === 'ollama';
+  document.getElementById('ai-modal-key-wrap').style.display = isOllama ? 'none' : '';
+  // num_ctx is an Ollama concept; Anthropic has a fixed large context window.
+  document.getElementById('ai-modal-numctx-wrap').style.display = isOllama ? '' : 'none';
+  if (isOllama) {
+    const sel = document.getElementById('ai-modal-model');
+    if (sel.value === CUSTOM_MODEL_VALUE || sel.value.startsWith('claude')) {
+      sel.value = CUSTOM_MODEL_VALUE;
+      const custom = document.getElementById('ai-modal-custom');
+      if (!custom.value.trim()) custom.value = 'gpt-oss:20b';
+      onModelChange();
+    }
+  }
 }
 
 function populateModelSelect(models, current) {
@@ -6214,11 +6374,12 @@ async function submitAIModal() {
   const sel = document.getElementById('ai-modal-model');
   const customInput = document.getElementById('ai-modal-custom');
   const errEl = document.getElementById('ai-modal-error');
+  const provider = document.getElementById('ai-modal-provider').value;
   const key = keyInput.value.trim();
   let model = sel.value;
   if (model === CUSTOM_MODEL_VALUE) model = customInput.value.trim();
 
-  if (!aiConfigured && !key) {
+  if (provider !== 'ollama' && !aiConfigured && !key) {
     errEl.textContent = 'Please enter an API key';
     errEl.style.display = 'block';
     return;
@@ -6228,8 +6389,14 @@ async function submitAIModal() {
     errEl.style.display = 'block';
     return;
   }
-  const body = { model };
+  const body = { model, provider };
   if (key) body.apiKey = key;
+  const toolLimit = parseInt(document.getElementById('ai-modal-toollimit').value, 10);
+  if (Number.isFinite(toolLimit) && toolLimit > 0) body.toolLimit = toolLimit;
+  if (provider === 'ollama') {
+    const numCtx = parseInt(document.getElementById('ai-modal-numctx').value, 10);
+    if (Number.isFinite(numCtx) && numCtx > 0) body.numCtx = numCtx;
+  }
   try {
     const resp = await fetch('/api/config/ai', {
       method: 'POST',
@@ -6297,6 +6464,7 @@ async function sendChatMessage() {
   currentAssistantBubble = null;
   document.getElementById('chat-send').style.display = 'none';
   document.getElementById('chat-cancel').style.display = 'inline-block';
+  showChatThinking();
   // Send to backend
   try {
     await fetch('/api/chat', {
@@ -6311,6 +6479,7 @@ async function sendChatMessage() {
 }
 
 function appendChatTextDelta(text) {
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   if (!currentAssistantBubble) {
     currentAssistantBubble = document.createElement('div');
@@ -6330,6 +6499,7 @@ function appendChatTextDelta(text) {
 }
 
 function showChatToolCall(toolCallId, toolName, input) {
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-tool-indicator active';
@@ -6362,6 +6532,7 @@ function revealChatPanel() {
 
 function showChatEditProposal(editId, cellId, oldSource, newSource) {
   revealChatPanel();
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-edit-proposal';
@@ -6425,6 +6596,7 @@ function resolveChatEditProposal(editId, cellId, status) {
 }
 
 function showChatError(message) {
+  removeChatThinking();
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'chat-error';
@@ -6433,7 +6605,26 @@ function showChatError(message) {
   container.scrollTop = container.scrollHeight;
 }
 
+// A placeholder bubble shown from turn start until the first content arrives, so
+// a non-streaming provider (Ollama) doesn't look dead while it generates.
+function showChatThinking() {
+  const container = document.getElementById('chat-messages');
+  if (!container || document.getElementById('chat-thinking')) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg assistant chat-thinking';
+  div.id = 'chat-thinking';
+  div.textContent = 'Thinking';
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function removeChatThinking() {
+  const el = document.getElementById('chat-thinking');
+  if (el) el.remove();
+}
+
 function finishChatTurn(label) {
+  removeChatThinking();
   chatStreaming = false;
   currentAssistantBubble = null;
   document.getElementById('chat-send').style.display = 'inline-block';

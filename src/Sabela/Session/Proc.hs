@@ -39,7 +39,6 @@ import Data.Unique (Unique, newUnique)
 import Sabela.Session.Reader (OutQueue, drainToEof, newOutQueue, readLoop)
 import System.IO (
     BufferMode (LineBuffering),
-    noNewlineTranslation,
     Handle,
     hClose,
     hSetBinaryMode,
@@ -47,6 +46,7 @@ import System.IO (
     hSetEncoding,
     hSetNewlineMode,
     mkTextEncoding,
+    noNewlineTranslation,
  )
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (

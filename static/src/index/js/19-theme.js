@@ -1,5 +1,6 @@
 // ── Theme handling ───────────────────────────────────────────────
 const THEMES = [
+  { id: 'gzim', name: 'Great Zimbabwe', mode: 'dark', bg: '#1b1a17', accent: '#d69a3c' },
   { id: 'warm', name: 'Warm Paper', mode: 'light', bg: '#f7f3ec', accent: '#c2674a' },
   { id: 'nord', name: 'Nord', mode: 'dark', bg: '#2e3440', accent: '#88c0d0' },
   { id: 'nord-light', name: 'Nord Light', mode: 'light', bg: '#eceff4', accent: '#5e81ac' },
@@ -16,7 +17,7 @@ const THEMES = [
 ];
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
-  return THEMES.some((x) => x.id === t) ? t : 'warm';
+  return THEMES.some((x) => x.id === t) ? t : 'gzim';
 }
 function themeMode(id) {
   return (THEMES.find((x) => x.id === id) || THEMES[0]).mode;

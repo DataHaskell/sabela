@@ -43,6 +43,10 @@ async function openAIModal() {
     aiModels = info.models || [];
     aiCurrentModel = info.model || null;
     populateModelSelect(aiModels, aiCurrentModel);
+    document.getElementById('ai-modal-provider').value = info.provider || 'anthropic';
+    document.getElementById('ai-modal-toollimit').value = info.toolLimit ?? '';
+    document.getElementById('ai-modal-numctx').value = info.numCtx ?? '';
+    onProviderChange();
     if (info.configured) {
       title.textContent = 'AI settings';
       desc.textContent = 'Change the model, or paste a new API key to replace the stored one.';
@@ -55,8 +59,29 @@ async function openAIModal() {
     }
   } catch (e) {
     populateModelSelect(aiModels, aiCurrentModel);
+    document.getElementById('ai-modal-provider').value = 'anthropic';
+    onProviderChange();
   }
   setTimeout(() => keyInput.focus(), 50);
+}
+
+// The API key is only needed for Anthropic; Ollama is a local server. Also nudge
+// the model away from a Claude id when the user first switches to Ollama.
+function onProviderChange() {
+  const provider = document.getElementById('ai-modal-provider').value;
+  const isOllama = provider === 'ollama';
+  document.getElementById('ai-modal-key-wrap').style.display = isOllama ? 'none' : '';
+  // num_ctx is an Ollama concept; Anthropic has a fixed large context window.
+  document.getElementById('ai-modal-numctx-wrap').style.display = isOllama ? '' : 'none';
+  if (isOllama) {
+    const sel = document.getElementById('ai-modal-model');
+    if (sel.value === CUSTOM_MODEL_VALUE || sel.value.startsWith('claude')) {
+      sel.value = CUSTOM_MODEL_VALUE;
+      const custom = document.getElementById('ai-modal-custom');
+      if (!custom.value.trim()) custom.value = 'gpt-oss:20b';
+      onModelChange();
+    }
+  }
 }
 
 function populateModelSelect(models, current) {
@@ -108,11 +133,12 @@ async function submitAIModal() {
   const sel = document.getElementById('ai-modal-model');
   const customInput = document.getElementById('ai-modal-custom');
   const errEl = document.getElementById('ai-modal-error');
+  const provider = document.getElementById('ai-modal-provider').value;
   const key = keyInput.value.trim();
   let model = sel.value;
   if (model === CUSTOM_MODEL_VALUE) model = customInput.value.trim();
 
-  if (!aiConfigured && !key) {
+  if (provider !== 'ollama' && !aiConfigured && !key) {
     errEl.textContent = 'Please enter an API key';
     errEl.style.display = 'block';
     return;
@@ -122,8 +148,14 @@ async function submitAIModal() {
     errEl.style.display = 'block';
     return;
   }
-  const body = { model };
+  const body = { model, provider };
   if (key) body.apiKey = key;
+  const toolLimit = parseInt(document.getElementById('ai-modal-toollimit').value, 10);
+  if (Number.isFinite(toolLimit) && toolLimit > 0) body.toolLimit = toolLimit;
+  if (provider === 'ollama') {
+    const numCtx = parseInt(document.getElementById('ai-modal-numctx').value, 10);
+    if (Number.isFinite(numCtx) && numCtx > 0) body.numCtx = numCtx;
+  }
   try {
     const resp = await fetch('/api/config/ai', {
       method: 'POST',

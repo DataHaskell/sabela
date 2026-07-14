@@ -34,6 +34,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.ApiRef (execApiReference)
 import Sabela.AI.Capabilities.CapabilitySearch (execSearchCapability)
 import Sabela.AI.Capabilities.Discover (execFindExampleCell, execFindPackage)
 import Sabela.AI.Capabilities.Edit (
@@ -60,7 +61,6 @@ import Sabela.AI.Capabilities.Notebook (
     execReadCellOutput,
  )
 import Sabela.AI.Capabilities.Query (
-    execApiReference,
     execCheckType,
     execDescribeFunction,
     execExploreResult,
@@ -161,7 +161,7 @@ executeTool app store rn cancelTok toolName input =
         CheckType -> execCheckType app input
         FindByType -> execFindByType app input
         DescribeFunction -> execDescribeFunction app input
-        ApiReference -> execApiReference input
+        ApiReference -> execApiReference app input
         ExploreResult -> execExploreResult store input
         KernelStatus -> execKernelStatus app
         Interrupt -> execInterrupt app

@@ -25,8 +25,10 @@ import Sabela.AI.Handles (clearHandles)
 import Sabela.AI.Orchestrator.Loop (agenticLoop)
 import Sabela.AI.Store
 import Sabela.AI.Types
-import Sabela.Anthropic
+import Sabela.Anthropic.Types (Usage (..))
 import Sabela.Handlers (ReactiveNotebook)
+import Sabela.LLM.Cancel (cancel)
+import Sabela.LLM.Message (ContentPart (..), Message (..), Role (..))
 import Sabela.Model (NotebookEvent (..))
 import Sabela.State (App (..))
 import Sabela.State.EventBus (broadcast)
@@ -40,7 +42,7 @@ handleChatMessage app store rn userText = do
         Nothing -> do
             turn <- newTurn (aiNextTurnId store)
             setCurrentTurn store turn
-            appendMessage store (Message RoleUser [TextBlock userText])
+            appendMessage store (Message User [TextPart userText])
             void $ forkIO $ do
                 let tid = turnId turn
                 eResult <- try $ agenticLoop app store rn turn

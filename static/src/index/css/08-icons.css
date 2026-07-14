@@ -1,12 +1,15 @@
 /* ── Icon system ────────────────────────────── */
+/* Geometric IDE icons: squared caps + mitred joins (not Lucide-round) so the
+   set reads hard-edged, echoing the Ndebele/Great Zimbabwe chevron vocabulary. */
 .icon-svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.75;
   fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-miterlimit: 6;
   flex-shrink: 0;
   vertical-align: -3px;
 }
@@ -29,9 +32,9 @@ button.icon-btn,
   background: transparent;
   border: 1px solid transparent !important;
   color: var(--fg-dim);
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
   cursor: pointer;
   padding: 0;
   transition:

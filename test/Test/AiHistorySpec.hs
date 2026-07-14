@@ -7,31 +7,35 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Store (trimHistory)
-import Sabela.Anthropic.Types (
-    ContentBlock (..),
+import Sabela.AI.Types (okOutcome)
+import Sabela.Ids (ToolCallId (..))
+import Sabela.LLM.Message (
+    ContentPart (..),
     Message (..),
     Role (..),
+    ToolCall (..),
+    ToolResult (..),
  )
 
 userText :: T.Text -> Message
-userText s = Message RoleUser [TextBlock s]
+userText s = Message User [TextPart s]
 
 assistantText :: T.Text -> Message
-assistantText s = Message RoleAssistant [TextBlock s]
+assistantText s = Message Assistant [TextPart s]
 
 assistantToolUse :: T.Text -> Message
 assistantToolUse tid =
     Message
-        RoleAssistant
-        [ TextBlock "ok"
-        , ToolUseBlock tid "list_cells" emptyObj
+        Assistant
+        [ TextPart "ok"
+        , ToolCallPart (ToolCall (ToolCallId tid) "list_cells" emptyObj)
         ]
 
 userToolResult :: T.Text -> Message
 userToolResult tid =
     Message
-        RoleUser
-        [ToolResultBlock tid False [TextBlock "{}"]]
+        User
+        [ToolResultPart (ToolResult (ToolCallId tid) "list_cells" (okOutcome emptyObj))]
 
 emptyObj :: Value
 emptyObj = object []
@@ -51,10 +55,9 @@ spec = do
                     , assistantText "hey"
                     ]
                 kept = trimHistory 10 msgs
-            roles kept `shouldBe` [RoleUser, RoleAssistant]
-            -- head must not carry a tool_result block
+            roles kept `shouldBe` [User, Assistant]
             case kept of
-                (m : _) -> any isToolResult (msgContent m) `shouldBe` False
+                (m : _) -> any isToolResult (msgParts m) `shouldBe` False
                 [] -> expectationFailure "kept should be non-empty"
 
         it "drops an assistant message at the head (first must be user)" $ do
@@ -65,7 +68,7 @@ spec = do
                     ]
                 kept = trimHistory 10 msgs
             case kept of
-                (m : _) -> msgRole m `shouldBe` RoleUser
+                (m : _) -> msgRole m `shouldBe` User
                 [] -> expectationFailure "kept should be non-empty"
 
         it "head is always role=user after trimming" $ do
@@ -79,8 +82,8 @@ spec = do
             let kept = trimHistory 3 long
             case kept of
                 (m : _) -> do
-                    msgRole m `shouldBe` RoleUser
-                    any isToolResult (msgContent m) `shouldBe` False
+                    msgRole m `shouldBe` User
+                    any isToolResult (msgParts m) `shouldBe` False
                 [] -> expectationFailure "kept should be non-empty"
 
         it
@@ -91,12 +94,9 @@ spec = do
                         , assistantToolUse "toolu_1"
                         , userToolResult "toolu_1"
                         ]
-                roles (trimHistory 10 msgs) `shouldBe` [RoleUser, RoleAssistant, RoleUser]
+                roles (trimHistory 10 msgs) `shouldBe` [User, Assistant, User]
 
         it "retains the anchoring user text even when it's older than the window" $ do
-            -- Mid-turn: many tool cycles after a single user prompt. Even with
-            -- a small window, the original user-text anchor must remain so the
-            -- request is never empty.
             let cycles =
                     concatMap
                         ( \i ->
@@ -110,8 +110,29 @@ spec = do
             case kept of
                 [] -> expectationFailure "kept should never be empty"
                 (m : _) -> do
-                    msgRole m `shouldBe` RoleUser
-                    firstTextBlock (msgContent m) `shouldBe` Just "please visualize primes"
+                    msgRole m `shouldBe` User
+                    firstTextPart (msgParts m) `shouldBe` Just "please visualize primes"
+
+        it "retains multiple prior turns so demonstratives resolve" $ do
+            -- Three turns, each with a tool round (so raw message count far
+            -- exceeds the turn window). Keeping 3 turns must retain all three
+            -- user prompts — regression for the "every prompt forgets the last"
+            -- amnesia where a tool-heavy turn evicted all earlier turns.
+            let turn s t =
+                    [ userText s
+                    , assistantToolUse t
+                    , userToolResult t
+                    ]
+                msgs = turn "first" "t1" ++ turn "second" "t2" ++ turn "third" "t3"
+                kept = trimHistory 3 msgs
+                prompts = [x | Message User ps <- kept, TextPart x <- ps]
+            prompts `shouldBe` ["first", "second", "third"]
+
+        it "keeps only the last N turns when there are more" $ do
+            let turn s t = [userText s, assistantToolUse t, userToolResult t]
+                msgs = turn "a" "t1" ++ turn "b" "t2" ++ turn "c" "t3"
+                prompts = [x | Message User ps <- trimHistory 2 msgs, TextPart x <- ps]
+            prompts `shouldBe` ["b", "c"]
 
         it "never returns an empty list when a user-text anchor exists" $ do
             let msgs =
@@ -124,8 +145,8 @@ spec = do
             length (trimHistory 1 msgs) `shouldSatisfy` (> 0)
   where
     roles = map msgRole
-    isToolResult ToolResultBlock{} = True
+    isToolResult ToolResultPart{} = True
     isToolResult _ = False
-    firstTextBlock blocks = case [t | TextBlock t <- blocks] of
+    firstTextPart parts = case [t | TextPart t <- parts] of
         (t : _) -> Just t
         [] -> Nothing

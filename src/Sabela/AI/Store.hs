@@ -6,6 +6,8 @@ module Sabela.AI.Store (
     getAIConfig,
     setAIModel,
     setAIFullConfig,
+    getAIProvider,
+    setAIProvider,
     trimHistory,
 
     -- * Conversation
@@ -56,13 +58,10 @@ import Data.Text (Text)
 import Network.HTTP.Client (Manager)
 import Sabela.AI.Handles (HandleStore, newHandleStore)
 import Sabela.AI.Types
-import Sabela.Anthropic.Types (
-    AnthropicConfig (..),
-    ContentBlock (..),
-    Message (..),
-    Role (..),
-    Usage (..),
- )
+import Sabela.Anthropic.Types (AnthropicConfig (..), Usage (..))
+import Sabela.LLM.Anthropic (anthropicProvider)
+import Sabela.LLM.Message (ContentPart (..), Message (..), Role (..))
+import Sabela.LLM.Provider (ModelProvider)
 import Sabela.Session (Admission, admit)
 import Sabela.SessionTypes (SessionBackend (..))
 
@@ -79,6 +78,11 @@ data AIStore = AIStore
     , aiNextEditId :: IORef Int
     , aiNextTurnId :: IORef Int
     , aiConfig :: IORef AnthropicConfig
+    , aiProvider :: IORef ModelProvider
+    {- ^ The active LLM backend (built from config, swapped when the provider or
+    model changes). The agentic loop drives this through the neutral port
+    instead of a hardcoded Anthropic client.
+    -}
     , aiHttpManager :: Manager
     , aiUsage :: IORef Usage
     , aiHandles :: HandleStore
@@ -103,6 +107,7 @@ newAIStore cfg mgr =
         <*> newIORef 0
         <*> newIORef 0
         <*> newIORef cfg
+        <*> newIORef (anthropicProvider mgr cfg)
         <*> pure mgr
         <*> newIORef (Usage 0 0 Nothing Nothing)
         <*> newHandleStore
@@ -114,15 +119,24 @@ getAIConfig :: AIStore -> IO AnthropicConfig
 getAIConfig = readIORef . aiConfig
 
 {- | Update only the Claude model. The API key is preserved so mid-conversation
-switches don't require re-entering the key.
+switches don't require re-entering the key. The caller ('updateAIConfig') selects
+the matching provider afterwards.
 -}
 setAIModel :: AIStore -> Text -> IO ()
 setAIModel store model =
-    atomicModifyIORef' (aiConfig store) (\cfg -> (cfg{acModel = model}, ()))
+    atomicModifyIORef' (aiConfig store) (\c -> (c{acModel = model}, ()))
 
--- | Update the full config (e.g. when the API key changes).
+-- | Overwrite the full config (e.g. when the API key changes).
 setAIFullConfig :: AIStore -> AnthropicConfig -> IO ()
 setAIFullConfig store = atomicWriteIORef (aiConfig store)
+
+-- | The active LLM backend the agentic loop drives.
+getAIProvider :: AIStore -> IO ModelProvider
+getAIProvider = readIORef . aiProvider
+
+-- | Swap the active LLM backend (on a provider/model change, or a test fake).
+setAIProvider :: AIStore -> ModelProvider -> IO ()
+setAIProvider store = atomicWriteIORef (aiProvider store)
 
 ------------------------------------------------------------------------
 -- Conversation
@@ -131,11 +145,14 @@ setAIFullConfig store = atomicWriteIORef (aiConfig store)
 getMessages :: AIStore -> IO [Message]
 getMessages = readMVar . aiMessages
 
-{- | Soft cap on retained history. Trimming is safe — never splits a
+{- | How many recent conversation *turns* to retain (a turn = a user-text
+message and everything after it). Counting turns, not raw messages, keeps prior
+turns intact through tool-heavy agentic rounds — so cross-turn references ("the
+image from before") still resolve. Trimming stays safe: never splits a
 tool_use/tool_result pair or leaves an orphan tool_result at the head.
 -}
 historyWindow :: Int
-historyWindow = 10
+historyWindow = 20
 
 {- | Snoc @msg@ onto the conversation, trimmed to 'historyWindow'.
 The bang forces the trimmed list so successive appends across an
@@ -146,29 +163,27 @@ appendMessage store msg = modifyMVar_ (aiMessages store) $ \msgs -> do
     let !trimmed = trimHistory historyWindow (msgs ++ [msg])
     pure trimmed
 
-{- | Trim to roughly @n@ messages but always cut at a turn boundary — a user
-message whose content is pure text (no @tool_result@ blocks). That anchor is
-required by Anthropic (first message must be user) and keeps tool_use /
-tool_result pairs intact. Falls back to the latest safe anchor when the window
-can't contain one, even if that means exceeding @n@: correctness beats budget.
+{- | Keep the last @n@ conversation turns. A turn boundary is a user message
+whose content is pure text (no @tool_result@ blocks); cutting there keeps the
+head a valid user message (required by Anthropic), never splits a tool_use /
+tool_result pair, and never leaves an orphan tool_result at the head. Counting
+turns (not raw messages) means a tool-heavy turn can't evict earlier turns, so
+cross-turn references survive. Falls back to the whole list if there is no
+user-text anchor at all.
 -}
 trimHistory :: Int -> [Message] -> [Message]
 trimHistory n msgs =
-    let len = length msgs
-        minCut = max 0 (len - n)
-        safeCuts = [i | (i, m) <- zip [0 ..] msgs, isUserText m]
-        cut = case dropWhile (< minCut) safeCuts of
+    let anchors = [i | (i, m) <- zip [0 ..] msgs, isUserText m]
+        cut = case drop (max 0 (length anchors - n)) anchors of
             (i : _) -> i
-            [] -> case safeCuts of
-                [] -> 0
-                _ -> last safeCuts
+            [] -> 0
      in drop cut msgs
 
 isUserText :: Message -> Bool
-isUserText m = msgRole m == RoleUser && all isTextBlock (msgContent m)
+isUserText m = msgRole m == User && all isTextPart (msgParts m)
   where
-    isTextBlock (TextBlock _) = True
-    isTextBlock _ = False
+    isTextPart (TextPart _) = True
+    isTextPart _ = False
 
 clearConversation :: AIStore -> IO ()
 clearConversation store = modifyMVar_ (aiMessages store) (const (pure []))

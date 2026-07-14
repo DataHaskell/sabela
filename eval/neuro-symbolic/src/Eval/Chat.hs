@@ -28,8 +28,7 @@ import Eval.Agent (
     Driver (..),
     EpisodeBudget (..),
     GrammarMode (..),
-    runEpisodeTraced,
-    runEpisodeWith,
+    runEpisodeSeeded,
  )
 import Eval.Discover (isOwningTool)
 import Eval.Ollama (ToolCall (..), Turn (..), chat, chatSeeded)
@@ -45,10 +44,12 @@ runChat debug budget maxTurns mgr conn base model = do
     TIO.putStrLn ("siza-chat \183 " <> model <> " \183 " <> base <> debugTag)
     TIO.putStrLn
         "Type a request; the model works in the notebook and proposes a check you confirm. Ctrl-D to quit.\n"
-    loop
+    loop []
   where
     debugTag = if debug then " \183 debug (full audit + thinking)" else ""
-    loop = do
+    -- @prev@ is the running transcript; each turn continues from it (seeded),
+    -- so the session keeps its context instead of restarting every prompt.
+    loop prev = do
         TIO.putStr "\8250 "
         hFlush stdout
         eof <- isEOF
@@ -58,8 +59,8 @@ runChat debug budget maxTurns mgr conn base model = do
                 line <- TIO.getLine
                 if T.strip line `elem` ["quit", "exit", ":q"]
                     then TIO.putStrLn "bye"
-                    else turn line >> loop
-    turn userText = do
+                    else turn prev line >>= loop
+    turn prev userText = do
         gateRef <- newIORef Nothing
         wroteRef <- newIORef False
         seenRef <- newIORef ([] :: [Text])
@@ -75,13 +76,12 @@ runChat debug budget maxTurns mgr conn base model = do
                     , drvVerify = verifyGate mgr conn base model gateRef wroteRef
                     }
             task = Task "_chat" userText Untested
-        run <-
-            if debug
-                then runEpisodeTraced TIO.putStr GrammarOn budget driver task maxTurns
-                else runEpisodeWith budget driver task maxTurns
+            emit = if debug then TIO.putStr else const (pure ())
+        run <- runEpisodeSeeded prev emit GrammarOn budget driver task maxTurns
         TIO.putStrLn ("\n" <> arFinal run)
         TIO.putStrLn
             ("  [" <> arStopped run <> ", " <> tshow (arToolCalls run) <> " tool calls]\n")
+        pure (arTranscript run)
 
 verifyGate ::
     Manager -> Conn -> Text -> Text -> IORef (Maybe Text) -> IORef Bool -> IO Bool

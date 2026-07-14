@@ -20,6 +20,7 @@ import qualified Data.Text.IO as TIO
 import System.Directory (createDirectoryIfMissing)
 
 import Eval.Agent (AgentRun (..), EpisodeBudget (..), defaultBudget, runEpisode)
+import Eval.Preflight (ensureOllama)
 import Eval.Task (Task (..), Verdict (..), findTask, grade, tasks)
 import Eval.Transcript (renderTranscript)
 import Siza.Transport (Conn (..), Env (..), newConn)
@@ -32,6 +33,7 @@ main = do
     budget <- envBudget
     sessionDir <- lookupEnv "SIZA_EVAL_SESSION_DIR"
     mgr <- newTlsManager
+    ensureOllama mgr
     conn <- newConn
     let base = fromMaybe "http://localhost:3000" (envSabelaUrl (connEnv conn))
         chosen = case args of

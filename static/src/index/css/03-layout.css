@@ -7,11 +7,16 @@
 }
 
 /* ── Sidebar ───────────────────────────────── */
+/* Floating card, matching the pill nav: detached from the edges, rounded,
+   lifted by a soft shadow. */
 .sidebar {
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
+  margin: 4px 4px 10px 12px;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
   font-family: var(--font-mono);
@@ -24,8 +29,10 @@
 .sidebar.collapsed {
   width: 0;
   min-width: 0;
+  margin: 0;
   overflow: hidden;
-  border-right: none;
+  border: none;
+  box-shadow: none;
 }
 .sidebar-header {
   display: flex;

@@ -10,7 +10,13 @@ module Sabela.State (
     setAIStore,
     configureAI,
     updateAIConfig,
+    configJson,
+    providerNameOf,
     AIConfigUpdate (..),
+    defaultNumCtx,
+    defaultToolLimit,
+    getAINumCtx,
+    getAIToolLimit,
     broadcastNotebook,
     resolveCliHandleStore,
 
@@ -33,13 +39,21 @@ import Control.Concurrent.MVar (
     readMVar,
  )
 import Control.Exception (bracket_)
-import Data.Aeson (Value (..), eitherDecodeStrict, encode, object, (.=))
+import Data.Aeson (
+    Result (..),
+    Value (..),
+    eitherDecodeStrict,
+    encode,
+    fromJSON,
+    object,
+    (.=),
+ )
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
-import Data.IORef (IORef, newIORef, writeIORef)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -48,11 +62,15 @@ import Sabela.AI.Handles (HandleStore, newHandleStore)
 import Sabela.AI.Store (
     AIStore,
     getAIConfig,
+    getAIProvider,
     newAIStore,
     setAIFullConfig,
-    setAIModel,
+    setAIProvider,
  )
 import Sabela.Anthropic.Types (AnthropicConfig (..))
+import Sabela.LLM.Anthropic (anthropicProvider)
+import Sabela.LLM.Ollama (ollamaProvider)
+import Sabela.LLM.Provider (ModelProvider, mpName)
 import Sabela.Model (NotebookEvent (..))
 import Sabela.State.BridgeStore
 import Sabela.State.DependencyTracker
@@ -98,6 +116,13 @@ data App = App
     module. Distinct from the run-lock @running@ axis so a driver can tell a
     cold start from a hung cell ('kernel_status' surfaces it as @compiling@).
     -}
+    , appAINumCtx :: IORef Int
+    {- ^ Ollama @num_ctx@ (context window) for the in-notebook assistant,
+    configurable from the AI settings modal and persisted to config.json.
+    Baked into the Ollama provider when it is (re)built.
+    -}
+    , appAIToolLimit :: IORef Int
+    -- ^ Per-turn cap on tool-call rounds the agentic loop will run.
     }
 
 -- | Forget which compiled modules the live session has loaded.
@@ -126,6 +151,12 @@ setAIStore app val = modifyMVar_ (appAI app) (const (pure val))
 data AIConfigUpdate = AIConfigUpdate
     { aicuApiKey :: Maybe Text
     , aicuModel :: Maybe Text
+    , aicuProvider :: Maybe Text
+    -- ^ @"anthropic"@ | @"ollama"@; 'Nothing' keeps the current provider.
+    , aicuNumCtx :: Maybe Int
+    -- ^ Ollama @num_ctx@; 'Nothing' keeps the current value.
+    , aicuToolLimit :: Maybe Int
+    -- ^ Per-turn tool-call round cap; 'Nothing' keeps the current value.
     }
 
 {- | Configure AI with an API key at runtime (legacy single-field path).
@@ -133,44 +164,115 @@ Writes the key to <workdir>/.sabela/config.json and initializes the AIStore.
 -}
 configureAI :: App -> Text -> IO (Either Text ())
 configureAI app apiKey =
-    updateAIConfig app AIConfigUpdate{aicuApiKey = Just apiKey, aicuModel = Nothing}
+    updateAIConfig
+        app
+        AIConfigUpdate
+            { aicuApiKey = Just apiKey
+            , aicuModel = Nothing
+            , aicuProvider = Nothing
+            , aicuNumCtx = Nothing
+            , aicuToolLimit = Nothing
+            }
 
-{- | Apply partial updates to the AI config. If the store is not yet initialized
-and no API key is supplied, returns an error. The API key and model are both
-persisted to <workdir>/.sabela/config.json so changes survive server restarts.
+-- | Provider ids accepted in the config. Ollama needs no API key.
+ollamaProviderId :: Text
+ollamaProviderId = "ollama"
+
+-- | Default Ollama model when the caller selects Ollama without naming one.
+defaultOllamaModel :: Text
+defaultOllamaModel = "gpt-oss:20b"
+
+{- | Default Ollama context window. Matches the client's own fallback; holds a
+whole agent episode so the oldest messages aren't silently evicted.
+-}
+defaultNumCtx :: Int
+defaultNumCtx = 32768
+
+-- | Default per-turn tool-call round cap for the agentic loop.
+defaultToolLimit :: Int
+defaultToolLimit = 25
+
+-- | The configured Ollama @num_ctx@ for this workspace.
+getAINumCtx :: App -> IO Int
+getAINumCtx = readIORef . appAINumCtx
+
+-- | The configured per-turn tool-call round cap for this workspace.
+getAIToolLimit :: App -> IO Int
+getAIToolLimit = readIORef . appAIToolLimit
+
+{- | Build the backend the loop drives, from the selected provider + config.
+@numCtx@ is baked into the Ollama provider (Anthropic ignores it).
+-}
+buildProvider :: Manager -> Text -> AnthropicConfig -> Int -> ModelProvider
+buildProvider mgr provider cfg numCtx
+    | provider == ollamaProviderId = ollamaProvider mgr (acModel cfg) numCtx
+    | otherwise = anthropicProvider mgr cfg
+
+-- | Recover the provider id from a live backend (its 'mpName' is @ollama:…@/@anthropic@).
+providerNameOf :: ModelProvider -> Text
+providerNameOf mp
+    | ollamaProviderId `T.isPrefixOf` mpName mp = ollamaProviderId
+    | otherwise = "anthropic"
+
+{- | Apply partial updates to the AI config, then (re)select the matching
+provider so the agentic loop drives the right backend. Anthropic requires an API
+key for first-time setup; Ollama does not. Key + model + provider persist to
+<workdir>/.sabela/config.json, so the choice survives a restart.
 -}
 updateAIConfig :: App -> AIConfigUpdate -> IO (Either Text ())
 updateAIConfig app upd = case appHttpMgr app of
     Nothing -> pure (Left "No HTTP manager available")
     Just mgr -> do
         mStore <- getAIStore app
-        case (mStore, aicuApiKey upd) of
-            (Nothing, Nothing) ->
-                pure (Left "apiKey is required for first-time setup")
-            (Nothing, Just key) -> do
-                let model = fromMaybe (envAnthropicModel (appEnv app)) (aicuModel upd)
-                    cfg =
-                        AnthropicConfig
-                            { acApiKey = key
-                            , acModel = model
-                            , acBaseUrl = T.pack "https://api.anthropic.com"
-                            }
-                store <- newAIStore cfg mgr
-                setAIStore app (Just store)
-                persistConfig app key model
-                pure (Right ())
-            (Just store, _) -> do
-                oldCfg <- getAIConfig store
-                let newKey = fromMaybe (acApiKey oldCfg) (aicuApiKey upd)
-                    newModel = fromMaybe (acModel oldCfg) (aicuModel upd)
-                    newCfg =
-                        oldCfg{acApiKey = newKey, acModel = newModel}
-                case (aicuApiKey upd, aicuModel upd) of
-                    (Just _, _) -> setAIFullConfig store newCfg
-                    (Nothing, Just m) -> setAIModel store m
-                    _ -> pure ()
-                persistConfig app newKey newModel
-                pure (Right ())
+        case mStore of
+            Nothing -> firstTime mgr
+            Just store -> onExisting mgr store
+  where
+    firstTime mgr =
+        let provider = fromMaybe "anthropic" (aicuProvider upd)
+         in if provider /= ollamaProviderId && isNothing (aicuApiKey upd)
+                then pure (Left "apiKey is required for first-time setup")
+                else do
+                    (numCtx, limit) <- applyKnobs
+                    let key = fromMaybe "" (aicuApiKey upd)
+                        model = fromMaybe (defaultModelFor provider) (aicuModel upd)
+                        cfg = mkCfg key model
+                    store <- newAIStore cfg mgr
+                    setAIProvider store (buildProvider mgr provider cfg numCtx)
+                    setAIStore app (Just store)
+                    persistConfig app key model provider numCtx limit
+                    pure (Right ())
+    onExisting mgr store = do
+        oldCfg <- getAIConfig store
+        curProvider <- providerNameOf <$> getAIProvider store
+        (numCtx, limit) <- applyKnobs
+        let provider = fromMaybe curProvider (aicuProvider upd)
+            newKey = fromMaybe (acApiKey oldCfg) (aicuApiKey upd)
+            newModel = fromMaybe (acModel oldCfg) (aicuModel upd)
+            newCfg = oldCfg{acApiKey = newKey, acModel = newModel}
+        setAIFullConfig store newCfg
+        setAIProvider store (buildProvider mgr provider newCfg numCtx)
+        persistConfig app newKey newModel provider numCtx limit
+        pure (Right ())
+    -- Resolve the two knobs from the update (falling back to the current
+    -- workspace values) and write them back so the loop + next rebuild see them.
+    applyKnobs = do
+        curNumCtx <- readIORef (appAINumCtx app)
+        curLimit <- readIORef (appAIToolLimit app)
+        let numCtx = fromMaybe curNumCtx (aicuNumCtx upd)
+            limit = fromMaybe curLimit (aicuToolLimit upd)
+        writeIORef (appAINumCtx app) numCtx
+        writeIORef (appAIToolLimit app) limit
+        pure (numCtx, limit)
+    mkCfg key model =
+        AnthropicConfig
+            { acApiKey = key
+            , acModel = model
+            , acBaseUrl = T.pack "https://api.anthropic.com"
+            }
+    defaultModelFor p
+        | p == ollamaProviderId = defaultOllamaModel
+        | otherwise = envAnthropicModel (appEnv app)
 
 {- | Look up (or lazily create) a per-CLI-session HandleStore keyed by the
 @X-Sabela-Session@ header value. Isolates @explore_result@ handles between
@@ -194,13 +296,28 @@ broadcastNotebook app = do
     nb <- readNotebook (appNotebook app)
     broadcast (appEvents app) (EvNotebookChanged nb)
 
-persistConfig :: App -> Text -> Text -> IO ()
-persistConfig app key model = do
+persistConfig :: App -> Text -> Text -> Text -> Int -> Int -> IO ()
+persistConfig app key model provider numCtx toolLimit = do
     let configDir = envWorkDir (appEnv app) </> ".sabela"
         configFile = configDir </> "config.json"
-        json = encode (object ["anthropicKey" .= key, "anthropicModel" .= model])
     createDirectoryIfMissing True configDir
-    BS.writeFile configFile (BS.toStrict json)
+    BS.writeFile
+        configFile
+        (BS.toStrict (encode (configJson key model provider numCtx toolLimit)))
+
+{- | The @.sabela/config.json@ wire shape. Kept as a pure function so its keys
+(@anthropicKey@ / @anthropicModel@ / @provider@ / @numCtx@ / @toolLimit@ — read
+back by 'readConfigFile') are pinned by 'Test.ConfigWireSpec'.
+-}
+configJson :: Text -> Text -> Text -> Int -> Int -> Value
+configJson key model provider numCtx toolLimit =
+    object
+        [ "anthropicKey" .= key
+        , "anthropicModel" .= model
+        , "provider" .= provider
+        , "numCtx" .= numCtx
+        , "toolLimit" .= toolLimit
+        ]
 
 newApp ::
     FilePath -> Set Text -> Maybe Manager -> Maybe Text -> [FilePath] -> IO App
@@ -210,10 +327,20 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
     tmpBase <- getCanonicalTemporaryDirectory
     tmpDir <- createTempDirectory tmpBase "sabela-server"
     debug <- isJust <$> lookupEnv "SABELA_DEBUG"
-    (mApiKey, mSavedModel) <- resolveConfig absWork
+    (mApiKey, mSavedModel, mSavedProvider, mNumCtx, mToolLimit) <-
+        resolveConfig absWork
     envModel <- lookupEnv "ANTHROPIC_MODEL"
-    let defaultModel = "claude-sonnet-4-20250514"
-        apiModel = fromMaybe defaultModel (envModel <|> fmap T.unpack mSavedModel)
+    let numCtx0 = fromMaybe defaultNumCtx mNumCtx
+        toolLimit0 = fromMaybe defaultToolLimit mToolLimit
+        provider = fromMaybe "anthropic" mSavedProvider
+        isOllama = provider == ollamaProviderId
+        defaultModel
+            | isOllama = T.unpack defaultOllamaModel
+            | otherwise = "claude-sonnet-4-20250514"
+        modelPref
+            | isOllama = fmap T.unpack mSavedModel
+            | otherwise = envModel <|> fmap T.unpack mSavedModel
+        apiModel = fromMaybe defaultModel modelPref
         env =
             Environment
                 { envWorkDir = absWork
@@ -224,15 +351,18 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
                 , envAnthropicKey = T.pack <$> mApiKey
                 , envAnthropicModel = T.pack apiModel
                 }
-    mAIStore <- case (mApiKey, mHttpMgr) of
-        (Just key, Just mgr) -> do
-            let cfg =
-                    AnthropicConfig
-                        { acApiKey = T.pack key
-                        , acModel = T.pack apiModel
-                        , acBaseUrl = T.pack "https://api.anthropic.com"
-                        }
-            Just <$> newAIStore cfg mgr
+    mAIStore <- case mHttpMgr of
+        Just mgr
+            | isOllama || isJust mApiKey -> do
+                let cfg =
+                        AnthropicConfig
+                            { acApiKey = maybe "" T.pack mApiKey
+                            , acModel = T.pack apiModel
+                            , acBaseUrl = T.pack "https://api.anthropic.com"
+                            }
+                store <- newAIStore cfg mgr
+                setAIProvider store (buildProvider mgr provider cfg numCtx0)
+                pure (Just store)
         _ -> pure Nothing
     aiVar <- newMVar mAIStore
     cliSessionsVar <- newMVar M.empty
@@ -249,20 +379,36 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
         <*> pure mAiToken
         <*> pure cliSessionsVar
         <*> newIORef False
+        <*> newIORef numCtx0
+        <*> newIORef toolLimit0
 
--- | Resolve API key + saved model. Env ANTHROPIC_API_KEY wins for the key.
-resolveConfig :: FilePath -> IO (Maybe String, Maybe Text)
+{- | Resolve API key + saved model + saved provider. Env ANTHROPIC_API_KEY wins
+for the key; provider is absent in pre-provider config files (⇒ anthropic).
+-}
+
+-- | A JSON value as an @Int@ (via aeson's own decoder); 'Nothing' if not integral.
+jsonInt :: Value -> Maybe Int
+jsonInt v = case fromJSON v of
+    Success i -> Just i
+    Error _ -> Nothing
+
+resolveConfig ::
+    FilePath ->
+    IO (Maybe String, Maybe Text, Maybe Text, Maybe Int, Maybe Int)
 resolveConfig workDir = do
     mEnv <- lookupEnv "ANTHROPIC_API_KEY"
-    (fileKey, fileModel) <- readConfigFile workDir
-    pure (mEnv <|> fileKey, fileModel)
+    (fileKey, fileModel, fileProvider, fileNumCtx, fileToolLimit) <-
+        readConfigFile workDir
+    pure (mEnv <|> fileKey, fileModel, fileProvider, fileNumCtx, fileToolLimit)
 
-readConfigFile :: FilePath -> IO (Maybe String, Maybe Text)
+readConfigFile ::
+    FilePath ->
+    IO (Maybe String, Maybe Text, Maybe Text, Maybe Int, Maybe Int)
 readConfigFile workDir = do
     let configFile = workDir </> ".sabela" </> "config.json"
     exists <- doesFileExist configFile
     if not exists
-        then pure (Nothing, Nothing)
+        then pure (Nothing, Nothing, Nothing, Nothing, Nothing)
         else do
             bs <- BS.readFile configFile
             case eitherDecodeStrict bs of
@@ -273,5 +419,15 @@ readConfigFile workDir = do
                         model = case KM.lookup (Key.fromText "anthropicModel") obj of
                             Just (String s) | not (T.null s) -> Just s
                             _ -> Nothing
-                     in pure (key, model)
-                _ -> pure (Nothing, Nothing)
+                        provider = case KM.lookup (Key.fromText "provider") obj of
+                            Just (String s) | not (T.null s) -> Just s
+                            _ -> Nothing
+                        intField k = KM.lookup (Key.fromText k) obj >>= jsonInt
+                     in pure
+                            ( key
+                            , model
+                            , provider
+                            , intField "numCtx"
+                            , intField "toolLimit"
+                            )
+                _ -> pure (Nothing, Nothing, Nothing, Nothing, Nothing)

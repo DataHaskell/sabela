@@ -22,6 +22,7 @@ module Eval.Agent (
     runEpisodeWith,
     runEpisodeWith',
     runEpisodeTraced,
+    runEpisodeSeeded,
     runEpisodeDebug,
     sampleVerifyOne,
     ownedCellOutcome,
@@ -157,14 +158,36 @@ runEpisodeTraced ::
     Task ->
     Int ->
     IO AgentRun
-runEpisodeTraced emit mode budget driver task maxTurns = do
+runEpisodeTraced = runEpisodeSeeded []
+
+{- | Like 'runEpisodeTraced' but seeded with a prior transcript. An empty seed is
+a fresh episode (system prompt + task, scaffold, and proactive discovery). A
+non-empty seed continues a conversation: the new user turn is appended and the
+system prompt, scaffold, and discovery are skipped (they already live in the
+seed), so an interactive session keeps its context across prompts.
+-}
+runEpisodeSeeded ::
+    [Value] ->
+    (Text -> IO ()) ->
+    GrammarMode ->
+    EpisodeBudget ->
+    Driver ->
+    Task ->
+    Int ->
+    IO AgentRun
+runEpisodeSeeded seed emit mode budget driver task maxTurns = do
     printed <- newIORef (0 :: Int)
     consec <- newIORef (0 :: Int)
     chatRetries <- newIORef (0 :: Int)
     stuck <- newIORef (0 :: Int)
     start <- drvNow driver
-    (owned0, pre) <- runScaffold
-    proactive <- proactiveDiscover mode (drvDispatch driver)
+    (owned0, msgs0) <-
+        if null seed
+            then do
+                (owned, pre) <- runScaffold
+                proactive <- proactiveDiscover mode (drvDispatch driver)
+                pure (owned, initial ++ pre ++ proactive)
+            else pure (Map.empty, seed ++ [userMsg])
     let flush msgs = do
             n <- readIORef printed
             mapM_
@@ -262,12 +285,13 @@ runEpisodeTraced emit mode budget driver task maxTurns = do
                                 msgs' = msgs ++ [turnRaw t] ++ toolMsgs ++ discovered ++ nudge
                             writeIORef stuck 0
                             go start' (turn + 1) (nCalls + length dispatched) repairs owned' msgs'
-    go start 0 0 0 owned0 (initial ++ pre ++ proactive)
+    go start 0 0 0 owned0 msgs0
   where
     initial =
         [ object ["role" .= ("system" :: Text), "content" .= systemPrompt]
-        , object ["role" .= ("user" :: Text), "content" .= taskPrompt task]
+        , userMsg
         ]
+    userMsg = object ["role" .= ("user" :: Text), "content" .= taskPrompt task]
     runScaffold = case scaffoldCall task of
         Nothing -> pure (Map.empty, [])
         Just call -> do
