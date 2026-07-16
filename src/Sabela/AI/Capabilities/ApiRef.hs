@@ -153,8 +153,16 @@ hoogleJSON h =
 usableText :: Maybe Text -> Maybe Text
 usableText Nothing = Nothing
 usableText (Just t)
-    | T.null s || "not in scope" `T.isInfixOf` s || "error:" `T.isInfixOf` s =
-        Nothing
+    | T.null s || any (`T.isInfixOf` s) unusable = Nothing
     | otherwise = Just (T.strip t)
   where
     s = T.toLower (T.strip t)
+    -- A @:browse@ of an un-imported (hidden) package, or any diagnostic, is not
+    -- a usable reference — fall back to the curated card instead of shipping it.
+    unusable =
+        [ "not in scope"
+        , "error:"
+        , "could not load module"
+        , "hidden package"
+        , "\"severity\":\"error\""
+        ]

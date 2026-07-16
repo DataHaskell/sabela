@@ -14,7 +14,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Sabela.AI.Capabilities.ToolName (ToolName (..), parseToolName)
+import Sabela.AI.Capabilities.ToolName (ToolName (..), resolveToolCall)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Transport (Conn, callTool)
 import System.Environment (lookupEnv)
@@ -173,10 +173,10 @@ props ps required =
 
 dispatch :: Conn -> Text -> ToolCall -> IO (Either Text ToolOutcome)
 dispatch conn base (ToolCall name args) =
-    case parseToolName name of
+    case resolveToolCall name args of
         Nothing -> pure (Left (unknownToolMsg name))
-        Just InsertCell -> callTool conn base InsertCell (withInsertDefaults args)
-        Just tn -> callTool conn base tn args
+        Just (InsertCell, a) -> callTool conn base InsertCell (withInsertDefaults a)
+        Just (tn, a) -> callTool conn base tn a
 
 unknownToolMsg :: Text -> Text
 unknownToolMsg name =

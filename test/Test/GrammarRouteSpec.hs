@@ -82,11 +82,12 @@ grammarRouteSpec = describe "Sabela.Diagnose.routeFailure (E2 seam)" $ do
 
     describe "against the recent dataframe failures (what it resolves to today)" $ do
         it
-            "revenueChart's invented Frames/vinyl errors resolve to KeepRepairing — a GAP"
-            $ routeFailure chartOffered revenueChartErr `shouldBe` KeepRepairing
+            "revenueChart's invented Frames/vinyl errors now rediscover the implicated name"
+            $ routeFailure chartOffered revenueChartErr
+                `shouldBe` Rediscover "Record"
 
         it
-            "the same miss in GHC's lowercase \8216Variable not in scope\8217 form routes correctly"
+            "the same name in GHC's lowercase \8216Variable not in scope\8217 form routes the same"
             $ routeFailure chartOffered "Variable not in scope: Record"
                 `shouldBe` Rediscover "Record"
 

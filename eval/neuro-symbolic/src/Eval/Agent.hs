@@ -28,18 +28,29 @@ module Eval.Agent (
     ownedCellOutcome,
     stopDecision,
     discoverModules,
+    systemPrompt,
+    sampleK,
+    writeSource,
+    qualifiedBaseNames,
 ) where
 
+import Control.Monad (when)
 import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson.KeyMap as KM
+import Data.Char (isAlphaNum, isLower)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Network.HTTP.Client (Manager)
 import Sabela.AI.Capabilities.ToolName (actsOnNotebook, parseToolName)
-import Sabela.AI.Grammar (grammarPromptBlock)
+import Sabela.AI.PromptCore (sharedPromptCore)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Transport (Conn)
+import System.Environment (lookupEnv)
+import Text.Read (readMaybe)
 
 import Eval.Discover (
     GrammarMode (..),
@@ -47,6 +58,14 @@ import Eval.Discover (
     proactiveDiscover,
     runDiscover,
     seamDiscover,
+ )
+import Eval.Exemplars (
+    Exemplar (..),
+    exemplarMessage,
+    exemplarStorePath,
+    loadExemplars,
+    retrieveExemplars,
+    saveExemplar,
  )
 import Eval.Messages (reenterMsg, toolMsg, verifyMsg)
 import Eval.Ollama (ToolCall (..), Turn (..), chat, chatSeeded)
@@ -85,14 +104,12 @@ data AgentRun = AgentRun
 -}
 systemPrompt :: Text
 systemPrompt =
-    "Pair on a live Sabela reactive Haskell notebook through tools; editing or running a \
-    \cell re-runs everything downstream. insert_cell adds a cell (full source, with the \
-    \requested type signature); replace_cell_source fixes one — a write auto-runs, so read \
-    \the result and fix any error. Reuse what earlier cells defined (list_bindings) instead \
-    \of recomputing. scratchpad runs an isolated snippet that CANNOT see notebook bindings. \
-    \Once the binding is defined and its cell runs clean, give a one-line summary and stop; \
-    \do not ask questions.\n\n"
-        <> grammarPromptBlock
+    "Pair on a live Sabela reactive Haskell notebook through tools; editing or \
+    \running a cell re-runs everything downstream. insert_cell adds a cell (full \
+    \source, with the requested type signature); replace_cell_source fixes one. \
+    \Once the deliverable's cell runs clean, give a one-line summary and stop; do \
+    \not ask questions.\n\n"
+        <> sharedPromptCore
 
 {- | The episode's side effects, injectable so the loop is testable without a
 live model or server. Production wires Ollama @chat@ and the siza @dispatch@.
@@ -184,9 +201,10 @@ runEpisodeSeeded seed emit mode budget driver task maxTurns = do
     (owned0, msgs0) <-
         if null seed
             then do
+                exemplars <- retrieveEx
                 (owned, pre) <- runScaffold
                 proactive <- proactiveDiscover mode (drvDispatch driver)
-                pure (owned, initial ++ pre ++ proactive)
+                pure (owned, initial ++ exemplars ++ pre ++ proactive)
             else pure (Map.empty, seed ++ [userMsg])
     let flush msgs = do
             n <- readIORef printed
@@ -239,7 +257,9 @@ runEpisodeSeeded seed emit mode budget driver task maxTurns = do
                             Stop -> do
                                 verified <- drvVerify driver
                                 if verified
-                                    then finish (turn + 1) nCalls (turnContent t) "done" (msgs ++ [turnRaw t])
+                                    then do
+                                        saveEx owned
+                                        finish (turn + 1) nCalls (turnContent t) "done" (msgs ++ [turnRaw t])
                                     else do
                                         -- No-progress guard: model declared done, the check
                                         -- failed, nothing changed. A few in a row means a bad or
@@ -270,7 +290,7 @@ runEpisodeSeeded seed emit mode budget driver task maxTurns = do
                                     owned'
                                     (msgs ++ [turnRaw t, msg] ++ redisc)
                         else do
-                            results <- mapM dispatchCall (turnCalls t)
+                            results <- mapM (dispatchCall msgs) (turnCalls t)
                             let dispatched = [c | (c, Right _) <- results]
                             discovered <- runDiscover mode (drvDispatch driver) dispatched
                             -- N4: nudge the model to act after too many
@@ -300,12 +320,93 @@ runEpisodeSeeded seed emit mode budget driver task maxTurns = do
                 ( Map.empty
                 , [object ["role" .= ("user" :: Text), "content" .= scaffoldNote]]
                 )
+    -- Learning loop: retrieve verified solutions for a similar task as in-context
+    -- exemplars (imitation), gated by SIZA_EXEMPLAR_STORE. Empty when unset.
+    retrieveEx = do
+        mstore <- exemplarStorePath
+        case mstore of
+            Nothing -> pure []
+            Just fp -> do
+                exs <- loadExemplars fp
+                pure (exemplarMessage (retrieveExemplars 2 (taskPrompt task) exs))
+    -- Persist the verified deliverable so future similar tasks can imitate it.
+    saveEx owned = do
+        mstore <- exemplarStorePath
+        case mstore of
+            Nothing -> pure ()
+            Just fp -> do
+                let src =
+                        T.intercalate "\n\n" [ocSource oc | oc <- Map.elems owned, ocHealthy oc]
+                if T.null (T.strip src)
+                    then pure ()
+                    else saveExemplar fp (Exemplar (taskPrompt task) src)
     -- Code tools read their source straight from the (recovered) tool-call args;
     -- the recovery layer in 'Eval.Ollama.parseTurn' has already repaired any
     -- unescaped backslash or content-channel tool-call JSON before this point.
-    dispatchCall call = do
+    -- A cell-writing call is routed through per-step rejection sampling when
+    -- SIZA_SAMPLE_K > 1; every other call dispatches once.
+    dispatchCall msgs call = do
+        k <- sampleK
+        if k > 1 && callActs call && isJust (writeSource call)
+            then rejectionDispatch msgs k call
+            else plainDispatch call
+    plainDispatch call = do
         outcome <- drvDispatch driver call
         pure (call, Right outcome)
+
+    -- \| Per-step rejection sampling of a cell write: dispatch the model's proposal;
+    --    if it does not compile, re-ask the model up to K-1 more times (temperature gives
+    --    diverse proposals), replace the cell in place with each, and keep the first that
+    --    compiles — the general verifier rejects the rest. On total failure the model's
+    --    original source is restored. Verifies in the real notebook (deps, data files),
+    --    not an isolated scratchpad, via 'Eval.Sample.sampleVerifyOne'.
+    rejectionDispatch msgs k call = do
+        o0 <- drvDispatch driver call
+        case ownedCellOutcome call o0 of
+            Just (cid, False) -> do
+                -- Ground the re-ask: answer the model's guessed API with the real
+                -- signatures from the live index, so re-samples are grounded, not
+                -- blind re-guesses of the same types. Computed once, reused per sample.
+                ground <- groundingMsgs (drvDispatch driver) (fromMaybe "" (writeSource call))
+                let msgs' = msgs ++ ground
+                winRef <- newIORef Nothing
+                let sv =
+                        SampleVerify
+                            { svSample = const (fromMaybe "" <$> reAskSource msgs')
+                            , svRollout = rolloutReplace winRef cid
+                            , svInsert = const (pure ())
+                            }
+                _ <- sampleVerifyOne (k - 1) sv
+                mWin <- readIORef winRef
+                case mWin of
+                    Just win -> pure win
+                    Nothing -> restoreOriginal cid call o0
+            -- Already compiled, or not a cell-write outcome: nothing to sample.
+            _ -> pure (call, Right o0)
+    -- Replace the cell with a candidate and keep it iff the run compiled; capture
+    -- the winning (call, outcome) so the caller records the real committed write.
+    rolloutReplace winRef cid src
+        | T.null (T.strip src) = pure False
+        | otherwise = do
+            let rc = replaceCall cid src
+            o <- drvDispatch driver rc
+            let ok = maybe False snd (ownedCellOutcome rc o)
+            when ok (writeIORef winRef (Just (rc, Right o)))
+            pure ok
+    restoreOriginal cid call o0 = do
+        _ <-
+            maybe
+                (pure ())
+                (\s -> () <$ drvDispatch driver (replaceCall cid s))
+                (writeSource call)
+        pure (call, Right o0)
+    -- One more diverse proposal for the same step; temperature (env) makes each
+    -- re-ask differ. The first cell-writing call's source, if any.
+    reAskSource msgs = do
+        r <- drvChat driver msgs
+        pure $ case r of
+            Right t -> listToMaybe [s | c <- turnCalls t, callActs c, Just s <- [writeSource c]]
+            Left _ -> Nothing
     repairReds owned reds = do
         fixes <-
             repairRedCells
@@ -354,6 +455,84 @@ stuckFinal =
 -- | Whether a tool call acts on the notebook (so it resets the discovery budget).
 callActs :: ToolCall -> Bool
 callActs = maybe False actsOnNotebook . parseToolName . tcName
+
+-- | Per-step rejection-sampling fan-out K, from @SIZA_SAMPLE_K@ (default 1 = off).
+sampleK :: IO Int
+sampleK = maybe 1 (max 1) . (>>= readMaybe) <$> lookupEnv "SIZA_SAMPLE_K"
+
+-- | The cell source a write call carries (@source@ or @new_source@), if non-empty.
+writeSource :: ToolCall -> Maybe Text
+writeSource tc = case tcArgs tc of
+    Object o -> case KM.lookup "source" o of
+        Just (String s) | not (T.null (T.strip s)) -> Just s
+        _ -> case KM.lookup "new_source" o of
+            Just (String s) | not (T.null (T.strip s)) -> Just s
+            _ -> Nothing
+    _ -> Nothing
+
+-- | A @replace_cell_source@ call for a cell id and candidate source.
+replaceCall :: Int -> Text -> ToolCall
+replaceCall cid src =
+    ToolCall "replace_cell_source" (object ["cell_id" .= cid, "new_source" .= src])
+
+{- | Ground the re-ask: answer the model's guessed API with the real signatures.
+Take the library functions the failed cell actually used (qualified calls like
+@D.col@ → @col@), look each up in the live index via the general @find_function@
+search, and return the real signatures as a user message so the re-sample uses
+true types (fixing the wrong kind annotation and pure-vs-IO confusion gemma makes)
+instead of re-guessing. Empty when the cell used no qualified library calls.
+-}
+groundingMsgs ::
+    (ToolCall -> IO (Either Text ToolOutcome)) -> Text -> IO [Value]
+groundingMsgs disp src = do
+    let names = take 5 (nubShort (qualifiedBaseNames src))
+    parts <-
+        mapM
+            ( \n ->
+                (,) n
+                    <$> (renderOutcome <$> disp (ToolCall "find_function" (object ["query" .= n])))
+            )
+            names
+    let body =
+            T.intercalate
+                "\n"
+                ["`" <> n <> "`:\n" <> r | (n, r) <- parts, not (T.null (T.strip r))]
+    pure $
+        if T.null (T.strip body)
+            then []
+            else
+                [ object
+                    [ "role" .= ("user" :: Text)
+                    , "content"
+                        .= ( "Real API from the live index for the functions you used. Use these EXACT \
+                             \names, types, and modules; do not guess types or wrap pure functions in `<-`:\n"
+                                <> body
+                           )
+                    ]
+                ]
+
+{- | Base names of qualified identifiers in a snippet (@D.col@ → @col@), lowercase
+headed (a value/function, not a constructor/type), for a targeted API lookup.
+-}
+qualifiedBaseNames :: Text -> [Text]
+qualifiedBaseNames src =
+    [ base
+    | tok <-
+        T.split (\c -> not (isAlphaNum c || c == '.' || c == '_' || c == '\'')) src
+    , T.any (== '.') tok
+    , let base = T.takeWhileEnd (/= '.') tok
+    , not (T.null base)
+    , maybe False (isLower . fst) (T.uncons base)
+    ]
+
+-- | @nub@ preserving first-seen order, kept small (no Ord constraint churn).
+nubShort :: [Text] -> [Text]
+nubShort = go []
+  where
+    go _ [] = []
+    go seen (x : xs)
+        | x `elem` seen = go seen xs
+        | otherwise = x : go (x : seen) xs
 
 {- | Track the consecutive-discovery counter across a turn's tool calls: an
 acting call resets it, otherwise it grows by the call count. When it crosses

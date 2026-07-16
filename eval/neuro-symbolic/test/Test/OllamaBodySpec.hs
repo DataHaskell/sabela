@@ -25,6 +25,7 @@ defaultOpts =
         , oroSeed = Nothing
         , oroKeepAlive = "30m"
         , oroNumCtx = 32768
+        , oroTemperature = 0.4
         }
 
 spec :: Spec
@@ -51,6 +52,11 @@ spec = describe "chatRequestBody (Ollama /api/chat outbound)" $ do
         let opts = field "options" body
         (opts >>= field "temperature") `shouldBe` Just (toJSON (0.4 :: Double))
         (opts >>= field "num_ctx") `shouldBe` Just (toJSON (32768 :: Int))
+
+    it "carries a raised temperature when the opts set one (for diverse sampling)" $ do
+        let b = chatRequestBody defaultOpts{oroTemperature = 0.9} "m" [] []
+        (field "options" b >>= field "temperature")
+            `shouldBe` Just (toJSON (0.9 :: Double))
 
     it "reflects the resolved keep_alive" $
         field "keep_alive" body `shouldBe` Just (String "30m")

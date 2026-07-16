@@ -93,6 +93,15 @@ spec = describe "Recovery layer (code from tool args, repaired)" $ do
                 "error parsing tool call: raw='{\"code\":\"h = \\x -> x\"}', err=..." of
                 Just (Turn _ _ [ToolCall name _]) -> name `shouldBe` "scratchpad"
                 other -> expectationFailure ("unexpected: " <> show other)
+        it "recovers a tool call whose raw payload is prefixed by reasoning prose" $
+            case recoverFromError
+                "error parsing tool call: raw='We should insert a cell. \
+                \{\"cell_type\":\"CodeCell\",\"source\":\"x = 1\"}', \
+                \err=invalid character 'W' looking for beginning of value" of
+                Just (Turn _ _ [ToolCall name args]) -> do
+                    name `shouldBe` "insert_cell"
+                    field "source" args `shouldBe` Just (String "x = 1")
+                other -> expectationFailure ("no recovery from prose-prefixed raw: " <> show other)
         it "does not recover an unrelated error" $
             isNothing (recoverFromError "model not found") `shouldBe` True
 

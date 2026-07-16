@@ -54,31 +54,32 @@ import Eval.Tools (catalogue, dispatch)
 import Eval.Transcript (renderTranscript)
 
 {- | Which lever the A/B toggles. 'ResolverLever' flips the server's
-@SABELA_HOOGLE_RESOLVE@ auto-resolver (the in-index / held-out folds);
-'CapabilityLever' flips the gate-process @SABELA_CAPABILITY_SEARCH@ that gates
-whether the @search_capability@ tool is in the model's catalogue (the
-capability fold). The two are isolated: the capability lever never sets the
-resolver, and keeps it OFF in both arms.
+@SABELA_HOOGLE_RESOLVE@ auto-resolver; 'CapabilityLever' flips the gate-process
+@SABELA_CAPABILITY_SEARCH@ that gates the @search_capability@ tool.
+'ServerFlagLever' toggles a named default-ON server flag (the self-healing
+features), so its OFF arm sets the var to @0@ rather than leaving it unset.
 -}
-data GateLever = ResolverLever | CapabilityLever
+data GateLever = ResolverLever | CapabilityLever | ServerFlagLever String
     deriving (Show, Eq)
 
-{- | The env the ON arm sets on the spawned SERVER. Only the resolver lever
-touches the server; the capability lever toggles the gate process instead, so
-its server env is empty in both arms.
+{- | The env the arm sets on the spawned SERVER. The resolver lever's ON arm
+sets its var; a 'ServerFlagLever' pins its var in both arms (the flags default
+ON, so OFF must be explicit); the capability lever touches the gate process only.
 -}
 searchEnv :: GateLever -> SearchMode -> [(String, String)]
 searchEnv ResolverLever SearchOn = [("SABELA_HOOGLE_RESOLVE", "1")]
+searchEnv (ServerFlagLever var) SearchOn = [(var, "1")]
+searchEnv (ServerFlagLever var) SearchOff = [(var, "0")]
 searchEnv _ _ = []
 
 {- | Toggle the capability-search tool in the GATE process before its catalogue
 is built. Episodes run sequentially, so process-env toggling is safe. A no-op
-for the resolver lever, which never touches this var.
+for levers that toggle the server instead.
 -}
 setCapabilityEnv :: GateLever -> SearchMode -> IO ()
 setCapabilityEnv CapabilityLever SearchOn = setEnv "SABELA_CAPABILITY_SEARCH" "1"
 setCapabilityEnv CapabilityLever SearchOff = unsetEnv "SABELA_CAPABILITY_SEARCH"
-setCapabilityEnv ResolverLever _ = pure ()
+setCapabilityEnv _ _ = pure ()
 
 {- | Run the gate over @tasks@ x @seeds@ x both search modes, one fresh server per
 run. Grammar is forced ON in every episode; @lever@ picks which knob the A/B flips.

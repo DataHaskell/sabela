@@ -1,25 +1,39 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | Pure helpers for typed-hole repair: read the goal type a not-in-scope error
-implies ('goalFromError'), turn a hole-fit blob into candidate names
-('holeFitNames', over the richer 'parseHoleFits'), and substitute a wrong name
-for a fit in a cell's source ('substituteName'). Shared by the in-notebook repair
-path and the eval harness.
+implies, turn a hole-fit blob into candidate names, and substitute a wrong name
+for a fit in source. Shared by the notebook repair path and the eval harness.
 -}
 module Sabela.AI.HoleRepair (
     goalFromError,
+    holeTypeFromDiagnostic,
     holeFitNames,
+    holeFitRewrites,
     suggestedNames,
     orderBySimilarity,
     substituteName,
+    substituteNameAt,
 ) where
 
 import Data.Char (isAlphaNum)
-import Data.List (sortOn)
+import Data.List (nub, sortOn)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
+
+{- | The in-context type GHC infers for a typed hole, from a @:type@/compile
+diagnostic: @"Found hole: _ :: T"@ → @T@ (up to the newline). The engine's
+in-context sensor — the hole type inferred with the cell's real bindings in scope,
+obtained non-committingly via @:type@ on a holed expression (no state to roll back).
+Stronger than reading the type from a not-in-scope error, which is often absent or
+wrong for a weak model's guess.
+-}
+holeTypeFromDiagnostic :: Text -> Maybe Text
+holeTypeFromDiagnostic t = do
+    rest <- afterInfix "Found hole: _ :: " t
+    let ty = T.strip (T.takeWhile (/= '\n') rest)
+    if T.null ty then Nothing else Just ty
 
 {- | The (wrong-name, goal-type) a @not in scope: name :: type@ error implies, so
 we can ask GHC for hole fits of that goal. Handles both the one-line form and
@@ -50,9 +64,17 @@ goalFromError err = do
 holeFitNames :: Text -> [Text]
 holeFitNames blob = [hfWrite f | f <- parseHoleFits blob, not (hfRefined f)]
 
+{- | Candidate rewrites from a hole-fit @blob@: each plain fit substituted for
+@wrong@ in @src@, deduped, dropping no-ops. The shared candidate source that
+both the product and eval repair paths draw from.
+-}
+holeFitRewrites :: Text -> Text -> Text -> [Text]
+holeFitRewrites wrong blob src =
+    nub [s | n <- holeFitNames blob, let s = substituteName wrong n src, s /= src]
+
 {- | Replace every ident-class token equal to @wrong@ with @fit@ in @src@. A
-whole-token replace: 'Nothing' clever about scope, strings, or comments, so the
-caller must verify the result compiles before keeping it.
+whole-token replace, blind to scope, strings, and comments, so the caller must
+verify the result compiles before keeping it.
 -}
 substituteName :: Text -> Text -> Text -> Text
 substituteName wrong fit src
@@ -63,9 +85,28 @@ substituteName wrong fit src
     sameClass a b = isIdent a == isIdent b
     isIdent c = isAlphaNum c || c == '_' || c == '.' || c == '\''
 
-{- | Names GHC's "Perhaps use" did-you-mean offers for a not-in-scope error —
-the backtick-quoted names after the phrase. These are spelling-corrections, so
-they are the right first candidates for a typo (e.g. @lengthh@ -> @length@).
+{- | Replace only the ident-class token at 1-based @(line, col)@ with @fit@,
+leaving other occurrences (including in strings and comments) untouched.
+'Nothing' if the span does not point at @wrong@ or is out of range.
+-}
+substituteNameAt :: (Int, Int) -> Text -> Text -> Text -> Maybe Text
+substituteNameAt (line, col) wrong fit src
+    | T.null wrong || line < 1 || col < 1 = Nothing
+    | otherwise = case splitAt (line - 1) (T.splitOn "\n" src) of
+        (before, target : after) -> do
+            newLine <- replaceAt target
+            Just (T.intercalate "\n" (before ++ newLine : after))
+        _ -> Nothing
+  where
+    replaceAt l =
+        let (pre, rest) = T.splitAt (col - 1) l
+            (tok, post) = T.span isIdent rest
+         in if tok == wrong then Just (pre <> fit <> post) else Nothing
+    isIdent c = isAlphaNum c || c == '_' || c == '.' || c == '\''
+
+{- | Names GHC's "Perhaps use" did-you-mean offers: the backtick-quoted names
+after the phrase. Spelling-corrections, so the best first candidates for a typo
+(e.g. @lengthh@ -> @length@).
 -}
 suggestedNames :: Text -> [Text]
 suggestedNames err = maybe [] backtickNames (afterInfix "Perhaps use" err)
@@ -78,8 +119,8 @@ suggestedNames err = maybe [] backtickNames (afterInfix "Perhaps use" err)
                  in if T.null r2 then [] else nm : backtickNames (T.drop 1 r2)
 
 {- | Order candidate names by closeness to the wrong name (Levenshtein), so a
-misspelling heals to the spelling-nearest valid name — @lengthh@ picks @length@,
-not an arbitrary same-typed fit like @product@.
+misspelling heals to the nearest valid spelling — @lengthh@ picks @length@, not
+an arbitrary same-typed fit.
 -}
 orderBySimilarity :: Text -> [Text] -> [Text]
 orderBySimilarity wrong = sortOn (editDistance wrong)

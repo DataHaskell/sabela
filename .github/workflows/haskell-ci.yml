@@ -34,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -43,6 +45,11 @@ jobs:
         run: node tools/build-frontend.mjs --check
       - name: Module size cap
         run: ./scripts/check-module-size.sh
+      - name: Comment style (changed lines)
+        run: |
+          BASE_REF="${{ github.base_ref || 'main' }}"
+          git fetch --no-tags origin "$BASE_REF" || true
+          BASE="origin/$BASE_REF" ./scripts/check-comments.sh
   linux:
     name: Haskell-CI - Linux - ${{ matrix.compiler }}
     runs-on: ubuntu-latest

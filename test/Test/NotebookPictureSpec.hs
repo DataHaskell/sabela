@@ -7,6 +7,7 @@
 module Test.NotebookPictureSpec (spec) where
 
 import Data.List (isInfixOf)
+import Sabela.Notebook.Markup (unSvg)
 import Sabela.Notebook.Picture
 import Test.Hspec
 
@@ -59,7 +60,7 @@ spec = do
                 `shouldSatisfy` isInfixOf "transform=\"rotate(45)\""
 
     describe "renderSvg wraps the body once" $ do
-        let out = renderSvg (Canvas 100 200) (circle (1, 1) 1)
+        let out = unSvg (renderSvg (Canvas 100 200) (circle (1, 1) 1))
         it "opens an <svg> with the canvas size" $
             out `shouldSatisfy` isInfixOf "width=\"100\" height=\"200\""
         it "closes the <svg>" $ out `shouldSatisfy` isInfixOf "</svg>"

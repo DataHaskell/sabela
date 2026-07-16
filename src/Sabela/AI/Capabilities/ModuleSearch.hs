@@ -5,7 +5,11 @@ installed modules. A keyword query ranks every exposed function with
 "Sabela.AI.Capability"; an exact module-name query returns that module's raw
 @:browse@ listing (all exports — values, types, classes — not just value bindings).
 -}
-module Sabela.AI.Capabilities.ModuleSearch (execFindFunction) where
+module Sabela.AI.Capabilities.ModuleSearch (
+    execFindFunction,
+    resolveNameToModules,
+    interesting,
+) where
 
 import Data.Aeson (Value, object, (.=))
 import Data.Char (isUpper)
@@ -14,6 +18,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.Resolve (lookupByName)
 import Sabela.AI.Capabilities.Util (fieldText)
 import Sabela.AI.Capability (
     Capability (..),
@@ -85,6 +90,24 @@ execFindFunction app input =
     q =
         let qq = fieldText "query" input
          in if T.null qq then fieldText "module" input else qq
+
+{- | Installed modules exporting @name@, via the bounded browse-index find_function
+uses: the Sabela builtin namespace plus the notebook's own imported namespaces. Used
+by the add-import repair (B2) to resolve an unimported name (e.g. @Picture@) to its
+module without the model naming it. Empty when nothing browsed exports the name.
+-}
+resolveNameToModules :: App -> Text -> IO [Capability]
+resolveNameToModules app name = do
+    mBackend <- getHaskellSession (appSessions app)
+    case mBackend of
+        Nothing -> pure []
+        Just backend -> do
+            builtin <- sbQueryComplete backend "import Sabela"
+            nss <- notebookNamespaces app
+            extra <- namespaceSubmodules backend nss
+            let mods = take maxIndexModules (nub (filter interesting (builtin ++ extra)))
+            caps <- buildIndex backend mods
+            pure (lookupByName name caps)
 
 {- | A dotted, uppercase-headed token with no spaces — a module name to browse
 directly (@DataFrame.Model@), not a keyword.

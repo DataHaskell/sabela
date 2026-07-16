@@ -11,6 +11,7 @@ module Sabela.Diagnose (
     hiddenPackage,
     neededExtension,
     misnamedModule,
+    couldNotFindModule,
     notInScopeName,
     packageNeedsFlag,
     GrammarRoute (..),
@@ -184,6 +185,13 @@ misnamedModule err = do
     right <- moduleAfter "Perhaps you meant" err
     pure (wrong, right)
 
+{- | The module named in "Could not find module ‘M’", whether or not GHC offered a
+correction. 'misnamedModule' handles the with-hint rename; this exposes the bare
+name so a module-index repair can act when GHC gives no "Perhaps you meant".
+-}
+couldNotFindModule :: Text -> Maybe Text
+couldNotFindModule = afterPhrase "Could not find module "
+
 {- | The first module-name token after a phrase: skip to the first uppercase, then
 take the dotted identifier (stops at the space before GHC's "(needs flag …)").
 -}
@@ -268,6 +276,16 @@ afterInfix needle t = case T.breakOn needle t of
     (_, rest) | not (T.null rest) -> Just (T.drop (T.length needle) rest)
     _ -> Nothing
 
+{- | 'afterInfix' matching @needle@ case-insensitively but returning the tail from
+the ORIGINAL text, so the name after it keeps its case. GHC writes both @Variable
+not in scope:@ and @Not in scope:@; the lowercase match catches both.
+-}
+afterInfixCI :: Text -> Text -> Maybe Text
+afterInfixCI needle t = case T.breakOn needle (T.toLower t) of
+    (pre, rest)
+        | not (T.null rest) -> Just (T.drop (T.length pre + T.length needle) t)
+    _ -> Nothing
+
 ------------------------------------------------------------------------
 -- E2: the seam between "regrounded" and "keep repairing"
 ------------------------------------------------------------------------
@@ -303,7 +321,7 @@ implicatedName l = firstJust [notInScopeName l, arisingFromName l]
 -- | The name in @Variable not in scope: foo[ :: ty]@ / @Not in scope: ‘foo’@.
 notInScopeName :: Text -> Maybe Text
 notInScopeName l = do
-    rest <- afterInfix "not in scope:" l
+    rest <- afterInfixCI "not in scope:" l
     pure (firstToken (T.strip rest))
   where
     firstToken t = case quotedToken t of

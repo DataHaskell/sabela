@@ -5,10 +5,10 @@ notebook-document system block we feed alongside it. Split out from
 'Sabela.AI.Orchestrator' because (a) the literal is large and stable
 and (b) it lets the agentic loop module stay focused on control flow.
 
-@apiReferenceCard@ is concatenated into 'systemPrompt' at the single
-documented slot. Do not add it as a separate 'SystemBlock' — that would
-double-ship the same text and waste one of Anthropic's four cache
-breakpoints per request.
+The working rules and tool-surface block come from 'Sabela.AI.PromptCore',
+shared with the eval harness. Signatures are looked up live via the search
+tools (find_function, describe_function, api_reference) rather than shipped as
+a static card.
 -}
 module Sabela.AI.Orchestrator.Prompt (
     systemPrompt,
@@ -21,9 +21,9 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 
+import Sabela.AI.Capabilities.Tools (chatToolSpecs)
 import Sabela.AI.Doc (defaultDocOpts, renderNotebookDoc)
-import Sabela.AI.Grammar (grammarPromptBlock)
-import Sabela.AI.ReferenceCard (apiReferenceCard)
+import Sabela.AI.PromptCore (sharedPromptCore, toolSurfaceBlock)
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
 
@@ -34,26 +34,12 @@ systemPrompt =
         , "`dataframe`, plot with `granite` or `DataFrame.Display.Web.Plot`."
         , "Drop to Python only when the Haskell ecosystem is missing a piece."
         , ""
-        , "## Principles"
-        , ""
-        , "- **Compiler is your superpower.** Before inserting or proposing any"
-        , "  change, compile-check it with ghci_query or scratchpad."
-        , "- **Small compileable units.** One definition at a time; shrink on"
-        , "  failure instead of guessing."
-        , "- **Report back often.** One short sentence to the user after each"
-        , "  tool call. No silent tool flurries."
-        , "- **Stop when the user's ask is satisfied.** Don't add gratuitous"
-        , "  extras (\"let me also add a summary stats cell\") unless asked."
-        , "  A clean minimal result beats an over-engineered one that hits"
-        , "  the TPM ceiling mid-turn. If the core ask is done after 3 cells,"
-        , "  stop and hand back to the user with a one-line summary."
+        , sharedPromptCore
+        , "Don't add gratuitous extras unless asked; a clean minimal result beats"
+        , "an over-engineered one. If the core ask is done after 3 cells, stop."
         , ""
         , "The second system block is the notebook JSON index (id, hash, firstLine)."
         , "Read it instead of list_cells. Pass expected_hash on propose_edit."
-        , ""
-        , apiReferenceCard
-        , ""
-        , grammarPromptBlock
         , ""
         , "## Cell syntax (scripths — same rules in cells AND scratchpad)"
         , ""
@@ -131,12 +117,12 @@ systemPrompt =
         , "```"
         , ""
         , "For anything beyond these: `api_reference {module:\"DataFrame.Typed\"}`"
-        , "(or \"DataFrame\", \"Functions\", \"Plot\", \"Granite.Svg\", \"Granite.Spec\"), or"
-        , "`ghci_query {op:\"browse\", arg:\"<Module>\"}`."
+        , "(or \"DataFrame\", \"Functions\", \"Plot\", \"Granite.Svg\", \"Granite.Spec\"),"
+        , "`find_function {module:\"<Module>\"}`, or `describe_function {name:\"<fn>\"}`."
         , ""
         , "## Workflow"
         , ""
-        , "1. Read the notebook doc. Probe types with ghci_query if uncertain."
+        , "1. Read the notebook doc. Probe types with check_type if uncertain."
         , "2. Dry-run in scratchpad. If it compiles, proceed."
         , "3. insert_cell one at a time. The response `execution` is a typed"
         , "   CellResult: read `execution.ok` (true iff the outcome is Succeeded)"
@@ -144,30 +130,17 @@ systemPrompt =
         , "   Aborted). If not ok, fix in the same turn before moving on."
         , "4. Narrate each step in a short line. Summarize at the end."
         , ""
-        , "## Tools"
+        , toolSurfaceBlock chatToolSpecs
+        , "## Tool notes"
         , ""
-        , "- ghci_query {op, arg}: `:type|:info|:kind|:browse|:doc` against the"
-        , "  live session. Cheapest feedback loop. Use `browse <Module>` when"
-        , "  you need to discover what's available."
-        , "- scratchpad: isolated session, same packages. Dry-run snippets here"
-        , "  before inserting or proposing."
-        , "- insert_cell: applies + auto-runs Haskell code. Response `execution`"
-        , "  is a typed CellResult; act on `execution.ok` (and `outcome.tag` for"
-        , "  the reason) — don't claim success without ok == true."
-        , "- replace_cell_source: directly edit a cell you inserted. Applies +"
-        , "  auto-runs. USE THIS to iterate — never delete-and-reinsert, never"
-        , "  propose_edit your own scaffolding."
-        , "- propose_edit: NOT applied until the user accepts. Reserve for"
-        , "  cells the USER wrote. Compile-verify via scratchpad first."
-        , "- execute_cell: re-run an existing cell."
-        , "- explore_result: drill into large outputs returned by handleId."
-        , "- search_capability: search ALL of Hackage by plain-language"
-        , "  description, type signature, or name to discover an unknown library"
-        , "  before importing it. Each hit gives the package's cabal line, the"
-        , "  module(s) to import, and key functions+signatures to call. Use it"
-        , "  when you don't know what provides a task."
+        , "- insert_cell / replace_cell_source auto-run: the response `execution`"
+        , "  is a typed CellResult — act on `execution.ok` (and `outcome.tag` for"
+        , "  the reason). Don't claim success without ok == true."
+        , "- Iterate with replace_cell_source on a cell you inserted — never"
+        , "  delete-and-reinsert, never propose_edit your own scaffolding."
+        , "- propose_edit is NOT applied until the user accepts; reserve it for"
+        , "  cells the USER wrote, and compile-verify via scratchpad first."
         , ""
-        , "Output helpers: displayMarkdown, displayHtml, displaySvg, displayLatex."
         , "Be concise."
         ]
 

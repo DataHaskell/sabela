@@ -6,14 +6,13 @@ import Control.Monad (unless, void)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.List (nub)
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 
-import Eval.HoleFit (goalFromError, substituteName)
+import Eval.HoleFit (goalFromError, holeFitRewrites)
 import Eval.Ollama (ToolCall (..))
 import Sabela.AI.CellResult (CellId)
-import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
+import Sabela.AI.Repair (firstJustM)
 import Sabela.AI.Types (ToolOutcome (..))
 
 type Dispatch = ToolCall -> IO (Either Text ToolOutcome)
@@ -39,25 +38,26 @@ substituteAndVerify disp cid errText = case goalFromError errText of
         case msrc of
             Nothing -> pure Nothing
             Just src -> do
-                let names = [hfWrite f | f <- parseHoleFits blob, not (hfRefined f)]
-                    subs = nub [s | n <- names, let s = substituteName wrong n src, s /= src]
-                hit <- firstGreen disp cid subs
+                let subs = holeFitRewrites wrong blob src
+                hit <- firstJustM (verifyReplace disp cid) subs
                 case hit of
-                    Just out -> pure (Just out)
+                    Just (_, (call, out)) -> pure (Just (call, out))
                     Nothing -> do
                         unless (null subs) (void (disp (replaceCall cid src)))
                         pure Nothing
 
-{- | Replace the cell with each candidate source in turn, returning the first
-whose re-run compiled; 'Nothing' if none did.
+{- | Replace the cell with a candidate source and keep the call + outcome only
+when the re-run compiled, so the search backtracks past a non-compiling fit.
 -}
-firstGreen ::
-    Dispatch -> CellId -> [Text] -> IO (Maybe (ToolCall, Either Text ToolOutcome))
-firstGreen _ _ [] = pure Nothing
-firstGreen disp cid (newSrc : rest) = do
+verifyReplace ::
+    Dispatch ->
+    CellId ->
+    Text ->
+    IO (Maybe (ToolCall, Either Text ToolOutcome))
+verifyReplace disp cid newSrc = do
     let call = replaceCall cid newSrc
     out <- disp call
-    if compiled out then pure (Just (call, out)) else firstGreen disp cid rest
+    pure (if compiled out then Just (call, out) else Nothing)
 
 -- | True when a cell-execution outcome reports a successful run (@execution.ok@).
 compiled :: Either Text ToolOutcome -> Bool

@@ -45,6 +45,7 @@ module Sabela.Notebook.Anim (
 
 import Data.List (intercalate)
 import Sabela.Notebook.Behavior (Behavior, Time, at)
+import Sabela.Notebook.Markup (Html (..), Svg (..))
 import Sabela.Notebook.Picture (Canvas, Picture, defaultCanvas, renderSvg)
 
 -- | How to record an animation.
@@ -76,12 +77,12 @@ animateB seconds b = animate seconds (at b)
 animateWith :: AnimOpts -> Time -> (Time -> Picture) -> IO ()
 animateWith opts seconds f = do
     putStrLn "<!-- MIME:text/html -->"
-    putStrLn (renderAnimation opts seconds f)
+    putStrLn (unHtml (renderAnimation opts seconds f))
 
 {- | The snapshots an animation is made of: the picture sampled at evenly spaced
 moments over @[0, seconds)@, each rendered to an SVG string.
 -}
-frameSvgs :: AnimOpts -> Time -> (Time -> Picture) -> [String]
+frameSvgs :: AnimOpts -> Time -> (Time -> Picture) -> [Svg]
 frameSvgs opts seconds f =
     [ renderSvg (animCanvas opts) (f (seconds * fromIntegral i / fromIntegral n))
     | i <- [0 .. n - 1]
@@ -93,19 +94,20 @@ frameSvgs opts seconds f =
 JavaScript array plus a tiny @requestAnimationFrame@ player that flips through
 them, looping. The browser does the playback; the kernel is not involved.
 -}
-renderAnimation :: AnimOpts -> Time -> (Time -> Picture) -> String
+renderAnimation :: AnimOpts -> Time -> (Time -> Picture) -> Html
 renderAnimation opts seconds f =
-    "<div></div><script>"
-        ++ "(function(){var frames=["
-        ++ jsArray (frameSvgs opts seconds f)
-        ++ "];var fps="
-        ++ show (animFps opts)
-        ++ ";var host=document.currentScript.previousElementSibling;"
-        ++ "var t0=null;function step(t){if(t0===null)t0=t;"
-        ++ "var i=Math.floor((t-t0)/1000*fps)%frames.length;"
-        ++ "host.innerHTML=frames[i];requestAnimationFrame(step);}"
-        ++ "requestAnimationFrame(step);})();"
-        ++ "</script>"
+    Html $
+        "<div></div><script>"
+            ++ "(function(){var frames=["
+            ++ jsArray (map unSvg (frameSvgs opts seconds f))
+            ++ "];var fps="
+            ++ show (animFps opts)
+            ++ ";var host=document.currentScript.previousElementSibling;"
+            ++ "var t0=null;function step(t){if(t0===null)t0=t;"
+            ++ "var i=Math.floor((t-t0)/1000*fps)%frames.length;"
+            ++ "host.innerHTML=frames[i];requestAnimationFrame(step);}"
+            ++ "requestAnimationFrame(step);})();"
+            ++ "</script>"
 
 -- | Render a list of strings as a comma-separated list of JS string literals.
 jsArray :: [String] -> String

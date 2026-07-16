@@ -30,9 +30,9 @@ salvageCell content
     (code, close) = T.breakOn "```" (T.drop 1 body0)
     cleaned = dropToolCallLines code
 
-{- | Product salvage policy: with no tool call this turn and exactly one fenced
-Haskell block under 'salvageCap', the block becomes a candidate source. Rejects
-multi-block or oversized content so it cannot duplicate or truncate a real edit.
+{- | Product salvage policy: with no tool call and exactly one fenced Haskell
+block under 'salvageCap', the block becomes a candidate source. Rejects multi-block
+or oversized content so it cannot duplicate or truncate an edit.
 -}
 salvageInsertSource :: Int -> Text -> Maybe Text
 salvageInsertSource toolCount content

@@ -7,9 +7,10 @@ prompt, so it covers any model and any client.
 
 Two resolvers with different keys:
 
-* 'packageForModule' / 'table' — keyed on module prefixes. Ordered
-  longest-prefix-first so @DataFrame.Display@ resolves to the plotting umbrella
-  before @DataFrame@ falls through to the lighter core.
+* 'packageForModule' / 'table' — keyed on module prefixes. @DataFrame@ resolves
+  to the umbrella @dataframe@ (not @dataframe-core@): the umbrella re-exports the
+  full public API a notebook uses (e.g. @col@), so an auto-added dep actually makes
+  the code compile.
 * 'resolvePackageToken' / 'packageNameIndex' — keyed on package names. Exact
   membership first, then a fuzzy (trigram) match, so a bogus token the model
   invented snaps to the nearest real package.
@@ -33,11 +34,13 @@ import qualified Data.Text as T
 import System.Exit (ExitCode (ExitSuccess))
 import System.Process (readProcessWithExitCode)
 
+import Sabela.AI.Similarity (trigramSimilarity)
+
 -- | (module prefix, package). Checked in order, so list specifics first.
 table :: [(Text, Text)]
 table =
     [ ("DataFrame.Display", "dataframe")
-    , ("DataFrame", "dataframe-core")
+    , ("DataFrame", "dataframe")
     , ("Granite", "granite")
     , ("Data.Text", "text")
     , ("Data.Vector", "vector")
@@ -63,7 +66,8 @@ packageNameIndex :: [Text]
 packageNameIndex =
     nubOrd $
         map snd table
-            ++ [ "bytestring"
+            ++ [ "dataframe-core"
+               , "bytestring"
                , "directory"
                , "filepath"
                , "process"
@@ -104,23 +108,6 @@ resolvePackageToken tok
 -- | Minimum trigram Jaccard similarity for a fuzzy package-token match.
 fuzzyThreshold :: Double
 fuzzyThreshold = 0.2
-
--- | Jaccard similarity of the two tokens' character-trigram sets.
-trigramSimilarity :: Text -> Text -> Double
-trigramSimilarity a b
-    | Set.null union = 0
-    | otherwise =
-        fromIntegral (Set.size inter) / fromIntegral (Set.size union)
-  where
-    inter = Set.intersection ta tb
-    union = Set.union ta tb
-    ta = trigrams a
-    tb = trigrams b
-
-trigrams :: Text -> Set.Set Text
-trigrams t
-    | T.length t < 3 = Set.singleton t
-    | otherwise = Set.fromList [T.take 3 (T.drop i t) | i <- [0 .. T.length t - 3]]
 
 {- | Authoritative module-to-package lookup via @ghc-pkg find-module@ (local,
 no network). The fall-through 'resolveMessage' uses when 'packageForModule'

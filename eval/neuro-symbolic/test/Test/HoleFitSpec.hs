@@ -8,8 +8,10 @@ import Test.Hspec
 import Eval.HoleFit (
     goalFromError,
     holeFitNames,
+    holeTypeFromDiagnostic,
     orderBySimilarity,
     substituteName,
+    substituteNameAt,
     suggestedNames,
  )
 
@@ -52,6 +54,15 @@ spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
         it "is Nothing for benign output" $
             goalFromError "all good" `shouldBe` Nothing
 
+    describe "holeTypeFromDiagnostic (in-context hole sensor)" $ do
+        it "reads the in-context hole type GHC infers" $
+            holeTypeFromDiagnostic blob `shouldBe` Just "DataFrame -> [Double]"
+        it "reads a constrained/qualified in-context type up to the newline" $
+            holeTypeFromDiagnostic "Found hole: _ :: D.Expr a\nWhere: a is rigid"
+                `shouldBe` Just "D.Expr a"
+        it "is Nothing when the diagnostic carries no hole" $
+            holeTypeFromDiagnostic "Variable not in scope: foo" `shouldBe` Nothing
+
     describe "holeFitNames" $ do
         it "keeps the plain fit names, dropping provenance and refinement" $
             holeFitNames blob `shouldBe` ["columnAsList", "toColumn"]
@@ -90,3 +101,24 @@ spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
 
         it "is a no-op when the names match" $
             substituteName "col" "col" "x = col y" `shouldBe` "x = col y"
+
+    describe "substituteNameAt (span-localized)" $ do
+        it "replaces only the occurrence at the reported line:col" $
+            substituteNameAt (1, 5) "lengthh" "length" "x = lengthh\ny = lengthh"
+                `shouldBe` Just "x = length\ny = lengthh"
+
+        it "leaves a same-named token inside a string literal untouched" $
+            substituteNameAt (2, 5) "lengthh" "length" "x = \"lengthh\"\ny = lengthh"
+                `shouldBe` Just "x = \"lengthh\"\ny = length"
+
+        it "handles a qualified name as one token" $
+            substituteNameAt (1, 6) "D.getCol" "D.columnAsList" "xs = D.getCol df"
+                `shouldBe` Just "xs = D.columnAsList df"
+
+        it "is Nothing when the span does not point at the wrong name" $
+            substituteNameAt (1, 1) "lengthh" "length" "  lengthh xs"
+                `shouldBe` Nothing
+
+        it "is Nothing when the line is out of range" $
+            substituteNameAt (9, 1) "lengthh" "length" "x = lengthh"
+                `shouldBe` Nothing

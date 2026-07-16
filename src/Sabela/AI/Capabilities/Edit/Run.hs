@@ -24,33 +24,23 @@ import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM (atomically, readTChan)
 import Data.Aeson (Value, (.=))
-import Data.List (nub)
-import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime)
 import System.Timeout (timeout)
-import Text.Read (readMaybe)
 
+import Sabela.AI.Capabilities.Edit.Repair (
+    firstFix,
+    holeFitCandidates,
+    hoogleCandidates,
+    importResolveCandidates,
+    moduleDepStep,
+    moduleResolveCandidates,
+    selectByTypeCheck,
+ )
 import Sabela.AI.Capabilities.Util (fieldInt)
 import Sabela.AI.CellResult (mergeToolOk, toCellResult)
-import Sabela.AI.DepRepair (addBuildDepend, depFromResult)
-import Sabela.AI.ExtRepair (addExtension, extFromResult)
-import Sabela.AI.Health (
-    healthOfResult,
-    healthOfTypeQuery,
-    improvesHealth,
-    isClean,
- )
-import Sabela.AI.HoleRepair (
-    goalFromError,
-    holeFitNames,
-    orderBySimilarity,
-    substituteName,
-    suggestedNames,
- )
-import Sabela.AI.HoogleResolve (hoogleResolveTopK)
-import Sabela.AI.ImportRepair (addScopedImport, moduleRenameFix)
+import Sabela.AI.Health (healthOfResult, improvesHealth)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, isCancelled)
@@ -59,14 +49,11 @@ import Sabela.Diagnose (
     cellResultWithGuidance,
     guidanceForCell,
     guidancePairs,
-    notInScopeName,
  )
-import Sabela.Errors.Json (parseJsonInteractive)
 import Sabela.Handlers (ReactiveNotebook (..), updateCellSource)
 import Sabela.Model
 import qualified Sabela.SessionTypes as ST
 import Sabela.State
-import System.Environment (lookupEnv)
 
 {- | Run a single cell via the reactive notebook and return the typed
 'CellResult' JSON for embedding as the mutation-tool @execution@ summary.
@@ -173,19 +160,29 @@ executeWithRepair app rn cid cancelTok = do
                 Nothing -> case lookupCell cid nb of
                     Nothing -> pure res
                     Just cell -> do
-                        cands <- hoogleCandidates res (cellSource cell)
-                        kept <- verifyAndRevert n res (cellSource cell) cands
-                        case kept of
-                            Just newRes -> go (n - 1) newRes
-                            Nothing -> do
-                                -- Speculative hole-fit repair: pick a candidate
-                                -- by a compile-only :type check (no execution),
-                                -- then commit + run only the winner (critique R1).
-                                holeCands <- holeFitCandidates app res (cellSource cell)
-                                mWin <- selectByTypeCheck app holeCands
-                                case mWin of
-                                    Nothing -> pure res
-                                    Just winSrc -> applyAndLoop n winSrc
+                        -- Phase 1 of B1: declare a near-miss module's package via
+                        -- the commit path (a dep change restarts the kernel, which
+                        -- verify-and-revert cannot survive); phase 2 renames below.
+                        mDep <- moduleDepStep res (cellSource cell)
+                        case mDep of
+                            Just depSrc -> applyAndLoop n depSrc
+                            Nothing -> repairCandidates n res cell
+    repairCandidates n res cell = do
+        modCands <- moduleResolveCandidates app res (cellSource cell)
+        impCands <- importResolveCandidates app res (cellSource cell)
+        hoogCands <- hoogleCandidates res (cellSource cell)
+        let cands = modCands ++ impCands ++ hoogCands
+        kept <- verifyAndRevert n res (cellSource cell) cands
+        case kept of
+            Just newRes -> go (n - 1) newRes
+            Nothing -> do
+                -- Speculative hole-fit repair: pick a candidate by a compile-only
+                -- :type check (no execution), then commit + run only the winner.
+                holeCands <- holeFitCandidates app res (cellSource cell)
+                mWin <- selectByTypeCheck app holeCands
+                case mWin of
+                    Nothing -> pure res
+                    Just winSrc -> applyAndLoop n winSrc
     applyAndLoop n newSrc = do
         modifyNotebook (appNotebook app) (updateCellSource cid newSrc)
         broadcastNotebook app
@@ -209,141 +206,6 @@ executeWithRepair app rn cid cancelTok = do
                 modifyNotebook (appNotebook app) (updateCellSource cid priorSrc)
                 broadcastNotebook app
                 verifyAndRevert n res priorSrc rest
-
-{- | The flag-gated local-Hoogle candidate sources, tried only after every pure
-fixer declines. With @SABELA_HOOGLE_RESOLVE@ unset this is the empty list, so the
-default repair path is byte-identical to before. When set, resolve the
-not-in-scope name to up to K (package, module) candidates via the LOCAL hoogle
-CLI and, for each, add the @-- cabal:@ build-depend plus a SCOPED @import M
-(name)@. K defaults to 'defaultTopK', override via @SABELA_HOOGLE_TOP_K@. Each
-candidate is a kernel-restart+install, so K is the cost knob.
--}
-hoogleCandidates :: Either Text ExecutionResult -> Text -> IO [Text]
-hoogleCandidates res src = do
-    enabled <- lookupEnv "SABELA_HOOGLE_RESOLVE"
-    case enabled >> notInScopeFromResult res of
-        Nothing -> pure []
-        Just name -> do
-            k <- topKFromEnv
-            resolved <- hoogleResolveTopK k name
-            pure
-                [ src'
-                | (pkg, modul) <- resolved
-                , let src' = addScopedImport modul name (addBuildDepend pkg src)
-                , src' /= src
-                ]
-
--- | Default top-K candidates the hoogle resolver tries per repair attempt.
-defaultTopK :: Int
-defaultTopK = 3
-
--- | The candidate budget K, from @SABELA_HOOGLE_TOP_K@ or 'defaultTopK'.
-topKFromEnv :: IO Int
-topKFromEnv = do
-    mk <- lookupEnv "SABELA_HOOGLE_TOP_K"
-    pure (maybe defaultTopK (max 1) (mk >>= readMaybe))
-
-{- | Speculative hole-fit candidates for a red not-in-scope-with-type cell: query
-GHC hole fits for the inferred goal type and substitute the wrong name. Empty
-unless the error carries a goal type. Candidates are checked compile-only before
-any is committed (see 'selectByTypeCheck').
--}
-holeFitCandidates :: App -> Either Text ExecutionResult -> Text -> IO [Text]
-holeFitCandidates app res src = do
-    enabled <- lookupEnv "SABELA_HOLE_FIT"
-    let errText = resultErrorText res
-    case enabled >> goalFromError errText of
-        Nothing -> pure []
-        Just (wrong, ty) -> do
-            mBackend <- getHaskellSession (appSessions app)
-            case mBackend of
-                Nothing -> pure []
-                Just backend -> do
-                    blob <- ST.sbQueryHoleFits backend ("_ :: " <> ty)
-                    -- The live session emits -fdiagnostics-as-json, so the fits
-                    -- arrive JSON-escaped; decode to the plain text holeFitNames
-                    -- parses. A plain-text session falls through the residual.
-                    let (errs, _, rest) = parseJsonInteractive blob
-                        fitText = T.unlines (map ceMessage errs) <> rest
-                        -- GHC's did-you-mean first, then hole fits, all ranked by
-                        -- spelling closeness to the wrong name, so a typo heals to
-                        -- the nearest valid name (length), not an arbitrary
-                        -- same-typed fit (product).
-                        names =
-                            orderBySimilarity
-                                wrong
-                                (nub (suggestedNames errText ++ holeFitNames fitText))
-                    pure $
-                        nub
-                            [ s
-                            | n <- names
-                            , let s = substituteName wrong n src
-                            , s /= src
-                            ]
-
-{- | The first candidate whose expression @:type@-checks clean, WITHOUT running
-it. 'Nothing' when none check clean (or there is no session).
--}
-selectByTypeCheck :: App -> [Text] -> IO (Maybe Text)
-selectByTypeCheck _ [] = pure Nothing
-selectByTypeCheck app cands = do
-    mBackend <- getHaskellSession (appSessions app)
-    case mBackend of
-        Nothing -> pure Nothing
-        Just backend -> firstClean backend cands
-  where
-    firstClean _ [] = pure Nothing
-    firstClean backend (c : cs) = do
-        out <- ST.sbQueryType backend (typeCheckTarget c)
-        if isClean (healthOfTypeQuery out)
-            then pure (Just c)
-            else firstClean backend cs
-
-{- | The expression to @:type@ for a candidate source: the RHS of a simple
-single-line @x = expr@ binding, else the whole (stripped) source. A candidate
-that is not a checkable expression fails @:type@ and is skipped — safe, since
-selection requires a CLEAN check, so only a missed repair results, never a bad
-repair kept.
--}
-typeCheckTarget :: Text -> Text
-typeCheckTarget src
-    | T.count "\n" stripped == 0
-    , (_, rhs) <- T.breakOn " = " stripped
-    , not (T.null rhs) =
-        T.strip (T.drop 3 rhs)
-    | otherwise = stripped
-  where
-    stripped = T.strip src
-
--- | A failed run's error text (holistic error plus structured messages).
-resultErrorText :: Either Text ExecutionResult -> Text
-resultErrorText (Left e) = e
-resultErrorText (Right er) =
-    T.unlines (maybe [] pure (erError er) ++ map ceMessage (erErrors er))
-
--- | The first not-in-scope name across a failed run's error and error list.
-notInScopeFromResult :: Either Text ExecutionResult -> Maybe Text
-notInScopeFromResult (Left _) = Nothing
-notInScopeFromResult (Right er) =
-    listToMaybe (concatMap (mapMaybe notInScopeName . T.lines) errorTexts)
-  where
-    errorTexts = maybe [] pure (erError er) ++ map ceMessage (erErrors er)
-
-{- | The deterministic source fixers, tried in order: the first whose rewrite
-actually changes the source wins this round. Each maps a failed run plus the cell
-source to a repaired source, or Nothing when it does not apply.
--}
-repairFixers :: [Either Text ExecutionResult -> Text -> Maybe Text]
-repairFixers =
-    [ \res src -> (`addBuildDepend` src) <$> depFromResult res
-    , \res src -> (`addExtension` src) <$> extFromResult res
-    , moduleRenameFix
-    ]
-
--- | The first fixer's rewrite that actually changes the source.
-firstFix :: Either Text ExecutionResult -> Text -> Maybe Text
-firstFix res src =
-    listToMaybe [s | fixer <- repairFixers, Just s <- [fixer res src], s /= src]
 
 -- | Most automatic deterministic repairs a single run will attempt.
 repairCap :: Int

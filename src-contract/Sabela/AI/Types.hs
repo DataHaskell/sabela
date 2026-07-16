@@ -135,6 +135,8 @@ data ScratchpadSession = ScratchpadSession
     { spBackend :: SessionBackend
     , spWorkDir :: FilePath
     , spLang :: CellLang
+    , spDeps :: [Text]
+    -- ^ build-depends the project was scaffolded with; a change rebuilds it.
     }
 
 ------------------------------------------------------------------------

@@ -17,11 +17,15 @@ module Sabela.AI.Orchestrator.Loop (
 
     -- * Helpers (exposed for test mirrors)
     mergeUsage,
+    downstreamDependents,
+    looksLikeToolCallText,
 ) where
 
 import Control.Concurrent.STM (atomically, writeTVar)
-import Control.Monad (forM_, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Key as AK
 import qualified Data.Aeson.KeyMap as KM
 import Data.IORef (
     IORef,
@@ -36,15 +40,19 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 import Sabela.AI.Capabilities (executeTool)
+import Sabela.AI.Capabilities.Edit.Run (executeCell)
 import Sabela.AI.Capabilities.Kernel (kernelStateBefore)
 import Sabela.AI.Capabilities.ToolName (actsOnNotebook, parseToolName)
 import Sabela.AI.Capabilities.Tools (chatToolSpecs)
+import Sabela.AI.Capabilities.Util (featureEnabled)
 import Sabela.AI.Discover (discoverGrammar, importedModules)
-import Sabela.AI.Health (healthOfCellError)
+import Sabela.AI.Health (healthOfCellError, healthOfResult)
 import Sabela.AI.Orchestrator.Compact (compactToolResult)
 import Sabela.AI.Orchestrator.Prompt (buildNotebookDocText, systemPrompt)
+import Sabela.AI.Orchestrator.Trace (snip, traceEvent, traceReset)
 import Sabela.AI.Owned (
     MutationEvent (..),
     OwnedCell (..),
@@ -58,7 +66,6 @@ import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (StopReason (..), Usage (..))
 import Sabela.Handlers (ReactiveNotebook)
-import Sabela.Ids (ToolCallId (..))
 import Sabela.LLM.Cancel (isCancelled)
 import Sabela.LLM.Completion (Completion (..), StopCondition (..))
 import Sabela.LLM.Message (
@@ -76,12 +83,15 @@ import Sabela.LLM.Provider (
  )
 import qualified Sabela.LLM.Usage as K
 import Sabela.Model (
+    Cell,
     NotebookEvent (..),
     cellError,
+    cellId,
     cellSource,
     lookupCell,
     nbCells,
  )
+import Sabela.Reactivity (haskellCodeCells)
 import Sabela.SessionTypes (sbQueryBrowse)
 import Sabela.State (
     App (..),
@@ -91,7 +101,7 @@ import Sabela.State (
  )
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.EventBus (broadcast)
-import System.Environment (lookupEnv)
+import Sabela.Topo (TopoResult (..), selectAffectedTopoFrom)
 
 {- | Default per-turn cap on tool-call rounds. The live cap is read from
 'appAIToolLimit' (configurable in the AI settings modal); this is its default.
@@ -107,16 +117,15 @@ salvageInsertPart src =
     ToolCallPart
         (ToolCall (ToolCallId "salvage") "insert_cell" (object ["source" .= src]))
 
-{- | The live grammar for this turn: browse the notebook's imported modules and
-synthesise their real signatures. 'Nothing' unless @SABELA_LIVE_GRAMMAR@ is set
-and a session is up.
+{- | The live grammar for this turn: browse the notebook's imports and synthesise
+their signatures. On by default; disabled by @SABELA_LIVE_GRAMMAR=0@ or no session.
 -}
 discoverLiveGrammar :: App -> IO (Maybe Text)
 discoverLiveGrammar app = do
-    enabled <- lookupEnv "SABELA_LIVE_GRAMMAR"
+    on <- featureEnabled "SABELA_LIVE_GRAMMAR"
     mBackend <- getHaskellSession (appSessions app)
-    case (enabled, mBackend) of
-        (Just _, Just backend) -> do
+    case (on, mBackend) of
+        (True, Just backend) -> do
             nb <- readNotebook (appNotebook app)
             let mods = nub (concatMap (importedModules . cellSource) (nbCells nb))
             discoverGrammar (sbQueryBrowse backend) mods
@@ -124,8 +133,12 @@ discoverLiveGrammar app = do
 
 agenticLoop :: App -> AIStore -> ReactiveNotebook -> Turn -> IO ()
 agenticLoop app store rn turn = do
+    traceReset app
     ownedRef <- newIORef Map.empty
     liveGrammar <- discoverLiveGrammar app
+    traceEvent
+        app
+        ["kind" .= ("start" :: Text), "grammar" .= isJust liveGrammar]
     go ownedRef liveGrammar False 0
   where
     tid = turnId turn
@@ -154,7 +167,8 @@ agenticLoop app store rn turn = do
                     (turnCancel turn)
                     (ChunkSink (broadcast (appEvents app) . EvChatTextDelta tid))
             case eResp of
-                Left err ->
+                Left err -> do
+                    traceEvent app ["kind" .= ("error" :: Text), "msg" .= err]
                     atomically $ writeTVar (turnPhase turn) (TurnFailed err)
                 Right comp -> do
                     let parts = compParts comp
@@ -169,11 +183,20 @@ agenticLoop app store rn turn = do
                     atomicModifyIORef' (turnIterations turn) (\n -> (n + 1, ()))
                     accumulateUsage store turn (compUsage comp)
                     toolCount <- readIORef (turnToolCount turn)
+                    traceEvent
+                        app
+                        [ "kind" .= ("model" :: Text)
+                        , "stop" .= T.pack (show (compStop comp))
+                        , "toolCount" .= toolCount
+                        , "tools" .= [tcName tc | ToolCallPart tc <- parts]
+                        , "text" .= T.take 500 (T.concat [t | TextPart t <- parts])
+                        ]
                     case compStop comp of
                         WantsTools -> do
                             limit <- readIORef (appAIToolLimit app)
                             if toolCount >= limit
                                 then do
+                                    traceEvent app ["kind" .= ("toollimit" :: Text), "limit" .= limit]
                                     broadcast (appEvents app) $
                                         EvChatError
                                             (Just tid)
@@ -186,7 +209,7 @@ agenticLoop app store rn turn = do
                                 else do
                                     executeToolCalls app store rn turn ownedRef parts
                                     go ownedRef liveGrammar salvaged reenters
-                        Done -> handleDone ownedRef liveGrammar salvaged reenters parts toolCount
+                        Done -> handleDone ownedRef liveGrammar salvaged reenters parts
                         stop ->
                             atomically $
                                 writeTVar (turnPhase turn) (TurnComplete (toStopReason stop))
@@ -194,23 +217,48 @@ agenticLoop app store rn turn = do
     -- At the model's natural stop: first the narrate-then-stop salvage, then the
     -- closure-verified accept — re-verify owned cells live and, when re-enter is
     -- on and budget remains, nudge on the red ones instead of accepting them.
-    handleDone ownedRef liveGrammar salvaged reenters parts toolCount
-        | not salvaged
-        , Just src <-
-            salvageInsertSource toolCount (T.concat [t | TextPart t <- parts]) = do
-            executeToolCalls app store rn turn ownedRef [salvageInsertPart src]
-            go ownedRef liveGrammar True reenters
-        | otherwise = do
-            reenterOn <- lookupEnv "SABELA_SELF_HEAL_REENTER"
-            owned <- readIORef ownedRef
-            live <- liveOwned app owned
-            case stopDecision live of
-                Reenter reds
-                    | isJust reenterOn
-                    , reenters < maxReenter -> do
-                        appendMessage store (Message User [TextPart (reenterNudge reds)])
-                        go ownedRef liveGrammar salvaged (reenters + 1)
-                _ -> atomically $ writeTVar (turnPhase turn) (TurnComplete SREndTurn)
+    handleDone ownedRef liveGrammar salvaged reenters parts = do
+        owned <- readIORef ownedRef
+        let content = T.concat [t | TextPart t <- parts]
+            -- Salvage keys off whether a MUTATING tool wrote a cell this turn
+            -- (@owned@), not total tool calls: query calls must not block it.
+            mSalvage =
+                if salvaged then Nothing else salvageInsertSource (Map.size owned) content
+        case mSalvage of
+            Just src -> do
+                traceEvent app ["kind" .= ("salvage" :: Text)]
+                executeToolCalls app store rn turn ownedRef [salvageInsertPart src]
+                go ownedRef liveGrammar True reenters
+            Nothing
+                | reenters < maxReenter
+                , looksLikeToolCallText content -> do
+                    traceEvent
+                        app
+                        ["kind" .= ("nudge" :: Text), "reason" .= ("tool-call-in-text" :: Text)]
+                    appendMessage store (Message User [TextPart toolCallNudge])
+                    go ownedRef liveGrammar salvaged (reenters + 1)
+                | otherwise -> do
+                    reenterOn <- featureEnabled "SABELA_SELF_HEAL_REENTER"
+                    live <- liveOwned app owned
+                    -- Fold in the reactive closure: dependents re-run for fresh
+                    -- health, so a repair that broke a downstream cell is caught.
+                    downstream <-
+                        if reenterOn then verifyDownstream app rn turn owned else pure Map.empty
+                    let decision = stopDecision (live <> downstream)
+                    traceEvent
+                        app
+                        [ "kind" .= ("done" :: Text)
+                        , "decision" .= T.pack (show decision)
+                        , "reenterOn" .= reenterOn
+                        , "reenters" .= reenters
+                        ]
+                    case decision of
+                        Reenter reds
+                            | reenterOn
+                            , reenters < maxReenter -> do
+                                appendMessage store (Message User [TextPart (reenterNudge reds)])
+                                go ownedRef liveGrammar salvaged (reenters + 1)
+                        _ -> atomically $ writeTVar (turnPhase turn) (TurnComplete SREndTurn)
 
 {- | Map the neutral stop condition onto 'TurnPhase''s (still Anthropic-shaped)
 'StopReason'. The value is not surfaced — the turn just completes — and this
@@ -278,6 +326,15 @@ executeToolCalls app store rn turn ownedRef parts = do
             (kBefore, gen) <- kernelStateBefore app
             outcome <- executeTool app store rn (turnCancel turn) nm input
             recordOwnedMutation app ownedRef tc outcome
+            traceEvent
+                app
+                [ "kind" .= ("tool" :: Text)
+                , "name" .= nm
+                , "isError" .= toolOutcomeIsError outcome
+                , "cellId" .= cellIdOf outcome
+                , "args" .= snip 200 input
+                , "result" .= snip 300 (toolOutcomeValue outcome)
+                ]
             -- The in-browser chat bypasses 'aiToolH', so record its own
             -- provenance here (actor=InBrowserChat, browser-session sentinel).
             recordToolCall
@@ -301,9 +358,8 @@ executeToolCalls app store rn turn ownedRef parts = do
             appendMessage store $
                 Message User [ToolResultPart (ToolResult cid nm compactedOutcome)]
 
-{- | If a tool call is a notebook-acting mutation, fold the cell it wrote (id +
-committed source + provisional health) into the owned map, so the accept gate
-knows which cells this turn is responsible for.
+{- | If a tool call is a notebook-acting mutation, fold the cell it wrote into
+the owned map, so the accept gate knows which cells this turn is responsible for.
 -}
 recordOwnedMutation ::
     App -> IORef (Map Int OwnedCell) -> ToolCall -> ToolOutcome -> IO ()
@@ -319,9 +375,9 @@ recordOwnedMutation app ownedRef tc outcome =
                 modifyIORef' ownedRef (recordMutation (MutationEvent tool cid src health))
         _ -> pure ()
 
-{- | Re-verify each owned cell's health LIVE from the notebook, dropping any cell
-the user has edited since (its source no longer matches what the agent committed)
-or deleted — the accept must not judge a cell the turn no longer owns.
+{- | Re-verify each owned cell's health live from the notebook, dropping any cell
+the user has since edited or deleted — the accept must not judge a cell the turn
+no longer owns.
 -}
 liveOwned :: App -> Map Int OwnedCell -> IO (Map Int OwnedCell)
 liveOwned app owned = do
@@ -334,6 +390,32 @@ liveOwned app owned = do
                 Just oc{ocHealth = healthOfCellError (cellError cell)}
         _ -> Nothing
 
+{- | Re-run the owned cells' reactive dependents for fresh health: the AI path
+runs only the edited cell, so a dependent's stored error is stale. Catches a
+repair that greened its cell but broke a downstream one.
+-}
+verifyDownstream ::
+    App -> ReactiveNotebook -> Turn -> Map Int OwnedCell -> IO (Map Int OwnedCell)
+verifyDownstream app rn turn owned
+    | Map.null owned = pure Map.empty
+    | otherwise = do
+        nb <- readNotebook (appNotebook app)
+        let dependents = downstreamDependents owned (haskellCodeCells nb)
+        fmap Map.fromList $ forM dependents $ \cid -> do
+            res <- executeCell app rn cid (turnCancel turn)
+            pure (cid, OwnedCell (healthOfResult res) "")
+
+{- | The non-owned cells in the reactive closure of the owned set, topo-ordered:
+the dependents whose health must be re-checked after a repair. Owned cells are
+excluded, since the repair loop already tracks their health directly.
+-}
+downstreamDependents :: Map Int a -> [Cell] -> [Int]
+downstreamDependents owned cells =
+    [ cellId c
+    | c <- trOrdered (fst (selectAffectedTopoFrom (Map.keysSet owned) cells))
+    , not (Map.member (cellId c) owned)
+    ]
+
 -- | Bounded re-enters when owned cells are left red (progress-independent).
 maxReenter :: Int
 maxReenter = 2
@@ -344,6 +426,33 @@ reenterNudge reds =
     "These cells you wrote still have errors: "
         <> T.intercalate ", " (map (T.pack . show) reds)
         <> ". Fix them before finishing — read the error and repair or rewrite the cell."
+
+{- | The model sometimes writes a tool call as plain text — a bare JSON object
+like @{\"query\":\"map\"}@ — instead of invoking it. Detect that so the loop can
+nudge rather than mistake it for a finished turn.
+-}
+looksLikeToolCallText :: Text -> Bool
+looksLikeToolCallText t = case Aeson.decodeStrict (TE.encodeUtf8 (T.strip t)) of
+    Just (Object o) -> any (\k -> KM.member (AK.fromText k) o) toolArgKeys
+    _ -> False
+  where
+    toolArgKeys =
+        [ "query"
+        , "module"
+        , "name"
+        , "source"
+        , "code"
+        , "cell_id"
+        , "new_source"
+        , "expr"
+        , "goal"
+        ]
+
+-- | The nudge when the model emitted a tool call as text instead of invoking it.
+toolCallNudge :: Text
+toolCallNudge =
+    "That looked like a tool call written as text. Invoke it through the tool\
+    \ interface instead of writing the JSON in a message."
 
 -- | The @cellId@ a mutation tool's outcome reports, if any.
 cellIdOf :: ToolOutcome -> Maybe Int

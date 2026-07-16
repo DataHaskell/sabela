@@ -119,12 +119,16 @@ chatCore ::
     IO (Either Text Turn)
 chatCore think mseed numCtx mgr model messages tools = do
     keepAlive <- T.pack . fromMaybe "30m" <$> lookupEnv "OLLAMA_KEEP_ALIVE"
+    -- Sampling temperature, default 0.4. Raised (via the env) to give rejection
+    -- sampling real proposal diversity; unset leaves the wire shape unchanged.
+    temp <- fromMaybe 0.4 . (>>= readMaybe) <$> lookupEnv "OLLAMA_TEMPERATURE"
     let opts =
             OllamaReqOpts
                 { oroThink = think
                 , oroSeed = mseed
                 , oroKeepAlive = keepAlive
                 , oroNumCtx = numCtx
+                , oroTemperature = temp
                 }
         body = chatRequestBody opts model messages tools
     base <- ollamaBaseUrl
@@ -156,6 +160,7 @@ data OllamaReqOpts = OllamaReqOpts
     , oroSeed :: Maybe Int
     , oroKeepAlive :: Text
     , oroNumCtx :: Int
+    , oroTemperature :: Double
     }
     deriving (Show, Eq)
 
@@ -177,7 +182,7 @@ chatRequestBody o model messages tools =
   where
     opts =
         object $
-            [ "temperature" .= (0.4 :: Double)
+            [ "temperature" .= oroTemperature o
             , "num_ctx" .= (oroNumCtx o :: Int)
             ]
                 ++ ["seed" .= s | Just s <- [oroSeed o]]
@@ -207,15 +212,17 @@ parseTurn raw = case eitherDecodeStrict' (LBS.toStrict raw) of
     Right _ -> Left "ollama: unexpected non-object response"
 
 {- | Recovery (a): Ollama's @error parsing tool call: raw='<args-json>', err=...@
-carries only the arguments object, with an unescaped backslash that broke its
-JSON parse (e.g. a lambda's @\\acc@). Pull the @raw=@ payload, repair its
+carries the arguments object, sometimes prefixed by the model's reasoning prose
+and/or broken by an unescaped backslash (e.g. a lambda's @\\acc@). Pull the
+@raw=@ payload, isolate the JSON object from any surrounding prose, repair its
 escapes, decode it, and synthesise the tool call — inferring the tool name from
 the arg fields, since the error does not name the function.
 -}
 recoverFromError :: Text -> Maybe Turn
 recoverFromError err = do
     payload <- extractRawPayload err
-    call <- callFromArgsJson payload
+    obj <- firstJsonObject payload
+    call <- callFromArgsJson obj
     pure (synthTurn call)
 
 {- | Recovery (b): a turn with no native tool_calls whose content (or thinking)

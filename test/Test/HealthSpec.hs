@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | The diagnostic-set health model that decides whether a repair candidate is
-kept. Pins the acceptance rule that comparing SETS (not error counts) rejects a
-candidate that trades one error for another.
+kept. Pins the rule that comparing sets, not error counts, rejects a candidate
+that trades one error for another.
 -}
 module Test.HealthSpec (spec) where
 

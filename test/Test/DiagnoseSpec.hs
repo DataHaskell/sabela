@@ -11,11 +11,13 @@ import qualified Data.Text as T
 import Sabela.AI.CellResult (CellOutcome (..), CellResult (..))
 import Sabela.Diagnose (
     Guidance (..),
+    couldNotFindModule,
     diagnose,
     guidanceForCell,
     guidancePairs,
     misnamedModule,
     neededExtension,
+    notInScopeName,
     packageNeedsFlag,
  )
 import Sabela.Diagnose.Packages (
@@ -38,9 +40,9 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
     describe "packageForModule" $ do
         it "maps Granite modules to granite" $
             packageForModule "Granite.Svg" `shouldBe` Just "granite"
-        it "prefers the umbrella for DataFrame.Display, core otherwise" $ do
+        it "maps DataFrame modules to the umbrella dataframe" $ do
             packageForModule "DataFrame.Display.Web.Plot" `shouldBe` Just "dataframe"
-            packageForModule "DataFrame" `shouldBe` Just "dataframe-core"
+            packageForModule "DataFrame" `shouldBe` Just "dataframe"
         it "returns Nothing for an unknown / base module" $
             packageForModule "Data.List" `shouldBe` Nothing
 
@@ -77,6 +79,21 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
             packageNeedsFlag misnamedErr `shouldBe` Just "dataframe"
         it "is Nothing when GHC offered no module suggestion" $
             misnamedModule "Could not find module `Foo.Bar'." `shouldBe` Nothing
+        it "couldNotFindModule reads the name even with no correction hint" $
+            couldNotFindModule "Could not find module `Data.DataFrame'."
+                `shouldBe` Just "Data.DataFrame"
+        it "couldNotFindModule is Nothing when no module is named" $
+            couldNotFindModule "Not in scope: foo" `shouldBe` Nothing
+
+    describe "notInScopeName (case-insensitive, all GHC forms)" $ do
+        it "reads the name from 'Variable not in scope:'" $
+            notInScopeName "Variable not in scope: foo" `shouldBe` Just "foo"
+        it "reads a quoted type constructor from capital-N 'Not in scope:'" $
+            notInScopeName "Not in scope: type constructor or class \8216Picture\8217"
+                `shouldBe` Just "Picture"
+        it "reads a quoted data constructor from capital-N 'Not in scope:'" $
+            notInScopeName "Not in scope: data constructor `Picture'"
+                `shouldBe` Just "Picture"
 
     describe "resolvePackageToken (fuzzy package-name index)" $ do
         it "passes a real package token through by exact membership" $ do

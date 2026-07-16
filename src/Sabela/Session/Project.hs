@@ -67,6 +67,7 @@ setupReplProject support localPkgs dir meta = do
                     (metaExtraLibDirs meta)
                     (metaExtraIncludeDirs meta)
                 )
+                <> haddockStanza
             )
     ensureFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
     let extraDeps = case support of
@@ -77,6 +78,13 @@ setupReplProject support localPkgs dir meta = do
             (dir </> "sabela-repl.cabal")
             (renderCabalFile "sabela-repl" extraDeps meta)
     pure ()
+
+{- | Build every package in the repl project with @-haddock@, so the interactive
+session can answer @:doc@ (and thus @describe_function@) for the support library
+and the notebook's declared dependencies, not just show bare type signatures.
+-}
+haddockStanza :: String
+haddockStanza = "\npackage *\n  ghc-options: -haddock\n"
 
 ensureFile :: FilePath -> String -> IO ()
 ensureFile path content = do

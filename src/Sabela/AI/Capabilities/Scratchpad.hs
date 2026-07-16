@@ -17,11 +17,13 @@ module Sabela.AI.Capabilities.Scratchpad (
     augmentGhciError,
 ) where
 
+import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.IORef (atomicModifyIORef')
+import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.FilePath ((</>))
@@ -31,11 +33,17 @@ import Sabela.AI.Capabilities.Util (compactMaybeText, fieldText, parseCellLang)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Api (errorJson)
+import Sabela.Parse.Normalize (rewriteTopLevelLet)
 
 -- 'ToolOutcome' (and its smart constructors) is re-exported from
 -- 'Sabela.AI.Types' via the open import above; no explicit list needed.
-import Sabela.Deps (collectMetadataFromContent, mergedMeta)
-import Sabela.Diagnose (diagnose, guidancePairs)
+import Sabela.Deps (collectMetadata, collectMetadataFromContent, mergedMeta)
+import Sabela.Diagnose (
+    diagnose,
+    guidancePairs,
+    hiddenPackage,
+    packageNeedsFlag,
+ )
 import Sabela.Output (displayPrelude)
 import Sabela.PythonSession (newPythonSession, pythonBackend)
 import Sabela.Session (
@@ -51,7 +59,7 @@ import Sabela.Session.Process (
  )
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 import Sabela.SessionTypes (CellLang (..), SessionBackend (..))
-import Sabela.State (App (..))
+import Sabela.State (App (..), readNotebook)
 import Sabela.State.Environment (Environment (..))
 import qualified ScriptHs.Parser as Scripths
 import qualified ScriptHs.Render as Scripths
@@ -135,43 +143,68 @@ execScratchpad app store input = do
                     )
                 )
         (False, Just lang) -> do
-            -- For Haskell, run the snippet through the same scripths
-            -- preprocessing that notebook cells get — this strips top-level
-            -- `let`, auto-wraps multi-line defs in `:{ :}`, rewrites
-            -- top-level TH splices, etc. Keeps scratchpad semantics parity
-            -- with cell semantics so the model doesn't learn two rule-sets.
-            let code = case lang of
-                    Haskell -> renderHaskellForGhci rawCode
-                    Python -> rawCode
-            res <-
-                try
-                    ( do
-                        backend <- ensureScratchpad app store lang
-                        sbRunBlock backend code
-                    ) ::
-                    IO (Either SomeException (Text, Text))
-            case res of
-                Left e -> do
-                    -- Drop the cached scratchpad so the next call rebuilds a
-                    -- fresh GHCi instead of repeatedly hitting a dead
-                    -- backend.
-                    evictScratchpad store
-                    pure (errOutcome (errorJson (T.pack (show e))))
-                Right (stdout, stderr) -> do
-                    let augErr = augmentGhciError stderr
-                    stdoutV <- compactMaybeText store (Just stdout)
-                    stderrV <- compactMaybeText store (Just augErr)
-                    let payload =
-                            object
-                                ( [ "stdout" .= stdoutV
-                                  , "stderr" .= stderrV
-                                  ]
-                                    <> guidancePairs (diagnose stderr)
-                                )
-                    pure $
-                        if T.null stderr
-                            then okOutcome payload
-                            else errOutcome payload
+            -- Seed the scratchpad with the notebook's declared deps plus the
+            -- snippet's own, so an already-declared package (granite, dataframe)
+            -- is available without the model re-stating it.
+            nb <- readNotebook (appNotebook app)
+            let deps0 =
+                    S.toList . S.fromList $
+                        Scripths.metaDeps (collectMetadata nb)
+                            ++ Scripths.metaDeps (collectMetadataFromContent rawCode)
+            runScratchpadHealed app store lang rawCode deps0 scratchpadDepHealCap
+
+-- | How many missing deps the scratchpad will infer-and-install per call.
+scratchpadDepHealCap :: Int
+scratchpadDepHealCap = 3
+
+{- | Run a scratchpad snippet, and if it fails on a package GHC names as hidden
+or needing a flag, add that dep and rebuild — self-installing missing deps the
+way a cell does, so the model isn't stuck retrying the same import.
+-}
+runScratchpadHealed ::
+    App -> AIStore -> CellLang -> Text -> [Text] -> Int -> IO ToolOutcome
+runScratchpadHealed app store lang rawCode deps budget = do
+    -- Run the snippet through the same scripths preprocessing cells get (strips
+    -- top-level `let`, wraps multi-line defs, etc.) so the two agree.
+    let code = case lang of
+            Haskell -> renderHaskellForGhci (rewriteTopLevelLet rawCode)
+            Python -> rawCode
+    res <-
+        try
+            ( do
+                backend <- ensureScratchpad app store lang deps
+                sbRunBlock backend code
+            ) ::
+            IO (Either SomeException (Text, Text))
+    case res of
+        Left e -> do
+            evictScratchpad store
+            pure (errOutcome (errorJson (T.pack (show e))))
+        Right (stdout, stderr)
+            | lang == Haskell
+            , budget > 0
+            , Just pkg <- hiddenPackage stderr <|> packageNeedsFlag stderr
+            , pkg `notElem` deps ->
+                runScratchpadHealed
+                    app
+                    store
+                    lang
+                    rawCode
+                    (S.toList (S.fromList (pkg : deps)))
+                    (budget - 1)
+            | otherwise -> do
+                let augErr = augmentGhciError stderr
+                stdoutV <- compactMaybeText store (Just stdout)
+                stderrV <- compactMaybeText store (Just augErr)
+                let payload =
+                        object
+                            ( ["stdout" .= stdoutV, "stderr" .= stderrV]
+                                <> guidancePairs (diagnose stderr)
+                            )
+                pure $
+                    if T.null stderr
+                        then okOutcome payload
+                        else errOutcome payload
 
 {- | Tear down the cached scratchpad backend (if any) and clear the slot.
 Used after a failure so the next scratchpad call starts a fresh session.
@@ -214,13 +247,14 @@ augmentGhciError err
         ("parse error" `T.isInfixOf` t)
             && ("let" `T.isInfixOf` t || "=" `T.isInfixOf` t && "on input" `T.isInfixOf` t)
 
-ensureScratchpad :: App -> AIStore -> CellLang -> IO SessionBackend
-ensureScratchpad app store lang = do
+ensureScratchpad :: App -> AIStore -> CellLang -> [Text] -> IO SessionBackend
+ensureScratchpad app store lang deps = do
     mSp <- getScratchpad store
     case mSp of
-        Just sp | spLang sp == lang -> pure (spBackend sp)
+        Just sp | spLang sp == lang, spDeps sp == deps -> pure (spBackend sp)
         mOld -> do
-            -- Kill existing if language changed
+            -- Kill an existing scratchpad when the language OR the declared deps
+            -- changed, so a self-healed dep triggers a rebuild.
             case mOld of
                 Just sp -> sbClose (spBackend sp)
                 Nothing -> pure ()
@@ -232,8 +266,12 @@ ensureScratchpad app store lang = do
                     -- dist-newstyle), so it works on a cold notebook (before any
                     -- cell has materialised repl-project) and never contends with
                     -- the live notebook session over the shared build dir.
+                    nb <- readNotebook (appNotebook app)
                     let projDir = envTmpDir (appEnv app) </> "scratch-project"
-                        meta = mergedMeta (envGlobalDeps (appEnv app)) (collectMetadataFromContent "")
+                        meta =
+                            mergedMeta
+                                (envGlobalDeps (appEnv app) <> S.fromList deps)
+                                (collectMetadata nb)
                     setupReplProject
                         WithNotebookSupport
                         (envLocalPackages (appEnv app))
@@ -272,6 +310,6 @@ ensureScratchpad app store lang = do
                     let venvDir = envTmpDir (appEnv app) </> "python-venv"
                     sess <- newPythonSession (Just venvDir) spDir
                     pure (pythonBackend sess)
-            let sp = ScratchpadSession backend spDir lang
+            let sp = ScratchpadSession backend spDir lang deps
             setScratchpad store (Just sp)
             pure backend

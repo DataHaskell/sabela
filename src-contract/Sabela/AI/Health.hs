@@ -1,10 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | A cell's compile health as a SET of normalized diagnostics, not an error
-count. Repair acceptance compares diagnostic sets so a candidate that removes one
-error while introducing a different one is rejected (an error count would call
-that an improvement). Shared so the product engine and the eval harness judge a
-repair the same way.
+count. Acceptance compares sets, so a fix that trades one error for another is
+rejected; shared so the product engine and eval harness judge a repair alike.
 -}
 module Sabela.AI.Health (
     DiagnosticKey (..),
@@ -26,9 +24,8 @@ import qualified Data.Text as T
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Model (CellError (..))
 
-{- | A stable identity for one diagnostic: location plus its message with
-whitespace normalized, so incidental reflowing does not make "the same error"
-compare unequal across two runs of a cell.
+{- | A stable identity for one diagnostic: location plus whitespace-normalized
+message, so incidental reflowing does not make the same error compare unequal.
 -}
 data DiagnosticKey = DiagnosticKey
     { dkLine :: Maybe Int
@@ -51,9 +48,8 @@ normalizeMsg = T.unwords . T.words
 diagKey :: CellError -> DiagnosticKey
 diagKey ce = DiagnosticKey (ceLine ce) (ceCol ce) (normalizeMsg (ceMessage ce))
 
-{- | Health of a cell-execution outcome. A @Left@ (abort/timeout/superseded)
-contributes a distinct sentinel diagnostic, so it can never look like a subset
-improvement over a genuine compile error. Warnings do not count.
+{- | Health of a cell-execution outcome. A @Left@ contributes a sentinel
+diagnostic so it never looks like a subset improvement; warnings do not count.
 -}
 healthOfResult :: Either Text ExecutionResult -> Health
 healthOfResult (Left e) =
@@ -69,10 +65,8 @@ healthOfResult (Right er) =
     diags = holistic ++ erErrors er
     ok = null diags
 
-{- | Health of a GHCi @:type@ query result: a returned type signature is clean;
-an output carrying a diagnostic (structured @-fdiagnostics-as-json@ error, or a
-textual @error:@) is red. Used to check a candidate expression WITHOUT running
-it.
+{- | Health of a GHCi @:type@ query: a returned signature is clean, an output
+carrying a diagnostic is red. Checks a candidate expression without running it.
 -}
 healthOfTypeQuery :: Text -> Health
 healthOfTypeQuery out
@@ -85,9 +79,8 @@ healthOfTypeQuery out
             || "error:" `T.isInfixOf` T.toLower out
     compact = T.filter (/= ' ') out
 
-{- | Health of a cell from its stored error (the live re-verify at accept time):
-'Nothing' is clean, 'Just' an error is red. Used to re-check an owned cell's
-current state from the notebook rather than trusting cached health.
+{- | Health of a cell from its stored error at accept time: 'Nothing' is clean,
+'Just' an error is red. Re-checks an owned cell rather than trusting cached health.
 -}
 healthOfCellError :: Maybe Text -> Health
 healthOfCellError Nothing = Health True mempty
@@ -98,9 +91,9 @@ healthOfCellError (Just e) =
 isClean :: Health -> Bool
 isClean h = healthCompileOk h && Set.null (healthDiagnostics h)
 
-{- | Whether @new@ is a genuine improvement over @old@ for a DETERMINISTIC fixer:
-either @new@ is clean, or it introduces no diagnostic @old@ lacked and removes at
-least one. Speculative repairs should require 'isClean' instead.
+{- | Whether @new@ genuinely improves on @old@ for a deterministic fixer: @new@
+is clean, or removes a diagnostic while introducing none. Speculative repairs
+should require 'isClean' instead.
 -}
 improvesHealth :: Health -> Health -> Bool
 improvesHealth old new =

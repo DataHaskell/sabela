@@ -93,6 +93,7 @@ module Sabela.Notebook.Picture (
 ) where
 
 import Data.List (intercalate)
+import Sabela.Notebook.Markup (unSvg)
 import Sabela.Notebook.Picture.Internal (
     Canvas (..),
     Picture (..),
@@ -231,4 +232,4 @@ picture = pictureOn defaultCanvas
 pictureOn :: Canvas -> Picture -> IO ()
 pictureOn cv p = do
     putStrLn "<!-- MIME:image/svg+xml -->"
-    putStrLn (renderSvg cv p)
+    putStrLn (unSvg (renderSvg cv p))

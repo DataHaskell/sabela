@@ -1,11 +1,14 @@
 module Main (main) where
 
+import qualified Test.AgentPromptSpec as AgentPromptSpec
 import qualified Test.BenchSpec as BenchSpec
 import qualified Test.BudgetRetrySpec as BudgetRetrySpec
 import qualified Test.CapabilityCorpusSpec as CapabilityCorpusSpec
 import qualified Test.ChatSpec as ChatSpec
 import qualified Test.CodePathSpec as CodePathSpec
 import qualified Test.DiscoverSpec as DiscoverSpec
+import qualified Test.ExemplarsSpec as ExemplarsSpec
+import qualified Test.GateLeverSpec as GateLeverSpec
 import qualified Test.GateResultSpec as GateResultSpec
 import qualified Test.GradeRenderSpec as GradeRenderSpec
 import qualified Test.GrammarSpec as GrammarSpec
@@ -14,6 +17,7 @@ import qualified Test.HoleFitSpec as HoleFitSpec
 import Test.Hspec (hspec)
 import qualified Test.OllamaBodySpec as OllamaBodySpec
 import qualified Test.PreflightSpec as PreflightSpec
+import qualified Test.ProposerStepSpec as ProposerStepSpec
 import qualified Test.ProviderMapSpec as ProviderMapSpec
 import qualified Test.ReasoningCorpusSpec as ReasoningCorpusSpec
 import qualified Test.RepairBudgetSpec as RepairBudgetSpec
@@ -28,12 +32,14 @@ import qualified Test.TranscriptSpec as TranscriptSpec
 
 main :: IO ()
 main = hspec $ do
+    AgentPromptSpec.spec
     BenchSpec.spec
     BudgetRetrySpec.spec
     CapabilityCorpusSpec.spec
     ChatSpec.spec
     CodePathSpec.spec
     DiscoverSpec.spec
+    GateLeverSpec.spec
     GateResultSpec.spec
     GradeRenderSpec.spec
     GrammarSpec.spec
@@ -47,6 +53,8 @@ main = hspec $ do
     RepairSpec.spec
     SalvageSpec.spec
     SampleVerifySpec.spec
+    ProposerStepSpec.spec
+    ExemplarsSpec.spec
     ScaffoldSpec.spec
     SpecVerifierSpec.spec
     TaskSpec.spec

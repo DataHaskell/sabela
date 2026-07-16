@@ -1,6 +1,6 @@
 {- | Ownership of the cells an agent turn wrote, for the closure-verified accept.
 The turn completes only when every owned cell is clean; a red one drives a repair
-re-entry. Keyed by the cell's source at mutation time (its revision stamp).
+re-entry. Keyed by the cell's source at mutation time.
 -}
 module Sabela.AI.Owned (
     MutationEvent (..),

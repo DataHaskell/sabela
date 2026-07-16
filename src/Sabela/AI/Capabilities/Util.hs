@@ -19,12 +19,18 @@ module Sabela.AI.Capabilities.Util (
     inlineOrStash,
     compactOutputs,
     compactMaybeText,
+
+    -- * Feature flags
+    featureEnabled,
 ) where
 
 import Data.Aeson (ToJSON (..), Value (..))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
+import Data.Char (toLower)
 import Data.Text (Text)
+import qualified Data.Text as T
+import System.Environment (lookupEnv)
 
 import Sabela.AI.Handles (Output (..), storeLargeResult)
 import Sabela.AI.Store
@@ -49,24 +55,31 @@ fieldInt key v = case field key v of
 fieldBool :: Text -> Value -> Bool
 fieldBool key v = field key v == Just (Bool True)
 
-{- | Total parser for the AI tool @language@ field. The schemas declare
-@enum: [\"Haskell\", \"Python\"]@; an unrecognised value is a tool-call
-bug rather than a Haskell default — return 'Nothing' so the caller can
-surface a clear error.
+{- | Parse the AI tool @language@ field, liberal in what it accepts: the schema
+enum plus common lowercase aliases a model reaches for (@haskell@, @hs@, @py@).
+'Nothing' only for a truly unknown value.
 -}
 parseCellLang :: Text -> Maybe ST.CellLang
-parseCellLang "Haskell" = Just ST.Haskell
-parseCellLang "Python" = Just ST.Python
-parseCellLang _ = Nothing
+parseCellLang t = case T.toLower (T.strip t) of
+    "haskell" -> Just ST.Haskell
+    "hs" -> Just ST.Haskell
+    "python" -> Just ST.Python
+    "py" -> Just ST.Python
+    _ -> Nothing
 
-{- | Total parser for the AI tool @cell_type@ field. The schemas declare
-@enum: [\"CodeCell\", \"ProseCell\"]@; unrecognised values come back as
-'Nothing' instead of silently producing a 'CodeCell'.
+{- | Parse the AI tool @cell_type@ field, liberal in what it accepts: the schema
+enum plus the lowercase aliases a model reaches for (@code@, @prose@, @markdown@,
+@md@). 'Nothing' only for a truly unknown value.
 -}
 parseCellType :: Text -> Maybe CellType
-parseCellType "CodeCell" = Just CodeCell
-parseCellType "ProseCell" = Just ProseCell
-parseCellType _ = Nothing
+parseCellType t = case T.toLower (T.strip t) of
+    "codecell" -> Just CodeCell
+    "code" -> Just CodeCell
+    "prosecell" -> Just ProseCell
+    "prose" -> Just ProseCell
+    "markdown" -> Just ProseCell
+    "md" -> Just ProseCell
+    _ -> Nothing
 
 {- | The single inline-or-stash chokepoint. Both 'compactOutputs' and
 'compactMaybeText' route through this so their inline shapes stop diverging:
@@ -92,3 +105,11 @@ compactOutputs store items = do
 compactMaybeText :: AIStore -> Maybe Text -> IO Value
 compactMaybeText _ Nothing = pure Null
 compactMaybeText store (Just t) = toJSON <$> inlineOrStash store MimePlain t
+
+{- | A feature flag that defaults ON: enabled unless the env var is explicitly
+set to a falsey value (0/off/false/no).
+-}
+featureEnabled :: String -> IO Bool
+featureEnabled var = do
+    v <- lookupEnv var
+    pure (maybe True (\s -> map toLower s `notElem` ["0", "off", "false", "no"]) v)

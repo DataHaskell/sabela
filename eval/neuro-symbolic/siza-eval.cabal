@@ -26,6 +26,7 @@ library
                       Eval.Gate
                       Eval.GateResult
                       Eval.Discover
+                      Eval.Exemplars
                       Eval.Sample
                       Eval.Agent
                       Eval.Chat
@@ -127,9 +128,11 @@ test-suite siza-eval-test
     main-is:          Main.hs
     other-modules:    Test.BenchSpec
                       Test.CapabilityCorpusSpec
+                      Test.GateLeverSpec
                       Test.GateResultSpec
                       Test.BudgetRetrySpec
                       Test.ChatSpec
+                      Test.AgentPromptSpec
                       Test.CodePathSpec
                       Test.OllamaBodySpec
                       Test.ProviderMapSpec
@@ -144,6 +147,8 @@ test-suite siza-eval-test
                       Test.RepairSpec
                       Test.SalvageSpec
                       Test.ScaffoldSpec
+                      Test.ProposerStepSpec
+                      Test.ExemplarsSpec
                       Test.SampleVerifySpec
                       Test.SpecVerifierSpec
                       Test.TaskSpec

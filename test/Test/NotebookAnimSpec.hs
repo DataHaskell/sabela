@@ -6,6 +6,7 @@ module Test.NotebookAnimSpec (spec) where
 import Data.List (isInfixOf)
 import Sabela.Notebook.Anim
 import Sabela.Notebook.Behavior (at, time)
+import Sabela.Notebook.Markup (unHtml)
 import Sabela.Notebook.Picture (
     Picture,
     circle,
@@ -35,12 +36,12 @@ spec = do
                 `shouldBe` [renderSvg defaultCanvas (slide 0)]
 
     describe "renderAnimation HTML" $ do
-        let html = renderAnimation defaultAnim 1 slide
+        let html = unHtml (renderAnimation defaultAnim 1 slide)
         it "embeds a requestAnimationFrame player" $
             html `shouldSatisfy` isInfixOf "requestAnimationFrame"
         it "carries the snapshots as SVG" $ html `shouldSatisfy` isInfixOf "<svg"
         it "neutralises a </script> in a frame (escapes it as <\\/script>)" $
-            renderAnimation defaultAnim 1 (const (fromSvg "</script>"))
+            unHtml (renderAnimation defaultAnim 1 (const (fromSvg "</script>")))
                 `shouldSatisfy` isInfixOf "<\\/script>"
 
     describe "animateB matches animate over the sampled behaviour" $

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | Live-@:browse@ grammar discovery: parse a cell's imports, browse those
-modules, and synthesise a grammar of their real signatures. The browse step is
+modules, and synthesise a grammar of their signatures. The browse step is
 injected, so product, harness, and tests supply their own.
 -}
 module Sabela.AI.Discover (

@@ -33,7 +33,7 @@ spec = describe "Sabela.AI.Capabilities.Resolve" $ do
     describe "resolutionImport" $ do
         it "builds the import line and resolves the package via the curated table" $
             resolutionImport (Capability "DataFrame" "readCsv" "FilePath -> IO DataFrame")
-                `shouldBe` ("import DataFrame", Just "dataframe-core")
+                `shouldBe` ("import DataFrame", Just "dataframe")
 
         it "yields no package for an uncurated module (dep fixer backstops at runtime)" $
             resolutionImport (Capability "Some.Random.Mod" "foo" "X")

@@ -19,13 +19,18 @@ an @exec*@ branch in the dispatcher.
 module Sabela.AI.Capabilities.ToolName (
     ToolName (..),
     parseToolName,
+    resolveToolCall,
+    primaryArgKey,
     toolWireName,
     mkTool,
     actsOnNotebook,
 ) where
 
-import Data.Aeson (Value)
+import Data.Aeson (Value (..))
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
+import qualified Data.Text as T
 import Sabela.Anthropic.Types (ToolDef (..))
 
 data ToolName
@@ -85,6 +90,52 @@ parseToolName = \case
     "find_example_cell" -> Just FindExampleCell
     "find_function" -> Just FindFunction
     "search_capability" -> Just SearchCapability
+    _ -> Nothing
+
+{- | Resolve a possibly-malformed tool call to a typed name and args. A weak
+model sometimes bakes the argument into the name field
+(@find_function "DataFrame"@); when the exact name is unknown but its first
+whitespace-delimited token is a valid tool, split it and fold the remainder
+(dequoted) into that tool's primary argument. All model output is assumed to
+need sanitizing, so both the live loop and the eval dispatch route through here.
+-}
+resolveToolCall :: Text -> Value -> Maybe (ToolName, Value)
+resolveToolCall name args = case parseToolName name of
+    Just tn -> Just (tn, args)
+    Nothing -> do
+        let (tok, rest) = T.break (== ' ') (T.strip name)
+        tn <- parseToolName tok
+        pure (tn, foldInlineArg tn (dequote rest) args)
+  where
+    dequote = T.dropAround (\c -> c == '"' || c == '\'' || c == ' ' || c == '`')
+
+-- | Fold a name-baked argument into a tool's primary field, unless already set.
+foldInlineArg :: ToolName -> Text -> Value -> Value
+foldInlineArg tn inline args
+    | T.null inline = args
+    | Just key <- primaryArgKey tn = insertMissing (Key.fromText key) inline args
+    | otherwise = args
+  where
+    insertMissing k v (Object o)
+        | KM.member k o = Object o
+        | otherwise = Object (KM.insert k (String v) o)
+    insertMissing k v _ = Object (KM.singleton k (String v))
+
+{- | The primary (sole query/name) argument field for the discovery and simple
+tools, so an argument baked into the name can be recovered into the right key.
+Tools with a structured or non-textual primary input have none.
+-}
+primaryArgKey :: ToolName -> Maybe Text
+primaryArgKey = \case
+    FindFunction -> Just "query"
+    SearchCapability -> Just "query"
+    FindPackage -> Just "query"
+    FindExampleCell -> Just "query"
+    FindCellsByContent -> Just "pattern"
+    CheckType -> Just "expr"
+    FindByType -> Just "goal"
+    DescribeFunction -> Just "name"
+    ApiReference -> Just "module"
     _ -> Nothing
 
 {- | Wire-format spelling of a 'ToolName'. The inverse of 'parseToolName':

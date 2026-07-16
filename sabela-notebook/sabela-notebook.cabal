@@ -32,6 +32,7 @@ library
         Sabela.Notebook.Behavior
         Sabela.Notebook.Event
         Sabela.Notebook.Frp
+        Sabela.Notebook.Markup
         Sabela.Notebook.Picture
     other-modules:
         Sabela.Notebook.Picture.Internal

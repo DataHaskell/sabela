@@ -69,7 +69,7 @@ import Sabela.AI.Capabilities.Query (
     execPeekData,
  )
 import Sabela.AI.Capabilities.Scratchpad (execScratchpadGuarded)
-import Sabela.AI.Capabilities.ToolName (ToolName (..), parseToolName)
+import Sabela.AI.Capabilities.ToolName (ToolName (..), resolveToolCall)
 import Sabela.AI.Capabilities.Tools (chatTools)
 import Sabela.AI.Capabilities.Util (field, fieldInt)
 import Sabela.AI.Store
@@ -99,8 +99,8 @@ executeTool ::
     Text ->
     Value ->
     IO ToolOutcome
-executeTool app store rn cancelTok toolName input =
-    case lookupParseError input of
+executeTool app store rn cancelTok toolName rawInput =
+    case lookupParseError rawInput of
         Just parseErr ->
             pure
                 ( errOutcome
@@ -109,9 +109,9 @@ executeTool app store rn cancelTok toolName input =
                         ["hint" .= parseErr]
                     )
                 )
-        Nothing -> case parseToolName toolName of
+        Nothing -> case resolveToolCall toolName rawInput of
             Nothing -> pure (errOutcome (errorJson ("Unknown tool: " <> toolName)))
-            Just tool -> dispatch tool
+            Just (tool, input) -> dispatch tool input
   where
     {- Kernel-needing tools take the AI admission gate atomically (one
     'tryTakeMVar'): the busy decision and the hold are a single step, so two
@@ -119,34 +119,34 @@ executeTool app store rn cancelTok toolName input =
     (§1.4 TOCTOU). Inside the held gate we still bounce if the kernel is busy
     with non-AI work (a browser run holding 'sbBusy') — the legacy bounce,
     preserved. Lock-free tools (status/interrupt/restart) bypass the gate. -}
-    dispatch :: ToolName -> IO ToolOutcome
-    dispatch tool
+    dispatch :: ToolName -> Value -> IO ToolOutcome
+    dispatch tool input
         | needsKernel tool =
-            admitKernel store (admissionCandidate input) (kernelGuarded tool)
+            admitKernel store (admissionCandidate input) (kernelGuarded tool input)
                 >>= \case
                     Busy{} -> pure (errOutcome busyOutcome)
                     Ran r -> pure r
-        | otherwise = guarded tool
+        | otherwise = guarded tool input
 
     {- Within the held AI gate: warm a cold base GHCi once so discovery tools
     work pre-first-cell, then bounce if a non-AI run (browser/widget) holds the
     kernel run-lock rather than block. -}
-    kernelGuarded :: ToolName -> IO ToolOutcome
-    kernelGuarded tool = do
+    kernelGuarded :: ToolName -> Value -> IO ToolOutcome
+    kernelGuarded tool input = do
         warmKernel app
         busy <- haskellKernelBusy app
-        if busy then pure (errOutcome busyOutcome) else guarded tool
+        if busy then pure (errOutcome busyOutcome) else guarded tool input
 
-    guarded :: ToolName -> IO ToolOutcome
-    guarded tool = do
-        eResult <- try (runTool tool)
+    guarded :: ToolName -> Value -> IO ToolOutcome
+    guarded tool input = do
+        eResult <- try (runTool tool input)
         case eResult of
             Left (e :: SomeException) ->
                 pure (errOutcome (errorJson (T.pack (show e))))
             Right r -> pure r
 
-    runTool :: ToolName -> IO ToolOutcome
-    runTool = \case
+    runTool :: ToolName -> Value -> IO ToolOutcome
+    runTool tool input = case tool of
         ListCells -> execListCells app input
         ReadCell -> execReadCell app input
         ReadCellOutput -> execReadCellOutput app input

@@ -52,6 +52,7 @@ import qualified Test.JsonDiagSpec as JsonDiagSpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
 import qualified Test.LibDiscoverSpec as LibDiscoverSpec
 import qualified Test.MarkerSpec as MarkerSpec
+import qualified Test.ModuleResolveSpec as ModuleResolveSpec
 import qualified Test.NotebookAnimSpec as NotebookAnimSpec
 import qualified Test.NotebookEditSpec as NotebookEditSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
@@ -67,6 +68,7 @@ import qualified Test.ParseSpec as ParseSpec
 import qualified Test.PeekDataSpec as PeekDataSpec
 import qualified Test.PlatformSpec as PlatformSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
+import qualified Test.PromptUnifySpec as PromptUnifySpec
 import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.ProvenanceWireSpec as ProvenanceWireSpec
 import qualified Test.ProviderAdapterSpec as ProviderAdapterSpec
@@ -74,6 +76,7 @@ import qualified Test.ProviderSelectSpec as ProviderSelectSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
 import qualified Test.RenderSpec as RenderSpec
+import qualified Test.RepairEngineSpec as RepairEngineSpec
 import qualified Test.ReplProjectSpec as ReplProjectSpec
 import qualified Test.ResolveSpec as ResolveSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
@@ -85,6 +88,7 @@ import qualified Test.SizaContractWireSpec as SizaContractWireSpec
 import qualified Test.StaleRunSpec as StaleRunSpec
 import qualified Test.SwitchNotebookSpec as SwitchNotebookSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
+import qualified Test.ToolInputRewriteSpec as ToolInputRewriteSpec
 import qualified Test.ToolOutcomeWireSpec as ToolOutcomeWireSpec
 import qualified Test.ToolParseSpec as ToolParseSpec
 import qualified Test.TopoSpec as TopoSpec
@@ -92,6 +96,7 @@ import qualified Test.UploadSpec as UploadSpec
 import qualified Test.UrlSpec as UrlSpec
 import qualified Test.UsageEventSpec as UsageEventSpec
 import qualified Test.UsageMergeSpec as UsageMergeSpec
+import qualified Test.VerifyDownstreamSpec as VerifyDownstreamSpec
 import qualified Test.WidgetsSpec as WidgetsSpec
 
 main :: IO ()
@@ -117,12 +122,17 @@ main = do
         ExecuteCellSpec.spec
         ExampleSearchSpec.spec
         DiagnoseSpec.diagnoseSpec
+        ModuleResolveSpec.spec
         DiscoverToolSpec.spec
         DepRepairSpec.spec
         ExtRepairSpec.spec
         ImportRepairSpec.spec
         HealthSpec.spec
         OwnedSpec.spec
+        RepairEngineSpec.spec
+        VerifyDownstreamSpec.spec
+        ToolInputRewriteSpec.spec
+        PromptUnifySpec.spec
         DiscoverGrammarSpec.spec
         HoogleResolveSpec.spec
         CapabilitySearchSpec.spec

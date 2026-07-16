@@ -184,6 +184,8 @@ Notebooks are plain Markdown files. Code blocks become executable cells; prose b
 - **Comments must be top-level (haddock or block above the declaration) and ≤3 lines,
   unless they contain a code example.** No inline narrative comments inside expressions
   or argument lists — refactor the explanation onto the binding's haddock instead.
+  `scripts/check-comments.sh` enforces this on changed lines (diff vs `origin/main`);
+  existing comments are grandfathered, so the rule tightens on new/changed code.
 - **Module size: keep every module ≤ 300 lines** — split an oversized module into focused
   submodules (handler groups, per-tool modules, a big literal in its own module) rather
   than letting it grow. Applies to Haskell modules and the `static/*.js` frontend modules;

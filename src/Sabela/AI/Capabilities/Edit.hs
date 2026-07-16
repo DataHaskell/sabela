@@ -52,7 +52,7 @@ import Sabela.Handlers (
  )
 import Sabela.Model
 import Sabela.Parse (staleBindings, validateCellShape)
-import Sabela.Parse.Normalize (normalizeInsert, unwrapMain)
+import Sabela.Parse.Normalize (normalizeInsert, rewriteTopLevelLet, unwrapMain)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
 
@@ -145,7 +145,10 @@ applyReplaceCellSource app store rn cancelTok oldCell newSrc0 =
   where
     -- Keep replace consistent with insert: unwrap a top-level `main` to bare
     -- top-level code so an edited-in `main` runs instead of silently not.
-    newSrc = if cellLang oldCell == Haskell then unwrapMain newSrc0 else newSrc0
+    newSrc =
+        if cellLang oldCell == Haskell
+            then unwrapMain (rewriteTopLevelLet newSrc0)
+            else newSrc0
 
 {- | The pre-GHC structural rejection for a Haskell cell, if any. Non-Haskell
 cells are not shape-checked (the validator uses the Haskell parser).
@@ -256,7 +259,8 @@ execInsertCell app store rn cancelTok input = do
         rawType = fieldText "cell_type" input
         rawLang = fieldText "language" input
         mLang = if T.null rawLang then Just Haskell else parseCellLang rawLang
-    case (parseCellType rawType, mLang) of
+        mType = if T.null rawType then Just CodeCell else parseCellType rawType
+    case (mType, mLang) of
         (Nothing, _) ->
             pure
                 ( errOutcome

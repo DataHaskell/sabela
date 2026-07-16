@@ -11,6 +11,7 @@ module Sabela.Notebook.Picture.Svg (
     svgBody,
 ) where
 
+import Sabela.Notebook.Markup (Svg (..))
 import Sabela.Notebook.Picture.Internal (
     Canvas (..),
     Picture (..),
@@ -24,19 +25,20 @@ The body is built by 'svgBody', which is a /monoid homomorphism/: the drawing of
 @a '<>' b@ is exactly the drawing of @a@ followed by the drawing of @b@. The
 @\<svg\>@ wrapper is added once around the whole thing.
 -}
-renderSvg :: Canvas -> Picture -> String
+renderSvg :: Canvas -> Picture -> Svg
 renderSvg (Canvas w h) p =
-    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\""
-        ++ num w
-        ++ "\" height=\""
-        ++ num h
-        ++ "\" viewBox=\"0 0 "
-        ++ num w
-        ++ " "
-        ++ num h
-        ++ "\">"
-        ++ svgBody p
-        ++ "</svg>"
+    Svg $
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\""
+            ++ num w
+            ++ "\" height=\""
+            ++ num h
+            ++ "\" viewBox=\"0 0 "
+            ++ num w
+            ++ " "
+            ++ num h
+            ++ "\">"
+            ++ svgBody p
+            ++ "</svg>"
 
 {- | The structural rendering of a picture's contents (no @\<svg\>@ wrapper).
 Styling and transforms become nested @\<g\>@ groups, so inner styles win via

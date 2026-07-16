@@ -76,26 +76,31 @@ defaultToolTimeout = do
         Just s -> pure (fromMaybe 300 (readMaybe s))
         Nothing -> setEnv "SABELA_TOOL_TIMEOUT" "300" >> pure 300
 
-{- | Normalise @SIZA_GATE_FOLD@ to @in-index@ / @held-out@ / @capability@ /
-@reasoning@ / @all@, defaulting to @held-out@. @all@ runs both search-lever
-folds and reports the index-vs-held-out gap. @reasoning@ runs the answer-quality
-reasoning corpus over the @search_capability@ tool lever.
+{- | Normalise @SIZA_GATE_FOLD@, defaulting to @held-out@. Folds: @in-index@ /
+@held-out@ / @capability@ / @reasoning@ / @all@, plus the self-healing levers
+@hole-fit@ / @live-grammar@ / @self-heal@ (each toggles a default-ON server flag).
 -}
 normFold :: Maybe String -> Text
 normFold m = case fmap (T.toLower . T.strip . T.pack) m of
     Just "in-index" -> "in-index"
     Just "capability" -> "capability"
     Just "reasoning" -> "reasoning"
+    Just "hole-fit" -> "hole-fit"
+    Just "live-grammar" -> "live-grammar"
+    Just "self-heal" -> "self-heal"
     Just "all" -> "all"
     _ -> "held-out"
 
-{- | The lever the A/B flips for a fold: the capability and reasoning folds
-toggle the @search_capability@ tool ('CapabilityLever'); the in-index / held-out
-folds toggle the server's auto-resolver ('ResolverLever').
+{- | The lever the A/B flips for a fold: capability and reasoning toggle the
+@search_capability@ tool; the self-healing folds toggle a default-ON server
+flag; the in-index / held-out folds toggle the server's auto-resolver.
 -}
 leverFor :: Text -> GateLever
 leverFor "capability" = CapabilityLever
 leverFor "reasoning" = CapabilityLever
+leverFor "hole-fit" = ServerFlagLever "SABELA_HOLE_FIT"
+leverFor "live-grammar" = ServerFlagLever "SABELA_LIVE_GRAMMAR"
+leverFor "self-heal" = ServerFlagLever "SABELA_SELF_HEAL_REENTER"
 leverFor _ = ResolverLever
 
 -- | The env var name the fold's lever toggles, for the banner.
@@ -103,6 +108,9 @@ leverName :: Text -> Text
 leverName f
     | f `elem` ["capability", "reasoning"] =
         "SABELA_CAPABILITY_SEARCH (gate-process tool toggle)"
+    | f == "hole-fit" = "SABELA_HOLE_FIT (server, default ON)"
+    | f == "live-grammar" = "SABELA_LIVE_GRAMMAR (server, default ON)"
+    | f == "self-heal" = "SABELA_SELF_HEAL_REENTER (server, default ON)"
     | otherwise = "SABELA_HOOGLE_RESOLVE (server)"
 
 {- | Run both folds into the SAME results file (so one file holds everything),

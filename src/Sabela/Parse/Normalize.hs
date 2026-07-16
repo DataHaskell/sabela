@@ -9,6 +9,7 @@ and reports a note for each correction; the parsing itself reuses
 module Sabela.Parse.Normalize (
     looksLikeHaskellCode,
     unwrapMain,
+    rewriteTopLevelLet,
     normalizeInsert,
 ) where
 
@@ -19,6 +20,7 @@ import qualified Data.Text as T
 
 import Sabela.Model (CellType (..))
 import Sabela.Parse (CellSymbols (..), cellSymbols)
+import Sabela.Parse.Preprocess (noTopLevelIn)
 
 {- | True if the cell has a top-level @main@ binding or signature. Textual, not
 AST-based, so it still fires on cells the parser chokes on — Template Haskell
@@ -91,16 +93,41 @@ looksLikeHaskellCode src =
             | isLower c || c == '_' -> " :: " `T.isInfixOf` l || " = " `T.isInfixOf` l
         _ -> False
 
-{- | Normalize an AI-inserted cell for the notebook model: a prose cell that is
-really Haskell becomes a code cell, and a top-level @main@ is unwrapped to
-top-level code. Returns the corrected type and source plus a note per correction.
+{- | Rewrite a statement-form top-level @let@ into plain declarations, including a
+multi-line block (de-indent the @let@ line and each continuation to its binding
+column). A @let ... in ...@ expression and an indented (nested) @let@ are left.
+-}
+rewriteTopLevelLet :: Text -> Text
+rewriteTopLevelLet = T.intercalate "\n" . go . T.lines
+  where
+    go [] = []
+    go (line : rest) = case T.stripPrefix "let " line of
+        Just body
+            | noTopLevelIn body ->
+                let bcol = T.length line - T.length (T.stripStart (T.drop 3 line))
+                    (block, after) = span (contAt bcol) rest
+                 in (T.drop bcol line : map (T.drop bcol) block) ++ go after
+        _ -> line : go rest
+    -- A continuation of the block: a non-blank line indented to at least the
+    -- binding column (a shallower line ends the block).
+    contAt bcol l =
+        not (T.null (T.strip l)) && T.length (T.takeWhile (== ' ') l) >= bcol
+
+{- | Normalize an AI-inserted cell: a prose cell that is really Haskell becomes a
+code cell, a top-level @let@ is rewritten to a plain binding, and a top-level
+@main@ is unwrapped so it runs. Returns the type, source, and a note per fix.
 -}
 normalizeInsert :: CellType -> Text -> (CellType, Text, [Text])
 normalizeInsert ty src = (ty', src', notes)
   where
     reclassified = ty == ProseCell && looksLikeHaskellCode src
     ty' = if reclassified then CodeCell else ty
-    src' = if ty' == CodeCell then unwrapMain src else src
-    notes = [reclassMsg | reclassified] <> [mainMsg | src' /= src]
+    deLet = if ty' == CodeCell then rewriteTopLevelLet src else src
+    src' = if ty' == CodeCell then unwrapMain deLet else src
+    notes =
+        [reclassMsg | reclassified]
+            <> [letMsg | deLet /= src]
+            <> [mainMsg | src' /= deLet]
     reclassMsg = "Inserted as a CodeCell — the source is Haskell, not prose."
+    letMsg = "Rewrote a top-level `let x = …` to a plain `x = …` declaration."
     mainMsg = "Rewrote `main` to a top-level do so the cell runs."
