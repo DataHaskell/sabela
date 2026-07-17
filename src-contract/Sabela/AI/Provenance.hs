@@ -67,7 +67,7 @@ in-browser chat. This run records 'Agent' only; the enum is in place so the
 human / in-browser-chat actors are an additive later extension.
 -}
 data Actor = Agent | Human | InBrowserChat
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 actorTag :: Actor -> Text
 actorTag Agent = "agent"

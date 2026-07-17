@@ -49,7 +49,7 @@ import Eval.Bench (
  )
 import Eval.GateResult
 import Eval.Ollama (chatSeeded)
-import Eval.Task (Task, Verdict (Surfaced), grade, taskId)
+import Eval.Task (Task, Verdict (Surfaced), grade, taskId, taskPrompt)
 import Eval.Tools (catalogue, dispatch)
 import Eval.Transcript (renderTranscript)
 
@@ -60,7 +60,7 @@ import Eval.Transcript (renderTranscript)
 features), so its OFF arm sets the var to @0@ rather than leaving it unset.
 -}
 data GateLever = ResolverLever | CapabilityLever | ServerFlagLever String
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | The env the arm sets on the spawned SERVER. The resolver lever's ON arm
 sets its var; a 'ServerFlagLever' pins its var in both arms (the flags default
@@ -193,7 +193,12 @@ runArmGate cfg lever base seed mode task = do
                         , drvVerify =
                             (== Surfaced) . fst <$> grade (bcConn cfg) base task
                         }
-            runEpisodeWith' GrammarOn (bcBudget cfg) driver task (bcMaxTurns cfg)
+            runEpisodeWith'
+                GrammarOn
+                (bcBudget cfg)
+                driver
+                (taskPrompt task)
+                (bcMaxTurns cfg)
         retryLoop n run
             | arTurns run >= 1 = pure run
             | n >= maxEpisodeRetries = pure run

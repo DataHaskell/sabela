@@ -21,7 +21,7 @@ discovery fold whose lever is the @search_capability@ tool, not the server's
 auto-resolver. See "Eval.Corpus.Capability".
 -}
 data Fold = InIndex | HeldOut | Capability
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | The fold-tagged corpus: the eleven Phase-0.1 search-lever tasks plus the
 six capability-discovery tasks (five un-hand-rollable + one control). Graders

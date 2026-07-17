@@ -80,7 +80,7 @@ data CompilePlan = CompilePlan
     , cpViolations :: M.Map Int [CellError]
     -- ^ Cell id → why it cannot compile (skipped at execution time).
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 emptyCompilePlan :: CompilePlan
 emptyCompilePlan = CompilePlan M.empty M.empty M.empty M.empty

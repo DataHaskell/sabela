@@ -73,7 +73,7 @@ data Capability
       ForeignImport
     | -- | @Network.*@ socket / HTTP imports
       Network
-    deriving (Eq, Ord, Show, Enum, Bounded)
+    deriving (Bounded, Enum, Eq, Ord, Show)
 
 -- | How a denied finding is handled: surfaced, or fatal to pre-flight.
 data Mode = Advise | Block

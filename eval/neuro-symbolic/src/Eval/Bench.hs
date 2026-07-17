@@ -53,7 +53,7 @@ import Eval.Agent (
     runEpisodeWith',
  )
 import Eval.Ollama (chatSeeded)
-import Eval.Task (Task, Verdict (Surfaced), grade, taskId)
+import Eval.Task (Task, Verdict (Surfaced), grade, taskId, taskPrompt)
 import Eval.Tools (catalogue, dispatch)
 import Eval.Transcript (renderTranscript)
 import Siza.Transport (Conn, getHealth)
@@ -191,7 +191,8 @@ runArm cfg base mode seed task = do
                 , drvNow = realToFrac <$> getPOSIXTime
                 , drvVerify = (== Surfaced) . fst <$> grade (bcConn cfg) base task
                 }
-    run <- runEpisodeWith' mode (bcBudget cfg) driver task (bcMaxTurns cfg)
+    run <-
+        runEpisodeWith' mode (bcBudget cfg) driver (taskPrompt task) (bcMaxTurns cfg)
     saveTranscript cfg task seed mode run
     (v, _) <- grade (bcConn cfg) base task
     pure (RunStat (v == Surfaced) (arTurns run) (arToolCalls run))

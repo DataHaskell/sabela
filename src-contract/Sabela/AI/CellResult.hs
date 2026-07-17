@@ -52,7 +52,7 @@ type Diagnostic = CellError
 strings.
 -}
 data AbortReason = Interrupted | Superseded | TimedOut
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | The single outcome sum. Constructors are POSITIONAL, not records: a
 record selector on 'Raised'/'Rejected'/'Aborted' would be partial. @ok@ is
@@ -63,7 +63,7 @@ data CellOutcome
     | Raised !Text
     | Rejected ![Diagnostic]
     | Aborted !AbortReason
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Outcome plus the orthogonal outputs and warnings. @crWarnings@ carries the
 non-fatal diagnostics GHC reports alongside a successful (or failing) run.
@@ -73,7 +73,7 @@ data CellResult = CellResult
     , crOutputs :: [OutputItem]
     , crWarnings :: [Diagnostic]
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | The typed restatement of the legacy @null errs && isNothing error@.
 okCellResult :: CellResult -> Bool

@@ -14,6 +14,8 @@ Lines that are not JSON diagnostics (runtime stderr, linker\/TH noise) are
 returned verbatim as residual text, so the runtime-error path still sees them.
 -}
 module Sabela.Errors.Json (
+    DiagSpan (..),
+    diagnosticSpans,
     parseJsonInteractive,
     parseJsonCompiled,
     annotateDefSites,
@@ -35,10 +37,31 @@ data Diag = Diag
     { dSeverity :: Text
     , dCellId :: Maybe Int
     , dError :: CellError
+    , dSpan :: Maybe Span
     }
 
 isWarning :: Diag -> Bool
 isWarning d = dSeverity d == "Warning"
+
+-- | An error diagnostic's message with its full source span (start, end).
+data DiagSpan = DiagSpan
+    { dsMessage :: Text
+    , dsStart :: (Int, Int)
+    , dsEnd :: (Int, Int)
+    }
+    deriving (Eq, Show)
+
+{- | Error diagnostics with their full source span, for the typed-hole engine to
+hole the offending subterm by range. Warnings and spanless diagnostics are dropped
+(nothing to hole).
+-}
+diagnosticSpans :: Text -> [DiagSpan]
+diagnosticSpans raw =
+    [ DiagSpan (ceMessage (dError d)) (spLine s, spCol s) (spEndLine s, spEndCol s)
+    | d <- fst (decodeLines raw)
+    , not (isWarning d)
+    , Just s <- [dSpan d]
+    ]
 
 {- | Diagnostics for an interpreted cell: @(errors, warnings, residual)@. The
 cell is already known to the caller, so the span tag is ignored here; residual
@@ -96,6 +119,7 @@ instance FromJSON Diag where
                         (spLine <$> mspan)
                         (spCol <$> mspan)
                         (renderMessage msgs hints)
+                , dSpan = mspan
                 }
 
 -- | GHC paragraphs then hints, one per line.
@@ -138,18 +162,21 @@ quotedNames t = between '`' '\'' t ++ between '\8216' '\8217' t
                         _ -> []
             _ -> []
 
--- | The bits of a diagnostic @span@ Sabela uses (start position + file tag).
+-- | The bits of a diagnostic @span@ Sabela uses (start + end position + file tag).
 data Span = Span
     { spFile :: Text
     , spLine :: Int
     , spCol :: Int
+    , spEndLine :: Int
+    , spEndCol :: Int
     }
 
 instance FromJSON Span where
     parseJSON = withObject "span" $ \o -> do
         file <- o .: "file"
         Pos ln col <- o .: "start"
-        pure (Span file ln col)
+        Pos el ec <- fromMaybe (Pos ln col) <$> o .:? "end"
+        pure (Span file ln col el ec)
 
 -- | A diagnostic span's @{line, column}@ endpoint.
 data Pos = Pos Int Int

@@ -20,7 +20,7 @@ import Sabela.Ids (ToolCallId)
 
 -- | Who authored a message.
 data Role = User | Assistant | System
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | A tool the assistant asked to run. @tcName@ is the wire name as emitted by
 the model — kept as 'Text', not a parsed tool enum, because models invent names;
@@ -31,7 +31,7 @@ data ToolCall = ToolCall
     , tcName :: Text
     , tcInput :: Value
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Our answer to one 'ToolCall', carrying the already-clean 'ToolOutcome'.
 Keeps both the call id (Anthropic pairs results to calls by id) and the tool
@@ -42,21 +42,21 @@ data ToolResult = ToolResult
     , trName :: Text
     , trOutcome :: ToolOutcome
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | One part of a message's content.
 data ContentPart
     = TextPart Text
     | ToolCallPart ToolCall
     | ToolResultPart ToolResult
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 data Message = Message
     { msgRole :: Role
     , msgParts :: [ContentPart]
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | An ordered exchange history. The aggregate root of a chat session.
 newtype Conversation = Conversation {convMessages :: [Message]}
-    deriving (Show, Eq)
+    deriving (Eq, Show)

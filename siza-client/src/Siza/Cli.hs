@@ -16,7 +16,6 @@ import qualified Data.Aeson as A
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy.Char8 as LBS8
-import Data.Either (fromLeft)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -33,6 +32,7 @@ import Sabela.AI.Types (
  )
 import Siza.Cli.Annotate (runAnnotate)
 import Siza.Cli.Await (awaitBudgetParser, runAwaitIdle)
+import Siza.Cli.Chat (ChatOpts, chatOptsParser, runChatCommand)
 import Siza.Cli.Provenance (logToolCall)
 import Siza.Cli.Retro (RetroTarget, retroTargetParser, runRetro)
 import Siza.Discover (Server (..), defaultLocalUrl, discover, serverValue)
@@ -73,6 +73,7 @@ data Command
     | Login (Maybe Text)
     | Logout
     | Mcp
+    | Chat ChatOpts
     deriving (Show)
 
 -- | The full parser, with @--help@ and per-subcommand help.
@@ -107,6 +108,11 @@ subcommands =
     , ("login", loginParser, "Authorize against a hub: siza login [HUB_URL].")
     , ("logout", pure Logout, "Forget the saved hub token.")
     , ("mcp", pure Mcp, "Serve the AI tool surface over MCP on stdio.")
+    ,
+        ( "chat"
+        , Chat <$> chatOptsParser
+        , "Pair with a local model on the notebook: siza chat [--model M] [--url U]."
+        )
     ]
 
 {- | @siza login [HUB_URL]@: run the browser-approved device flow against the
@@ -201,6 +207,8 @@ runCommand = \case
     Mcp ->
         withConn $ \conn -> withFirstServer conn $ \srv ->
             runMcp conn (srvBaseUrl srv)
+    Chat opts ->
+        runChatCommand opts withConn resolveChatBase warnNonLocal noServer
     Annotate cellId asSource ->
         withConn $ \conn -> withFirst conn $ \base ->
             runAnnotate conn base cellId asSource
@@ -218,6 +226,11 @@ runCommand = \case
             res <- callTool conn base name input
             logToolCall conn srv name input mpf res
             either fatal emitOutcome res
+
+-- | The chat target: an explicit @--url@, else the first discovered server.
+resolveChatBase :: Conn -> Maybe Text -> (Text -> IO ()) -> IO ()
+resolveChatBase _ (Just u) k = k u
+resolveChatBase conn Nothing k = withFirst conn k
 
 {- | A connection for the data commands: fails fast with a clear message when
 the saved hub token for the target has expired, rather than sending an
@@ -272,7 +285,7 @@ gateMutation policy name input
                 pure (Just (Preflight True adv True))
     | otherwise = pure Nothing
   where
-    advisories v = fromLeft [] (scanSource policy (vettedSource v))
+    advisories v = either id (const []) (scanSource policy (vettedSource v))
 
 -- | The @source@ string of a tool input, if present.
 sourceField :: Value -> Maybe Text

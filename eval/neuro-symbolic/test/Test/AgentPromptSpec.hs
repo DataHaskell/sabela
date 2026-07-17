@@ -12,6 +12,7 @@ import Eval.Agent (systemPrompt)
 import Sabela.AI.PromptCore (sharedPromptCore)
 
 spec :: Spec
-spec = describe "Eval.Agent.systemPrompt (unified)" $
-    it "embeds the shared prompt core" $
-        (sharedPromptCore `T.isInfixOf` systemPrompt) `shouldBe` True
+spec =
+    describe "Eval.Agent.systemPrompt (unified)" $
+        it "embeds the shared prompt core" $
+            (sharedPromptCore `T.isInfixOf` systemPrompt) `shouldBe` True

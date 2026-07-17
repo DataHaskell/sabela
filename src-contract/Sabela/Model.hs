@@ -46,7 +46,7 @@ data OutputItem = OutputItem
     { oiMime :: MimeType
     , oiOutput :: Text
     }
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 -- | Wire-format MIME label. Round-trips with 'textToMime'.
 mimeIndicator :: MimeType -> Text
@@ -93,7 +93,7 @@ data Notebook = Notebook
     { nbTitle :: Text
     , nbCells :: [Cell]
     }
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON Notebook
 instance FromJSON Notebook
@@ -107,10 +107,10 @@ data Cell = Cell
     , cellError :: Maybe Text
     , cellDirty :: Bool
     }
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data CellType = CodeCell | ProseCell
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON Cell
 instance FromJSON Cell
@@ -268,7 +268,7 @@ data CellError = CellError
     , ceCol :: Maybe Int
     , ceMessage :: Text
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON CellError
 instance FromJSON CellError

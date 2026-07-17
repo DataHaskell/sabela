@@ -13,6 +13,7 @@ module Sabela.AI.Capabilities.Kernel (
     execAwaitIdle,
     execExportNotebook,
     haskellKernelBusy,
+    haskellKernelOccupied,
     kernelStateBefore,
     awaitIdleBudgetUs,
 ) where
@@ -23,6 +24,7 @@ import Data.Aeson (Value, object, (.=))
 import Data.IORef (readIORef)
 import Data.Maybe (isJust)
 import Data.Text (Text)
+import GHC.Clock (getMonotonicTimeNSec)
 
 import Sabela.AI.KernelState (KernelState, kernelStateJSON, kernelStateOf)
 import Sabela.AI.Types (ToolOutcome, okOutcome, toolOutcomeValue)
@@ -43,6 +45,16 @@ haskellKernelBusy :: App -> IO Bool
 haskellKernelBusy app =
     getHaskellSession (appSessions app) >>= maybe (pure False) ST.sbBusy
 
+{- | Lock-free: is the kernel executing a cell OR compiling? The admission bounce
+uses this, not 'haskellKernelBusy' — a build raises @appBuilding@ but not
+@sbBusy@, so a busy-only check lets retries stack compiles behind the run-lock.
+-}
+haskellKernelOccupied :: App -> IO Bool
+haskellKernelOccupied app = do
+    busy <- haskellKernelBusy app
+    building <- readIORef (appBuilding app)
+    pure (busy || building)
+
 {- | Lock-free kernel status. Always answers — even while a cell holds the
 run-lock — so a driver can tell "busy" (a slow cell) from "wedged" (the
 server itself is unresponsive) without taking the lock.
@@ -52,16 +64,23 @@ execKernelStatus app = do
     mSess <- getHaskellSession (appSessions app)
     busy <- maybe (pure False) ST.sbBusy mSess
     gen <- maybe (pure 0) ST.sbSessionGen mSess
-    compiling <- readIORef (appBuilding app)
     ebGen <- readIORef (ebGeneration (appEvents app))
-    let kstate = kernelStateOf (isJust mSess) gen busy compiling
+    -- Derive both the building flag and its elapsed ms from ONE read of
+    -- appBuildingSince, so status never reports state=building with no buildingMs
+    -- (or the reverse) when a build starts/ends between two separate reads.
+    mSince <- readIORef (appBuildingSince app)
+    now <- getMonotonicTimeNSec
+    let compiling = isJust mSince
+        buildingMs = (\t0 -> (now - t0) `div` 1000000) <$> mSince
+        kstate = kernelStateOf (isJust mSess) gen busy compiling
     pure $
         okOutcome $
-            object
+            object $
                 [ "state" .= kernelStateJSON kstate
                 , "ksGen" .= gen
                 , "ebGeneration" .= ebGen
                 ]
+                    ++ ["buildingMs" .= ms | Just ms <- [buildingMs]]
 
 {- | The typed 'KernelState' and the @ebGeneration@ fence from the same
 lock-free reads 'execKernelStatus' uses, captured BEFORE a dispatch so the

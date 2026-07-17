@@ -42,7 +42,7 @@ instance FromJSON MessageResponse where
             <*> o .:? "usage"
 
 data StopReason = SREndTurn | SRToolUse | SRMaxTokens
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 instance FromJSON StopReason where
     parseJSON = withText "StopReason" $ \case

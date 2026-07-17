@@ -48,7 +48,7 @@ data ToolCall = ToolCall
     { tcName :: Text
     , tcArgs :: Value
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 data Turn = Turn
     { turnRaw :: Value
@@ -162,7 +162,7 @@ data OllamaReqOpts = OllamaReqOpts
     , oroNumCtx :: Int
     , oroTemperature :: Double
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Build the @/api/chat@ request body. Pure so the wire shape (num_ctx,
 keep_alive, stream:false, options) is pinned by a golden test independent of the

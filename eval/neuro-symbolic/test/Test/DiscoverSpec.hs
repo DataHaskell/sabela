@@ -89,7 +89,7 @@ spec = describe "D1 discover stage" $ do
                         , drvNow = pure 0
                         , drvVerify = pure True
                         }
-            run <- runEpisodeWith openBudget driver dummyTask 10
+            run <- runEpisodeWith openBudget driver (taskPrompt dummyTask) 10
             arStopped run `shouldBe` "done"
             issued <- readIORef calls
             let browsed = [argOf a | ToolCall "find_function" a <- issued]

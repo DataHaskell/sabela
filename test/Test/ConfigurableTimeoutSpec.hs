@@ -15,7 +15,9 @@ import Sabela.Session (
 import Sabela.Session.Proc (ProcSession (..))
 import Sabela.Session.Reader (newOutQueue)
 import Sabela.Session.Timeout (
+    buildTimedOutMessage,
     defaultTimeoutConfig,
+    tcBuildUs,
     tcExecutionUs,
     tcResyncUs,
     timedOutMessage,
@@ -100,3 +102,13 @@ spec = do
         it "is the historical 120s / 5s pair" $ do
             tcExecutionUs defaultTimeoutConfig `shouldBe` 120_000_000
             tcResyncUs defaultTimeoutConfig `shouldBe` 5_000_000
+        it "bounds the off-lock build phase at 900s" $
+            tcBuildUs defaultTimeoutConfig `shouldBe` 900_000_000
+
+    describe "buildTimedOutMessage" $ do
+        it "reports the configured build budget and how to raise it" $
+            buildTimedOutMessage 300_000_000
+                `shouldBe` "\n*** Build (dependency install / cold start) timed \
+                           \out after 300 seconds; the kernel was reset. Check \
+                           \the dependencies compile, or raise \
+                           \SABELA_BUILD_TIMEOUT_SECONDS ***"

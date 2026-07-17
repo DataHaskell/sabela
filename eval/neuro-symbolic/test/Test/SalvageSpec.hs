@@ -76,14 +76,14 @@ spec = describe "Rank 3 code-fence salvage" $ do
     describe "runEpisodeWith (salvage harvests an echoed cell)" $ do
         it "harvests a block the model echoed without inserting, then stops done" $ do
             driver <- scriptedDriver alwaysHealthy [echoTurn, doneTurn]
-            run <- runEpisodeWith openBudget driver dummyTask 10
+            run <- runEpisodeWith openBudget driver (taskPrompt dummyTask) 10
             arStopped run `shouldBe` "done"
             arToolCalls run `shouldBe` 1
             arTurns run `shouldBe` 2
 
         it "does not salvage once a cell is already owned (no duplicate insert)" $ do
             driver <- scriptedDriver alwaysHealthy [callTurn "insert_cell", echoTurn]
-            run <- runEpisodeWith openBudget driver dummyTask 10
+            run <- runEpisodeWith openBudget driver (taskPrompt dummyTask) 10
             arStopped run `shouldBe` "done"
             arToolCalls run `shouldBe` 1
 
@@ -97,7 +97,7 @@ spec = describe "Rank 3 code-fence salvage" $ do
                     GrammarOn
                     openBudget
                     driver
-                    dummyTask
+                    (taskPrompt dummyTask)
                     3
             out <- mconcat <$> readIORef sink
             ("## 1. system" `isInfixOf` out) `shouldBe` True

@@ -32,7 +32,7 @@ import Eval.Task (Task)
 
 -- | Which of the three task families a reasoning task belongs to.
 data Category = Competition | Design | Logic
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | The full reasoning corpus, tagged by category.
 reasoningCorpus :: [(Category, Task)]

@@ -39,7 +39,7 @@ data Server = Server
     , srvAuthRequired :: Maybe Bool
     , srvTokenHint :: Maybe Text
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 instance FromJSON Server where
     parseJSON = withObject "Server" $ \o ->

@@ -52,7 +52,7 @@ data HubToken = HubToken
     , htToken :: Text
     , htExpiresAt :: UTCTime
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 instance ToJSON HubToken where
     toJSON t =
@@ -71,7 +71,7 @@ expired, or usable. 'Expired' lets the caller print a "run siza login" hint
 rather than silently failing the request.
 -}
 data TokenStatus = NoToken | Expired | Valid Text
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Decide a token's standing against a target URL and the current time. A
 token saved for a different hub reads as 'NoToken' (it can't authenticate this

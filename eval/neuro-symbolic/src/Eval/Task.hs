@@ -29,7 +29,8 @@ import Sabela.AI.Types (ToolOutcome (ToolErr, ToolOk))
 import Siza.Transport (Conn, callTool)
 
 import Eval.Render (gradeRender, textField)
-import Eval.Tools (renderOutcome, withInsertDefaults)
+import Eval.Tools (renderOutcome)
+import Siza.Agent.Check (markerSrc, runMarkerWith)
 
 data Task = Task
     { taskId :: Text
@@ -44,7 +45,7 @@ data Grader
     | ByOutputHas [Text]
     | BySteps [Grader]
     | Untested
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 taskTest :: Task -> Maybe Text
 taskTest task = case taskGrader task of
@@ -55,7 +56,7 @@ data Verdict
     = Surfaced
     | Withheld Text
     | ProposeTest Text
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 verifyDiff :: Bool -> Maybe Text -> Bool -> Verdict
 verifyDiff compiled mtest testGreen
@@ -144,32 +145,8 @@ gradeWith conn base task grader = case grader of
     ByOutputHas needles -> gradeOutputHas conn base needles
     BySteps stages -> gradeSteps conn base task stages
 
-markerSrc :: Text -> Text
-markerSrc check =
-    "putStrLn (if (" <> check <> ") then \"GRADE_PASS\" else \"GRADE_FAIL\")"
-
 runMarker :: Conn -> Text -> Text -> IO (Bool, Text)
 runMarker conn base = runMarkerWith (callTool conn base)
-
-{- | Run a grading marker and report whether it greened, INJECTING the tool
-caller so the path is testable without a live server. Grades OFF-notebook: the
-marker has to run in the live session to see the notebook's bindings, but it is
-deleted afterwards so the notebook is never left holding a noisy
-GRADE_PASS/GRADE_FAIL acceptance cell.
--}
-runMarkerWith ::
-    (ToolName -> Value -> IO (Either Text ToolOutcome)) -> Text -> IO (Bool, Text)
-runMarkerWith call src = do
-    _ <- call InsertCell (withInsertDefaults (object ["source" .= src]))
-    after <- maxId . listValue <$> call ListCells (object [])
-    out <- renderOutcome <$> call ExecuteCell (object ["cell_id" .= after])
-    _ <- call DeleteCell (object ["cell_id" .= after])
-    pure (T.isInfixOf "GRADE_PASS" out, out)
-
--- | Unwrap a @list_cells@ tool result to its cells 'Value' (or empty on error).
-listValue :: Either Text ToolOutcome -> Value
-listValue (Right (ToolOk v)) = v
-listValue _ = object []
 
 gradeOutputTask :: Conn -> Text -> IO (Verdict, Text)
 gradeOutputTask conn base = do
@@ -272,10 +249,3 @@ listCells conn base = do
     pure $ case r of
         Right (ToolOk v) -> v
         _ -> object []
-
-maxId :: Value -> Int
-maxId (Array a) =
-    maximum
-        (0 : [round s | Object c <- toList a, Just (Number s) <- [KM.lookup "id" c]])
-maxId (Object o) = maybe 0 maxId (KM.lookup "cells" o)
-maxId _ = 0

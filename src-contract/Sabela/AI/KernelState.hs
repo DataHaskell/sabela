@@ -9,6 +9,7 @@ module Sabela.AI.KernelState (
     Activity (..),
     kernelStateOf,
     kernelStateJSON,
+    isOccupied,
 ) where
 
 import Data.Aeson (Value, object, (.=))
@@ -26,7 +27,7 @@ data KernelState
         , ksActivity :: !Activity
         , ksBuilding :: !Bool
         }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | What the run-lock axis is doing. @Building@ (the off-lock @appBuilding@
 rebuild) is carried separately on 'Alive' as 'ksBuilding', not as a peer
@@ -35,7 +36,7 @@ constructor here, because it may co-occur with @Executing@.
 data Activity
     = Idle
     | Executing
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Build the typed state from the same lock-free reads the legacy blob uses:
 session presence, @sbBusy@, @sbSessionGen@, and @appBuilding@. Absent session
@@ -51,6 +52,14 @@ kernelStateOf alive gen busy building
             , ksActivity = if busy then Executing else Idle
             , ksBuilding = building
             }
+
+{- | Running a cell OR compiling — the admission bounce predicate, rejecting a
+retry on either axis. A build raises only @appBuilding@, never @sbBusy@, so a
+busy-only check would let duplicate runs stack behind the lock during a compile.
+-}
+isOccupied :: KernelState -> Bool
+isOccupied Cold = False
+isOccupied (Alive _ activity building) = activity == Executing || building
 
 {- | The wire object for the typed state: one @state@ tag plus @ksGen@. The
 @ebGeneration@ fence is emitted by the producer alongside this, distinct from

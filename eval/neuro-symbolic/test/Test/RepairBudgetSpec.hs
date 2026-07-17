@@ -79,7 +79,7 @@ spec = describe "B3 repair budget and deadline" $ do
                 redWithDiag
                 (concat (replicate 50 [callTurn "insert_cell", doneTurn]))
         let budget = defaultBudget{ebMaxRepairs = 2, ebDeadlineSecs = 1 / 0}
-        run <- runEpisodeWith budget driver dummyTask 1000
+        run <- runEpisodeWith budget driver (taskPrompt dummyTask) 1000
         arStopped run `shouldBe` "repair_budget"
         ("PIN-DIAGNOSTIC" `T.isInfixOf` arFinal run) `shouldBe` True
 
@@ -90,7 +90,7 @@ spec = describe "B3 repair budget and deadline" $ do
                 redWithDiag
                 (concat (replicate 50 [callTurn "insert_cell", doneTurn]))
         let budget = defaultBudget{ebMaxRepairs = 1000, ebDeadlineSecs = 25}
-        run <- runEpisodeWith budget driver dummyTask 1000
+        run <- runEpisodeWith budget driver (taskPrompt dummyTask) 1000
         arStopped run `shouldBe` "deadline"
         ("PIN-DIAGNOSTIC" `T.isInfixOf` arFinal run) `shouldBe` True
 
@@ -107,5 +107,5 @@ spec = describe "B3 repair budget and deadline" $ do
                 redThenGreen
                 [callTurn "insert_cell", doneTurn, callTurn "replace_cell_source", doneTurn]
         let budget = defaultBudget{ebMaxRepairs = 3, ebDeadlineSecs = 1 / 0}
-        run <- runEpisodeWith budget driver dummyTask 1000
+        run <- runEpisodeWith budget driver (taskPrompt dummyTask) 1000
         arStopped run `shouldBe` "done"

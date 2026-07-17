@@ -83,7 +83,7 @@ widgetRead name def =
                 [(v, "")] -> v
                 _ -> def
 
-displaySlider :: (Show a, Integral a) => String -> a -> a -> a -> IO ()
+displaySlider :: (Integral a, Show a) => String -> a -> a -> a -> IO ()
 displaySlider name lo hi val =
     readIORef _sabelaCellIdRef >>= \cid ->
         displayHtml $
@@ -127,7 +127,7 @@ sample = bSample
 render :: Behavior a -> IO ()
 render = bRender
 
-slider :: (Show a, Read a, Integral a) => String -> a -> a -> a -> Behavior a
+slider :: (Integral a, Read a, Show a) => String -> a -> a -> a -> Behavior a
 slider name def lo hi =
     Behavior
         { bSample = widgetRead name def

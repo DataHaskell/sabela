@@ -41,7 +41,7 @@ data WidgetBind = WidgetBind
     , wbName :: Text
     , wbArgs :: [Text]
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Parse a single-line widget bind. Recognizes
 @x \<- display (slider "n" def lo hi)@ and the other widget constructors,

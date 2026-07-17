@@ -1,0 +1,46 @@
+# HLint configuration — strict, curated to catch code/AI smells.
+#
+# Modeled on the team's .golangci.yml philosophy: crank strictness and forbid the
+# functions a model reaches for, but leave the purely-cosmetic whitespace noise to
+# fourmolu (as that config disables wsl/nlreturn/varnamelen/lll).
+#
+# Runs via scripts/lint.sh, which invokes `hlint <dirs>` under `set -e`. hlint
+# exits non-zero on ANY hint, so this gate is all-or-nothing: fix a flagged smell,
+# or scope it with a `within:` exception here — mirroring the golangci
+# nolint/exclusions pattern.
+
+# --- Forbidden functions (≈ golangci `forbidigo`) --------------------------
+# Partial / debug / unsafe functions the model reaches for. The partials are
+# banned in production but allowed within `Test.**` — mirroring the golangci
+# `path: _test\.go` exclusions, since a partial that fails in a test IS the test
+# failing. Debug traces stay banned everywhere (a committed trace is a leftover).
+# To allow a further legitimate site, extend its `within:` list.
+- functions:
+    - {name: undefined, within: [Test.**]} # partial: crashes at runtime
+    - {name: Data.Maybe.fromJust, within: [Test.**]} # prefer maybe / a total match
+    - {name: Data.Either.fromRight, within: [Test.**]} # silent-default trap
+    - {name: Data.Either.fromLeft, within: [Test.**]}
+    - {name: Debug.Trace.trace, within: []} # debug leftover
+    - {name: Debug.Trace.traceShow, within: []}
+    - {name: Debug.Trace.traceShowId, within: []}
+    - {name: Debug.Trace.traceM, within: []}
+    - {name: Debug.Trace.traceShowM, within: []}
+
+# HLint's own "Use fromLeft/fromRight" hints recommend the functions banned above
+# (e.g. on `either id (const [])`); disable them so the linter never nudges toward
+# a forbidden function.
+- ignore: {name: Use fromLeft}
+- ignore: {name: Use fromRight}
+
+# --- Redundancy (≈ golangci `gocritic` / `modernize` / `staticcheck`) -------
+# HLint's built-in hints already cover the common model redundancies: redundant
+# do / $ / return / pure / lambda, `if c then True else False`, `concat . map`,
+# `length xs == 0`, `maybe True`/`fromMaybe`, section rewrites, etc. They stay on.
+
+# --- Deliberately NOT enabled (mirrors the golangci `disable:` block) --------
+# - group generalise-for-conciseness: flags ~22 existing sites; enable once those
+#   are cleaned up, else the gate drowns (cf. the golangci "enable in future" TODOs).
+# - restricting head / tail / error: 34 / 19 / 147 legitimate uses; a global ban
+#   would bury the signal. Prefer removing the partial at the call site.
+# - comment quality (≈ godot / dupword / misspell): not expressible in HLint;
+#   scripts/check-comments.sh already enforces top-level, ≤3-line comments.

@@ -16,11 +16,11 @@ data StopCondition
     | WantsTools
     | Truncated
     | Refused
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 data Completion = Completion
     { compParts :: [ContentPart]
     , compStop :: StopCondition
     , compUsage :: TokenUsage
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)

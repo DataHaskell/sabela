@@ -20,10 +20,11 @@ while IFS= read -r f; do
   if [ "$n" -gt "$LIMIT" ]; then
     printf '%6d  %s\n' "$n" "$f" >> "$tmp"
   fi
+# --cached --others: tracked files PLUS new untracked ones (a brand-new module is
+# exactly where the cap matters); --exclude-standard honours .gitignore.
 done < <(
-  git ls-files '*.hs' 'static/src/*/js/*.js'
-  # siza-client is not yet tracked but must still obey the cap.
-  find siza-client -name '*.hs' 2>/dev/null
+  git ls-files --cached --others --exclude-standard '*.hs' 'static/src/*/js/*.js' |
+    sort -u
 )
 
 if [ -s "$tmp" ]; then

@@ -36,7 +36,7 @@ data Hoisted = Hoisted
     , hImports :: [Text]
     , hTopDecls :: [Text]
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 emptyHoisted :: Hoisted
 emptyHoisted = Hoisted [] [] []

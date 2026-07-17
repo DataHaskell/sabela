@@ -37,14 +37,14 @@ data WidgetUpdate = WidgetUpdate
     , wuName :: Text
     , wuValue :: Text
     }
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON WidgetUpdate
 instance FromJSON WidgetUpdate
 
 newtype UpdateCell = UpdateCell
     {ucSource :: Text}
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON UpdateCell
 instance FromJSON UpdateCell
@@ -57,7 +57,7 @@ them as "append at end", which is a clean illegal-states-unrepresentable
 fix.
 -}
 data InsertAt = AtBeginning | After !Int
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON InsertAt where
     toJSON AtBeginning = toJSON (-1 :: Int)
@@ -79,7 +79,7 @@ data InsertCell = InsertCell
     , icLang :: CellLang
     , icSource :: Text
     }
-    deriving (Show, Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON InsertCell
 instance FromJSON InsertCell
@@ -87,7 +87,7 @@ instance FromJSON InsertCell
 newtype LoadRequest = LoadRequest
     { lrPath :: FilePath
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON LoadRequest
 instance FromJSON LoadRequest
@@ -96,7 +96,7 @@ newtype SaveRequest = SaveRequest
     { srPath :: Maybe FilePath
     -- ^ Nothing = save to nbTitle
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON SaveRequest
 instance FromJSON SaveRequest
@@ -109,7 +109,7 @@ record shape allowed.
 data CreateFileRequest
     = CreateDir !Text
     | CreateFile !Text !Text
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON CreateFileRequest where
     toJSON (CreateDir p) =
@@ -133,7 +133,7 @@ data WriteFileRequest = WriteFileRequest
     { wfPath :: Text
     , wfContent :: Text
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON WriteFileRequest
 instance FromJSON WriteFileRequest
@@ -141,7 +141,7 @@ instance FromJSON WriteFileRequest
 newtype DeleteFileRequest = DeleteFileRequest
     { dfPath :: Text
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON DeleteFileRequest
 instance FromJSON DeleteFileRequest
@@ -150,7 +150,7 @@ data RenameFileRequest = RenameFileRequest
     { rfOldPath :: Text
     , rfNewPath :: Text
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON RenameFileRequest
 instance FromJSON RenameFileRequest
@@ -166,7 +166,7 @@ data FilePreview = FilePreview
     , fpTotalBytes :: Int
     , fpEof :: Bool
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON FilePreview
 instance FromJSON FilePreview
@@ -174,7 +174,7 @@ instance FromJSON FilePreview
 newtype CompleteRequest = CompleteRequest
     { crPrefix :: Text
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON CompleteRequest
 instance FromJSON CompleteRequest
@@ -182,7 +182,7 @@ instance FromJSON CompleteRequest
 newtype InfoRequest = InfoRequest
     { irName :: Text
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON InfoRequest
 instance FromJSON InfoRequest
@@ -193,7 +193,7 @@ data RunResult = RunResult
     , rrError :: Maybe Text
     , rrWarnings :: [CellError]
     }
-    deriving (Show, Generic)
+    deriving (Generic, Show)
 
 instance ToJSON RunResult
 instance FromJSON RunResult
@@ -201,7 +201,7 @@ instance FromJSON RunResult
 newtype RunAllResult = RunAllResult
     { rarResults :: [RunResult]
     }
-    deriving (Show, Generic)
+    deriving (Generic, Show)
 
 instance ToJSON RunAllResult
 instance FromJSON RunAllResult
@@ -209,7 +209,7 @@ instance FromJSON RunAllResult
 newtype CompleteResult = CompleteResult
     { crCompletions :: [Text]
     }
-    deriving (Show, Generic)
+    deriving (Generic, Show)
 
 instance ToJSON CompleteResult
 instance FromJSON CompleteResult
@@ -217,7 +217,7 @@ instance FromJSON CompleteResult
 newtype InfoResult = InfoResult
     { irText :: Text
     }
-    deriving (Show, Generic)
+    deriving (Generic, Show)
 
 instance ToJSON InfoResult
 instance FromJSON InfoResult
@@ -227,7 +227,7 @@ data FileEntry = FileEntry
     , fePath :: Text
     , feIsDir :: Bool
     }
-    deriving (Show, Generic)
+    deriving (Generic, Show)
 
 instance ToJSON FileEntry
 instance FromJSON FileEntry
@@ -238,7 +238,7 @@ data Example = Example
     , exCategory :: Text
     , exCode :: Text
     }
-    deriving (Show, Generic)
+    deriving (Generic, Show)
 
 instance ToJSON Example
 instance FromJSON Example
@@ -246,7 +246,7 @@ instance FromJSON Example
 newtype ChatRequest = ChatRequest
     { crMessage :: Text
     }
-    deriving (Show, Generic, Eq)
+    deriving (Eq, Generic, Show)
 
 instance ToJSON ChatRequest
 instance FromJSON ChatRequest

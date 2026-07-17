@@ -29,18 +29,18 @@ data MutationEvent = MutationEvent
     , meSource :: Text
     , meHealth :: Health
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | The latest health and source (revision) of a cell the turn owns.
 data OwnedCell = OwnedCell
     { ocHealth :: Health
     , ocSource :: Text
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | The accept gate's verdict once the model stops calling tools.
 data StopDecision = Stop | Reenter [CellId]
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Fold a mutation into the owned map. Only cells written by a notebook-acting
 tool ('actsOnNotebook') are owned; a read/query tool records nothing.

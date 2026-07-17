@@ -8,9 +8,12 @@ module Test.DiagnoseSpec (diagnoseSpec) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
+import Sabela.AI.Capabilities.Edit.Repair (ambiguousCandidates)
 import Sabela.AI.CellResult (CellOutcome (..), CellResult (..))
+import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (
     Guidance (..),
+    ambiguousOccurrence,
     couldNotFindModule,
     diagnose,
     guidanceForCell,
@@ -84,6 +87,58 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
                 `shouldBe` Just "Data.DataFrame"
         it "couldNotFindModule is Nothing when no module is named" $
             couldNotFindModule "Not in scope: foo" `shouldBe` Nothing
+
+    describe "ambiguousOccurrence (name-collision auto-fix)" $ do
+        let ambigErr =
+                T.unlines
+                    [ "cell 23, line 4: Ambiguous occurrence `take'."
+                    , "It could refer to"
+                    , "   either `Prelude.take',"
+                    , "          imported from `Prelude'"
+                    , "          (and originally defined in `GHC.Internal.List'),"
+                    , "       or `DataFrame.take',"
+                    , "          imported from `DataFrame'"
+                    , "          (and originally defined in `DataFrame.Operations.Subset')."
+                    ]
+        it "reads the ambiguous name and both qualified candidates" $
+            ambiguousOccurrence ambigErr
+                `shouldBe` Just ("take", ["Prelude.take", "DataFrame.take"])
+        it "handles GHC's smart-quote form" $
+            ambiguousOccurrence
+                ( T.unlines
+                    [ "Ambiguous occurrence \8216filter\8217"
+                    , "It could refer to"
+                    , "   either \8216Prelude.filter\8217, imported from \8216Prelude\8217"
+                    , "   or     \8216DataFrame.filter\8217, imported from \8216DataFrame\8217"
+                    ]
+                )
+                `shouldBe` Just ("filter", ["Prelude.filter", "DataFrame.filter"])
+        it "does not pick up the originally-defined-in module as a candidate" $
+            fmap snd (ambiguousOccurrence ambigErr)
+                `shouldBe` Just ["Prelude.take", "DataFrame.take"]
+        it "is Nothing for an ambiguous TYPE (a different error class)" $
+            ambiguousOccurrence "Ambiguous type variable `a0' arising from a use of `show'"
+                `shouldBe` Nothing
+        it "is Nothing for an unrelated error" $
+            ambiguousOccurrence "Couldn't match Int with Bool" `shouldBe` Nothing
+
+    describe "ambiguousCandidates (span-safe qualification)" $ do
+        let ambigMsg =
+                T.unlines
+                    [ "Ambiguous occurrence `take'."
+                    , "It could refer to"
+                    , "   either `Prelude.take',"
+                    , "       or `DataFrame.take'."
+                    ]
+            src = "f = putStrLn \"take a break\" >> take 3 xs"
+            withSpan =
+                Right (ExecutionResult [] Nothing [CellError (Just 1) (Just 32) ambigMsg] [])
+        it "qualifies the use-site, leaving the same name in a string untouched" $
+            ambiguousCandidates withSpan src
+                `shouldContain` ["f = putStrLn \"take a break\" >> DataFrame.take 3 xs"]
+        it "never global-replaces: a span-less error yields no candidate" $
+            ambiguousCandidates (Right (ExecutionResult [] (Just ambigMsg) [] [])) src
+                `shouldBe` []
 
     describe "notInScopeName (case-insensitive, all GHC forms)" $ do
         it "reads the name from 'Variable not in scope:'" $

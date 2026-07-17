@@ -112,6 +112,7 @@ library
                       Sabela.AI.Capabilities.CapabilitySearch,
                       Sabela.AI.Capabilities.Discover,
                       Sabela.AI.Capabilities.Edit,
+                      Sabela.AI.Capabilities.Edit.HoleSearch,
                       Sabela.AI.Capabilities.Edit.Repair,
                       Sabela.AI.Capabilities.Edit.Run,
                       Sabela.AI.Capabilities.Kernel,

@@ -14,4 +14,4 @@ data TurnOutcome
     | HitToolLimit Int
     | Cancelled
     | Failed Text
-    deriving (Show, Eq)
+    deriving (Eq, Show)

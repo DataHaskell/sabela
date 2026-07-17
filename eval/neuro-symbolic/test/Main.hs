@@ -4,7 +4,6 @@ import qualified Test.AgentPromptSpec as AgentPromptSpec
 import qualified Test.BenchSpec as BenchSpec
 import qualified Test.BudgetRetrySpec as BudgetRetrySpec
 import qualified Test.CapabilityCorpusSpec as CapabilityCorpusSpec
-import qualified Test.ChatSpec as ChatSpec
 import qualified Test.CodePathSpec as CodePathSpec
 import qualified Test.DiscoverSpec as DiscoverSpec
 import qualified Test.ExemplarsSpec as ExemplarsSpec
@@ -36,7 +35,6 @@ main = hspec $ do
     BenchSpec.spec
     BudgetRetrySpec.spec
     CapabilityCorpusSpec.spec
-    ChatSpec.spec
     CodePathSpec.spec
     DiscoverSpec.spec
     GateLeverSpec.spec

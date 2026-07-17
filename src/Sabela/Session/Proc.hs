@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TupleSections #-}
 
 {- | Process-group lifecycle for interpreter subprocesses: masked spawn
 into a registry, group signalling, and the single 'destroySession'
@@ -303,5 +304,5 @@ registryRemove uid =
 -- | Shutdown sweep: swap the registry out, then destroy every leftover.
 killLeftoverSessions :: IO ()
 killLeftoverSessions = do
-    m <- atomicModifyIORef' sessionRegistry (\m -> (Map.empty, m))
+    m <- atomicModifyIORef' sessionRegistry (Map.empty,)
     mapM_ destroySession (Map.elems m)

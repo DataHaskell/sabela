@@ -15,7 +15,8 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import Data.Unique (newUnique)
 
-import Sabela.AI.Capabilities.Kernel (execKernelStatus)
+import Sabela.AI.Capabilities.Kernel (execKernelStatus, haskellKernelOccupied)
+import Sabela.AI.KernelState (KernelState (..), isOccupied, kernelStateOf)
 import Sabela.AI.Types (toolOutcomeValue)
 import Sabela.Server (newApp)
 import qualified Sabela.SessionTypes as ST
@@ -133,3 +134,36 @@ spec = describe "kernel_status typed state (execKernelStatus)" $ do
             absent k = field k v `shouldBe` Nothing
         mapM_ present ["state", "ksGen", "ebGeneration"]
         mapM_ absent ["kernel", "running", "compiling", "sessionGen"]
+
+    describe "isOccupied (admission bounce predicate)" $ do
+        it "Cold is not occupied" $
+            isOccupied Cold `shouldBe` False
+        it "an idle Alive kernel is not occupied" $
+            isOccupied (kernelStateOf True 1 False False) `shouldBe` False
+        it "an executing kernel is occupied" $
+            isOccupied (kernelStateOf True 1 True False) `shouldBe` True
+        it "a building kernel (idle run-lock) is occupied — the stacking fix" $
+            isOccupied (kernelStateOf True 1 False True) `shouldBe` True
+        it "building and executing together is occupied" $
+            isOccupied (kernelStateOf True 1 True True) `shouldBe` True
+
+    describe "haskellKernelOccupied (live, building-aware bounce)" $ do
+        it "a building kernel is occupied even though sbBusy is false" $ do
+            app <- liveApp False 3 True 0
+            haskellKernelOccupied app `shouldReturn` True
+        it "an idle kernel is not occupied" $ do
+            app <- liveApp False 3 False 0
+            haskellKernelOccupied app `shouldReturn` False
+        it "a busy kernel is occupied" $ do
+            app <- liveApp True 3 False 0
+            haskellKernelOccupied app `shouldReturn` True
+
+    describe "buildingMs (build-elapsed legibility)" $ do
+        it "is reported while building (so a driver can gauge compile time)" $ do
+            app <- liveApp False 3 True 0
+            v <- statusValue app
+            field "buildingMs" v `shouldNotBe` Nothing
+        it "is absent when the kernel is not building" $ do
+            app <- liveApp False 3 False 0
+            v <- statusValue app
+            field "buildingMs" v `shouldBe` Nothing

@@ -253,7 +253,7 @@ forceUtf8Output sess =
     let
         setUtf8 d = "System.IO.hSetEncoding System.IO." ++ d ++ " System.IO.utf8"
      in
-        mapM_ (sendRaw sess) (map setUtf8 ["stdout", "stderr"])
+        mapM_ (sendRaw sess . setUtf8) ["stdout", "stderr"]
 
 {- | Kill and respawn the kernel, seeding the replacement with a strictly
 higher generation than the session it replaces so a client can detect the

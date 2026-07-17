@@ -28,7 +28,7 @@ import Sabela.Model (CellError (..), MimeType (..), OutputItem (..))
 import Test.Hspec
 
 -- | Round-trip a value through the real ToJSON/FromJSON pair.
-roundTrips :: (Eq a, Show a, ToJSON a, FromJSON a) => a -> Expectation
+roundTrips :: (Eq a, FromJSON a, Show a, ToJSON a) => a -> Expectation
 roundTrips x = case fromJSON (toJSON x) of
     Success y -> y `shouldBe` x
     Error e -> expectationFailure ("fromJSON failed: " <> e)

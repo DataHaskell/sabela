@@ -72,7 +72,7 @@ as 5-minute reads). Pick @EphemeralHour@ for prefixes that stay stable across
 user idle gaps (system blocks, tool schemas, stable notebook prefix).
 -}
 data CacheControl = Ephemeral | EphemeralHour
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 instance ToJSON CacheControl where
     toJSON Ephemeral = object ["type" .= ("ephemeral" :: Text)]
@@ -83,7 +83,7 @@ instance ToJSON CacheControl where
             ]
 
 data Role = RoleUser | RoleAssistant
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 instance ToJSON Role where
     toJSON RoleUser = "user"

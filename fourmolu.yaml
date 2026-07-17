@@ -44,13 +44,13 @@ single-constraint-parens: always
 single-deriving-parens: always
 
 # Whether to sort constraints
-sort-constraints: false
+sort-constraints: true
 
 # Whether to sort derived classes
-sort-derived-classes: false
+sort-derived-classes: true
 
 # Whether to sort deriving clauses
-sort-deriving-clauses: false
+sort-deriving-clauses: true
 
 # Whether to place section operators (those that are infixr 0, such as $) in trailing position, continuing the expression indented below
 trailing-section-operators: true

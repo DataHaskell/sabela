@@ -13,6 +13,7 @@ module Sabela.Diagnose (
     misnamedModule,
     couldNotFindModule,
     notInScopeName,
+    ambiguousOccurrence,
     packageNeedsFlag,
     GrammarRoute (..),
     routeFailure,
@@ -334,6 +335,29 @@ arisingFromName l
     | "No instance for" `T.isInfixOf` l =
         afterInfix "arising from a use of" l >>= quotedToken
     | otherwise = Nothing
+
+{- | The name and module-qualified candidates an @Ambiguous occurrence 'take' …
+either 'Prelude.take' or 'DataFrame.take'@ error names, read off its @either@\/@or@
+lines. 'Nothing' for an ambiguous TYPE — a different error, fixed by an annotation.
+-}
+ambiguousOccurrence :: Text -> Maybe (Text, [Text])
+ambiguousOccurrence err
+    | not ("Ambiguous occurrence" `T.isInfixOf` err) = Nothing
+    | otherwise = do
+        header <- afterInfix "Ambiguous occurrence" err
+        name <- quotedToken (T.takeWhile (/= '\n') header)
+        let cands =
+                [ q
+                | l <- T.lines err
+                , isCandidateLine l
+                , Just q <- [quotedToken l]
+                , "." `T.isInfixOf` q
+                ]
+        if null cands then Nothing else Just (name, cands)
+  where
+    isCandidateLine l =
+        let s = T.stripStart l
+         in "either " `T.isPrefixOf` s || "or " `T.isPrefixOf` s
 
 ambiguousType :: Text -> [Guidance]
 ambiguousType err

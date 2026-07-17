@@ -28,7 +28,7 @@ data ProviderCaps = ProviderCaps
     , capToolCallIds :: Bool
     , capPromptCache :: Bool
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | Sink for streamed assistant text. Extended later (tool-arg deltas, etc.).
 newtype ChunkSink = ChunkSink {onTextDelta :: Text -> IO ()}

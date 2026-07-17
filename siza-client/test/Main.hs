@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Test.AgentCheckSpec (agentCheckSpec)
 import Test.CrossSeamSpec (crossSeamSpec)
 import Test.Hspec
 import Test.HubTokenSpec (hubTokenSpec)
@@ -28,3 +29,4 @@ main = hspec $ do
     hubTokenSpec
     loginSpec
     mcpSpec
+    agentCheckSpec

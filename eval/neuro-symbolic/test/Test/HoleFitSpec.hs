@@ -6,6 +6,8 @@ import Data.Text (Text)
 import Test.Hspec
 
 import Eval.HoleFit (
+    dropAnnotation,
+    droppableAnnotation,
     goalFromError,
     holeFitNames,
     holeTypeFromDiagnostic,
@@ -62,6 +64,27 @@ spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
                 `shouldBe` Just "D.Expr a"
         it "is Nothing when the diagnostic carries no hole" $
             holeTypeFromDiagnostic "Variable not in scope: foo" `shouldBe` Nothing
+
+    describe "annotation-drop (a general kind/type repair move)" $ do
+        it "reads the bad annotation GHC names" $
+            droppableAnnotation
+                "Expected kind `Type -> Type'\nIn an expression type signature: D.DataFrame Double\nIn the expression: e"
+                `shouldBe` Just "D.DataFrame Double"
+        it "drops the named annotation, preserving other lines" $
+            dropAnnotation
+                "D.DataFrame Double"
+                "revenueColumn = D.col \"revenue\" df :: D.DataFrame Double\ntotal = sum xs"
+                `shouldBe` "revenueColumn = D.col \"revenue\" df\ntotal = sum xs"
+        it "is a no-op when the annotation is absent" $
+            dropAnnotation "Foo" "x = 1\ny = 2" `shouldBe` "x = 1\ny = 2"
+        it "drops the outer annotation, keeping an inner type signature" $
+            dropAnnotation "Maybe" "answer = (6 * 7 :: Int) :: Maybe"
+                `shouldBe` "answer = (6 * 7 :: Int)"
+        it "drops a parenthesised annotation without eating the closing paren" $
+            dropAnnotation "Int" "y = (foo :: Int) + 1" `shouldBe` "y = (foo) + 1"
+        it "preserves the whitespace of a literal after the annotation" $
+            dropAnnotation "[Char]" "greeting = (\"hi\" :: [Char]) <> \"  spaced\""
+                `shouldBe` "greeting = (\"hi\") <> \"  spaced\""
 
     describe "holeFitNames" $ do
         it "keeps the plain fit names, dropping provenance and refinement" $

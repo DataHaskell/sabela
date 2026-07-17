@@ -44,10 +44,9 @@ sharedPromptCore =
         , grammarPromptBlock
         ]
 
-{- | Sabela's own capabilities, always in the prompt because Hackage search
-can't surface them: the injected display/widget API, and the drawing +
-animation + FRP toolkit that @import Sabela.Notebook@ brings (no install).
-Everything else (dataframe, granite, any package) is discovered with the tools.
+{- | Sabela's own capabilities — the display/widget API and the drawing/animation/
+FRP toolkit @import Sabela.Notebook@ brings. Always in the prompt because Hackage
+search cannot surface them; everything else is discovered with the tools.
 -}
 sabelaBuiltins :: Text
 sabelaBuiltins =

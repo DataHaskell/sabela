@@ -37,6 +37,7 @@ library
                       Siza.Security
                       Siza.Annotate
                       Siza.Cli.Annotate
+                      Siza.Cli.Chat
                       Siza.Cli.Await
                       Siza.Cli.Provenance
                       Siza.Cli.Retro
@@ -44,6 +45,20 @@ library
                       Siza.Provenance.Event
                       Siza.Provenance.Log
                       Siza.Retro
+                      Siza.Agent.Loop
+                      Siza.Agent.Loop.Support
+                      Siza.Agent.Chat
+                      Siza.Agent.Check
+                      Siza.Agent.Tools
+                      Siza.Agent.Discover
+                      Siza.Agent.Owned
+                      Siza.Agent.Repair
+                      Siza.Agent.Messages
+                      Siza.Agent.Transcript
+                      Siza.Agent.Sample
+                      Siza.Agent.Exemplars
+                      Siza.Agent.Preflight
+                      Siza.Agent.Scaffold
     build-depends:    base >= 4 && < 5
                       -- the contract sub-library: typed wire DTOs + AST parser
                       -- reuse, without the server's warp/servant/process drag
@@ -92,6 +107,7 @@ test-suite siza-client-test
     hs-source-dirs:   test
     main-is:          Main.hs
     other-modules:    Test.Fixtures
+                      Test.AgentCheckSpec
                       Test.LanguageSpec
                       Test.ProvenanceSpec
                       Test.CrossSeamSpec

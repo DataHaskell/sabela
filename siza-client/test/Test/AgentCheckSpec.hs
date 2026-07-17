@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Test.ChatSpec (spec) where
+module Test.AgentCheckSpec (agentCheckSpec) where
 
-import Eval.Chat (
+import Siza.Agent.Check (
     CheckResult (..),
     classifyCheck,
     extractTestExpr,
@@ -10,8 +10,8 @@ import Eval.Chat (
  )
 import Test.Hspec
 
-spec :: Spec
-spec = describe "siza-chat verify-gate helpers" $ do
+agentCheckSpec :: Spec
+agentCheckSpec = describe "siza chat covering-check helpers" $ do
     describe "extractTestExpr" $ do
         it "takes a bare expression as-is" $
             extractTestExpr "total == 600" `shouldBe` "total == 600"

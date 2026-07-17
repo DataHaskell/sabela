@@ -107,7 +107,7 @@ emptyUsage = Usage 0 0 Nothing Nothing
 ------------------------------------------------------------------------
 
 data EditStatus = Pending | Accepted | Reverted | Superseded
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 instance ToJSON EditStatus where
     toJSON Pending = "pending"
@@ -171,7 +171,7 @@ Convert to the Anthropic wire shape at the very last step via
 data ToolOutcome
     = ToolOk !Value
     | ToolErr !Value
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 toolOutcomeValue :: ToolOutcome -> Value
 toolOutcomeValue (ToolOk v) = v

@@ -1,20 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | siza-chat: an interactive session that drives the local model through a
-harness loop (scaffold, salvage, diagnostics, the verify-gate)
-but reading free-form requests instead of a fixed task, against one persistent
-notebook.
+{- | @siza chat@: an interactive session that drives the local model through the
+shared agent loop (scaffold, salvage, diagnostics, the verify-gate), reading
+free-form requests from the terminal against one persistent notebook.
+
+Unlike the eval harness this is built on, the verify-gate here is the light
+'Siza.Agent.Check' (propose a boolean, confirm, run it) rather than the benchmark
+grader, and the default view is terse: the full audit stream (system prompt,
+thinking, raw tool JSON) is behind @--verbose@. Ctrl-C cancels the running
+request and returns to the prompt; Ctrl-D quits.
 -}
-module Eval.Chat (
+module Siza.Agent.Chat (
+    ChatConfig (..),
     runChat,
-    extractTestExpr,
-    interpretConfirm,
-    CheckResult (..),
-    classifyCheck,
 ) where
 
+import Control.Exception (AsyncException (UserInterrupt), throwIO, try)
 import Control.Monad (when)
-import Data.Aeson (object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -22,33 +25,61 @@ import qualified Data.Text.IO as TIO
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Network.HTTP.Client (Manager)
 import System.IO (hFlush, isEOF, stdout)
+import System.Timeout (timeout)
 
-import Eval.Agent (
+import Sabela.AI.Types (ToolOutcome)
+import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..), chat, chatSeeded)
+import Siza.Agent.Check (
+    CheckResult (..),
+    classifyCheck,
+    extractTestExpr,
+    interpretConfirm,
+    markerSrc,
+    runMarkerWith,
+ )
+import Siza.Agent.Discover (isOwningTool)
+import Siza.Agent.Loop (
     AgentRun (..),
     Driver (..),
     EpisodeBudget (..),
-    GrammarMode (..),
+    GrammarMode (GrammarOn),
     runEpisodeSeeded,
  )
-import Eval.Discover (isOwningTool)
-import Eval.Ollama (ToolCall (..), Turn (..), chat, chatSeeded)
-import Eval.Salvage (salvageCell)
-import Eval.Task (Grader (..), Task (..), grade)
-import Eval.Tools (catalogue, dispatch, renderOutcome)
-import Sabela.AI.Types (ToolOutcome)
-import Siza.Transport (Conn)
+import Siza.Agent.Tools (catalogueWith, dispatch, renderOutcome)
+import Siza.Transport (Conn, callTool)
 
-runChat ::
-    Bool -> EpisodeBudget -> Int -> Manager -> Conn -> Text -> Text -> IO ()
-runChat debug budget maxTurns mgr conn base model = do
-    TIO.putStrLn ("siza-chat \183 " <> model <> " \183 " <> base <> debugTag)
-    TIO.putStrLn
-        "Type a request; the model works in the notebook and proposes a check you confirm. Ctrl-D to quit.\n"
+{- | Interactive session configuration. The budget's deadline is the loop's
+between-turn cap; 'ccRequestTimeoutSecs' is a hard wall-clock cap around the whole
+request (a safety net for a single wedged model/tool call the loop cannot preempt).
+-}
+data ChatConfig = ChatConfig
+    { ccModel :: Text
+    , ccVerbose :: Bool
+    , ccBudget :: EpisodeBudget
+    , ccMaxTurns :: Int
+    , ccRequestTimeoutSecs :: Int
+    }
+
+runChat :: ChatConfig -> Manager -> Conn -> Text -> IO ()
+runChat cfg mgr conn base = do
+    TIO.putStrLn banner
+    TIO.putStrLn instructions
     loop []
   where
-    debugTag = if debug then " \183 debug (full audit + thinking)" else ""
-    -- @prev@ is the running transcript; each turn continues from it (seeded),
-    -- so the session keeps its context instead of restarting every prompt.
+    model = ccModel cfg
+    verbose = ccVerbose cfg
+    budget = ccBudget cfg
+    maxTurns = ccMaxTurns cfg
+    cat = catalogueWith True
+    banner =
+        "siza chat \183 "
+            <> model
+            <> " \183 "
+            <> base
+            <> (if verbose then " \183 verbose (full audit + thinking)" else "")
+    instructions =
+        "This edits the LIVE notebook at that URL (adds and changes cells). Type a \
+        \request; Ctrl-C cancels the current request, Ctrl-D quits.\n"
     loop prev = do
         TIO.putStr "\8250 "
         hFlush stdout
@@ -59,15 +90,33 @@ runChat debug budget maxTurns mgr conn base model = do
                 line <- TIO.getLine
                 if T.strip line `elem` ["quit", "exit", ":q"]
                     then TIO.putStrLn "bye"
-                    else turn prev line >>= loop
+                    else runTurn prev line
+    -- Bound each request by a hard wall-clock cap and let Ctrl-C (GHC's
+    -- 'UserInterrupt') abort just this request, returning to the prompt with the
+    -- prior transcript intact rather than tearing down the whole session.
+    runTurn prev line = do
+        res <-
+            try (timeout (ccRequestTimeoutSecs cfg * 1000000) (turn prev line)) ::
+                IO (Either AsyncException (Maybe [Value]))
+        case res of
+            Left UserInterrupt ->
+                TIO.putStrLn "\n  (cancelled \8212 back to the prompt)" >> loop prev
+            Left e -> throwIO e
+            Right Nothing -> do
+                TIO.putStrLn
+                    ( "\n  (timed out after "
+                        <> tshow (ccRequestTimeoutSecs cfg)
+                        <> "s \8212 back to the prompt)"
+                    )
+                loop prev
+            Right (Just prev') -> loop prev'
     turn prev userText = do
         gateRef <- newIORef Nothing
         wroteRef <- newIORef False
         seenRef <- newIORef ([] :: [Text])
-        cat <- catalogue
         let chatFn msgs = do
                 progress "\183 thinking\8230"
-                (if debug then chatSeeded True Nothing else chat) mgr model msgs cat
+                chatSeeded True Nothing mgr model msgs cat
             driver =
                 Driver
                     { drvChat = chatFn
@@ -75,14 +124,17 @@ runChat debug budget maxTurns mgr conn base model = do
                     , drvNow = realToFrac <$> getPOSIXTime
                     , drvVerify = verifyGate mgr conn base model gateRef wroteRef
                     }
-            task = Task "_chat" userText Untested
-            emit = if debug then TIO.putStr else const (pure ())
-        run <- runEpisodeSeeded prev emit GrammarOn budget driver task maxTurns
+            emit = if verbose then TIO.putStr else const (pure ())
+        run <- runEpisodeSeeded prev emit GrammarOn budget driver userText maxTurns
         TIO.putStrLn ("\n" <> arFinal run)
         TIO.putStrLn
             ("  [" <> arStopped run <> ", " <> tshow (arToolCalls run) <> " tool calls]\n")
         pure (arTranscript run)
 
+{- | After a writing turn, gate acceptance on a covering check: propose one
+Haskell boolean, let the user confirm/edit/skip, and run it off-notebook. A
+non-writing turn passes straight through.
+-}
 verifyGate ::
     Manager -> Conn -> Text -> Text -> IORef (Maybe Text) -> IORef Bool -> IO Bool
 verifyGate mgr conn base model gateRef wroteRef = do
@@ -109,7 +161,7 @@ runConfirmedTest :: Conn -> Text -> Text -> IO Bool
 runConfirmedTest conn base test
     | T.null test = pure True
     | otherwise = do
-        (_, out) <- grade conn base (Task "_chk" "" (ByValue test))
+        (_, out) <- runMarkerWith (callTool conn base) (markerSrc test)
         case classifyCheck out of
             CheckPassed -> TIO.putStrLn ("  \10003 check passed: " <> test) >> pure True
             CheckFailed -> TIO.putStrLn ("  \10007 check failed: " <> test) >> pure False
@@ -119,22 +171,6 @@ runConfirmedTest conn base test
                 TIO.putStrLn
                     "    accepting the clean-running cells; define a pure binding to check the value."
                 pure True
-
-{- | The three outcomes of a covering check, telling an invalid target (the check
-itself does not compile) apart from a genuinely failing one.
--}
-data CheckResult = CheckPassed | CheckFailed | CheckUncheckable
-    deriving (Eq, Show)
-
-{- | Classify a covering-check marker's output: 'Eval.Task.markerSrc' prints
-GRADE_PASS / GRADE_FAIL when the check compiles, so neither token means the check
-itself did not compile — no clear target, not a wrong answer.
--}
-classifyCheck :: Text -> CheckResult
-classifyCheck out
-    | "GRADE_PASS" `T.isInfixOf` out = CheckPassed
-    | "GRADE_FAIL" `T.isInfixOf` out = CheckFailed
-    | otherwise = CheckUncheckable
 
 proposeTest :: Manager -> Conn -> Text -> Text -> IO Text
 proposeTest mgr conn base model = do
@@ -173,52 +209,11 @@ confirmTest proposed = do
             "  (read as feedback, not a test; skipping the check. Send it as a request at the prompt.)"
     pure result
 
-interpretConfirm :: Text -> Text -> Text
-interpretConfirm proposed input
-    | low `elem` ["skip", "no", "n"] = ""
-    | T.null low || low `elem` ["y", "yes"] = proposed
-    | looksLikeTest stripped = stripped
-    | otherwise = ""
-  where
-    stripped = T.strip input
-    low = T.toLower stripped
-
-looksLikeTest :: Text -> Bool
-looksLikeTest t =
-    any
-        (`T.isInfixOf` t)
-        ["==", "/=", "<=", ">=", "<", ">", "&&", "||", " elem ", "isInfixOf"]
-
 declinedAsProse :: Text -> Text -> Bool
 declinedAsProse input result =
     T.null result && not (T.null low) && low `notElem` ["skip", "no", "n"]
   where
     low = T.toLower (T.strip input)
-
-extractTestExpr :: Text -> Text
-extractTestExpr reply = case salvageCell reply of
-    Just code -> deQuote (firstNonEmptyLine code)
-    Nothing -> case inlineCode reply of
-        Just span_ -> T.strip span_
-        Nothing -> deQuote (firstNonEmptyLine reply)
-  where
-    deQuote = T.strip . T.dropAround (== '`') . T.strip
-
-firstNonEmptyLine :: Text -> Text
-firstNonEmptyLine = headOr "" . filter (not . T.null . T.strip) . T.lines
-  where
-    headOr d [] = d
-    headOr _ (x : _) = x
-
-inlineCode :: Text -> Maybe Text
-inlineCode t = case T.breakOn "`" t of
-    (_, rest)
-        | not (T.null rest)
-        , (code, close) <- T.breakOn "`" (T.drop 1 rest)
-        , not (T.null close)
-        , not (T.null (T.strip code)) ->
-            Just code
-    _ -> Nothing
 
 tracedDispatch ::
     IORef Bool ->
@@ -230,7 +225,7 @@ tracedDispatch wroteRef seenRef dsp call = do
     repeated <- noteCall seenRef call
     progress ("\8594 " <> tcName call <> repeated)
     out <- dsp call
-    progress ("  " <> clip 100 (firstNonEmptyLine (renderOutcome out)))
+    progress ("  " <> clip 100 (firstLine (renderOutcome out)))
     when (isOwningTool (tcName call)) (writeIORef wroteRef True)
     pure out
 
@@ -251,6 +246,13 @@ noteCall seenRef call = do
 
 progress :: Text -> IO ()
 progress = TIO.putStrLn . ("  " <>)
+
+-- | The first non-blank line, for one-line progress digests.
+firstLine :: Text -> Text
+firstLine = headOr "" . filter (not . T.null . T.strip) . T.lines
+  where
+    headOr d [] = d
+    headOr _ (x : _) = x
 
 -- | Truncate to @n@ characters with an ellipsis, for one-line progress digests.
 clip :: Int -> Text -> Text

@@ -58,7 +58,7 @@ data SessionBackend = SessionBackend
     }
 
 data CellLang = Haskell | Python
-    deriving (Show, Eq, Ord, Generic)
+    deriving (Eq, Generic, Ord, Show)
 
 instance ToJSON CellLang
 instance FromJSON CellLang

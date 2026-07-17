@@ -435,6 +435,38 @@ SABELA_AI_TOKEN=$(openssl rand -hex 16) cabal run
 Clients then send `Authorization: Bearer <token>`; the rest of the UI stays
 open. Full details are in `cli-skill/README.md`.
 
+### Pair with a local model (`siza chat`)
+
+The `siza` binary also has a `chat` subcommand that drives your notebook with a
+**local Ollama model** instead of Claude Code — the same tool surface, no cloud
+call. It is for local single-user use: the model edits the live notebook against
+your own GHCi session.
+
+Prerequisites: [Ollama](https://ollama.com) running with a model pulled (e.g.
+`ollama pull gpt-oss:20b`), and a Sabela server up (`cabal run`). Then:
+
+```bash
+cabal run exe:siza -- chat                     # discovers the running server
+cabal run exe:siza -- chat --model gemma4:latest --url http://localhost:3000
+```
+
+It preflights Ollama and the server, then reads free-form requests at a prompt.
+Type a request and it works in the notebook, proposing a covering check you
+confirm before it accepts the result. **Ctrl-C** cancels the current request and
+returns to the prompt; **Ctrl-D** quits.
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--model` | `gpt-oss:20b` | Ollama model tag (must match `ollama list`) |
+| `--url` | discovered server | Sabela server to drive |
+| `--timeout` | `300` | per-request wall-clock cap (seconds) |
+| `--max-turns` | `40` | max harness turns per request |
+| `--verbose` | off | stream the full audit (system prompt, thinking, tool JSON) |
+
+Name resolution (finding library functions to import) uses a local Hoogle cache.
+If the model reports it cannot find functions, build the cache once with
+`make search-cache` from the repo.
+
 ---
 
 ## 11. Presenting and exporting

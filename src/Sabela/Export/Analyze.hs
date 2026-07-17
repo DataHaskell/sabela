@@ -39,7 +39,7 @@ data NotebookGraph = NotebookGraph
     , ngReactiveSet :: Set Int
     -- ^ Cells transitively downstream of a widget cell (the widget cells too).
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 -- | Widget constructors from the Sabela display prelude (see "Sabela.Output").
 widgetConstructors :: Set Text

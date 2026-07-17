@@ -60,7 +60,7 @@ data ToolName
     | FindExampleCell
     | FindFunction
     | SearchCapability
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 parseToolName :: Text -> Maybe ToolName
 parseToolName = \case
@@ -92,12 +92,9 @@ parseToolName = \case
     "search_capability" -> Just SearchCapability
     _ -> Nothing
 
-{- | Resolve a possibly-malformed tool call to a typed name and args. A weak
-model sometimes bakes the argument into the name field
-(@find_function "DataFrame"@); when the exact name is unknown but its first
-whitespace-delimited token is a valid tool, split it and fold the remainder
-(dequoted) into that tool's primary argument. All model output is assumed to
-need sanitizing, so both the live loop and the eval dispatch route through here.
+{- | Resolve a possibly-malformed tool call to a typed name and args: a weak model
+bakes the argument into the name (@find_function "DataFrame"@), so split an
+unknown name at its first token and fold the rest into the primary argument.
 -}
 resolveToolCall :: Text -> Value -> Maybe (ToolName, Value)
 resolveToolCall name args = case parseToolName name of

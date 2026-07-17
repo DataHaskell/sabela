@@ -91,10 +91,9 @@ execFindFunction app input =
         let qq = fieldText "query" input
          in if T.null qq then fieldText "module" input else qq
 
-{- | Installed modules exporting @name@, via the bounded browse-index find_function
-uses: the Sabela builtin namespace plus the notebook's own imported namespaces. Used
-by the add-import repair (B2) to resolve an unimported name (e.g. @Picture@) to its
-module without the model naming it. Empty when nothing browsed exports the name.
+{- | Installed modules exporting @name@, over the same bounded browse-index
+@find_function@ uses. Lets the add-import repair resolve an unimported name
+(e.g. @Picture@) without the model naming its module.
 -}
 resolveNameToModules :: App -> Text -> IO [Capability]
 resolveNameToModules app name = do

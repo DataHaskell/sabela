@@ -38,11 +38,11 @@ spec :: Spec
 spec = describe "Rank 1 type scaffold" $ do
     describe "scaffoldCall (fires only for a dataframe-over-CSV task)" $ do
         it "fires for a dataframe task naming a CSV" $
-            (tcName <$> scaffoldCall dfTask) `shouldBe` Just "insert_cell"
+            (tcName <$> scaffoldCall (taskPrompt dfTask)) `shouldBe` Just "insert_cell"
         it "does not fire for a pure task" $
-            (tcName <$> scaffoldCall pureTask) `shouldBe` Nothing
+            (tcName <$> scaffoldCall (taskPrompt pureTask)) `shouldBe` Nothing
         it "does not fire for a plot-only task (no dataframe, no CSV)" $
-            (tcName <$> scaffoldCall plotTask) `shouldBe` Nothing
+            (tcName <$> scaffoldCall (taskPrompt plotTask)) `shouldBe` Nothing
 
     describe "scaffoldText (the baked-in import and typed load)" $ do
         let s = scaffoldText "sales.csv"
@@ -60,7 +60,7 @@ spec = describe "Rank 1 type scaffold" $ do
                     modifyIORef' calls (++ [c])
                     pure (Right (ToolOk (object ["cellId" .= (1 :: Int), "ok" .= True])))
             driver <- scriptedDriver disp [doneTurn]
-            _ <- runEpisodeWith openBudget driver dfTask 10
+            _ <- runEpisodeWith openBudget driver (taskPrompt dfTask) 10
             dispatched <- readIORef calls
             take 1 (map tcName dispatched) `shouldBe` ["insert_cell"]
 
@@ -83,7 +83,14 @@ spec = describe "Rank 1 type scaffold" $ do
                     , object ["role" .= ("assistant" :: Text), "content" .= ("reply" :: Text)]
                     ]
             _ <-
-                runEpisodeSeeded prior (const (pure ())) GrammarOff openBudget driver dfTask 10
+                runEpisodeSeeded
+                    prior
+                    (const (pure ()))
+                    GrammarOff
+                    openBudget
+                    driver
+                    (taskPrompt dfTask)
+                    10
             firstMsgs <- head <$> readIORef seen
             -- prior transcript carried verbatim, exactly one new user turn appended,
             -- no re-injected system prompt.

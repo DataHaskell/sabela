@@ -13,7 +13,7 @@ data TokenUsage = TokenUsage
     , tuCacheWrite :: !(Maybe Int)
     , tuCacheRead :: !(Maybe Int)
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 instance Semigroup TokenUsage where
     a <> b =

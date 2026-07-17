@@ -18,11 +18,9 @@ import qualified Data.Text as T
 
 import Sabela.AI.Similarity (trigramSimilarity)
 
-{- | Up to @k@ installed modules most similar to @wrong@, best first, keeping only
-those clearing the similarity @threshold@. The wrong name itself is excluded (it is
-not installed, by definition of "not found"). Empty when nothing clears the bar, so
-a genuinely novel module falls through untouched rather than being mis-rewritten.
-Ties break towards the shorter, then lexicographically smaller, name.
+{- | Up to @k@ installed modules clearing the similarity @threshold@ for @wrong@,
+best first (ties to the shorter, then lexicographically smaller name). Empty when
+nothing clears the bar, so a novel module falls through rather than mis-rewritten.
 -}
 closestModules :: Int -> Double -> Text -> [Text] -> [Text]
 closestModules k threshold wrong mods =

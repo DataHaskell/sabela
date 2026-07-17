@@ -38,6 +38,7 @@ spec = describe "Sabela.AI.ModuleResolve" $ do
         it "is 0 for disjoint tokens" $
             trigramSimilarity "abcdef" "uvwxyz" `shouldBe` 0.0
         it "ranks the exact submodule prefix above an unrelated module" $
-            (trigramSimilarity "Data.DataFrame" "DataFrame"
-                > trigramSimilarity "Data.DataFrame" "Control.Monad")
+            ( trigramSimilarity "Data.DataFrame" "DataFrame"
+                > trigramSimilarity "Data.DataFrame" "Control.Monad"
+            )
                 `shouldBe` True

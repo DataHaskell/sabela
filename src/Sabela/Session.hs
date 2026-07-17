@@ -91,7 +91,7 @@ data SessionConfig = SessionConfig
     , scJsonDiagnostics :: Bool
     -- ^ Session GHC supports @-fdiagnostics-as-json@ (GHC ≥ 9.8).
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Build a 'SessionConfig', reading the execution budget from
 @SABELA_CELL_TIMEOUT_SECONDS@ (default 120s). The single chokepoint every

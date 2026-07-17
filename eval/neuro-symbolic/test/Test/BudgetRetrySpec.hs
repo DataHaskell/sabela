@@ -32,7 +32,7 @@ spec = describe "Agent loop discipline (N4 budget, N10 retry)" $ do
                 scriptedDriver
                     alwaysHealthy
                     (map Right (replicate 8 (callTurn "read_cell") ++ [doneTurn]))
-            run <- runEpisodeWith' GrammarOff openBudget driver dummyTask 20
+            run <- runEpisodeWith' GrammarOff openBudget driver (taskPrompt dummyTask) 20
             transcriptText run `shouldSatisfy` isInfixOf "act now"
 
         it "does not nudge when the model acts (insert_cell resets the budget)" $ do
@@ -40,19 +40,19 @@ spec = describe "Agent loop discipline (N4 budget, N10 retry)" $ do
                 scriptedDriver
                     alwaysHealthy
                     (map Right (replicate 8 (callTurn "insert_cell") ++ [doneTurn]))
-            run <- runEpisodeWith' GrammarOff openBudget driver dummyTask 20
+            run <- runEpisodeWith' GrammarOff openBudget driver (taskPrompt dummyTask) 20
             transcriptText run `shouldSatisfy` (not . isInfixOf "act now")
 
     describe "N10: bounded chat-error retry" $ do
         it "recovers when a chat error clears within the retry budget" $ do
             driver <-
                 scriptedDriver alwaysHealthy [Left "boom", Left "boom", Right doneTurn]
-            run <- runEpisodeWith' GrammarOff openBudget driver dummyTask 5
+            run <- runEpisodeWith' GrammarOff openBudget driver (taskPrompt dummyTask) 5
             arStopped run `shouldBe` "done"
 
         it "gives up with an error after exhausting retries" $ do
             driver <- scriptedDriver alwaysHealthy [Left "boom", Left "boom", Left "boom"]
-            run <- runEpisodeWith' GrammarOff openBudget driver dummyTask 5
+            run <- runEpisodeWith' GrammarOff openBudget driver (taskPrompt dummyTask) 5
             arStopped run `shouldBe` "error"
 
     describe "no-progress verify guard (the stuck verify spin)"
@@ -66,7 +66,8 @@ spec = describe "Agent loop discipline (N4 budget, N10 retry)" $ do
                         , drvNow = pure 0
                         , drvVerify = pure False
                         }
-            run <- runEpisodeWith' GrammarOff openBudget stuckDriver dummyTask 50
+            run <-
+                runEpisodeWith' GrammarOff openBudget stuckDriver (taskPrompt dummyTask) 50
             arStopped run `shouldBe` "stuck"
             arTurns run `shouldSatisfy` (< 10)
 

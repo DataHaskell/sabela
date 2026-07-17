@@ -65,7 +65,7 @@ data AwaitResult
     = AwaitSettled
     | AwaitKernelDead
     | AwaitTimedOut
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | Lock-free bounded long-poll: subscribe, then block on the broadcast
 channel until @EvExecutionDone@ fires (the cascade releases the run-lock

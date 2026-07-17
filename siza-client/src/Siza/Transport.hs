@@ -8,6 +8,7 @@ module Siza.Transport (
     Conn (..),
     Env (..),
     resolveEnv,
+    applyUrlOverride,
     newConn,
     callTool,
     getHealth,
@@ -40,7 +41,7 @@ import Network.HTTP.Types.Header (Header)
 import Sabela.AI.Capabilities.ToolName (ToolName, toolWireName)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.HubToken (TokenStatus (..), statusForUrl)
-import System.Environment (lookupEnv)
+import System.Environment (lookupEnv, setEnv)
 import Text.Read (readMaybe)
 
 -- | Process-level configuration read once from the environment.
@@ -85,6 +86,13 @@ resolveEnv = do
             }
   where
     nonEmpty = fmap T.pack . (>>= \s -> if null s then Nothing else Just s)
+
+{- | Make an explicit @--url@ the process @SABELA_URL@, so flag and env are ONE
+knob: discovery and the hub-token attach both key on 'envSabelaUrl', which only
+'resolveEnv' fills. Run before 'newConn'; 'Nothing' leaves the env untouched.
+-}
+applyUrlOverride :: Maybe Text -> IO ()
+applyUrlOverride = mapM_ (setEnv "SABELA_URL" . T.unpack)
 
 newConn :: IO Conn
 newConn = do

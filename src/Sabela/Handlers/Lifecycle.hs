@@ -25,7 +25,7 @@ module Sabela.Handlers.Lifecycle (
 ) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Exception (SomeException, try)
+import Control.Exception (SomeException, fromException, throwIO, try)
 import Control.Monad (forM_, unless, void, when)
 import Data.List (nub)
 import qualified Data.Set as S
@@ -56,6 +56,11 @@ import Sabela.Session.Process (
     newSessionStreaming,
  )
 import Sabela.Session.Query (captureBindingsBaseline)
+import Sabela.Session.Timeout (
+    buildTimedOutMessage,
+    readTimeoutConfig,
+    tcBuildUs,
+ )
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), clearCompiledModules, withBuilding)
 import Sabela.State.DependencyTracker (
@@ -77,6 +82,7 @@ import Sabela.State.SessionManager (
  )
 import ScriptHs.Parser (CabalMeta (..))
 import System.FilePath (isAbsolute, (</>))
+import System.Timeout (Timeout, timeout)
 
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 
@@ -179,8 +185,24 @@ installAndRestart app gen metas = do
         then pure False
         else installDepsAndStartSession app gen metas
 
+{- | Install deps and (re)start the kernel, bounded by 'tcBuildUs' — no per-cell
+timeout covers this phase, so a wedged install would otherwise hang forever. The
+masked spawn reaps the half-built process, so a timeout stays recoverable.
+-}
 installDepsAndStartSession :: App -> Int -> CabalMeta -> IO Bool
 installDepsAndStartSession app _gen metas = withBuilding app $ do
+    budgetUs <- tcBuildUs <$> readTimeoutConfig
+    result <- timeout budgetUs (runInstallAndStart app metas)
+    case result of
+        Just ok -> pure ok
+        Nothing -> do
+            broadcast app (EvInstallLog (buildTimedOutMessage budgetUs))
+            broadcast app (EvSessionStatus SReset)
+            pure False
+
+-- | The dep-install + cold-start body, run under the 'tcBuildUs' bound above.
+runInstallAndStart :: App -> CabalMeta -> IO Bool
+runInstallAndStart app metas = do
     broadcastDepsStatus app metas
     setHaskellExts (appDeps app) (S.fromList (metaExts metas))
     let projDir = envTmpDir (appEnv app) </> "repl-project"
@@ -235,7 +257,12 @@ startSessionWith app projDir = do
     sessResult <-
         try (newSessionStreaming cfg onLine) :: IO (Either SomeException Session)
     case sessResult of
-        Left e -> reportSessionFailure app "Session startup failed" e
+        -- Re-raise the build-budget Timeout ('installDepsAndStartSession' handles
+        -- it): a blanket SomeException catch here would otherwise swallow it and
+        -- mis-report a wedged cold start as an ordinary session failure.
+        Left e
+            | Just t <- (fromException e :: Maybe Timeout) -> throwIO t
+            | otherwise -> reportSessionFailure app "Session startup failed" e
         Right sess -> do
             clearErrCallback sess
             injectPrelude app sess

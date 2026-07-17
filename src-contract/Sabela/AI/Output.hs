@@ -22,7 +22,7 @@ import Data.Text (Text)
 import Sabela.Model (MimeType, mimeIndicator)
 
 newtype HandleId = HandleId Text
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 {- | The stashed-result reference. Carries EXACTLY today's @storeLargeResult@
 payload: the handle id, the preview summary, and the line/byte counts.
@@ -33,7 +33,7 @@ data HandleRef = HandleRef
     , hrTotalLines :: Int
     , hrTotalBytes :: Int
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | The outcome of compacting one raw output: small text inlined with its
 MIME, or a 'HandleRef' to text stashed under a handle for drill-down.
@@ -41,7 +41,7 @@ MIME, or a 'HandleRef' to text stashed under a handle for drill-down.
 data Output
     = Inline MimeType Text
     | Stashed HandleRef
-    deriving (Show, Eq)
+    deriving (Eq, Show)
 
 {- | 'Inline' serialises to the legacy @{mime,output}@ object; 'Stashed' to
 the legacy 'stashedJson' handle keys. Byte-identical to today's shapes.

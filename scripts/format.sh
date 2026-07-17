@@ -60,13 +60,9 @@ run_fourmolu() {
             --overwrite-policy=always --force-reinstalls
     fi
 
-    # Tracked *.hs plus the siza-client package, whose files are not yet tracked
-    # but must still pass the gate. find covers src/app/test under siza-client/.
+    # Every tracked *.hs (siza-client included — it is tracked now).
     local files
-    files=$(
-        git ls-files '*.hs'
-        find siza-client -name '*.hs' 2>/dev/null
-    )
+    files=$(git ls-files '*.hs')
     if [[ -z "$files" ]]; then
         echo "[format] no *.hs files; skipping fourmolu"
         return 0

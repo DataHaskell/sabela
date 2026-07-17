@@ -29,14 +29,18 @@ import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime)
 import System.Timeout (timeout)
 
-import Sabela.AI.Capabilities.Edit.Repair (
-    firstFix,
+import Sabela.AI.Capabilities.Edit.HoleSearch (
     holeFitCandidates,
+    holeSearchCandidates,
+    selectByTypeCheck,
+ )
+import Sabela.AI.Capabilities.Edit.Repair (
+    ambiguousResolveCandidates,
+    firstFix,
     hoogleCandidates,
     importResolveCandidates,
     moduleDepStep,
     moduleResolveCandidates,
-    selectByTypeCheck,
  )
 import Sabela.AI.Capabilities.Util (fieldInt)
 import Sabela.AI.CellResult (mergeToolOk, toCellResult)
@@ -168,21 +172,32 @@ executeWithRepair app rn cid cancelTok = do
                             Just depSrc -> applyAndLoop n depSrc
                             Nothing -> repairCandidates n res cell
     repairCandidates n res cell = do
-        modCands <- moduleResolveCandidates app res (cellSource cell)
-        impCands <- importResolveCandidates app res (cellSource cell)
-        hoogCands <- hoogleCandidates res (cellSource cell)
-        let cands = modCands ++ impCands ++ hoogCands
-        kept <- verifyAndRevert n res (cellSource cell) cands
+        let src = cellSource cell
+        modCands <- moduleResolveCandidates app res src
+        impCands <- importResolveCandidates app res src
+        ambigCands <- ambiguousResolveCandidates res src
+        kept <- verifyAndRevert n res src (modCands ++ impCands ++ ambigCands)
         case kept of
             Just newRes -> go (n - 1) newRes
-            Nothing -> do
-                -- Speculative hole-fit repair: pick a candidate by a compile-only
-                -- :type check (no execution), then commit + run only the winner.
-                holeCands <- holeFitCandidates app res (cellSource cell)
-                mWin <- selectByTypeCheck app holeCands
-                case mWin of
-                    Nothing -> pure res
-                    Just winSrc -> applyAndLoop n winSrc
+            Nothing -> speculativeRepair n res cell
+    {- Compile-only speculative tier: pick by a non-executing :type check, then
+    commit + run only the winner, so a round never executes many candidates. -}
+    speculativeRepair n res cell = do
+        let src = cellSource cell
+        holeSearchCands <- holeSearchCandidates app res src
+        holeFitCands <- holeFitCandidates app res src
+        mWin <- selectByTypeCheck app (holeSearchCands ++ holeFitCands)
+        case mWin of
+            Just winSrc -> applyAndLoop n winSrc
+            Nothing -> restartRepair n res src
+    {- Restart-causing tier: a dep add restarts the kernel, which reverting the
+    source cannot undo, so commit the best candidate via the loop path instead of
+    verify-and-revert (which would leave earlier cells' bindings wiped). -}
+    restartRepair n res src = do
+        hoogCands <- hoogleCandidates res src
+        case hoogCands of
+            (h : _) -> applyAndLoop n h
+            [] -> pure res
     applyAndLoop n newSrc = do
         modifyNotebook (appNotebook app) (updateCellSource cid newSrc)
         broadcastNotebook app

@@ -16,4 +16,4 @@ data ToolSpec = ToolSpec
     , toolDescription :: Text
     , toolSchema :: Value
     }
-    deriving (Show, Eq)
+    deriving (Eq, Show)

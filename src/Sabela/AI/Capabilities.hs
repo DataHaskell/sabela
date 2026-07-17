@@ -51,7 +51,7 @@ import Sabela.AI.Capabilities.Kernel (
     execInterrupt,
     execKernelRestart,
     execKernelStatus,
-    haskellKernelBusy,
+    haskellKernelOccupied,
  )
 import Sabela.AI.Capabilities.ModuleSearch (execFindFunction)
 import Sabela.AI.Capabilities.Notebook (
@@ -129,12 +129,13 @@ executeTool app store rn cancelTok toolName rawInput =
         | otherwise = guarded tool input
 
     {- Within the held AI gate: warm a cold base GHCi once so discovery tools
-    work pre-first-cell, then bounce if a non-AI run (browser/widget) holds the
-    kernel run-lock rather than block. -}
+    work pre-first-cell, then bounce if the kernel is occupied — a non-AI run
+    holding the run-lock OR a compile/dep-install (appBuilding) — rather than
+    block or, worse, let a retry stack another job behind the lock. -}
     kernelGuarded :: ToolName -> Value -> IO ToolOutcome
     kernelGuarded tool input = do
         warmKernel app
-        busy <- haskellKernelBusy app
+        busy <- haskellKernelOccupied app
         if busy then pure (errOutcome busyOutcome) else guarded tool input
 
     guarded :: ToolName -> Value -> IO ToolOutcome
@@ -201,15 +202,21 @@ warmKernel app = do
             , metaUnknownKeys = []
             }
 
--- | The busy wire shape returned by the live atomic admission gate.
+{- | The busy wire shape returned by the live atomic admission gate. It steers
+the model to WAIT, not retry: a re-run cannot start until the kernel frees, and
+the server rejects it anyway, so retrying only wastes turns.
+-}
 busyOutcome :: Value
 busyOutcome =
     errorJsonWith
-        "The Haskell kernel is busy running another cell."
+        "The Haskell kernel is busy (running a cell or compiling). Do NOT \
+        \re-run the cell — the retry cannot start until it frees."
         [ "busy" .= True
         , "hint"
-            .= ( "Call kernel_status to see if it is still running, or \
-                 \interrupt / kernel_restart to free it." ::
+            .= ( "Call await_idle to block until it finishes, then continue. \
+                 \Use kernel_status to tell a live compile (state=building, \
+                 \buildingMs climbing) from a wedge; only if it is wedged, \
+                 \interrupt or kernel_restart." ::
                     Text
                )
         ]

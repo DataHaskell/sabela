@@ -7,6 +7,8 @@ for a fit in source. Shared by the notebook repair path and the eval harness.
 module Sabela.AI.HoleRepair (
     goalFromError,
     holeTypeFromDiagnostic,
+    droppableAnnotation,
+    dropAnnotation,
     holeFitNames,
     holeFitRewrites,
     suggestedNames,
@@ -22,18 +24,60 @@ import qualified Data.Text as T
 
 import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
 
-{- | The in-context type GHC infers for a typed hole, from a @:type@/compile
-diagnostic: @"Found hole: _ :: T"@ → @T@ (up to the newline). The engine's
-in-context sensor — the hole type inferred with the cell's real bindings in scope,
-obtained non-committingly via @:type@ on a holed expression (no state to roll back).
-Stronger than reading the type from a not-in-scope error, which is often absent or
-wrong for a weak model's guess.
+{- | The in-context type GHC infers for a typed hole: @"Found hole: _ :: T"@ →
+@T@. Read non-committingly via @:type@ on a holed expression, so it reflects the
+cell's real bindings — stronger than the type parsed from a not-in-scope error.
 -}
 holeTypeFromDiagnostic :: Text -> Maybe Text
 holeTypeFromDiagnostic t = do
     rest <- afterInfix "Found hole: _ :: " t
     let ty = T.strip (T.takeWhile (/= '\n') rest)
     if T.null ty then Nothing else Just ty
+
+{- | The bad expression annotation GHC names in @"In an expression type
+signature: T"@ → @T@. A weak model often bolts a wrong @:: T@ on; dropping it
+lets inference recover. 'Nothing' when the error is not about an annotation.
+-}
+droppableAnnotation :: Text -> Maybe Text
+droppableAnnotation err = do
+    rest <- afterInfix "In an expression type signature: " err
+    let ty = T.strip (T.takeWhile (/= '\n') rest)
+    if T.null ty then Nothing else Just ty
+
+{- | Drop the first @:: T@ expression annotation GHC named, keeping the rest of
+the line verbatim. Matches @T@ at a token boundary (so @(foo :: Int)@ keeps its
+@)@); a no-op if absent, and the caller verifies the result compiles.
+-}
+dropAnnotation :: Text -> Text -> Text
+dropAnnotation ty src = T.intercalate "\n" (go (T.lines src))
+  where
+    tyToks = T.words ty
+    go [] = []
+    go (l : ls)
+        | Just l' <- scan "" l = l' : ls
+        | otherwise = l : go ls
+    -- Try each @::@ on the line; drop @:: ty@ at the first whose following tokens
+    -- are exactly ty at a token boundary, splicing in the raw tail unchanged.
+    scan acc rest = case T.breakOn "::" rest of
+        (_, r) | T.null r -> Nothing
+        (pre, r) ->
+            let acc' = acc <> pre
+             in case matchTail (T.drop 2 r) of
+                    Just tl -> Just (T.stripEnd acc' <> tl)
+                    Nothing -> scan (acc' <> "::") (T.drop 2 r)
+    -- Raw text after ty if @afterColon@ begins (modulo whitespace) with exactly
+    -- the ty tokens ending at a boundary; 'Nothing' otherwise.
+    matchTail afterColon = matchToks tyToks (T.stripStart afterColon)
+    matchToks [] rest
+        | boundary rest = Just rest
+        | otherwise = Nothing
+    matchToks (tok : toks) rest = case T.stripPrefix tok rest of
+        Just r -> matchToks toks (if null toks then r else T.stripStart r)
+        Nothing -> Nothing
+    boundary rest = case T.uncons rest of
+        Nothing -> True
+        Just (c, _) -> not (isIdent c)
+    isIdent c = isAlphaNum c || c == '_' || c == '.' || c == '\''
 
 {- | The (wrong-name, goal-type) a @not in scope: name :: type@ error implies, so
 we can ask GHC for hole fits of that goal. Handles both the one-line form and

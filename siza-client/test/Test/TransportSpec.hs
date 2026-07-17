@@ -9,8 +9,17 @@ and the bearer token is still emitted for the localhost trust model.
 -}
 module Test.TransportSpec (transportSpec) where
 
-import Siza.Transport (Env (..), aiHeaders)
+import Control.Exception (bracket)
+import Siza.Transport (Env (..), aiHeaders, applyUrlOverride, resolveEnv)
+import System.Environment (lookupEnv, setEnv, unsetEnv)
 import Test.Hspec
+
+-- | Run an env-mutating test, restoring @SABELA_URL@ afterwards.
+withSabelaUrl :: IO a -> IO a
+withSabelaUrl =
+    bracket (lookupEnv "SABELA_URL") restore . const
+  where
+    restore = maybe (unsetEnv "SABELA_URL") (setEnv "SABELA_URL")
 
 baseEnv :: Env
 baseEnv =
@@ -48,3 +57,25 @@ transportSpec = describe "Siza.Transport.aiHeaders" $ do
                     baseEnv{envCookie = Just "_sabela_session=abc", envToken = Just "tok"}
         lookup "Cookie" hs `shouldBe` Just "_sabela_session=abc"
         lookup "Authorization" hs `shouldBe` Just "Bearer tok"
+
+    describe "applyUrlOverride (--url is the CLI face of SABELA_URL)" $ do
+        it "makes --url visible to resolveEnv, so the hub token attaches" $
+            withSabelaUrl $ do
+                unsetEnv "SABELA_URL"
+                applyUrlOverride (Just "http://flag:3000")
+                env <- resolveEnv
+                envSabelaUrl env `shouldBe` Just "http://flag:3000"
+
+        it "leaves an existing SABELA_URL alone when no --url is given" $
+            withSabelaUrl $ do
+                setEnv "SABELA_URL" "http://env:3000"
+                applyUrlOverride Nothing
+                env <- resolveEnv
+                envSabelaUrl env `shouldBe` Just "http://env:3000"
+
+        it "lets --url win over SABELA_URL (one knob, CLI first)" $
+            withSabelaUrl $ do
+                setEnv "SABELA_URL" "http://env:3000"
+                applyUrlOverride (Just "http://flag:3000")
+                env <- resolveEnv
+                envSabelaUrl env `shouldBe` Just "http://flag:3000"

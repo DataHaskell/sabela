@@ -2,26 +2,10 @@
 
 module Test.UsageMergeSpec (spec) where
 
-import qualified Data.Maybe
 import Test.Hspec
 
+import Sabela.AI.Orchestrator.Loop.Usage (mergeUsage)
 import Sabela.Anthropic.Types (Usage (..))
-
--- Mirror of Orchestrator.mergeUsage for unit testing. Keep in sync.
-mergeUsage :: Usage -> Usage -> Usage
-mergeUsage a b =
-    Usage
-        { uInputTokens = uInputTokens a + uInputTokens b
-        , uOutputTokens = uOutputTokens a + uOutputTokens b
-        , uCacheCreationInputTokens =
-            addMaybeInt (uCacheCreationInputTokens a) (uCacheCreationInputTokens b)
-        , uCacheReadInputTokens =
-            addMaybeInt (uCacheReadInputTokens a) (uCacheReadInputTokens b)
-        }
-  where
-    addMaybeInt :: Maybe Int -> Maybe Int -> Maybe Int
-    addMaybeInt Nothing Nothing = Nothing
-    addMaybeInt x y = Just (Data.Maybe.fromMaybe 0 x + Data.Maybe.fromMaybe 0 y)
 
 spec :: Spec
 spec = do
