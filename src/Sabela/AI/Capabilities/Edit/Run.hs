@@ -29,6 +29,7 @@ import qualified Data.Text as T
 import Data.Time (UTCTime, getCurrentTime)
 import System.Timeout (timeout)
 
+import Sabela.AI.Capabilities.Edit.Assemble (applicationCandidates)
 import Sabela.AI.Capabilities.Edit.HoleSearch (
     holeFitCandidates,
     holeSearchCandidates,
@@ -44,7 +45,8 @@ import Sabela.AI.Capabilities.Edit.Repair (
  )
 import Sabela.AI.Capabilities.Util (fieldInt)
 import Sabela.AI.CellResult (mergeToolOk, toCellResult)
-import Sabela.AI.Health (healthOfResult, improvesHealth)
+import Sabela.AI.Health (healthOfResult, improvesHealth, isClean)
+import Sabela.AI.RepairTrace (RepairEvent (..), recordRepair)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, isCancelled)
@@ -184,12 +186,41 @@ executeWithRepair app rn cid cancelTok = do
     commit + run only the winner, so a round never executes many candidates. -}
     speculativeRepair n res cell = do
         let src = cellSource cell
+        -- Arity repair first: it fires only on a function-shaped expected type,
+        -- which the hole tiers cannot see (they gate on "not in scope").
+        arityCands <- applicationCandidates app res src
         holeSearchCands <- holeSearchCandidates app res src
         holeFitCands <- holeFitCandidates app res src
-        mWin <- selectByTypeCheck app (holeSearchCands ++ holeFitCands)
+        mWin <- selectByTypeCheck app (arityCands ++ holeSearchCands ++ holeFitCands)
+        traceSpeculative res cid arityCands holeSearchCands holeFitCands mWin
         case mWin of
             Just winSrc -> applyAndLoop n winSrc
             Nothing -> restartRepair n res src
+    {- Record what each source produced and which one won, so a null bench result
+    can be read: no candidates is a trigger bug, candidates with no winner is a
+    selector bug, and a winner that still fails the task kills the idea.
+
+    Only a RED result is traced. The cascade also runs on a green cell (where every
+    source declines), and those all-zero lines would drown the signal. -}
+    traceSpeculative res' tracedCell arity holeSearch holeFit mWin
+        | isClean (healthOfResult res') = pure ()
+        | otherwise =
+            recordRepair (envWorkDir (appEnv app)) $
+                RepairEvent
+                    { reCellId = tracedCell
+                    , reCounts =
+                        [ ("arity", length arity)
+                        , ("holeSearch", length holeSearch)
+                        , ("holeFit", length holeFit)
+                        ]
+                    , reWinner = mWin >>= sourceOf
+                    }
+      where
+        sourceOf w
+            | w `elem` arity = Just "arity"
+            | w `elem` holeSearch = Just "holeSearch"
+            | w `elem` holeFit = Just "holeFit"
+            | otherwise = Nothing
     {- Restart-causing tier: a dep add restarts the kernel, which reverting the
     source cannot undo, so commit the best candidate via the loop path instead of
     verify-and-revert (which would leave earlier cells' bindings wiped). -}

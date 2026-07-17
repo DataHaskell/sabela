@@ -77,6 +77,7 @@ import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
 import qualified Test.RenderSpec as RenderSpec
 import qualified Test.RepairEngineSpec as RepairEngineSpec
+import qualified Test.RepairTraceWireSpec as RepairTraceWireSpec
 import qualified Test.ReplProjectSpec as ReplProjectSpec
 import qualified Test.ResolveSpec as ResolveSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
@@ -85,6 +86,7 @@ import qualified Test.SessionLiveSpec as SessionLiveSpec
 import qualified Test.SessionLoopSpec as SessionLoopSpec
 import qualified Test.SessionSpec as SessionSpec
 import qualified Test.SizaContractWireSpec as SizaContractWireSpec
+import qualified Test.SpineSpec as SpineSpec
 import qualified Test.StaleRunSpec as StaleRunSpec
 import qualified Test.SwitchNotebookSpec as SwitchNotebookSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
@@ -122,6 +124,7 @@ main = do
         ExecuteCellSpec.spec
         ExampleSearchSpec.spec
         DiagnoseSpec.diagnoseSpec
+        SpineSpec.spineSpec
         ModuleResolveSpec.spec
         DiscoverToolSpec.spec
         DepRepairSpec.spec
@@ -130,6 +133,7 @@ main = do
         HealthSpec.spec
         OwnedSpec.spec
         RepairEngineSpec.spec
+        RepairTraceWireSpec.spec
         VerifyDownstreamSpec.spec
         ToolInputRewriteSpec.spec
         PromptUnifySpec.spec

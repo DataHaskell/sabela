@@ -15,7 +15,7 @@ module Sabela.AI.Capabilities.Edit.HoleSearch (
 ) where
 
 import Data.List (nub)
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -138,19 +138,29 @@ selectByTypeCheck app cands = do
         out <- ST.sbQueryType backend (typeCheckTarget c)
         pure (if isClean (healthOfTypeQuery out) then Just () else Nothing)
 
-{- | The expression to @:type@ for a candidate source: the RHS of a simple
-@x = expr@ binding, else the whole stripped source. A non-checkable candidate
-fails the check and is skipped, so at worst a repair is missed, never kept.
+{- | The expression to @:type@ for a candidate source: the RHS of the LAST
+@x = expr@ binding line, else the whole stripped source. The last binding is the
+one a cell defines for its dependents, and the one a repair rewrote.
+
+A multi-line cell must not fall through to @:type@-ing the whole source — that
+never checks clean, so every correct candidate would be rejected and the tier
+would look inert. Imports and @x <- e@ statements are skipped; a non-checkable
+candidate still fails the check, so at worst a repair is missed, never kept.
 -}
 typeCheckTarget :: Text -> Text
-typeCheckTarget src
-    | T.count "\n" stripped == 0
-    , (_, rhs) <- T.breakOn " = " stripped
-    , not (T.null rhs) =
-        T.strip (T.drop 3 rhs)
-    | otherwise = stripped
+typeCheckTarget src = case reverse (mapMaybe bindingRhs (T.lines stripped)) of
+    (rhs : _) -> rhs
+    [] -> stripped
   where
     stripped = T.strip src
+    bindingRhs ln
+        | T.isPrefixOf "import " l = Nothing
+        | (_, rhs) <- T.breakOn " = " l
+        , not (T.null rhs) =
+            Just (T.strip (T.drop 3 rhs))
+        | otherwise = Nothing
+      where
+        l = T.strip ln
 
 {- | Decode a live @:type@ / hole-fit reply to the plain text the parsers expect:
 the session emits @-fdiagnostics-as-json@, so fits arrive JSON-escaped.

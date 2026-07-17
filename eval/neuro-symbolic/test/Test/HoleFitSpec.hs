@@ -6,6 +6,7 @@ import Data.Text (Text)
 import Test.Hspec
 
 import Eval.HoleFit (
+    arityFromError,
     dropAnnotation,
     droppableAnnotation,
     goalFromError,
@@ -80,6 +81,29 @@ spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
         it "drops the outer annotation, keeping an inner type signature" $
             dropAnnotation "Maybe" "answer = (6 * 7 :: Int) :: Maybe"
                 `shouldBe` "answer = (6 * 7 :: Int)"
+    {- The trigger for head-anchored application synthesis. Strings are the real
+    GHC 9.12 diagnostics gemma4 produced on the revenueTotal bench task. -}
+    describe "arityFromError (misapplication trigger)" $ do
+        it "reads the expected FUNCTION type of a misapplication" $
+            arityFromError
+                "cell 2, line 5: Couldn't match expected type: D.DataFrame -> D.Expr Double\n  with actual type: D.Expr Double"
+                `shouldBe` Just "D.DataFrame -> D.Expr Double"
+        it "fires when the expected type ends in a type variable" $
+            arityFromError "Couldn't match expected type: D.DataFrame -> t"
+                `shouldBe` Just "D.DataFrame -> t"
+        it "does NOT fire on a Text/String coercion (a different repair class)" $
+            arityFromError "Couldn't match type `T.Text' with `[Char]'"
+                `shouldBe` Nothing
+        it "does NOT fire on a non-function expected type (nothing to permute)" $
+            arityFromError "Couldn't match expected type `DataFrame'"
+                `shouldBe` Nothing
+        it "does NOT fire on a not-in-scope error (the hole-fit tier owns that)" $
+            arityFromError "Variable not in scope: foldrr :: [Int] -> Int"
+                `shouldBe` Nothing
+        it "is Nothing for an unrelated error" $
+            arityFromError "Could not find module `Data.DataFrame'." `shouldBe` Nothing
+
+    describe "dropAnnotation (paren + whitespace preservation)" $ do
         it "drops a parenthesised annotation without eating the closing paren" $
             dropAnnotation "Int" "y = (foo :: Int) + 1" `shouldBe` "y = (foo) + 1"
         it "preserves the whitespace of a literal after the annotation" $

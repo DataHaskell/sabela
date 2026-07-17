@@ -13,8 +13,8 @@ module Sabela.State.AIConfig (
     persistConfig,
 ) where
 
-import qualified Data.ByteString.Lazy as BS
 import Data.Aeson (encode)
+import qualified Data.ByteString.Lazy as BS
 import Data.IORef (readIORef, writeIORef)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)

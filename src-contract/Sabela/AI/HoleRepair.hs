@@ -6,6 +6,7 @@ for a fit in source. Shared by the notebook repair path and the eval harness.
 -}
 module Sabela.AI.HoleRepair (
     goalFromError,
+    arityFromError,
     holeTypeFromDiagnostic,
     droppableAnnotation,
     dropAnnotation,
@@ -103,6 +104,21 @@ goalFromError err = do
     lastWord t = case reverse (T.words t) of
         (w : _) -> Just w
         [] -> Nothing
+
+{- | The expected FUNCTION type a misapplication names, from GHC's
+@"Couldn't match expected type: A -> B"@. A function-shaped expectation means the
+head was applied to the wrong arguments — an order/arity slip permuting can fix.
+
+'Nothing' for a plain coercion (@Couldn't match type 'T.Text' with '[Char]'@), a
+non-function expectation (nothing to permute), or a not-in-scope error, which the
+hole-fit tier owns. The trigger is deliberately narrow: it must never claim an
+error class this repair cannot actually fix.
+-}
+arityFromError :: Text -> Maybe Text
+arityFromError err = do
+    rest <- afterInfix "Couldn't match expected type:" err
+    let ty = T.strip (T.takeWhile (/= '\n') rest)
+    if T.null ty || not ("->" `T.isInfixOf` ty) then Nothing else Just ty
 
 -- | Plain (non-refinement) hole-fit names to try, over the shared 'parseHoleFits'.
 holeFitNames :: Text -> [Text]
