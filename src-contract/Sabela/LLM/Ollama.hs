@@ -9,6 +9,7 @@ called, ids are synthesised, and the stop condition is derived.
 -}
 module Sabela.LLM.Ollama (
     ollamaProvider,
+    ollamaParseRetries,
     turnToCompletion,
     renderMessage,
     renderTool,
@@ -61,8 +62,30 @@ ollamaProvider mgr model numCtx =
                 renderSystem (crSystem req)
                     ++ concatMap renderMessage (crMessages req)
             tools = map renderTool (crTools req)
-        result <- C.chatWith numCtx mgr model msgs tools
-        pure (turnToCompletion <$> result)
+        result <- completeParsed ollamaParseRetries msgs tools
+        pure (either (Left . C.pfReprompt) (Right . turnToCompletion) result)
+    completeParsed retries msgs tools = do
+        result <- C.chatWithParsed numCtx mgr model msgs tools
+        case result of
+            Left failure
+                | retries > 0
+                , C.pfClass failure /= C.TransportFailure ->
+                    completeParsed
+                        (retries - 1)
+                        (msgs ++ [parseFailureMessage failure])
+                        tools
+            _ -> pure result
+
+-- | One initial request plus two parse-class retries; never an unbounded loop.
+ollamaParseRetries :: Int
+ollamaParseRetries = 2
+
+parseFailureMessage :: C.ParseFailure -> Value
+parseFailureMessage failure =
+    object
+        [ "role" .= ("user" :: Text)
+        , "content" .= C.pfReprompt failure
+        ]
 
 -- | System prose becomes one @role:system@ message (empty prose → none).
 renderSystem :: [Text] -> [Value]

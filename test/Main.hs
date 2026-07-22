@@ -71,6 +71,7 @@ import qualified Test.NotebookExportSpec as NotebookExportSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.NotebookViolationSpec as NotebookViolationSpec
+import qualified Test.OllamaParseSafetySpec as OllamaParseSafetySpec
 import qualified Test.OrchestratorLoopSpec as OrchestratorLoopSpec
 import qualified Test.OrphanSpec as OrphanSpec
 import qualified Test.OutputChokepointWireSpec as OutputChokepointWireSpec
@@ -228,6 +229,7 @@ main = do
         ProviderAdapterSpec.spec
         ConfigWireSpec.spec
         OrchestratorLoopSpec.spec
+        OllamaParseSafetySpec.spec
         ProviderSelectSpec.spec
         ApiRefSpec.spec
         CompactResultSpec.spec
