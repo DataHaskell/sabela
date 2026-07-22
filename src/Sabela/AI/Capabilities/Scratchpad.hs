@@ -32,7 +32,7 @@ import qualified Data.Text as T
 import GHC.Clock (getMonotonicTimeNSec)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr)
+import qualified System.IO as IO
 import System.IO.Temp (createTempDirectory)
 
 import Sabela.AI.Capabilities.Util (compactMaybeText, fieldText, parseCellLang)
@@ -185,7 +185,7 @@ unavailableThrowawayExecute = do
     result <- admitExecute qualification (pure ())
     finished <- getMonotonicTimeNSec
     let latencyUs = (finished - started) `div` 1000
-    hPutStrLn stderr $
+    IO.hPutStrLn IO.stderr $
         "sabela_throwaway_execute mode=execute verdict=unavailable latency_us="
             <> show latencyUs
             <> " sandbox=unqualified no_orphan_check=failed"
