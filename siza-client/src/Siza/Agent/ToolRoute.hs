@@ -10,6 +10,7 @@ failure; a word-like foreign name stays honestly unknown.
 module Siza.Agent.ToolRoute (
     Route (..),
     isDiscoverName,
+    orientationKey,
     maxNameDrift,
     nameCandidates,
     normalizeToolCall,
@@ -21,13 +22,15 @@ module Siza.Agent.ToolRoute (
     unwrapArgs,
 ) where
 
-import Data.Aeson (Value (..))
+import Data.Aeson (Value (..), encode)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isAlpha)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 import Sabela.AI.Capabilities.ToolName (ToolName, resolveToolCall)
 import Sabela.AI.HoleRepair (editDistance)
@@ -191,6 +194,15 @@ may still recover a name-baked query).
 -}
 isDiscoverName :: Text -> Bool
 isDiscoverName name = T.takeWhile (/= ' ') (T.strip name) == "discover"
+
+{- | Stable request identity for read-only diagnostic tools covered by the
+history ledger. Argument normalisation happens before this boundary.
+-}
+orientationKey :: ToolCall -> Maybe Text
+orientationKey tc
+    | tcName tc `elem` ["list_cells", "kernel_status"] =
+        Just (tcName tc <> " " <> TE.decodeUtf8 (LBS.toStrict (encode (tcArgs tc))))
+    | otherwise = Nothing
 
 {- | Route a call: name resolution never depends on argument shape, so an
 offered name cannot land in 'RouteUnknown' by being wrapped (P4/M8).

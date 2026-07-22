@@ -241,9 +241,9 @@ tracedDispatch wroteRef seenRef dsp call = do
     when (isOwningTool (tcName call)) (writeIORef wroteRef True)
     pure out
 
-{- | Record this call's (tool, args) signature and flag it when it repeats one
-already made this turn — the model going in circles (re-reading the same cell,
-re-applying the same failing edit) instead of making progress.
+{- | Record this call's (tool, args) signature for the human trace. Payload
+suppression for read-only repeats happens in the history guard; this marker is
+only an observability aid for other repeated calls.
 -}
 noteCall :: IORef [Text] -> ToolCall -> IO Text
 noteCall seenRef call = do

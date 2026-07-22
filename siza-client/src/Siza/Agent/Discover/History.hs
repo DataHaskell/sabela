@@ -29,7 +29,6 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
-
 import Siza.Agent.Discover.Advice (
     answerDup,
     answerKey,
@@ -138,25 +137,34 @@ ledgerRecord q v led0
             Nothing
                 | entity `Set.member` slResolved led ->
                     announce (led, blockedDenial qn resolvedWhy)
-                | otherwise -> announce (missWalk (missSummary v) led)
+                | otherwise -> announce (missWalk (missSummary v) (discoverFresh led))
     | Just sg <- mGoal
     , not (goalSatisfied sg target v) =
         announce
-            (missWalk ("goal unsatisfied; " <> foundSummary v) led{slEvidence = evidence'})
+            ( missWalk
+                ("goal unsatisfied; " <> foundSummary v)
+                (discoverFresh led){slEvidence = evidence'}
+            )
     | Just key <- answerKey v =
         announce $ case Map.lookup key (slAnswers led) of
             Just (n, q0)
                 | q0 /= qn ->
-                    (assertFound led, answerDup (strongEvidence v) qn n q0)
+                    let (repeated, hard) = discoverRepeat qn (assertFound led)
+                     in ( repeated
+                        , maybe
+                            (answerDup (strongEvidence v) qn n q0)
+                            (withCandidate (slFacts repeated))
+                            hard
+                        )
             _ ->
                 let led' = assertFound led
-                 in ( led'
+                 in ( (discoverFresh led')
                         { slAnswers =
                             Map.insert key (slCalls led', qn) (slAnswers led')
                         }
                     , vG
                     )
-    | otherwise = announce (assertFound led, vG)
+    | otherwise = announce (discoverFresh (assertFound led), vG)
   where
     led = bumpGate (noteConsulted v (harvest v (bumpCall (tryShapes q v led0))))
     state = topText "state" v

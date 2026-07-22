@@ -87,6 +87,7 @@ library
                       Siza.Agent.Discover.Closure
                       Siza.Agent.Discover.Steer
                       Siza.Agent.Discover.History
+                      Siza.Agent.Discover.Dedup
                       Siza.Agent.Discover.HistoryGuard
                       Siza.Agent.Discover.Hackage
                       Siza.Agent.DiscoverTool
@@ -230,6 +231,7 @@ test-suite siza-client-test
                       Test.LeverSurfaceSpec
                       Test.VerdictSurfaceSpec
                       Test.EmitLedgerSpec
+                      Test.ReadOnlyDedupSpec
                       Test.EmitLedgerProtectSpec
                       Test.AdviceSpec
                       Test.CandidateSpec
