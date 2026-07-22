@@ -29,6 +29,7 @@ import Siza.Agent.Discover (
     isOwningTool,
     toolCallSource,
  )
+import Siza.Agent.Discover.Dedup (ledgerShortcutStep)
 import Siza.Agent.Discover.Envelope (boundEnvelope)
 import Siza.Agent.Discover.FactSelect (factContext, selectFacts)
 import Siza.Agent.Discover.Goal (injectGoal, standingGoal)
@@ -42,15 +43,21 @@ import Siza.Agent.Discover.History (
     ledgerRecord,
     ledgerResolve,
     ledgerSeed,
-    ledgerShortcut,
     ledgerWorldChanged,
     missClusters,
  )
 import Siza.Agent.Discover.Interpret (envFromCells, parseCells)
-import Siza.Agent.Discover.Ledger (SearchLedger (..), ledgerDeclare)
+import Siza.Agent.Discover.Ledger (
+    SearchLedger (..),
+    ledgerDeclare,
+    ledgerInvalidateOrientation,
+    orientationRecord,
+    orientationShortcut,
+ )
 import Siza.Agent.Discover.Resolved (provenNames)
 import Siza.Agent.Discover.Types (NotebookEnv (..))
 import Siza.Agent.DiscoverTool (discoverKey)
+import Siza.Agent.ToolRoute (orientationKey)
 
 newSearchLedger :: IO (IORef SearchLedger)
 newSearchLedger = newIORef emptyLedger
@@ -69,7 +76,10 @@ seedSearchLedger dispatch ref = do
         env = envFromCells cells
         declared = concatMap (declaredPackages . fst) cells
     atomicModifyIORef' ref $ \l ->
-        (ledgerDeclare declared (ledgerSeed (seedFacts env) l), ())
+        ( ledgerInvalidateOrientation
+            (ledgerDeclare declared (ledgerSeed (seedFacts env) l))
+        , ()
+        )
   where
     payloadOf :: Either Text ToolOutcome -> Value
     payloadOf (Right (ToolOk v)) = v
@@ -122,25 +132,39 @@ guardDiscover ::
     IO (Either Text ToolOutcome)
 guardDiscover ref inner tc = case discoverKey (tcName tc) (tcArgs tc) of
     Nothing -> do
-        r <- inner tc
-        case r of
-            Right o -> do
-                atomicModifyIORef' ref $ \l ->
-                    let l1 = if worldChanging l tc o then ledgerWorldChanged l else l
-                        l2
-                            | isOwningTool (tcName tc)
-                            , executionSucceeded o =
-                                ledgerDeclare (declaredPackages (toolCallSource tc)) l1
-                            | otherwise = l1
-                     in (l2, ())
-                case provenOf tc o of
-                    [] -> pure ()
-                    ns -> atomicModifyIORef' ref (\l -> (ledgerResolve ns l, ()))
-            _ -> pure ()
-        pure r
+        led0 <- readIORef ref
+        case orientationKey tc >>= (`orientationShortcut` led0) of
+            Just v -> pure (Right (ToolOk v))
+            Nothing -> runOrdinary led0
+      where
+        runOrdinary _ = do
+            r <- inner tc
+            case r of
+                Right o -> do
+                    atomicModifyIORef' ref $ \l ->
+                        let l0 = case (orientationKey tc, o) of
+                                (Just key, ToolOk v) -> orientationRecord key (tcName tc) v l
+                                _ -> l
+                            l1 = if worldChanging l0 tc o then ledgerWorldChanged l0 else l0
+                            l2
+                                | isOwningTool (tcName tc)
+                                , executionSucceeded o =
+                                    ledgerInvalidateOrientation
+                                        (ledgerDeclare (declaredPackages (toolCallSource tc)) l1)
+                                | otherwise = l1
+                         in (l2, ())
+                    case provenOf tc o of
+                        [] -> pure ()
+                        ns -> atomicModifyIORef' ref (\l -> (ledgerResolve ns l, ()))
+                _ -> pure ()
+            pure r
     Just q -> do
+        shortcut <-
+            atomicModifyIORef'
+                ref
+                (\l -> let (l', out) = ledgerShortcutStep l q in (l', out))
         led <- readIORef ref
-        case ledgerShortcut led q of
+        case shortcut of
             Just v -> pure (Right (ToolOk v))
             Nothing -> do
                 -- The standing goal rides the call's arguments (section 8.3),

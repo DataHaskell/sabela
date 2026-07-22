@@ -14,6 +14,11 @@ module Siza.Agent.Discover.Ledger (
     ladderState,
     ledgerClose,
     ledgerDeclare,
+    ledgerInvalidateOrientation,
+    orientationRecord,
+    orientationShortcut,
+    discoverFresh,
+    discoverRepeat,
     ledgerPressure,
     ledgerResolve,
     ledgerSeed,
@@ -21,7 +26,10 @@ module Siza.Agent.Discover.Ledger (
     missClusters,
 ) where
 
-import Data.Aeson (Value)
+import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+import Data.Foldable (toList)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isNothing)
@@ -67,27 +75,37 @@ data SearchLedger = SearchLedger
     -- ^ Packages the notebook's cabal lines already declare (R1.4 legality).
     , slClosed :: Bool
     , slCalls :: Int
+    , slOrientation :: Map Text Text
+    -- ^ Read-only request identity -> bounded result digest.
+    , slRepeatRun :: Int
+    -- ^ Consecutive exact-query or answer-hash duplicate discoveries.
+    , slHardClosed :: Bool
+    -- ^ Repeat threshold fired: every later discover is an act-only answer.
     }
 
 emptyLedger :: SearchLedger
 emptyLedger =
     SearchLedger
-        Map.empty
-        Map.empty
-        Map.empty
-        Set.empty
-        Set.empty
-        Map.empty
-        Set.empty
-        []
-        Map.empty
-        Set.empty
-        Nothing
-        1
-        Map.empty
-        Set.empty
-        False
-        0
+        { slSeen = Map.empty
+        , slAnswers = Map.empty
+        , slAsserted = Map.empty
+        , slSeeded = Set.empty
+        , slResolved = Set.empty
+        , slMisses = Map.empty
+        , slTried = Set.empty
+        , slFacts = []
+        , slEvidence = Map.empty
+        , slConsulted = Set.empty
+        , slWorldNote = Nothing
+        , slRungFloor = 1
+        , slGoalSat = Map.empty
+        , slDeclaredPkgs = Set.empty
+        , slClosed = False
+        , slCalls = 0
+        , slOrientation = Map.empty
+        , slRepeatRun = 0
+        , slHardClosed = False
+        }
 
 -- | The recorded best-held-hit evidence, for the close's union sweep.
 heldEvidence :: SearchLedger -> Map Text Value
@@ -167,6 +185,9 @@ ledgerWorldChanged led =
         , slEvidence = Map.empty
         , slWorldNote = worldNoteWhenPriorAnswer
         , slGoalSat = Map.empty
+        , slOrientation = Map.empty
+        , slRepeatRun = 0
+        , slHardClosed = False
         }
   where
     -- A change before any recorded discover answer has nothing prior to stale
@@ -183,3 +204,87 @@ change (the revenueTotal spurious-banner class, R1.4).
 ledgerDeclare :: [Text] -> SearchLedger -> SearchLedger
 ledgerDeclare pkgs led =
     led{slDeclaredPkgs = Set.union (Set.fromList pkgs) (slDeclaredPkgs led)}
+
+{- | A notebook mutation invalidates cached orientation without disturbing
+discovery evidence.
+-}
+ledgerInvalidateOrientation :: SearchLedger -> SearchLedger
+ledgerInvalidateOrientation led = led{slOrientation = Map.empty}
+
+{- | A repeat is answered entirely from the ledger; a first occurrence falls
+through. The stored text is deliberately one physical line.
+-}
+orientationShortcut :: Text -> SearchLedger -> Maybe Value
+orientationShortcut key led = String <$> Map.lookup key (slOrientation led)
+
+orientationRecord :: Text -> Text -> Value -> SearchLedger -> SearchLedger
+orientationRecord key tool payload led =
+    led
+        { slOrientation =
+            Map.insert key (orientationSummary tool payload) (slOrientation led)
+        }
+
+orientationSummary :: Text -> Value -> Text
+orientationSummary "list_cells" (Object o) =
+    clip
+        220
+        ("same as your last list_cells; " <> tshow (length cs) <> " cells" <> previews)
+  where
+    cs = case KM.lookup "cells" o of
+        Just (Array a) -> toList a
+        _ -> []
+    previews = T.concat (map preview (take 8 cs))
+    preview (Object c) =
+        ", cell "
+            <> valueText "id" c
+            <> ": "
+            <> clip 48 (oneLine (valueText "source" c))
+    preview _ = ""
+orientationSummary "kernel_status" v =
+    "same as your last kernel_status; " <> clip 120 (oneLine (statusText v))
+orientationSummary tool _ = "same as your last " <> tool
+
+statusText :: Value -> Text
+statusText (Object o) =
+    let s = valueText "state" o
+     in if T.null s then valueText "status" o else s
+statusText _ = "unchanged"
+
+valueText :: Text -> KM.KeyMap Value -> Text
+valueText k o = case KM.lookup (K.fromText k) o of
+    Just (String s) -> s
+    Just (Number n) -> T.pack (show (round n :: Int))
+    _ -> "?"
+
+oneLine :: Text -> Text
+oneLine = T.unwords . T.words
+
+clip :: Int -> Text -> Text
+clip n t | T.length t <= n = t
+clip n t = T.take (n - 1) t <> "…"
+
+tshow :: Int -> Text
+tshow = T.pack . show
+
+discoverFresh :: SearchLedger -> SearchLedger
+discoverFresh led = led{slRepeatRun = 0}
+
+{- | Give repeated discovery teeth. The second consecutive duplicate closes
+the channel hard; subsequent query variation cannot bypass it.
+-}
+discoverRepeat :: Text -> SearchLedger -> (SearchLedger, Maybe Value)
+discoverRepeat q led = (led', if hard then Just (actOnly q) else Nothing)
+  where
+    n = slRepeatRun led + 1
+    hard = slHardClosed led || n >= 2
+    led' = led{slRepeatRun = n, slHardClosed = hard}
+
+actOnly :: Text -> Value
+actOnly q =
+    object
+        [ "query" .= q
+        , "state" .= ("duplicate" :: Text)
+        , "ref" .= ("discovery closed: repeat limit" :: Text)
+        , "summary"
+            .= ("Discovery is closed: act on what is held, or state the blocker." :: Text)
+        ]

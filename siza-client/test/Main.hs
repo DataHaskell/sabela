@@ -63,6 +63,7 @@ import Test.OutcomeDistillSpec (outcomeDistillSpec)
 import Test.PostNudgeGateSpec (postNudgeGateSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
+import Test.ReadOnlyDedupSpec (readOnlyDedupSpec)
 import Test.RedStreakSpec (redStreakSpec)
 import Test.ReenterContrastSpec (reenterContrastSpec)
 import Test.RenderContractSpec (renderContractSpec)
@@ -91,6 +92,7 @@ import Test.WriteAckClientSpec (writeAckClientSpec)
 
 main :: IO ()
 main = hspec $ do
+    readOnlyDedupSpec
     parseSpec
     securitySpec
     annotateSpec

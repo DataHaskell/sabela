@@ -8,8 +8,9 @@ answer is byte-identical returns a one-line duplicate reference.
 -}
 module Test.DiscoverLedgerSpec (discoverLedgerSpec) where
 
-import Control.Monad (replicateM)
+import Control.Monad (forM_, replicateM)
 import Data.Aeson (Value, object, (.=))
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -19,6 +20,7 @@ import Test.Hspec
 import Sabela.AI.PromptCore (builtinNames)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
+import Siza.Agent.Discover.Dedup (ledgerShortcutStep)
 import Siza.Agent.Discover.Envelope (envelopeChars)
 import Siza.Agent.Discover.History (
     emptyLedger,
@@ -197,3 +199,46 @@ answerHashSpec = describe "answer-hash dedup: an unchanged answer is a one-line 
             led2 = ledgerWorldChanged led1
             (_, out2) = ledgerRecord "`col`" (vFor "`col`") led2
         stateOf out2 `shouldBe` "found"
+    it "hard-fires act-or-blocker after repeated answer hashes and stops dispatch" $ do
+        ref <- newSearchLedger
+        calls <- newIORef (0 :: Int)
+        let inner _ = do
+                modifyIORef' calls (+ 1)
+                pure (Right (ToolOk (vFor "col")))
+            ask q = guardDiscover ref inner (ToolCall "discover" (object ["query" .= q]))
+        mapM_ ask (["col", "`col`", "col @Int"] :: [Text])
+        Right (ToolOk stopped) <- ask "col scoped differently"
+        readIORef calls `shouldReturn` 3
+        stateOf stopped `shouldBe` "duplicate"
+        textField "summary" stopped `shouldSatisfy` T.isInfixOf "act"
+        textField "summary" stopped `shouldSatisfy` T.isInfixOf "blocker"
+    it "has teeth over generated exact, answer-identical, and new sequences" $ do
+        forM_ (replicateM 4 [ExactRepeat, AnswerRepeat, FreshAnswer]) checkTeeth
+
+data RepeatKind = ExactRepeat | AnswerRepeat | FreshAnswer deriving (Eq)
+
+checkTeeth :: [RepeatKind] -> Expectation
+checkTeeth kinds = go 0 False initial (zip [1 :: Int ..] kinds)
+  where
+    (initial, _) = ledgerRecord "base" (foundFor "base") emptyLedger
+    go _ _ _ [] = pure ()
+    go repeats hard led ((i, kind) : rest) = do
+        let q = case kind of
+                ExactRepeat -> "base"
+                AnswerRepeat -> "base variant " <> T.pack (show i)
+                FreshAnswer -> "fresh" <> T.pack (show i)
+            payload = case kind of
+                FreshAnswer -> foundFor q
+                _ -> foundFor "base"
+            (shortcutLed, shortcut) = ledgerShortcutStep led q
+            (led', out) = case shortcut of
+                Just v -> (shortcutLed, v)
+                Nothing -> ledgerRecord q payload shortcutLed
+            repeats' = if kind == FreshAnswer then 0 else repeats + 1
+            hard' = hard || repeats' >= 2
+        if hard'
+            then textField "summary" out `shouldSatisfy` T.isInfixOf "act"
+            else
+                textField "summary" out
+                    `shouldSatisfy` (not . T.isInfixOf "Discovery is closed")
+        go repeats' hard' led' rest
