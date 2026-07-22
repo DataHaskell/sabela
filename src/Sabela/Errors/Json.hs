@@ -110,6 +110,7 @@ instance FromJSON Diag where
         mspan <- o .:? "span"
         msgs <- o .: "message"
         hints <- fromMaybe [] <$> o .:? "hints"
+        code <- o .:? "code"
         pure
             Diag
                 { dSeverity = sev
@@ -119,6 +120,7 @@ instance FromJSON Diag where
                         (spLine <$> mspan)
                         (spCol <$> mspan)
                         (renderMessage msgs hints)
+                        code
                 , dSpan = mspan
                 }
 

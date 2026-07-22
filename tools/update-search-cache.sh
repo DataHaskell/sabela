@@ -72,6 +72,24 @@ generate_hoogle() {
     echo "==> smoke query (local DB): runConduit" >&2
     hoogle search --count=2 --jsonl runConduit >&2 2>/dev/null \
         || hoogle search --count=2 runConduit >&2
+    generate_local_hoogle
+}
+
+# Index the WHOLE installed package DB — exposed AND hidden/local packages —
+# from the local haddock docs, into a second database the resolver unions in
+# (SABELA_HOOGLE_LOCAL_DB; see Sabela.AI.HoogleResolve.hoogleDbArgSets).
+# Staleness contract: this snapshot is as of generation time; packages
+# installed afterwards are unindexed until the next run (the discover session
+# evidence still classifies their install state live).
+generate_local_hoogle() {
+    local_db="$REPO_ROOT/data/hoogle-local.hoo"
+    echo "==> hoogle generate --local (whole installed package DB, hidden included)" >&2
+    if hoogle generate --local --database="$local_db" >&2; then
+        echo "   wrote installed-DB index -> $local_db" >&2
+        echo "   set SABELA_HOOGLE_LOCAL_DB=$local_db so queries union it in" >&2
+    else
+        echo "   local generation failed; installed-only symbols stay unindexed" >&2
+    fi
 }
 
 [ "$DO_NAMES" = 1 ] && { refresh_index; write_names; }
@@ -84,5 +102,7 @@ generate_hoogle() {
     echo "generated_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     [ -f "$NAMES_OUT" ] && echo "hackage_packages=$(wc -l < "$NAMES_OUT" | tr -d ' ')"
     command -v hoogle >/dev/null 2>&1 && echo "hoogle=$(command -v hoogle)"
+    [ -f "$REPO_ROOT/data/hoogle-local.hoo" ] \
+        && echo "hoogle_local_db=$REPO_ROOT/data/hoogle-local.hoo"
 } > "$META_OUT"
 echo "==> search cache updated; meta -> $META_OUT" >&2

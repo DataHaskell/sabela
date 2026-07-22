@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Sabela.State.EventBus (
     EventBus (..),
     newEventBus,
@@ -8,6 +10,7 @@ module Sabela.State.EventBus (
     subscribeBroadcast,
     AwaitResult (..),
     awaitExecutionDone,
+    awaitExecutionDoneCounting,
     debugLog,
 ) where
 
@@ -76,28 +79,38 @@ ceiling; @kernelAlive@ is probed on every iteration (not only the quiet
 branch) so a mid-stream kernel death returns 'AwaitKernelDead' at once.
 -}
 awaitExecutionDone :: EventBus -> Int -> IO Bool -> IO AwaitResult
-awaitExecutionDone eb budgetUs kernelAlive = do
+awaitExecutionDone eb budgetUs kernelAlive =
+    fst <$> awaitExecutionDoneCounting eb budgetUs kernelAlive
+
+{- | As 'awaitExecutionDone', but also reports how many broadcast events the
+poll observed — the progress evidence the @resource@ runaway diagnostic keys
+on (a silent runaway shows zero events across a whole poll window).
+-}
+awaitExecutionDoneCounting ::
+    EventBus -> Int -> IO Bool -> IO (AwaitResult, Int)
+awaitExecutionDoneCounting eb budgetUs kernelAlive = do
     chan <- subscribeBroadcast eb
     now <- getMonotonicTimeNSec
-    loop chan (now + fromIntegral (max 0 budgetUs) * 1000)
+    loop chan 0 (now + fromIntegral (max 0 budgetUs) * 1000)
   where
     sliceUs = max 1 (min budgetUs 200000)
-    loop chan deadline = do
+    loop chan !seen deadline = do
         alive <- kernelAlive
         if not alive
-            then pure AwaitKernelDead
+            then pure (AwaitKernelDead, seen)
             else do
                 remaining <- remainingUs deadline
                 if remaining <= 0
-                    then pure AwaitTimedOut
+                    then pure (AwaitTimedOut, seen)
                     else do
                         mEv <-
                             timeout
                                 (min sliceUs remaining)
                                 (atomically (readTChan chan))
                         case mEv of
-                            Just EvExecutionDone -> pure AwaitSettled
-                            _ -> loop chan deadline
+                            Just EvExecutionDone -> pure (AwaitSettled, seen + 1)
+                            Just _ -> loop chan (seen + 1) deadline
+                            Nothing -> loop chan seen deadline
 
 -- | Microseconds left until @deadline@ (a monotonic-clock instant in ns).
 remainingUs :: Word64 -> IO Int

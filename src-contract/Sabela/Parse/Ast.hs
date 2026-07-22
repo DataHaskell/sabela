@@ -19,6 +19,7 @@ module Sabela.Parse.Ast (
     -- * Per-decl entries (used by the chunk-level fallback)
     declFreeVars,
     topLevelDefsFromDecl,
+    topLevelSigsFromDecl,
 
     -- * Generic traversals (used by the expression-level fallback)
     collectUses,
@@ -166,6 +167,15 @@ topLevelDefsFromDecl = \case
     Hs.SpliceD{} -> S.empty
     Hs.DocD{} -> S.empty
     Hs.RoleAnnotD{} -> S.empty
+    _ -> S.empty
+
+{- | Names a standalone top-level signature declares. Reactivity counts none
+of these as defs (a sig alone binds nothing), but a signature-only cell still
+claims them as its contract — a repair must preserve them.
+-}
+topLevelSigsFromDecl :: Hs.HsDecl Hs.GhcPs -> Set Text
+topLevelSigsFromDecl = \case
+    Hs.SigD _ sig -> sigBinders sig
     _ -> S.empty
 
 {- | Names introduced by an 'Hs.HsBindLR' (the LHS of a value/function binding).

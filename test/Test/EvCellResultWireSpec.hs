@@ -17,8 +17,8 @@ import Sabela.Model (CellError (..), NotebookEvent (..))
 
 spec :: Spec
 spec = describe "EvCellResult wire shape" $ do
-    let warn = CellError (Just 1) (Just 3) "Defined but not used: `x'"
-        err = CellError (Just 2) (Just 7) "Couldn't match type"
+    let warn = CellError (Just 1) (Just 3) "Defined but not used: `x'" (Just 40910)
+        err = CellError (Just 2) (Just 7) "Couldn't match type" (Just 83865)
         ev = EvCellResult 5 [] (Just "Couldn't match type") [err] [warn]
         obj = case toJSON ev of
             Object o -> o
@@ -36,7 +36,7 @@ spec = describe "EvCellResult wire shape" $ do
         look "cellId" `shouldBe` Just (toJSON (5 :: Int))
         look "error" `shouldBe` Just (String "Couldn't match type")
 
-    it "encodes each diagnostic with ceLine/ceCol/ceMessage" $
+    it "encodes each diagnostic with ceLine/ceCol/ceMessage/ceCode" $
         case look "warnings" of
             Just (Array arr) -> case toList arr of
                 [Object d] -> do
@@ -44,6 +44,7 @@ spec = describe "EvCellResult wire shape" $ do
                     KM.lookup "ceCol" d `shouldBe` Just (toJSON (3 :: Int))
                     KM.lookup "ceMessage" d
                         `shouldBe` Just (String "Defined but not used: `x'")
+                    KM.lookup "ceCode" d `shouldBe` Just (toJSON (40910 :: Int))
                 other -> expectationFailure ("expected one warning, got " <> show other)
             other -> expectationFailure ("expected warnings array, got " <> show other)
   where

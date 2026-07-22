@@ -6,7 +6,8 @@ tool-call utilities. Split out of the loop module so the state machine there sta
 readable; none of these close over episode state.
 -}
 module Siza.Agent.Loop.Support (
-    readDiscoveryBudget,
+    nudgeK,
+    nudgeFloor,
     maxChatRetries,
     maxStuckVerifies,
     stuckFinal,
@@ -17,29 +18,41 @@ module Siza.Agent.Loop.Support (
     groundingMsgs,
     qualifiedBaseNames,
     nubShort,
-    updateBudget,
-    forceActMsg,
+    updateNudge,
+    factsBlock,
+    forceActMsgWith,
+    streakHints,
 ) where
 
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAlphaNum, isLower)
 import Data.IORef (IORef, readIORef, writeIORef)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (actsOnNotebook, parseToolName)
+import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
+import Siza.Agent.Owned (OwnedCell (..))
+import Siza.Agent.Streak (bumpStreak, streakContrast)
 import Siza.Agent.Tools (renderOutcome)
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
 
-{- | N4: consecutive read-only/discovery calls tolerated before the loop nudges
-the model to act — catches the "burned the budget searching" pathology
-without bothering a normal multi-read sync.
+{- | R5.6: read-only calls tolerated AFTER a call-ready fact (name + complete
+signature) is held before the loop nudges the model to act — keyed on the
+ledger state, so it fires with budget left and never on a fact-free ledger.
 -}
-readDiscoveryBudget :: Int
-readDiscoveryBudget = 8
+nudgeK :: Int
+nudgeK = 2
+
+-- | The nudge must leave at least this many turns of budget when it fires.
+nudgeFloor :: Int
+nudgeFloor = 3
 
 -- | N10: how many times a chat error is retried before the turn gives up.
 maxChatRetries :: Int
@@ -139,30 +152,68 @@ nubShort = go []
         | x `elem` seen = go seen xs
         | otherwise = x : go (x : seen) xs
 
-{- | Track consecutive discovery calls: an acting call resets the counter, else it
-grows by the call count. Crossing 'readDiscoveryBudget' resets it and returns a
-one-shot forcing message to inject. Library- and task-agnostic.
+{- | Consecutive read-only calls while a call-ready fact is held: acting (or a
+fact-free ledger) resets the counter. Crossing @k@ ('escalationK', budget-
+proportional) with 'nudgeFloor' turns left emits the ledger-closing @mkNudge@.
 -}
-updateBudget :: IORef Int -> [ToolCall] -> IO [Value]
-updateBudget ref calls
-    | any callActs calls = writeIORef ref 0 >> pure []
+updateNudge ::
+    IO Value -> IORef Int -> Int -> Bool -> Int -> [ToolCall] -> IO [Value]
+updateNudge mkNudge ref k factReady remaining calls
+    | any callActs calls || not factReady = writeIORef ref 0 >> pure []
     | otherwise = do
         c0 <- readIORef ref
         let c = c0 + length calls
-        if c >= readDiscoveryBudget
-            then writeIORef ref 0 >> pure [forceActMsg]
+        if c >= k && remaining >= nudgeFloor
+            then do
+                writeIORef ref 0
+                nudge <- mkNudge
+                pure [nudge]
             else writeIORef ref c >> pure []
 
--- | The just-in-time, library-agnostic nudge injected when discovery runs long.
-forceActMsg :: Value
-forceActMsg =
+{- | The act-or-blocker nudge (R5.6/R5.7): carries the held facts it asks the
+caller to act on plus the remaining budget, and never asks for more searching.
+-}
+forceActMsgWith :: [Text] -> Text -> Value
+forceActMsgWith facts remaining =
     object
         [ "role" .= ("user" :: Text)
         , "content"
-            .= ( "You have made several discovery/read calls in a row without writing to the \
-                 \notebook. If you have enough to proceed, act now — add or edit a cell \
-                 \(insert_cell / replace_cell_source). If a value, function, or package you \
-                 \need does not exist, say so rather than searching further." ::
-                    Text
+            .= ( "You have made several discovery/read calls in a row without \
+                 \writing to the notebook. Searching further cannot help — act now: \
+                 \add or edit a cell (insert_cell / replace_cell_source), or state \
+                 \the blocker plainly. "
+                    <> remaining
+                    <> factsBlock facts
                )
         ]
+
+{- | The held-facts paragraph the act nudge and the wrap-up share. Blank-
+separated so it rides as one dedupable block ('Siza.Agent.EmitLedger'):
+repeats back-reference, growth diffs.
+-}
+factsBlock :: [Text] -> Text
+factsBlock facts
+    | null facts = ""
+    | otherwise =
+        "\n\nFacts already established:\n"
+            <> T.unlines (map ("- " <>) facts)
+
+{- | Bump each red owned cell's streak this turn and return the contrasts due:
+a diagnostic persisting 'Siza.Agent.Streak.streakThreshold' turns earns its
+wrong-vs-real message mid-loop, once per streak.
+-}
+streakHints ::
+    IORef (Map CellId (Text, Int)) -> Map CellId OwnedCell -> IO [Text]
+streakHints ref owned = do
+    m0 <- readIORef ref
+    let reds =
+            [ (c, ocDiagnostic oc)
+            | (c, oc) <- Map.toList owned
+            , not (ocHealthy oc)
+            ]
+        (m', hints) = foldl step (m0, []) reds
+        step (m, hs) (c, d) =
+            let (m2, n) = bumpStreak m c d
+             in (m2, hs ++ maybeToList (streakContrast n d))
+    writeIORef ref m'
+    pure hints

@@ -16,6 +16,7 @@ format is version-sensitive, so a large unexpected diff signals the format moved
 module Sabela.AI.HoleFits (
     HoleFit (..),
     parseHoleFits,
+    refinementFits,
 ) where
 
 import Data.Text (Text)
@@ -39,7 +40,7 @@ parseHoleFits blob = case afterValidHeader (T.lines blob) of
     [] -> []
     body ->
         let (plainLs, refLs) = break isRefinementHeader body
-         in plainFits plainLs ++ refinementFits (drop 1 refLs)
+         in plainFits plainLs ++ refinementSkeletons (drop 1 refLs)
 
 afterValidHeader :: [Text] -> [Text]
 afterValidHeader = drop 1 . dropWhile (not . isValidHeader)
@@ -67,8 +68,8 @@ plainFits (l : ls)
 {- | Each refinement entry is the skeleton line at the fit indent; its type
 comes from the @where <name> :: <type>@ line in the block beneath it.
 -}
-refinementFits :: [Text] -> [HoleFit]
-refinementFits = map toFit . groupEntries
+refinementSkeletons :: [Text] -> [HoleFit]
+refinementSkeletons = map toFit . groupEntries
   where
     toFit (skel, blk) = HoleFit (T.strip skel) (whereType blk) True
 
@@ -127,3 +128,35 @@ blank = T.null . T.strip
 
 indentOf :: Text -> Int
 indentOf = T.length . T.takeWhile (== ' ')
+
+{- | GHC's REFINEMENT hole fits — @fn (_ :: ArgTy)@ — as @(fn, ArgTy)@ pairs.
+The session queries with @-frefinement-level-hole-fits=2@, so for a
+wrong-arity goal GHC names both the right function AND its missing argument's
+type (e.g. @takeWhileP (_ :: Maybe String)@). The sub-hole type is captured to
+its BALANCED closing paren (qualified names can sit inside nested parens) and
+preserved verbatim; the query layer sanitizes.
+-}
+refinementFits :: Text -> [(Text, Text)]
+refinementFits blob = concatMap fitOf afterHeader
+  where
+    afterHeader =
+        drop 1 (dropWhile (not . T.isInfixOf "Valid refinement hole fits") ls)
+    ls = T.lines blob
+    fitOf l =
+        let s = T.strip l
+            (nm, rest) = T.breakOn " (_ :: " s
+         in [ (nm, ty)
+            | not (T.null nm)
+            , not (T.any (== ' ') nm)
+            , Just ty <- [balancedPrefix (T.drop 7 rest)]
+            ]
+    -- The chars up to the paren that closes the "(_ :: " opener.
+    balancedPrefix = go (0 :: Int) ""
+      where
+        go d acc s = case T.uncons s of
+            Nothing -> Nothing
+            Just (c, rest)
+                | c == ')' && d == 0 -> Just (T.pack (reverse acc))
+                | c `elem` ("([" :: String) -> go (d + 1) (c : acc) rest
+                | c `elem` (")]" :: String) -> go (d - 1) (c : acc) rest
+                | otherwise -> go d (c : acc) rest

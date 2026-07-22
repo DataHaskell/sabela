@@ -32,6 +32,7 @@ import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..), chat, chatSeeded)
 import Siza.Agent.Check (
     CheckResult (..),
     classifyCheck,
+    counterexampleFor,
     extractTestExpr,
     interpretConfirm,
     markerSrc,
@@ -136,11 +137,17 @@ Haskell boolean, let the user confirm/edit/skip, and run it off-notebook. A
 non-writing turn passes straight through.
 -}
 verifyGate ::
-    Manager -> Conn -> Text -> Text -> IORef (Maybe Text) -> IORef Bool -> IO Bool
+    Manager ->
+    Conn ->
+    Text ->
+    Text ->
+    IORef (Maybe Text) ->
+    IORef Bool ->
+    IO (CheckResult, Maybe Text)
 verifyGate mgr conn base model gateRef wroteRef = do
     wrote <- readIORef wroteRef
     if not wrote
-        then pure True
+        then pure (CheckPassed, Nothing)
         else do
             cached <- readIORef gateRef
             test <- case cached of
@@ -153,24 +160,29 @@ verifyGate mgr conn base model gateRef wroteRef = do
                     pure t
             runConfirmedTest conn base test
 
-{- | Run the confirmed covering check and decide whether to accept the turn.
-A check that compiles but is False is a real failure (keep working); one that does
-not compile has no clear target, so accept the clean-running cells and say so.
+{- | Run the confirmed covering check: a compiling-but-False check is a real
+denial (with its example); a non-compiling one has no clear target, so the
+clean-running cells are accepted and the acceptance is disclosed.
 -}
-runConfirmedTest :: Conn -> Text -> Text -> IO Bool
+runConfirmedTest :: Conn -> Text -> Text -> IO (CheckResult, Maybe Text)
 runConfirmedTest conn base test
-    | T.null test = pure True
+    | T.null test = pure (CheckPassed, Nothing)
     | otherwise = do
         (_, out) <- runMarkerWith (callTool conn base) (markerSrc test)
         case classifyCheck out of
-            CheckPassed -> TIO.putStrLn ("  \10003 check passed: " <> test) >> pure True
-            CheckFailed -> TIO.putStrLn ("  \10007 check failed: " <> test) >> pure False
+            CheckPassed ->
+                TIO.putStrLn ("  \10003 check passed: " <> test)
+                    >> pure (CheckPassed, Nothing)
+            CheckFailed -> do
+                TIO.putStrLn ("  \10007 check failed: " <> test)
+                mCe <- counterexampleFor (callTool conn base) test
+                pure (CheckFailed, mCe)
             CheckUncheckable -> do
                 TIO.putStrLn
                     ("  \9888 cannot verify \8212 the check does not compile: " <> test)
                 TIO.putStrLn
                     "    accepting the clean-running cells; define a pure binding to check the value."
-                pure True
+                pure (CheckPassed, Nothing)
 
 proposeTest :: Manager -> Conn -> Text -> Text -> IO Text
 proposeTest mgr conn base model = do

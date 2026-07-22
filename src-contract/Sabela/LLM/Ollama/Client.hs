@@ -13,13 +13,21 @@ module Sabela.LLM.Ollama.Client (
     chatSeeded,
     chatRequestBody,
     parseTurn,
+    rawWithCalls,
     repairJsonEscapes,
     recoverFromError,
     recoverFromContent,
 ) where
 
 import Control.Exception (SomeException, try)
-import Data.Aeson (Value (..), eitherDecodeStrict', encode, object, (.=))
+import Data.Aeson (
+    Value (..),
+    eitherDecodeStrict',
+    encode,
+    object,
+    toJSON,
+    (.=),
+ )
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
@@ -199,15 +207,19 @@ parseTurn raw = case eitherDecodeStrict' (LBS.toStrict raw) of
             let calls = parseCalls (KM.lookup "tool_calls" m)
                 content = textField "content" m
                 thinking = textField "thinking" m
-             in Right
-                    Turn
-                        { turnRaw = msg
-                        , turnContent = content
-                        , turnCalls =
+             in Right $
+                    let dispatched =
                             if null calls
                                 then recoverCalls content thinking
                                 else calls
-                        }
+                     in Turn
+                            { turnRaw =
+                                if null calls
+                                    then rawWithCalls msg dispatched
+                                    else msg
+                            , turnContent = content
+                            , turnCalls = dispatched
+                            }
         | otherwise -> Left ("ollama: no message field: " <> snippet raw)
     Right _ -> Left "ollama: unexpected non-object response"
 
@@ -222,7 +234,7 @@ recoverFromError :: Text -> Maybe Turn
 recoverFromError err = do
     payload <- extractRawPayload err
     obj <- firstJsonObject payload
-    call <- callFromArgsJson obj
+    call <- callFromArgsJsonWith inferToolNameWide obj
     pure (synthTurn call)
 
 {- | Recovery (b): a turn with no native tool_calls whose content (or thinking)
@@ -244,10 +256,26 @@ recoverCalls content thinking =
 synthTurn :: ToolCall -> Turn
 synthTurn call =
     Turn
-        { turnRaw = object ["role" .= ("assistant" :: Text), "content" .= ("" :: Text)]
+        { turnRaw =
+            rawWithCalls
+                (object ["role" .= ("assistant" :: Text), "content" .= ("" :: Text)])
+                [call]
         , turnContent = ""
         , turnCalls = [call]
         }
+
+{- | Stamp recovered\/synthesised calls into the recorded raw message, so the
+transcript always shows the call a result answers (R8.4: a dispatched call
+must never read as a result-without-call).
+-}
+rawWithCalls :: Value -> [ToolCall] -> Value
+rawWithCalls (Object m) calls
+    | not (null calls) =
+        Object (KM.insert "tool_calls" (toJSON (map callJson calls)) m)
+  where
+    callJson (ToolCall n a) =
+        object ["function" .= object ["name" .= n, "arguments" .= a]]
+rawWithCalls v _ = v
 
 {- | Pull the @<args-json>@ between @raw='@ and the trailing @', err=@ out of an
 Ollama tool-call parse error. 'Nothing' when the marker shape is absent.
@@ -263,12 +291,18 @@ inferring the tool name from its fields: @source@ -> insert_cell,
 @new_source@ -> replace_cell_source, @code@ -> scratchpad.
 -}
 callFromArgsJson :: Text -> Maybe ToolCall
-callFromArgsJson payload = do
+callFromArgsJson = callFromArgsJsonWith inferToolName
+
+callFromArgsJsonWith ::
+    (KM.KeyMap Value -> Maybe Text) -> Text -> Maybe ToolCall
+callFromArgsJsonWith infer payload = do
     Object o <- decodeRepaired payload
-    name <- inferToolName o
+    name <- infer o
     pure (ToolCall name (Object o))
 
--- | The only arg shapes recovery synthesises a call for (the code-bearing tools).
+{- | The only arg shapes CONTENT recovery synthesises a call for (code-bearing
+tools), so ordinary prose that happens to contain JSON is never hijacked.
+-}
 inferToolName :: KM.KeyMap Value -> Maybe Text
 inferToolName o
     | has "source" = Just "insert_cell"
@@ -278,11 +312,41 @@ inferToolName o
   where
     has k = KM.member (K.fromText k) o
 
+{- | Error-path inference also admits the query-bearing @discover@ — the raw
+payload there came from a REAL attempted call (measured: gpt-oss drops discover
+calls to a malformed raw payload), so wider inference cannot hijack prose.
+-}
+inferToolNameWide :: KM.KeyMap Value -> Maybe Text
+inferToolNameWide o =
+    case inferToolName o of
+        Just n -> Just n
+        Nothing
+            | KM.member (K.fromText "query") o -> Just "discover"
+            | otherwise -> Nothing
+
 decodeRepaired :: Text -> Maybe Value
 decodeRepaired payload =
-    case eitherDecodeStrict' (TE.encodeUtf8 (repairJsonEscapes payload)) of
+    decode (repairJsonEscapes payload)
+        `orElse` decode (repairDanglingComma (repairJsonEscapes payload))
+  where
+    decode t = case eitherDecodeStrict' (TE.encodeUtf8 t) of
         Right v -> Just v
         Left _ -> Nothing
+    orElse (Just v) _ = Just v
+    orElse Nothing y = y
+
+{- | Drop a dangling comma (with an optional stray quote) before the final
+brace — gpt-oss emits @{...,\"}@ and @{...,}@ when it truncates an argument
+list. Only the tail is touched, so a valid payload is never altered.
+-}
+repairDanglingComma :: Text -> Text
+repairDanglingComma t = case T.stripSuffix ",\"}" stripped of
+    Just body -> body <> "}"
+    Nothing -> case T.stripSuffix ",}" stripped of
+        Just body -> body <> "}"
+        Nothing -> t
+  where
+    stripped = T.stripEnd t
 
 {- | The first balanced top-level JSON object in a string (so a fenced or
 prose-wrapped @{...}@ is recovered), or 'Nothing' if there is no @{@.
@@ -295,6 +359,8 @@ firstJsonObject t = case T.breakOn "{" t of
 {- | Escape any backslash NOT starting a valid JSON escape, so a model's
 unescaped Haskell backslash (a lambda's @\\acc@, a regex @\\.@) no longer breaks
 the JSON parse, while a real @\\n@ / @\\t@ / @\\"@ / @\\uXXXX@ is left intact.
+Literal control characters inside a string (the backslash-line-continuation
+class emits a real newline) are escaped too, since JSON forbids them raw.
 
 >>> repairJsonEscapes "{\"source\":\"\\acc\"}"  -- the \\a becomes \\\\a
 -}
@@ -308,12 +374,19 @@ repairJsonEscapes = T.pack . go False . T.unpack
         | otherwise = c : go False cs
     go True ('\\' : c : cs)
         | c `elem` validEscapes = '\\' : c : go True cs
+        | Just e <- controlEscape c = '\\' : '\\' : '\\' : e : go True cs
         | otherwise = '\\' : '\\' : c : go True cs
     -- A trailing lone backslash inside a string: double it so JSON parses.
     go True ['\\'] = "\\\\"
     go True ('"' : cs) = '"' : go False cs
-    go True (c : cs) = c : go True cs
+    go True (c : cs)
+        | Just e <- controlEscape c = '\\' : e : go True cs
+        | otherwise = c : go True cs
     validEscapes = "\"\\/bfnrtu" :: [Char]
+    controlEscape '\n' = Just 'n'
+    controlEscape '\t' = Just 't'
+    controlEscape '\r' = Just 'r'
+    controlEscape _ = Nothing
 
 parseCalls :: Maybe Value -> [ToolCall]
 parseCalls (Just (Array a)) = mapMaybe one (toList a)

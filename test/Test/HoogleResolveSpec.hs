@@ -123,23 +123,23 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
 
     describe "rankResolveTopK" $ do
         it "returns an ordered shortlist of exact-name candidates" $
-            rankResolveTopK 3 "runConduit" (parseHoogleBlob jsonBlob)
+            rankResolveTopK 3 "runConduit" Nothing (parseHoogleBlob jsonBlob)
                 `shouldBe` [("conduit", "Conduit")]
 
         it "drops .Internal modules from the shortlist" $
-            map snd (rankResolveTopK 3 "decode" (parseHoogleBlob ambiguousBlob))
+            map snd (rankResolveTopK 3 "decode" Nothing (parseHoogleBlob ambiguousBlob))
                 `shouldNotContain` ["Network.Pusher.Internal"]
 
         it "ranks a well-known ecosystem package above a niche one" $
-            take 1 (rankResolveTopK 3 "decode" (parseHoogleBlob ambiguousBlob))
+            take 1 (rankResolveTopK 3 "decode" Nothing (parseHoogleBlob ambiguousBlob))
                 `shouldBe` [("aeson", "Data.Aeson")]
 
         it "is empty when no hit's name matches exactly" $
-            rankResolveTopK 3 "noSuchName" (parseHoogleBlob ambiguousBlob)
+            rankResolveTopK 3 "noSuchName" Nothing (parseHoogleBlob ambiguousBlob)
                 `shouldBe` []
 
         it "caps the shortlist at K" $
-            length (rankResolveTopK 1 "decode" (parseHoogleBlob ambiguousBlob))
+            length (rankResolveTopK 1 "decode" Nothing (parseHoogleBlob ambiguousBlob))
                 `shouldBe` 1
 
     describe "notInScopeName feeds the resolver" $

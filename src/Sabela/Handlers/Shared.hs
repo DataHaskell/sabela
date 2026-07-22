@@ -38,6 +38,7 @@ import Sabela.Model (
     CellType (..),
     Notebook (..),
     NotebookEvent (..),
+    bareCellError,
  )
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State (App (..))
@@ -106,7 +107,7 @@ applyResult r c
 
 broadcastCellError :: App -> Int -> Text -> IO ()
 broadcastCellError app cid msg =
-    broadcastCellErrorWith app cid msg [CellError Nothing Nothing msg]
+    broadcastCellErrorWith app cid msg [bareCellError Nothing Nothing msg]
 
 -- | Like 'broadcastCellError', with explicit (line-carrying) 'CellError's.
 broadcastCellErrorWith :: App -> Int -> Text -> [CellError] -> IO ()

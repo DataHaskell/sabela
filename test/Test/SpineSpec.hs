@@ -53,7 +53,8 @@ spineSpec = describe "Sabela.AI.Spine" $ do
 
     describe "trimTo (the over-application fix)" $ do
         it "drops the excess trailing argument gemma passed to D.col" $
-            (splitSpine "D.col @Double \"revenue\" df" >>= \s -> Just (renderSpine (trimTo 1 s)))
+            ( splitSpine "D.col @Double \"revenue\" df" >>= \s -> Just (renderSpine (trimTo 1 s))
+            )
                 `shouldBe` Just "D.col @Double \"revenue\""
 
         it "is a no-op when the spine already has the right arity" $

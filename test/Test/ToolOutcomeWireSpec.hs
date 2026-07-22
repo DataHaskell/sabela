@@ -30,7 +30,12 @@ import Sabela.AI.Types (
  )
 import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
 import Sabela.Handlers (ReactiveNotebook (..))
-import Sabela.Model (CellError (..), Notebook (..), NotebookEvent (..))
+import Sabela.Model (
+    CellError (..),
+    Notebook (..),
+    NotebookEvent (..),
+    bareCellError,
+ )
 import Sabela.Server (newApp)
 import Sabela.Server.Ai (aiToolH)
 import qualified Sabela.SessionTypes as ST
@@ -128,7 +133,7 @@ toolWire app rn name input = do
         Left e -> error ("aiToolH failed: " <> show e)
 
 cerr :: CellError
-cerr = CellError (Just 3) (Just 5) "Variable not in scope: foo"
+cerr = bareCellError (Just 3) (Just 5) "Variable not in scope: foo"
 
 spec :: Spec
 spec = describe "ToolOutcome envelope mapping (§1.8)" $ do

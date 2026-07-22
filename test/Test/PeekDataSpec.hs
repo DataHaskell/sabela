@@ -118,7 +118,6 @@ allToolNames =
     , AwaitIdle
     , ExportNotebook
     , PeekData
-    , FindPackage
     , FindExampleCell
     , FindFunction
     ]

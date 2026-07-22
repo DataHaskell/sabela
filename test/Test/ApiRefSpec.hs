@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | The @api_reference@ merge core: given results from local Hoogle, live
-@:browse@, and typed-hole fits (plus the curated static slice), 'mergeApiRef'
-prefers the dynamic sources and falls back to the static card only when every
-dynamic source is empty/unusable. 'argKind' routes a type-shaped arg to hole
-fits and a module/name arg to Hoogle + @:browse@.
+@:browse@, and typed-hole fits, 'mergeApiRef' merges the dynamic sources and
+returns an explicit no-result note when every source is empty/unusable.
+'argKind' routes a type-shaped arg to hole fits and a module/name arg to
+Hoogle + @:browse@.
 -}
 module Test.ApiRefSpec (spec) where
 
@@ -36,7 +36,7 @@ hit =
         }
 
 sources :: ApiRefSources
-sources = ApiRefSources "DataFrame" [] Nothing Nothing "STATIC CARD"
+sources = ApiRefSources "DataFrame" [] Nothing Nothing
 
 spec :: Spec
 spec = describe "api_reference merge core" $ do
@@ -50,16 +50,16 @@ spec = describe "api_reference merge core" $ do
             argKind "Granite.Svg" `shouldBe` AsModuleOrName
 
     describe "mergeApiRef" $ do
-        it "falls back to the static card when every dynamic source is empty" $ do
+        it "returns a no-result note when every dynamic source is empty" $ do
             let v = mergeApiRef sources
-            field "source" v `shouldBe` Just (String "static")
-            field "reference" v `shouldBe` Just (String "STATIC CARD")
+            field "source" v `shouldBe` Just (String "none")
+            field "note" v `shouldSatisfy` (/= Nothing)
             field "hoogle" v `shouldBe` Nothing
 
-        it "prefers Hoogle hits over the static card" $ do
+        it "prefers Hoogle hits over the empty result" $ do
             let v = mergeApiRef sources{arsHoogle = [hit]}
             field "source" v `shouldBe` Just (String "live")
-            field "reference" v `shouldBe` Nothing
+            field "note" v `shouldBe` Nothing
             field "hoogle" v `shouldSatisfy` (/= Nothing)
 
         it "surfaces live :browse exports" $ do
@@ -72,7 +72,7 @@ spec = describe "api_reference merge core" $ do
             field "source" v `shouldBe` Just (String "live")
             field "holeFits" v `shouldSatisfy` (/= Nothing)
 
-        it "treats a not-in-scope/error browse as empty and falls back" $ do
+        it "treats a not-in-scope/error browse as empty (no result)" $ do
             let v = mergeApiRef sources{arsBrowse = Just "error: Not in scope: DataFrame"}
-            field "source" v `shouldBe` Just (String "static")
+            field "source" v `shouldBe` Just (String "none")
             field "exports" v `shouldBe` Nothing

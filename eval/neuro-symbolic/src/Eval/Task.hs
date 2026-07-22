@@ -2,13 +2,14 @@ module Eval.Task (
     Task (..),
     Grader (..),
     Verdict (..),
-    tasks,
-    findTask,
     taskTest,
     verifyDiff,
     verdictFor,
     proposeTest,
     grade,
+    gradeVerify,
+    fitVerdict,
+    fitVerify,
     runMarkerWith,
     markerSrc,
     renderVerdict,
@@ -20,7 +21,7 @@ module Eval.Task (
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
-import Data.List (find, sortOn)
+import Data.List (sortOn)
 import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -28,9 +29,15 @@ import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (ToolErr, ToolOk))
 import Siza.Transport (Conn, callTool)
 
+import Eval.FitCheck (FitOutcome (..), fitOutcome)
 import Eval.Render (gradeRender, textField)
 import Eval.Tools (renderOutcome)
-import Siza.Agent.Check (markerSrc, runMarkerWith)
+import Siza.Agent.Check (
+    CheckResult (..),
+    checkVerdict3With,
+    markerSrc,
+    runMarkerWith,
+ )
 
 data Task = Task
     { taskId :: Text
@@ -44,6 +51,10 @@ data Grader
     | ByOutput
     | ByOutputHas [Text]
     | BySteps [Grader]
+    | {- | Recompute the reported expression's total squared error over the
+      sample; pass within the tolerance (a search-shaped task's covering check).
+      -}
+      ByFit [(Double, Double)] Double
     | Untested
     deriving (Eq, Show)
 
@@ -82,57 +93,56 @@ proposeTest task =
         <> taskId task
         <> " == undefined) then \"GRADE_PASS\" else \"GRADE_FAIL\")"
 
-tasks :: [Task]
-tasks =
-    [ Task
-        "double"
-        "Define a function `double :: Int -> Int` that returns twice its argument."
-        (ByValue "double 21 == 42")
-    , Task
-        "applyTwice"
-        "Define `applyTwice :: (a -> a) -> a -> a` that applies a function to a value twice."
-        (ByValue "applyTwice (+3) (10 :: Int) == 16")
-    , Task
-        "safeDiv"
-        "Define `safeDiv :: Int -> Int -> Maybe Int` returning Nothing when the divisor is 0, otherwise Just the quotient."
-        (ByValue "safeDiv 10 0 == Nothing && safeDiv 10 2 == Just 5")
-    , Task
-        "color"
-        "Define a type `Color` with constructors Red, Green and Blue, deriving Show, Eq, Enum and Bounded. Then define `allColors :: [Color]` listing every colour using minBound/maxBound."
-        (ByValue "allColors == [Red, Green, Blue]")
-    , Task
-        "mapMaybe"
-        "Define `mapMaybe' :: (a -> Maybe b) -> [a] -> [b]` that applies the function to each element and keeps only the Just results."
-        ( ByValue
-            "mapMaybe' (\\x -> if even x then Just (x * x) else Nothing) [1..6 :: Int] == [4, 16, 36]"
-        )
-    , Task
-        "treeFunctor"
-        "Define `data Tree a = Leaf | Node (Tree a) a (Tree a) deriving (Show, Eq)` and a Functor instance for Tree that maps over the stored values."
-        (ByValue "fmap (+1) (Node Leaf (1 :: Int) Leaf) == Node Leaf 2 Leaf")
-    , Task
-        "quarterlyBars"
-        "Plot these quarterly sales figures as a bar chart and show the chart in the notebook: Q1 12, Q2 18, Q3 9, Q4 15. Use the granite plotting library."
-        ByRender
-    , Task
-        "revenueTotal"
-        "A CSV file `revenue.csv` with columns `month` and `revenue` is in the working directory. Using the dataframe library, load it into a DataFrame and define `revenueTotal :: Double` as the total revenue across all months."
-        (ByValue "abs (revenueTotal - 600) < 0.001")
-    , Task
-        "revenueChart"
-        "A CSV file `revenue.csv` with columns `month` and `revenue` is in the working directory. Using the dataframe library, load it into a DataFrame, then plot revenue by month as a bar chart with the granite library and show the chart in the notebook."
-        ByRender
-    , Task
-        "fixBroken"
-        "This function is meant to sum a list of Ints but does not compile:\n\n    total xs = foldr (+) xs\n\nFix it and define `total :: [Int] -> Int` so it returns the sum of the list."
-        (ByValue "total [1, 2, 3, 4] == 10 && total [] == 0")
-    ]
-
-findTask :: Text -> Maybe Task
-findTask tid = find ((== tid) . taskId) tasks
-
 grade :: Conn -> Text -> Task -> IO (Verdict, Text)
 grade conn base task = gradeWith conn base task (taskGrader task)
+
+{- | The loop's three-valued verify verdict (R5-T5): ByValue carries a named
+counterexample, ByFit routes extraction misses to 'CheckUncheckable', and an
+'Untested' task must never fabricate a failure (run-20260720 spiral).
+-}
+gradeVerify :: Conn -> Text -> Task -> IO (CheckResult, Maybe Text)
+gradeVerify conn base task = case taskGrader task of
+    ByValue check -> checkVerdict3With (callTool conn base) check
+    Untested -> pure (CheckPassed, Nothing)
+    ByFit points tol -> fitVerify points tol <$> notebookOutputs conn base
+    _ -> do
+        (v, _) <- grade conn base task
+        pure (if v == Surfaced then CheckPassed else CheckFailed, Nothing)
+
+{- | Three-valued fit verify: a denial is emitted iff a recomputed nonzero
+error exists for a reported expression; an extraction miss says what to run
+and never leaks the sample's answer.
+-}
+fitVerify :: [(Double, Double)] -> Double -> Text -> (CheckResult, Maybe Text)
+fitVerify points tol out = case fitOutcome points tol out of
+    FitConfirmed _ _ -> (CheckPassed, Nothing)
+    FitRefuted err e ->
+        ( CheckFailed
+        , Just
+            ( "the reported expression `"
+                <> e
+                <> "` has recomputed total squared error "
+                <> tShowD err
+                <> " over the sample — it does not fit."
+            )
+        )
+    FitUnconfirmed reason ->
+        ( CheckUncheckable
+        , Just
+            ( "not yet confirmed: "
+                <> reason
+                <> ". Run a cell that prints the best expression and its total \
+                   \squared error, e.g. `Best expression: <expr>, total squared \
+                   \error: <err>`."
+            )
+        )
+
+-- | Every scanned cell's rendered output, the text 'fitVerify' vets.
+notebookOutputs :: Conn -> Text -> IO Text
+notebookOutputs conn base = do
+    ids <- take renderScanCap <$> codeCellIds conn base
+    outs <- mapM (executeOutcome conn base) ids
+    pure (T.unlines [renderOutcome (Right o) | o <- outs, hasOutput o])
 
 gradeWith :: Conn -> Text -> Task -> Grader -> IO (Verdict, Text)
 gradeWith conn base task grader = case grader of
@@ -143,6 +153,7 @@ gradeWith conn base task grader = case grader of
         pure (verifyDiff True (Just check) green, out)
     ByOutput -> gradeOutputTask conn base
     ByOutputHas needles -> gradeOutputHas conn base needles
+    ByFit points tol -> gradeFit conn base points tol
     BySteps stages -> gradeSteps conn base task stages
 
 runMarker :: Conn -> Text -> Text -> IO (Bool, Text)
@@ -167,6 +178,30 @@ gradeOutputHas conn base needles = do
     ids <- take renderScanCap <$> codeCellIds conn base
     outs <- mapM (executeOutcome conn base) ids
     pure (outputHasVerdict needles outs)
+
+{- | Scan the notebook's cell outputs for the run's reported expression and
+recompute its total squared error over the sample: any expression fitting within
+the tolerance surfaces, so the check never overfits to one known answer string.
+-}
+gradeFit :: Conn -> Text -> [(Double, Double)] -> Double -> IO (Verdict, Text)
+gradeFit conn base points tol =
+    fitVerdict points tol <$> notebookOutputs conn base
+
+{- | Turn the recomputed three-valued fit outcome into a grading verdict: only
+a confirmed fit surfaces; refuted and unconfirmed are withheld with the reason.
+-}
+fitVerdict :: [(Double, Double)] -> Double -> Text -> (Verdict, Text)
+fitVerdict points tol text = case fitOutcome points tol text of
+    FitConfirmed err _ ->
+        (Surfaced, "fit error " <> tShowD err <> " within tolerance")
+    FitRefuted err _ ->
+        ( Withheld ("fit error " <> tShowD err <> " exceeds tolerance")
+        , "fit error " <> tShowD err
+        )
+    FitUnconfirmed reason -> (Withheld reason, reason)
+
+tShowD :: Double -> Text
+tShowD = T.pack . show
 
 outputHasVerdict :: [Text] -> [ToolOutcome] -> (Verdict, Text)
 outputHasVerdict needles outs = case filter hit outs of

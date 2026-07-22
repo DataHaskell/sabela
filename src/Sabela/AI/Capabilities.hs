@@ -26,6 +26,7 @@ module Sabela.AI.Capabilities (
     revertEdit,
 ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, try)
 import Control.Monad (void)
 import Data.Aeson (Value (..), (.=))
@@ -35,8 +36,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.ApiRef (execApiReference)
+import Sabela.AI.Capabilities.Bindings (execListBindings)
 import Sabela.AI.Capabilities.CapabilitySearch (execSearchCapability)
-import Sabela.AI.Capabilities.Discover (execFindExampleCell, execFindPackage)
+import Sabela.AI.Capabilities.Discover (execFindExampleCell)
 import Sabela.AI.Capabilities.Edit (
     execDeleteCell,
     execExecuteCell,
@@ -45,6 +47,8 @@ import Sabela.AI.Capabilities.Edit (
     execReplaceCellSource,
     executeCell,
  )
+import Sabela.AI.Capabilities.Edit.Ack (writeGate)
+import Sabela.AI.Capabilities.EvalLive (execEvalLive)
 import Sabela.AI.Capabilities.Kernel (
     execAwaitIdle,
     execExportNotebook,
@@ -53,6 +57,7 @@ import Sabela.AI.Capabilities.Kernel (
     execKernelStatus,
     haskellKernelOccupied,
  )
+import Sabela.AI.Capabilities.KernelHealth (busyEvidenceNow)
 import Sabela.AI.Capabilities.ModuleSearch (execFindFunction)
 import Sabela.AI.Capabilities.Notebook (
     execFindCells,
@@ -65,13 +70,18 @@ import Sabela.AI.Capabilities.Query (
     execDescribeFunction,
     execExploreResult,
     execFindByType,
-    execListBindings,
     execPeekData,
  )
 import Sabela.AI.Capabilities.Scratchpad (execScratchpadGuarded)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), resolveToolCall)
 import Sabela.AI.Capabilities.Tools (chatTools)
 import Sabela.AI.Capabilities.Util (field, fieldInt)
+import Sabela.AI.KernelVocab (
+    BusyVerdict (..),
+    busyDenyJson,
+    busyRetryRounds,
+    resolveOccupied,
+ )
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, newCancelToken)
@@ -79,7 +89,7 @@ import Sabela.Api (errorJson, errorJsonWith)
 import Sabela.Handlers (ReactiveNotebook (..), setCellSourceChecked)
 import Sabela.Handlers.Lifecycle (ensureSessionAlive)
 import Sabela.Model
-import Sabela.Session (Admission (..))
+import Sabela.Session.Admission (Admission (..))
 import Sabela.State
 import ScriptHs.Parser (CabalMeta (..))
 
@@ -87,9 +97,8 @@ import ScriptHs.Parser (CabalMeta (..))
 -- Tool execution dispatch
 ------------------------------------------------------------------------
 
--- 'ToolName' / 'parseToolName' moved to "Sabela.AI.Capabilities.ToolName"
--- so the catalogue in @Sabela.AI.Capabilities.Tools.*@ can import them
--- without creating a cycle. Re-imported above.
+-- 'ToolName' / 'parseToolName' live in "Sabela.AI.Capabilities.ToolName"
+-- so the catalogue modules can import them without a cycle.
 
 executeTool ::
     App ->
@@ -120,23 +129,41 @@ executeTool app store rn cancelTok toolName rawInput =
     with non-AI work (a browser run holding 'sbBusy') — the legacy bounce,
     preserved. Lock-free tools (status/interrupt/restart) bypass the gate. -}
     dispatch :: ToolName -> Value -> IO ToolOutcome
-    dispatch tool input
-        | needsKernel tool =
-            admitKernel store (admissionCandidate input) (kernelGuarded tool input)
-                >>= \case
-                    Busy{} -> pure (errOutcome busyOutcome)
-                    Ran r -> pure r
-        | otherwise = guarded tool input
+    dispatch tool input = do
+        -- Write-ack gate first (R6.2/R6.4): a retry dedupe or own-write
+        -- bounce must answer even while that write holds the kernel.
+        mAck <- writeGate app store (tool == InsertCell) (needsKernel tool) input
+        case mAck of
+            Just out -> pure out
+            Nothing
+                | needsKernel tool ->
+                    admitKernel
+                        store
+                        (admissionCandidate input)
+                        (kernelGuarded tool input)
+                        >>= \case
+                            Busy cid ms ->
+                                pure (errOutcome (busyDenyJson (Just (cid, ms))))
+                            Ran r -> pure r
+                | otherwise -> guarded tool input
 
     {- Within the held AI gate: warm a cold base GHCi once so discovery tools
-    work pre-first-cell, then bounce if the kernel is occupied — a non-AI run
-    holding the run-lock OR a compile/dep-install (appBuilding) — rather than
-    block or, worse, let a retry stack another job behind the lock. -}
+    work pre-first-cell, then judge occupancy through the post-settled
+    consistency window (R6.4) — occupancy while the eventboard generation
+    still equals the last settled one is the settling run's release tail, so
+    admission retries briefly instead of denying; a genuine busy denies
+    naming the locking cell and elapsed when a registry knows them. -}
     kernelGuarded :: ToolName -> Value -> IO ToolOutcome
     kernelGuarded tool input = do
         warmKernel app
-        busy <- haskellKernelOccupied app
-        if busy then pure (errOutcome busyOutcome) else guarded tool input
+        v <-
+            resolveOccupied
+                busyRetryRounds
+                (threadDelay 100000)
+                (busyEvidenceNow app store (haskellKernelOccupied app))
+        case v of
+            DenyBusy holder -> pure (errOutcome (busyDenyJson holder))
+            _ -> guarded tool input
 
     guarded :: ToolName -> Value -> IO ToolOutcome
     guarded tool input = do
@@ -167,19 +194,17 @@ executeTool app store rn cancelTok toolName rawInput =
         KernelStatus -> execKernelStatus app
         Interrupt -> execInterrupt app
         KernelRestart -> execKernelRestart rn
-        AwaitIdle -> execAwaitIdle app
+        AwaitIdle -> execAwaitIdle app store
         ExportNotebook -> execExportNotebook app input
         PeekData -> execPeekData app input
-        FindPackage -> execFindPackage input
+        EvalLive -> execEvalLive app input
         FindExampleCell -> execFindExampleCell input
         FindFunction -> execFindFunction app input
         SearchCapability -> execSearchCapability app input
 
-{- | Spawn a base GHCi if none is live so kernel-needing discovery tools
-(check_type, list_bindings, …) work before the first cell is run. Idempotent:
-a no-op when a session already exists, so it never disturbs live work. Warms
-with empty metadata at the current generation; a later @-- cabal:@ cell rebuilds
-through the normal cell-run path.
+{- | Spawn a base GHCi if none is live so kernel-needing discovery tools work
+pre-first-cell. Idempotent; warms with empty metadata at the current
+generation — a later @-- cabal:@ cell rebuilds through the normal run path.
 -}
 warmKernel :: App -> IO ()
 warmKernel app = do
@@ -202,25 +227,6 @@ warmKernel app = do
             , metaUnknownKeys = []
             }
 
-{- | The busy wire shape returned by the live atomic admission gate. It steers
-the model to WAIT, not retry: a re-run cannot start until the kernel frees, and
-the server rejects it anyway, so retrying only wastes turns.
--}
-busyOutcome :: Value
-busyOutcome =
-    errorJsonWith
-        "The Haskell kernel is busy (running a cell or compiling). Do NOT \
-        \re-run the cell — the retry cannot start until it frees."
-        [ "busy" .= True
-        , "hint"
-            .= ( "Call await_idle to block until it finishes, then continue. \
-                 \Use kernel_status to tell a live compile (state=building, \
-                 \buildingMs climbing) from a wedge; only if it is wedged, \
-                 \interrupt or kernel_restart." ::
-                    Text
-               )
-        ]
-
 {- | Candidate id recorded as the admission holder: the tool's @cell_id@ when
 present (so a bounced caller's @running@ names the cell), else a sentinel.
 -}
@@ -238,11 +244,11 @@ needsKernel = \case
     FindByType -> True
     DescribeFunction -> True
     FindFunction -> True
+    EvalLive -> True
     _ -> False
 
-{- | Return the parse-error hint planted by the orchestrator when a streamed
-tool_use JSON couldn't be decoded. Dispatch fails fast in that case rather
-than letting downstream tools report misleading "cell_id required" errors.
+{- | The orchestrator's parse-error hint for an undecodable streamed tool_use;
+dispatch fails fast instead of reporting misleading "cell_id required".
 -}
 lookupParseError :: Value -> Maybe Text
 lookupParseError v = case field "_parseError" v of

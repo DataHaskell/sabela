@@ -1,4 +1,8 @@
-module Siza.Agent.Transcript (renderTranscript, renderMessage) where
+module Siza.Agent.Transcript (
+    contextChars,
+    renderMessage,
+    renderTranscript,
+) where
 
 import Data.Aeson (Value (..), encode)
 import qualified Data.Aeson.Key as K
@@ -68,3 +72,14 @@ enc (Just v) = TE.decodeUtf8 (LBS.toStrict (encode v))
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
+
+{- | An episode's total context spend: the summed content length of every
+message. Context is the scarcest weak-model resource — measure it per task.
+-}
+contextChars :: [Value] -> Int
+contextChars = sum . map msgChars
+  where
+    msgChars (Object o) = case KM.lookup "content" o of
+        Just (String t) -> T.length t
+        _ -> 0
+    msgChars _ = 0

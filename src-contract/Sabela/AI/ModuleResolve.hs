@@ -9,6 +9,7 @@ rewrite, live in the product layer ("Sabela.AI.Capabilities.Edit.Run").
 -}
 module Sabela.AI.ModuleResolve (
     closestModules,
+    isNoiseModule,
 ) where
 
 import Data.List (sortOn)
@@ -37,3 +38,13 @@ closestModules k threshold wrong mods =
         , s >= threshold
         ]
     rank (m, s) = (Down s, T.length m, m)
+
+{- | Modules that are never a useful resolution or search target: internal,
+example / demo / tutorial, and doc modules — an API-visibility class
+judgement, never a library judgement. Shared by resolver and discover rank.
+-}
+isNoiseModule :: Text -> Bool
+isNoiseModule m =
+    m == "Internal"
+        || "Documentation." `T.isPrefixOf` m
+        || any (`T.isInfixOf` m) [".Internal", ".Example", ".Demo", ".Tutorial"]

@@ -55,14 +55,16 @@ import Data.IORef (
  )
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
+import Data.Word (Word64)
 import Network.HTTP.Client (Manager)
 import Sabela.AI.Handles (HandleStore, newHandleStore)
 import Sabela.AI.Types
+import Sabela.AI.WriteRegistry (WriteRegistry, newWriteRegistry)
 import Sabela.Anthropic.Types (AnthropicConfig (..), Usage (..))
 import Sabela.LLM.Anthropic (anthropicProvider)
 import Sabela.LLM.Message (ContentPart (..), Message (..), Role (..))
 import Sabela.LLM.Provider (ModelProvider)
-import Sabela.Session (Admission, admit)
+import Sabela.Session.Admission (Admission, admit)
 import Sabela.SessionTypes (SessionBackend (..))
 
 data AIStore = AIStore
@@ -71,9 +73,10 @@ data AIStore = AIStore
     , aiPendingEdits :: TVar (M.Map EditId AiEdit)
     , aiPendingByCell :: TVar (M.Map Int EditId)
     {- ^ Secondary index: cellId → 'EditId' of the pending edit for that
-    cell. Lets 'addPendingEdit' find the prior pending edit (if any)
-    in O(log n) instead of scanning the whole 'aiPendingEdits' map.
+    cell, so 'addPendingEdit' finds the prior pending edit in O(log n).
     -}
+    , aiWriteReg :: WriteRegistry
+    -- ^ Pending mutation writes for the write-ack protocol (R6.1/R6.2).
     , aiScratchpad :: MVar (Maybe ScratchpadSession)
     , aiNextEditId :: IORef Int
     , aiNextTurnId :: IORef Int
@@ -87,13 +90,21 @@ data AIStore = AIStore
     , aiUsage :: IORef Usage
     , aiHandles :: HandleStore
     , aiAdmission :: MVar ()
-    {- ^ The AI kernel-admission gate. A single 'admit' (one 'tryTakeMVar')
-    folds the busy decision and the hold into one step, so two AI tool
-    callers can't both pass a busy check and stack behind the run-lock
-    (the §1.4 TOCTOU). Held for the whole kernel-needing tool run.
+    {- ^ The AI kernel-admission gate: one 'admit' ('tryTakeMVar') folds the
+    busy decision and the hold into one step (§1.4 TOCTOU), held for the
+    whole kernel-needing tool run.
     -}
-    , aiAdmissionHolder :: IORef (Maybe Int)
-    -- ^ Candidate id of the caller currently holding 'aiAdmission'.
+    , aiAdmissionHolder :: IORef (Maybe (Int, Word64))
+    -- ^ Candidate id + hold instant of the caller holding 'aiAdmission'.
+    , aiSettledGen :: IORef (Maybe Int)
+    {- ^ The eventboard generation last observed settled\/idle: the
+    post-settled consistency window (R6.4). Occupancy seen while the
+    generation still equals this is a release tail, never a busy denial.
+    -}
+    , aiBusySince :: IORef (Maybe Word64)
+    {- ^ First monotonic observation of an unsettled busy kernel, for the
+    @resource@ runaway diagnostic's wall-clock evidence (R6.5).
+    -}
     }
 
 newAIStore :: AnthropicConfig -> Manager -> IO AIStore
@@ -103,6 +114,7 @@ newAIStore cfg mgr =
         <*> newTVarIO Nothing
         <*> newTVarIO M.empty
         <*> newTVarIO M.empty
+        <*> newWriteRegistry
         <*> newMVar Nothing
         <*> newIORef 0
         <*> newIORef 0
@@ -112,6 +124,8 @@ newAIStore cfg mgr =
         <*> newIORef (Usage 0 0 Nothing Nothing)
         <*> newHandleStore
         <*> newMVar ()
+        <*> newIORef Nothing
+        <*> newIORef Nothing
         <*> newIORef Nothing
 
 -- | Read the current Anthropic config.
@@ -146,10 +160,8 @@ getMessages :: AIStore -> IO [Message]
 getMessages = readMVar . aiMessages
 
 {- | How many recent conversation *turns* to retain (a turn = a user-text
-message and everything after it). Counting turns, not raw messages, keeps prior
-turns intact through tool-heavy agentic rounds — so cross-turn references ("the
-image from before") still resolve. Trimming stays safe: never splits a
-tool_use/tool_result pair or leaves an orphan tool_result at the head.
+message and everything after it). Counting turns, not raw messages, keeps
+prior turns intact through tool-heavy agentic rounds.
 -}
 historyWindow :: Int
 historyWindow = 20

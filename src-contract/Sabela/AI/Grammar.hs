@@ -16,6 +16,7 @@ module Sabela.AI.Grammar (
     applyEnvelope,
     grammarTerminals,
     grammarPromptBlock,
+    discoverGrammarBlock,
 ) where
 
 import Data.Char (isAsciiLower)
@@ -52,12 +53,52 @@ data Envelope = Bare | DisplaySvgUnpack | DisplayHtml | Hole
 top-level value binding.
 -}
 parseBrowse :: Text -> [BrowseEntry]
-parseBrowse = concatMap entry . T.lines
+parseBrowse = concatMap entry . dropBraceRegions . joinWrapped . T.lines
   where
     entry l = case splitSig l of
         Just (lhs, rhs)
-            | isValueBinding lhs -> [BrowseEntry (T.strip lhs) (T.strip rhs)]
+            | isValueBinding lhs
+            , completeType rhs ->
+                [BrowseEntry (T.strip lhs) (T.strip rhs)]
         _ -> []
+
+{- | Join wrapped declarations into one logical line: an indented line is a
+GHC continuation; with indentation stripped, a dangling separator marks the
+wrap. Record-field runs join into their (rejected multi-word) @data@ header.
+-}
+joinWrapped :: [Text] -> [Text]
+joinWrapped = go
+  where
+    go (a : b : rest)
+        | continues a b = go ((a <> " " <> T.strip b) : rest)
+        | otherwise = a : go (b : rest)
+    go ls = ls
+    continues a b =
+        T.isPrefixOf " " b
+            || any (`T.isSuffixOf` T.stripEnd a) ["::", "->", "=>", ",", "{"]
+            || any (`T.isPrefixOf` T.stripStart b) ["->", "=>", "="]
+
+{- | Drop lines inside a record's @{…}@ region: with indentation stripped a
+field line would otherwise read as a top-level binding — the field-fragment
+class that displaced real functions from the card.
+-}
+dropBraceRegions :: [Text] -> [Text]
+dropBraceRegions = go (0 :: Int)
+  where
+    go _ [] = []
+    go depth (l : rest)
+        | depth > 0 = go (depth + braceDelta l) rest
+        | otherwise = l : go (max 0 (braceDelta l)) rest
+    braceDelta l = T.count "{" l - T.count "}" l
+
+-- | A complete rendered type: brace-balanced with no dangling separator.
+completeType :: Text -> Bool
+completeType rhs =
+    not (T.null t)
+        && T.count "{" t == T.count "}" t
+        && not (any (`T.isSuffixOf` t) [",", "::", "->", "=>"])
+  where
+    t = T.stripEnd rhs
 
 -- | Split a line on the top-level @::@, if it has one and starts in column 0.
 splitSig :: Text -> Maybe (Text, Text)
@@ -142,14 +183,37 @@ grammarPromptBlock =
     T.unlines
         [ "## Finding things — search, don't guess or recall from memory:"
         , ""
-        , "  find_package <task>        a package + its `-- cabal: build-depends:` line"
+        , "  search_capability <desc>   a package for a capability (all Hackage) + its `-- cabal: build-depends:` line + key API"
         , "  find_function <name|mod>   a function by name/keyword, or a module's exports"
         , "  find_by_type <type>        a function whose type fits, e.g. [Double] -> Picture"
         , "  list_bindings              values/types already in scope this session — reuse them"
         , "  check_type <expr>          the type of an expression or name"
         , "  find_example_cell <idiom>  a paste-able cell, e.g. the typed-column CSV reader (a wrong column is a compile error)"
         , ""
-        , "Install a package by running a cell whose FIRST line is `-- cabal: build-depends: <pkg>`."
+        , grammarFooter
+        ]
+
+{- | The siza-surface variant of 'grammarPromptBlock': that catalogue offers ONE
+search tool (@discover@), so the cheat-sheet names it alone — advertising a tool
+the catalogue does not offer measurably wastes a weak model's opening turns.
+-}
+discoverGrammarBlock :: Text
+discoverGrammarBlock =
+    T.unlines
+        [ "## Finding things — search, don't guess or recall from memory:"
+        , ""
+        , "  discover <query>   ANY function/package/module: by name (\"divvy\"), goal type (\"[Int] -> Int\"), module (\"Granite.Svg\"), or description (\"edit distance\"). Every hit names its module, package, version, and install state, with the `-- cabal:` line when a package is hidden or not installed; a miss lists what was consulted."
+        , "  list_bindings      values/types already in scope this session — reuse them"
+        , "  check_type <expr>  the type of an expression or name"
+        , ""
+        , grammarFooter
+        ]
+
+-- | The install/display/pitfall lines both cheat-sheets share.
+grammarFooter :: Text
+grammarFooter =
+    T.unlines
+        [ "Install a package by running a cell whose FIRST line is `-- cabal: build-depends: <pkg>`."
         , "A plotter returns Text — show it with `displaySvg (T.unpack (...))`."
         , "Avoid `main = do`, a top-level `let`, hand-parsing data, and `:set -package`."
         ]

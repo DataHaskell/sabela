@@ -7,6 +7,7 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.Agent.Check (CheckResult (..))
 import Test.Hspec
 
 import Eval.Agent (
@@ -67,7 +68,7 @@ scriptedDriver dt disp script = do
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = now
-            , drvVerify = pure True
+            , drvVerify = pure (CheckPassed, Nothing)
             }
 
 spec :: Spec

@@ -19,7 +19,11 @@ import Sabela.AI.Capabilities.CapabilityHelper (
     helperToHoogleHits,
     parseHelperHits,
  )
-import Sabela.AI.Capabilities.CapabilitySearch (capabilityOutcome)
+import Sabela.AI.Capabilities.CapabilitySearch (
+    capabilityOutcome,
+    exactOnlyHits,
+    semanticWanted,
+ )
 import Sabela.AI.HoogleResolve (
     HoogleHit (..),
     bigrams,
@@ -164,6 +168,18 @@ spec = describe "Sabela.AI.Capabilities.CapabilitySearch" $ do
                         , "docs" .= ("Geohash encoding" :: Text)
                         ]
                     ]
+
+    describe "stage-0 exact flag and the semantic lever (search-api sections 2, 7)" $ do
+        it "exactOnlyHits keeps only name- or module-equal hits" $ do
+            let hits = parseHoogleBlob jsonBlob
+            map hhModule (exactOnlyHits "count" hits)
+                `shouldBe` ["Data.Text", "RIO.Text.Partial", "Data.Text.Internal"]
+            exactOnlyHits "coun" hits `shouldBe` []
+            map hhName (exactOnlyHits "Data.Text" hits) `shouldBe` ["count"]
+        it "semanticWanted defaults ON and only an explicit false disables it" $ do
+            semanticWanted (object ["query" .= ("q" :: Text)]) `shouldBe` True
+            semanticWanted (object ["semantic" .= True]) `shouldBe` True
+            semanticWanted (object ["semantic" .= False]) `shouldBe` False
 
     describe "free-text fallback helpers" $ do
         it "treats a type signature / name query as verbatim (no fallback)" $ do

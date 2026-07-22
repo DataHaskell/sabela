@@ -8,8 +8,13 @@ import qualified Test.AiHistorySpec as AiHistorySpec
 import qualified Test.AiRestSpec as AiRestSpec
 import qualified Test.ApiRefSpec as ApiRefSpec
 import qualified Test.ApiWireSpec as ApiWireSpec
+import qualified Test.ArgRepairSpec as ArgRepairSpec
 import qualified Test.AtomicAdmissionSpec as AtomicAdmissionSpec
 import qualified Test.AwaitIdleSpec as AwaitIdleSpec
+import qualified Test.BindingsLiveSpec as BindingsLiveSpec
+import qualified Test.BrowseCardSanitizeSpec as BrowseCardSanitizeSpec
+import qualified Test.BrowseCardSpec as BrowseCardSpec
+import qualified Test.BusyWindowSpec as BusyWindowSpec
 import qualified Test.CacheControlSpec as CacheControlSpec
 import qualified Test.CapabilityApiSpec as CapabilityApiSpec
 import qualified Test.CapabilitySearchSpec as CapabilitySearchSpec
@@ -25,6 +30,7 @@ import qualified Test.CompiledPlanSpec as CompiledPlanSpec
 import qualified Test.ConfigWireSpec as ConfigWireSpec
 import qualified Test.ConfigurableTimeoutSpec as ConfigurableTimeoutSpec
 import qualified Test.CycleMsgSpec as CycleMsgSpec
+import qualified Test.DeclaredSpec as DeclaredSpec
 import qualified Test.DefaultExtsSpec as DefaultExtsSpec
 import qualified Test.DepRepairSpec as DepRepairSpec
 import qualified Test.DepsMatchSpec as DepsMatchSpec
@@ -33,6 +39,7 @@ import qualified Test.DiagnoseSpec as DiagnoseSpec
 import qualified Test.DiscoverGrammarSpec as DiscoverGrammarSpec
 import qualified Test.DiscoverToolSpec as DiscoverToolSpec
 import qualified Test.DiscoveryToolsPreSessionSpec as DiscoveryToolsPreSessionSpec
+import qualified Test.ErrorIndexSpec as ErrorIndexSpec
 import qualified Test.ErrorsJsonSpec as ErrorsJsonSpec
 import qualified Test.EvCellResultWireSpec as EvCellResultWireSpec
 import qualified Test.ExampleSearchSpec as ExampleSearchSpec
@@ -44,15 +51,20 @@ import qualified Test.GenerationSpec as GenerationSpec
 import qualified Test.GrammarRouteSpec as GrammarRouteSpec
 import qualified Test.HealthSpec as HealthSpec
 import qualified Test.HoleFitsSpec as HoleFitsSpec
+import qualified Test.HoogleProseSpec as HoogleProseSpec
 import qualified Test.HoogleResolveSpec as HoogleResolveSpec
 import Test.Hspec (hspec)
 import qualified Test.ImportRepairSpec as ImportRepairSpec
+import qualified Test.InsertSupersedeSpec as InsertSupersedeSpec
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
 import qualified Test.JsonDiagSpec as JsonDiagSpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
-import qualified Test.LibDiscoverSpec as LibDiscoverSpec
+import qualified Test.KernelVocabSpec as KernelVocabSpec
 import qualified Test.MarkerSpec as MarkerSpec
 import qualified Test.ModuleResolveSpec as ModuleResolveSpec
+import qualified Test.NonThreadedForkSpec as NonThreadedForkSpec
+import qualified Test.NormalizeGateSpec as NormalizeGateSpec
+import qualified Test.NormalizeProposalsSpec as NormalizeProposalsSpec
 import qualified Test.NotebookAnimSpec as NotebookAnimSpec
 import qualified Test.NotebookEditSpec as NotebookEditSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
@@ -66,6 +78,7 @@ import qualified Test.OutputSpec as OutputSpec
 import qualified Test.OwnedSpec as OwnedSpec
 import qualified Test.ParseSpec as ParseSpec
 import qualified Test.PeekDataSpec as PeekDataSpec
+import qualified Test.PendingRefusalSpec as PendingRefusalSpec
 import qualified Test.PlatformSpec as PlatformSpec
 import qualified Test.PreinstalledSpec as PreinstalledSpec
 import qualified Test.PromptUnifySpec as PromptUnifySpec
@@ -73,14 +86,24 @@ import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.ProvenanceWireSpec as ProvenanceWireSpec
 import qualified Test.ProviderAdapterSpec as ProviderAdapterSpec
 import qualified Test.ProviderSelectSpec as ProviderSelectSpec
+import qualified Test.QualifiedNameSpec as QualifiedNameSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
+import qualified Test.QueryDistillSpec as QueryDistillSpec
 import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
+import qualified Test.RefinementFitSpec as RefinementFitSpec
 import qualified Test.RenderSpec as RenderSpec
 import qualified Test.RepairEngineSpec as RepairEngineSpec
+import qualified Test.RepairGuardSpec as RepairGuardSpec
 import qualified Test.RepairTraceWireSpec as RepairTraceWireSpec
 import qualified Test.ReplProjectSpec as ReplProjectSpec
 import qualified Test.ResolveSpec as ResolveSpec
+import qualified Test.ResourceLiveSpec as ResourceLiveSpec
+import qualified Test.ResourceSpec as ResourceSpec
+import qualified Test.ScratchScopeSpec as ScratchScopeSpec
+import qualified Test.ScratchVetSpec as ScratchVetSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
+import qualified Test.ScratchpadSilenceSpec as ScratchpadSilenceSpec
+import qualified Test.SelfHealSpec as SelfHealSpec
 import qualified Test.SessionGenSpec as SessionGenSpec
 import qualified Test.SessionLiveSpec as SessionLiveSpec
 import qualified Test.SessionLoopSpec as SessionLoopSpec
@@ -89,17 +112,29 @@ import qualified Test.SizaContractWireSpec as SizaContractWireSpec
 import qualified Test.SpineSpec as SpineSpec
 import qualified Test.StaleRunSpec as StaleRunSpec
 import qualified Test.SwitchNotebookSpec as SwitchNotebookSpec
+import qualified Test.ThrowawayExecuteSpec as ThrowawayExecuteSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
 import qualified Test.ToolInputRewriteSpec as ToolInputRewriteSpec
 import qualified Test.ToolOutcomeWireSpec as ToolOutcomeWireSpec
 import qualified Test.ToolParseSpec as ToolParseSpec
 import qualified Test.TopoSpec as TopoSpec
+import qualified Test.TriageSpec as TriageSpec
+import qualified Test.TypeDirectedResolveSpec as TypeDirectedResolveSpec
+import qualified Test.TypeDiscoverySpec as TypeDiscoverySpec
+import qualified Test.TypecheckPrimitiveSpec as TypecheckPrimitiveSpec
 import qualified Test.UploadSpec as UploadSpec
 import qualified Test.UrlSpec as UrlSpec
 import qualified Test.UsageEventSpec as UsageEventSpec
 import qualified Test.UsageMergeSpec as UsageMergeSpec
+import qualified Test.ValueEchoSpec as ValueEchoSpec
+import qualified Test.VerdictSpec as VerdictSpec
 import qualified Test.VerifyDownstreamSpec as VerifyDownstreamSpec
 import qualified Test.WidgetsSpec as WidgetsSpec
+import qualified Test.WriteAckLiveSpec as WriteAckLiveSpec
+import qualified Test.WriteAckRetrySpec as WriteAckRetrySpec
+import qualified Test.WriteAckShapeSpec as WriteAckShapeSpec
+import qualified Test.WriteAckSpec as WriteAckSpec
+import qualified Test.WriteBoundarySpec as WriteBoundarySpec
 
 main :: IO ()
 main = do
@@ -120,6 +155,7 @@ main = do
         CompileEscalationSpec.spec
         ClassifyErrorSpec.spec
         ErrorsJsonSpec.errorsJsonSpec
+        ErrorIndexSpec.spec
         JsonDiagSpec.jsonDiagSpec
         ExecuteCellSpec.spec
         ExampleSearchSpec.spec
@@ -130,6 +166,7 @@ main = do
         DepRepairSpec.spec
         ExtRepairSpec.spec
         ImportRepairSpec.spec
+        RepairGuardSpec.spec
         HealthSpec.spec
         OwnedSpec.spec
         RepairEngineSpec.spec
@@ -138,24 +175,46 @@ main = do
         ToolInputRewriteSpec.spec
         PromptUnifySpec.spec
         DiscoverGrammarSpec.spec
+        HoogleProseSpec.spec
         HoogleResolveSpec.spec
+        TypeDirectedResolveSpec.spec
+        TypeDiscoverySpec.spec
+        TypecheckPrimitiveSpec.spec
+        ThrowawayExecuteSpec.spec
+        NonThreadedForkSpec.spec
+        SelfHealSpec.spec
+        NormalizeGateSpec.spec
+        NormalizeProposalsSpec.spec
+        ValueEchoSpec.spec
+        ScratchVetSpec.spec
+        QualifiedNameSpec.spec
+        ScratchScopeSpec.spec
+        ArgRepairSpec.spec
+        RefinementFitSpec.spec
+        InsertSupersedeSpec.spec
+        TriageSpec.spec
         CapabilitySearchSpec.spec
         CapabilityApiSpec.spec
+        BrowseCardSpec.spec
+        BrowseCardSanitizeSpec.spec
         CapabilitySpec.spec
         NotebookViolationSpec.spec
         GrammarRouteSpec.grammarRouteSpec
         HoleFitsSpec.spec
-        LibDiscoverSpec.spec
         ExportSpec.spec
         DefaultExtsSpec.spec
         DepsMatchSpec.spec
         DepsRepairSpec.depsRepairSpec
         NotebookExportSpec.spec
         ParseSpec.spec
+        DeclaredSpec.spec
         PeekDataSpec.spec
         CellShapeSpec.spec
+        WriteBoundarySpec.spec
+        PendingRefusalSpec.spec
         CellDefinesSpec.spec
         CheckTypeStructSpec.spec
+        QueryDistillSpec.spec
         PlatformSpec.spec
         OutputSpec.spec
         PreinstalledSpec.spec
@@ -175,6 +234,7 @@ main = do
         OutputChokepointWireSpec.spec
         CycleMsgSpec.spec
         ScratchpadRenderSpec.spec
+        ScratchpadSilenceSpec.spec
         ToolParseSpec.spec
         UploadSpec.spec
         UrlSpec.spec
@@ -187,6 +247,16 @@ main = do
         AtomicAdmissionSpec.spec
         DiscoveryToolsPreSessionSpec.spec
         AwaitIdleSpec.spec
+        KernelVocabSpec.spec
+        VerdictSpec.spec
+        BindingsLiveSpec.spec
+        BusyWindowSpec.spec
+        ResourceSpec.spec
+        ResourceLiveSpec.spec
+        WriteAckSpec.spec
+        WriteAckRetrySpec.spec
+        WriteAckShapeSpec.spec
+        WriteAckLiveSpec.spec
         KernelStateWireSpec.spec
         EvCellResultWireSpec.spec
         ToolOutcomeWireSpec.spec

@@ -22,6 +22,7 @@ module Sabela.AI.Capabilities.Util (
 
     -- * Feature flags
     featureEnabled,
+    featureOptIn,
 ) where
 
 import Data.Aeson (ToJSON (..), Value (..))
@@ -31,6 +32,7 @@ import Data.Char (toLower)
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.Environment (lookupEnv)
+import Text.Read (readMaybe)
 
 import Sabela.AI.Handles (Output (..), storeLargeResult)
 import Sabela.AI.Store
@@ -46,9 +48,13 @@ fieldText key v = case field key v of
     Just (String s) -> s
     _ -> ""
 
+{- | An integer tool-arg, accepting a JSON number OR a numeric string — weak
+models often send @{"cell_id":"1"}@, which a number-only parse rejected.
+-}
 fieldInt :: Text -> Value -> Maybe Int
 fieldInt key v = case field key v of
     Just (Number n) -> Just (round n)
+    Just (String s) -> readMaybe (T.unpack (T.strip s))
     _ -> Nothing
 
 -- | A boolean tool-arg flag, defaulting to 'False' when absent or non-boolean.
@@ -113,3 +119,12 @@ featureEnabled :: String -> IO Bool
 featureEnabled var = do
     v <- lookupEnv var
     pure (maybe True (\s -> map toLower s `notElem` ["0", "off", "false", "no"]) v)
+
+{- | A feature flag that defaults OFF: enabled only when the env var is set to
+a truthy value. For unproven arms that must not ship enabled by default.
+-}
+featureOptIn :: String -> IO Bool
+featureOptIn var = do
+    v <- lookupEnv var
+    pure
+        (maybe False (\s -> map toLower s `notElem` ["", "0", "off", "false", "no"]) v)

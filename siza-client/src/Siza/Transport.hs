@@ -25,6 +25,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 import Network.HTTP.Client (
     Manager,
     Request (..),
@@ -38,9 +39,16 @@ import Network.HTTP.Client (
  )
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.HTTP.Types.Header (Header)
+import Network.HTTP.Types.Status (statusCode)
 import Sabela.AI.Capabilities.ToolName (ToolName, toolWireName)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.HubToken (TokenStatus (..), statusForUrl)
+import Siza.Transport.Failure (
+    classifyDecode,
+    classifyStatus,
+    classifyTransport,
+    renderFailure,
+ )
 import System.Environment (lookupEnv, setEnv)
 import Text.Read (readMaybe)
 
@@ -184,18 +192,21 @@ toolTimeout n
     | otherwise = responseTimeoutMicro (n * 1000000)
 
 {- | @POST base/api/ai/tool@ with body @{name, input}@, decoding the
-@{isError, result}@ envelope into a typed 'ToolOutcome'. 60-second timeout,
-matching the bash tool client.
+@{isError, result}@ envelope into a typed 'ToolOutcome'. Failures render
+through the single 'Siza.Transport.Failure' envelope: non-2xx statuses are
+classified BEFORE any payload decode (R6.9), and exception records never
+cross the surface raw (R6.3).
 -}
 callTool :: Conn -> Text -> ToolName -> Value -> IO (Either Text ToolOutcome)
 callTool conn base name input = do
     let env = connEnv conn
+        infra = renderFailure . classifyTransport (envToolTimeout env)
         body = object ["name" .= toolWireName name, "input" .= input]
     er <-
         try (parseRequest (T.unpack (base <> "/api/ai/tool"))) ::
             IO (Either SomeException Request)
     case er of
-        Left e -> pure (Left (T.pack (show e)))
+        Left e -> pure (Left (infra e))
         Right req0 -> do
             let req =
                     req0
@@ -208,13 +219,28 @@ callTool conn base name input = do
                 try (httpLbs req (connManager conn)) ::
                     IO (Either SomeException (Response LBS.ByteString))
             pure $ case res of
-                Left e -> Left (T.pack (show e))
-                Right r -> decodeOutcome (responseBody r)
+                Left e -> Left (infra e)
+                Right r
+                    | ok (statusCode (responseStatus r)) ->
+                        decodeOutcome (responseBody r)
+                    | otherwise ->
+                        Left
+                            ( renderFailure
+                                (classifyStatus (statusCode (responseStatus r)))
+                            )
+  where
+    ok sc = sc >= 200 && sc < 300
 
 -- | Decode the @{isError, result}@ envelope into a 'ToolOutcome'.
 decodeOutcome :: LBS.ByteString -> Either Text ToolOutcome
 decodeOutcome raw = case eitherDecode raw of
-    Left e -> Left (T.pack e <> ": " <> TE.decodeUtf8 (LBS.toStrict raw))
+    Left _ ->
+        Left
+            ( renderFailure
+                ( classifyDecode
+                    (TE.decodeUtf8With TEE.lenientDecode (LBS.toStrict raw))
+                )
+            )
     Right (A.Object o) ->
         let isErr = case KM.lookup "isError" o of
                 Just (A.Bool b) -> b

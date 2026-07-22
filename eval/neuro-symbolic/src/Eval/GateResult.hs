@@ -45,6 +45,7 @@ import Eval.Bench (
     Comparison (..),
     RunStat (..),
     armCost,
+    noiseCaveat,
     round1,
     tshow,
     twoProportionZ,
@@ -77,6 +78,8 @@ data GateResult = GateResult
     "deadline"/"repair_budget"/"error"); "error" is an infra/chat failure,
     not a task fail. Empty in pre-field JSONL rows.
     -}
+    , grCtxChars :: Int
+    -- ^ The episode's context spend (summed message chars); 0 in old rows.
     }
     deriving (Eq, Show)
 
@@ -90,6 +93,7 @@ instance ToJSON GateResult where
             , "grTurns" .= grTurns g
             , "grCalls" .= grCalls g
             , "grStopped" .= grStopped g
+            , "grCtxChars" .= grCtxChars g
             ]
 
 instance FromJSON GateResult where
@@ -104,6 +108,7 @@ instance FromJSON GateResult where
             <*> o .: "grTurns"
             <*> o .: "grCalls"
             <*> o .:? "grStopped" .!= ""
+            <*> o .:? "grCtxChars" .!= 0
 
 -- | The done-set key: the triple identifying an episode.
 gateKey :: GateResult -> (Text, Int, SearchMode)
@@ -154,6 +159,7 @@ renderGateResults rs =
         <> renderComparison (summarise rs)
         <> "\n"
         <> renderCost rs
+        <> renderCtx rs
         <> infraNote rs
   where
     taskRow (tid, Comparison a b _ _) =
@@ -179,11 +185,13 @@ byTaskComparison rs =
 renderComparison :: Comparison -> Text
 renderComparison (Comparison a b diff z) =
     T.unlines
-        [ "Arm A (SearchOff): " <> rate a
-        , "Arm B (SearchOn):  " <> rate b
-        , "B - A: " <> tshow (round3 diff) <> "   z = " <> tshow (round3 z)
-        , "significant at 5%: " <> tshow (abs z > 1.96)
-        ]
+        ( [ "Arm A (SearchOff): " <> rate a
+          , "Arm B (SearchOn):  " <> rate b
+          , "B - A: " <> tshow (round3 diff) <> "   z = " <> tshow (round3 z)
+          , "significant at 5%: " <> tshow (abs z > 1.96)
+          ]
+            <> noiseCaveat z (arRuns a)
+        )
   where
     rate r = tshow (arPasses r) <> "/" <> tshow (arRuns r)
 
@@ -212,6 +220,32 @@ costByTask rs =
   where
     statsFor tid mode =
         armCost [stat g | g <- rs, grTask g == tid, grMode g == mode]
+
+{- | Mean context spend per episode, per task and overall — context is the
+scarcest weak-model resource, so its price is part of every gate report.
+-}
+renderCtx :: [GateResult] -> Text
+renderCtx rs
+    | all ((== 0) . grCtxChars) rs = ""
+    | otherwise =
+        T.unlines
+            ( "Context/task (mean chars, A=Off B=On):"
+                : [ "  " <> tid <> ":  A " <> mean tid SearchOff <> "   B " <> mean tid SearchOn
+                  | tid <- nub (map grTask rs)
+                  ]
+            )
+            <> "Overall:  A "
+            <> meanAll SearchOff
+            <> "   B "
+            <> meanAll SearchOn
+            <> "\n"
+  where
+    mean tid mode = fmt [grCtxChars g | g <- rs, grTask g == tid, grMode g == mode]
+    meanAll mode = fmt [grCtxChars g | g <- rs, grMode g == mode]
+    fmt [] = "-"
+    fmt xs =
+        tshow (round1 (fromIntegral (sum xs) / (1000 * fromIntegral (length xs))))
+            <> "k"
 
 {- | A one-line tally of episodes that stopped on an infra/chat error (so they
 are never silently read as task failures); empty when there were none.

@@ -13,17 +13,23 @@ module Sabela.Session.Query (
     queryDoc,
     queryHoleFits,
     queryBindings,
+    TypecheckInput (..),
+    TypecheckResult (..),
+    classifyTypecheckInput,
+    typecheckValueWith,
+    typecheckLetDeclarations,
     captureBindingsBaseline,
     scrubBindings,
     groupEntries,
 ) where
 
 import Control.Concurrent (withMVar)
-import Data.Char (isSpace)
+import Data.Char (isAlphaNum, isSpace, toLower)
 import Data.IORef (readIORef, writeIORef)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
+import GHC.Clock (getMonotonicTimeNSec)
 import Sabela.Session (
     Session (..),
     getMarker,
@@ -36,6 +42,7 @@ import Sabela.Session (
  )
 import Sabela.Session.Drain (drainResultText, drainUntilMarker)
 import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
 import System.Timeout (timeout)
 
 queryTimeoutUs :: Int
@@ -94,6 +101,113 @@ queryBindings sess = do
     raw <- runQueryCommand sess QueryBindings
     baseline <- readIORef (sessBaselineBindings sess)
     pure (scrubBindings baseline raw)
+
+{- | Result from the deliberately limited Path-2 feasibility prototype.
+This is not the general primitive: GHCi's @:type@ accepts only expression-
+local value bindings, not imports or type/class/instance declarations.
+-}
+data TypecheckResult = TypecheckResult
+    { tcSucceeded :: Bool
+    , tcDiagnostics :: Text
+    }
+    deriving (Eq, Show)
+
+-- | The honest routing boundary of GHCi's no-add @:type@ mechanism.
+data TypecheckInput = ValueExpression | ValueBindings | OutsideValueSubset
+    deriving (Eq, Show)
+
+classifyTypecheckInput :: Text -> TypecheckInput
+classifyTypecheckInput source
+    | any outside (meaningfulLines source) = OutsideValueSubset
+    | any isBinding (meaningfulLines source) = ValueBindings
+    | otherwise = ValueExpression
+  where
+    outside line = any (`T.isPrefixOf` lower line) excluded
+    excluded =
+        [ "data "
+        , "newtype "
+        , "type "
+        , "class "
+        , "instance "
+        , "import "
+        , "foreign "
+        , "default "
+        , "infix"
+        , "{-#"
+        , "-- cabal:"
+        ]
+    lower = T.map toLower . T.stripStart
+    isBinding line =
+        let lhs = T.takeWhile (/= '=') line
+         in "=" `T.isInfixOf` line
+                && not (T.null (T.strip lhs))
+                && T.all validLhs lhs
+    validLhs c = isAlphaNum c || isSpace c || c `elem` ("_'(),[]" :: String)
+
+meaningfulLines :: Text -> [Text]
+meaningfulLines = filter (not . T.null) . map T.strip . T.lines
+
+{- | Type-check a value-binding group against the live interactive scope
+without committing it. Disabled unless @SABELA_TYPECHECK_PRIMITIVE@ is set.
+Newlines are rendered as explicit-let semicolons because GHCi commands occupy
+one protocol line. The caller must not use this subset as a whole-cell gate.
+-}
+typecheckLetDeclarations :: Session -> Text -> IO TypecheckResult
+typecheckLetDeclarations sess =
+    typecheckValueWith
+        (runQueryCommand sess . QueryType)
+        (runQueryCommand sess QueryBindings)
+
+{- | Run the proven Path-2 subset through any live-session backend. It snapshots
+bindings itself: every query both enforces and reports the no-pollution
+invariant instead of relying on callers to remember the check.
+-}
+typecheckValueWith :: (Text -> IO Text) -> IO Text -> Text -> IO TypecheckResult
+typecheckValueWith askType askBindings source = do
+    started <- getMonotonicTimeNSec
+    enabled <- primitiveEnabled
+    case (enabled, classifyTypecheckInput source) of
+        (False, _) -> finish started "disabled" True "type-check primitive disabled" True
+        (_, OutsideValueSubset) ->
+            finish started "not-in-value-subset" False "not in the Path-2 value subset" True
+        _ -> do
+            before <- askBindings
+            output <- askType (wrapped source)
+            after <- askBindings
+            let failed = any (`T.isInfixOf` output) failureSignals
+                ok = not failed && expectedSuffix source `T.isInfixOf` output
+            finish started (if ok then "ok" else "diagnostic") ok output (before == after)
+  where
+    failureSignals = ["error:", "Found hole:", "parse error"]
+    finish started verdict ok diagnostics unchanged = do
+        finished <- getMonotonicTimeNSec
+        hPutStrLn stderr $
+            "sabela_typecheck mode=path2-value verdict="
+                <> verdict
+                <> " no_pollution="
+                <> map toLower (show unchanged)
+                <> " latency_us="
+                <> show ((finished - started) `div` 1000)
+        pure
+            ( TypecheckResult
+                (ok && unchanged)
+                ( if unchanged
+                    then diagnostics
+                    else diagnostics <> "\nPath-2 polluted live bindings"
+                )
+            )
+    wrapped s = case classifyTypecheckInput s of
+        ValueBindings ->
+            ("(let { " <>) . (<> " } in ())") . T.intercalate "; " $ meaningfulLines s
+        _ -> s
+    expectedSuffix s = case classifyTypecheckInput s of
+        ValueBindings -> ":: ()"
+        _ -> "::"
+
+primitiveEnabled :: IO Bool
+primitiveEnabled = do
+    value <- lookupEnv "SABELA_TYPECHECK_PRIMITIVE"
+    pure $ maybe True ((`notElem` ["0", "off", "false", "no"]) . map toLower) value
 
 {- | Snapshot the prelude-injected bindings as the baseline scrubbed from later
 'queryBindings' results. Call once, right after prelude injection.

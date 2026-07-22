@@ -61,8 +61,12 @@ run_fourmolu() {
     fi
 
     # Every tracked *.hs (siza-client included — it is tracked now).
+    # Deleted-but-tracked files are filtered out: fourmolu aborts on a
+    # path that no longer exists on disk.
     local files
-    files=$(git ls-files '*.hs')
+    files=$(git ls-files '*.hs' | while IFS= read -r f; do
+        [ -f "$f" ] && printf '%s\n' "$f"
+    done)
     if [[ -z "$files" ]]; then
         echo "[format] no *.hs files; skipping fourmolu"
         return 0

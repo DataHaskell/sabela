@@ -15,6 +15,9 @@ module Sabela.AI.Capabilities.Scratchpad (
     -- * Pieces (exposed for testing)
     renderHaskellForGhci,
     augmentGhciError,
+    silentDiagnostic,
+    isolationDiagnostic,
+    scratchpadVerdict,
 ) where
 
 import Control.Applicative ((<|>))
@@ -26,12 +29,16 @@ import Data.IORef (atomicModifyIORef')
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
+import GHC.Clock (getMonotonicTimeNSec)
+import System.Environment (lookupEnv)
 import System.FilePath ((</>))
+import System.IO (hPutStrLn, stderr)
 import System.IO.Temp (createTempDirectory)
 
 import Sabela.AI.Capabilities.Util (compactMaybeText, fieldText, parseCellLang)
 import Sabela.AI.Store
 import Sabela.AI.Types
+import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Api (errorJson)
 import Sabela.Parse.Normalize (rewriteTopLevelLet)
 
@@ -61,6 +68,16 @@ import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 import Sabela.SessionTypes (CellLang (..), SessionBackend (..))
 import Sabela.State (App (..), readNotebook)
 import Sabela.State.Environment (Environment (..))
+import Sabela.ThrowawayExecute (
+    ContainmentStatus (..),
+    ExecuteQualification (..),
+    ExecuteReason (..),
+    ExecuteResult (..),
+    ExecuteVerdict (..),
+    SandboxStatus (..),
+    admitExecute,
+    executeFlagEnabled,
+ )
 import qualified ScriptHs.Parser as Scripths
 import qualified ScriptHs.Render as Scripths
 
@@ -131,27 +148,70 @@ execScratchpad app store input = do
         rawLang = fieldText "language" input
         mLang = if T.null rawLang then Just Haskell else parseCellLang rawLang
     case (T.null rawCode, mLang) of
-        (True, _) -> pure (errOutcome (errorJson "code required"))
+        (True, _) ->
+            pure (errOutcome (withVerdict VerdictCouldNotRun (errorJson "code required")))
         (_, Nothing) ->
             pure
                 ( errOutcome
-                    ( errorJson
-                        ( "Unknown language: "
-                            <> rawLang
-                            <> ". Expected Haskell or Python."
-                        )
+                    ( withVerdict VerdictCouldNotRun $
+                        errorJson
+                            ( "Unknown language: "
+                                <> rawLang
+                                <> ". Expected Haskell or Python."
+                            )
                     )
                 )
-        (False, Just lang) -> do
-            -- Seed the scratchpad with the notebook's declared deps plus the
-            -- snippet's own, so an already-declared package (granite, dataframe)
-            -- is available without the model re-stating it.
-            nb <- readNotebook (appNotebook app)
-            let deps0 =
-                    S.toList . S.fromList $
-                        Scripths.metaDeps (collectMetadata nb)
-                            ++ Scripths.metaDeps (collectMetadataFromContent rawCode)
-            runScratchpadHealed app store lang rawCode deps0 scratchpadDepHealCap
+        (False, Just Haskell) -> do
+            requested <- executeFlagEnabled <$> lookupEnv "SABELA_TYPECHECK_FORK_SCRATCH"
+            if requested
+                then unavailableThrowawayExecute
+                else runLegacyScratchpad app store Haskell rawCode
+        (False, Just lang) -> runLegacyScratchpad app store lang rawCode
+
+runLegacyScratchpad :: App -> AIStore -> CellLang -> Text -> IO ToolOutcome
+runLegacyScratchpad app store lang rawCode = do
+    -- Seed the scratchpad with the notebook's declared deps plus the
+    -- snippet's own, so an already-declared package is available.
+    nb <- readNotebook (appNotebook app)
+    let deps0 =
+            S.toList . S.fromList $
+                Scripths.metaDeps (collectMetadata nb)
+                    ++ Scripths.metaDeps (collectMetadataFromContent rawCode)
+    runScratchpadHealed app store lang rawCode deps0 scratchpadDepHealCap
+
+unavailableThrowawayExecute :: IO ToolOutcome
+unavailableThrowawayExecute = do
+    started <- getMonotonicTimeNSec
+    result <- admitExecute qualification (pure ())
+    finished <- getMonotonicTimeNSec
+    let latencyUs = (finished - started) `div` 1000
+    hPutStrLn stderr $
+        "sabela_throwaway_execute mode=execute verdict=unavailable latency_us="
+            <> show latencyUs
+            <> " sandbox=unqualified no_orphan_check=failed"
+    pure . errOutcome $
+        object
+            [ "mode" .= ("execute" :: Text)
+            , "verdict" .= executeVerdictText (executeVerdict result)
+            , "reason" .= fmap executeReasonText (executeReason result)
+            , "sandbox" .= ("macos-sandbox-exec-unqualified" :: Text)
+            , "noOrphanCheck" .= ("failed-setsid-descendant-scenario" :: Text)
+            , "latencyUs" .= latencyUs
+            ]
+  where
+    qualification =
+        ExecuteQualification
+            { qualificationNotebookGhc = "unknown"
+            , qualificationHelperGhc = "unknown"
+            , qualificationSandbox = SandboxMacOS
+            , qualificationContainment = ContainmentUnproven
+            }
+    executeVerdictText ExecuteOk = "ok" :: Text
+    executeVerdictText ExecuteCompileError = "compile_error"
+    executeVerdictText ExecuteTimedOut = "timed_out"
+    executeVerdictText ExecuteUnavailable = "unavailable"
+    executeReasonText HelperVersionMismatch = "helper_version_mismatch" :: Text
+    executeReasonText ContainmentNotProven = "containment_not_proven"
 
 -- | How many missing deps the scratchpad will infer-and-install per call.
 scratchpadDepHealCap :: Int
@@ -179,7 +239,10 @@ runScratchpadHealed app store lang rawCode deps budget = do
     case res of
         Left e -> do
             evictScratchpad store
-            pure (errOutcome (errorJson (T.pack (show e))))
+            pure
+                ( errOutcome
+                    (withVerdict VerdictCouldNotRun (errorJson (T.pack (show e))))
+                )
         Right (stdout, stderr)
             | lang == Haskell
             , budget > 0
@@ -196,15 +259,59 @@ runScratchpadHealed app store lang rawCode deps budget = do
                 let augErr = augmentGhciError stderr
                 stdoutV <- compactMaybeText store (Just stdout)
                 stderrV <- compactMaybeText store (Just augErr)
-                let payload =
+                let guidance = guidancePairs (diagnose stderr)
+                    diagPair =
+                        [ "diagnostic" .= d
+                        | Just d <- [silentDiagnostic stdout stderr guidance]
+                        ]
+                    payload =
                         object
-                            ( ["stdout" .= stdoutV, "stderr" .= stderrV]
-                                <> guidancePairs (diagnose stderr)
+                            ( [ "verdict" .= verdictTag (scratchpadVerdict stdout stderr)
+                              , "stdout" .= stdoutV
+                              , "stderr" .= stderrV
+                              ]
+                                <> guidance
+                                <> diagPair
                             )
                 pure $
                     if T.null stderr
                         then okOutcome payload
                         else errOutcome payload
+
+{- | Section 5.3: the schema-required verdict of a scratchpad run, keyed on the
+observable outcome class alone — stderr = diagnostic, output = ok, silence =
+could-not-run. Silence can never render as a pass.
+-}
+scratchpadVerdict :: Text -> Text -> VerdictClass
+scratchpadVerdict stdout stderr
+    | not (T.null (T.strip stderr)) = VerdictDiagnostic
+    | not (T.null (T.strip stdout)) = VerdictOk
+    | otherwise = VerdictCouldNotRun
+
+-- | Prepend the section-5.3 verdict field to a verifier payload.
+withVerdict :: VerdictClass -> Value -> Value
+withVerdict c (Object o) =
+    Object (KM.insert (Key.fromText "verdict") (String (verdictTag c)) o)
+withVerdict c v = object ["verdict" .= verdictTag c, "result" .= v]
+
+{- | R6.7: the scratchpad never answers with silence. When a snippet yields no
+output, no error and no guidance, a typed diagnostic states the scratchpad's
+isolation and the in-session alternative; any real output suppresses it.
+-}
+silentDiagnostic :: Text -> Text -> [a] -> Maybe Text
+silentDiagnostic stdout stderr guidance
+    | T.null (T.strip stdout) && T.null (T.strip stderr) && null guidance =
+        Just isolationDiagnostic
+    | otherwise = Nothing
+
+-- | What the scratchpad cannot do, and what to use instead.
+isolationDiagnostic :: Text
+isolationDiagnostic =
+    "No output and no error. The scratchpad is ISOLATED from the notebook \
+    \session: it cannot see notebook bindings, and packages need their own \
+    \`-- cabal:` line inside the snippet. A pure binding prints nothing — \
+    \`print` it here, or probe live notebook state with check_type / \
+    \list_bindings, or just insert a cell instead."
 
 {- | Tear down the cached scratchpad backend (if any) and clear the slot.
 Used after a failure so the next scratchpad call starts a fresh session.

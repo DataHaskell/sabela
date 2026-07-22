@@ -7,6 +7,7 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.Agent.Check (CheckResult (..))
 import Test.Hspec
 
 import Eval.Agent (
@@ -36,13 +37,44 @@ plotTask = Task "q" "Plot these quarterly sales with the granite library." ByRen
 
 spec :: Spec
 spec = describe "Rank 1 type scaffold" $ do
-    describe "scaffoldCall (fires only for a dataframe-over-CSV task)" $ do
-        it "fires for a dataframe task naming a CSV" $
+    describe "scaffoldCall (fires on the data-file key, never a library name)" $ do
+        it "fires for a task naming a CSV" $
             (tcName <$> scaffoldCall (taskPrompt dfTask)) `shouldBe` Just "insert_cell"
         it "does not fire for a pure task" $
             (tcName <$> scaffoldCall (taskPrompt pureTask)) `shouldBe` Nothing
-        it "does not fire for a plot-only task (no dataframe, no CSV)" $
+        it "does not fire for a plot-only task (no data file)" $
             (tcName <$> scaffoldCall (taskPrompt plotTask)) `shouldBe` Nothing
+
+    describe "no-library-token invariant (dispatch is never name-keyed)" $ do
+        let structured lib =
+                "Using the "
+                    <> lib
+                    <> " library, load sales.csv and define `total :: Double`."
+            libs = ["dataframe", "granite", "pandas", "acme-tables", "quux"]
+        it
+            "the decision is invariant under library-name substitution with \
+            \structure held constant"
+            $ mapM_
+                ( \lib ->
+                    (lib, scaffoldCall (structured lib))
+                        `shouldBe` (lib, scaffoldCall (structured "dataframe"))
+                )
+                libs
+        it "fires for every library spelling when the data file is present" $
+            mapM_
+                ( \lib ->
+                    (tcName <$> scaffoldCall (structured lib))
+                        `shouldBe` Just "insert_cell"
+                )
+                libs
+        it "never fires without the data file, for every library spelling" $
+            mapM_
+                ( \lib ->
+                    scaffoldCall
+                        ("Using the " <> lib <> " library, define `total :: Double`.")
+                        `shouldBe` Nothing
+                )
+                libs
 
     describe "scaffoldText (the baked-in import and typed load)" $ do
         let s = scaffoldText "sales.csv"
@@ -119,5 +151,5 @@ scriptedDriver disp script = do
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = pure True
+            , drvVerify = pure (CheckPassed, Nothing)
             }

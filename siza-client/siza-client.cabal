@@ -27,6 +27,7 @@ library
     default-extensions: OverloadedStrings, LambdaCase
     exposed-modules:  Siza.Discover
                       Siza.Transport
+                      Siza.Transport.Failure
                       Siza.HubToken
                       Siza.Login
                       Siza.Cli
@@ -47,12 +48,59 @@ library
                       Siza.Retro
                       Siza.Agent.Loop
                       Siza.Agent.Loop.Support
+                      Siza.Agent.Loop.WrapUp
+                      Siza.Agent.Loop.Escalate
+                      Siza.Agent.Loop.Route
+                      Siza.Agent.EmitLedger
                       Siza.Agent.Chat
                       Siza.Agent.Check
+                      Siza.Agent.CheckExtract
                       Siza.Agent.Tools
+                      Siza.Agent.OutcomeDistill
+                      Siza.Agent.ToolRoute
+                      Siza.Agent.Ack
                       Siza.Agent.Discover
+                      Siza.Agent.Discover.Types
+                      Siza.Agent.Discover.Interpret
+                      Siza.Agent.Discover.UnitName
+                      Siza.Agent.Discover.Classify
+                      Siza.Agent.Discover.Merge
+                      Siza.Agent.Discover.Rank
+                      Siza.Agent.Discover.Render
+                      Siza.Agent.Discover.Resolved
+                      Siza.Agent.Discover.ScopeFilter
+                      Siza.Agent.Discover.Inventory
+                      Siza.Agent.Discover.Fetch
+                      Siza.Agent.Discover.Guidance
+                      Siza.Agent.Discover.Envelope
+                      Siza.Agent.Discover.FactSelect
+                      Siza.Agent.Discover.Exact
+                      Siza.Agent.Discover.Construct
+                      Siza.Agent.Discover.Goal
+                      Siza.Agent.Discover.Literal
+                      Siza.Agent.Discover.ProducerCard
+                      Siza.Agent.Discover.Ledger
+                      Siza.Agent.Discover.Request
+                      Siza.Agent.Discover.Advice
+                      Siza.Agent.Discover.Candidate
+                      Siza.Agent.Discover.MissLadder
+                      Siza.Agent.Discover.Closure
+                      Siza.Agent.Discover.Steer
+                      Siza.Agent.Discover.History
+                      Siza.Agent.Discover.HistoryGuard
+                      Siza.Agent.Discover.Hackage
+                      Siza.Agent.DiscoverTool
+                      Siza.Agent.Futility
+                      Siza.Agent.Streak
+                      Siza.Agent.Deliverable
+                      Siza.Agent.NoteLedger
                       Siza.Agent.Owned
                       Siza.Agent.Repair
+                      Siza.Agent.Repair.Blocking
+                      Siza.Agent.RepairGuard
+                      Siza.Agent.RepairLocate
+                      Siza.Agent.RepairTiers
+                      Siza.Agent.RenderContract
                       Siza.Agent.Messages
                       Siza.Agent.Transcript
                       Siza.Agent.Sample
@@ -108,19 +156,97 @@ test-suite siza-client-test
     main-is:          Main.hs
     other-modules:    Test.Fixtures
                       Test.AgentCheckSpec
+                      Test.KernelVocabClientSpec
+                      Test.WriteAckClientSpec
+                      Test.DiscoverToolClientSpec
+                      Test.DiscoverFixtures
+                      Test.CatalogueSim
+                      Test.DiscoverCatalogueSpec
+                      Test.DiscoverScopeLedgerSpec
+                      Test.DiscoverWorldChangeSpec
+                      Test.DiscoverConstructSpec
+                      Test.RepairTierGenSpec
+                      Test.DiscoverTruthSpec
+                      Test.DiscoverUnitScrubSpec
+                      Test.DiscoverLedgerSpec
+                      Test.DiscoverSeedSpec
+                      Test.DiscoverEmissionSpec
+                      Test.DiscoverEnvelopeSpec
+                      Test.DiscoverHiddenDbSpec
+                      Test.DiscoverHistorySpec
+                      Test.DiscoverClosureSpec
+                      Test.DiscoverInvariantSpec
+                      Test.DiscoverVariantDedupSpec
+                      Test.NormalizeFindabilitySpec
+                      Test.ReenterContrastSpec
+                      Test.DiscoverMissSpec
+                      Test.DiscoverModeGridSpec
+                      Test.DiscoverRankPlainSpec
+                      Test.DiscoverRecordBudgetSpec
+                      Test.DiscoverRequestSpec
+                      Test.DiscoverResolvedSpec
+                      Test.DiscoverScopeConserveSpec
+                      Test.DiscoverAbsentBoundSpec
+                      Test.SteerFeedSpec
+                      Test.DiscoverGoalSpec
+                      Test.DiscoverGoalRankSpec
+                      Test.DiscoverInventorySpec
+                      Test.RepairDispatchSpec
+                      Test.RepairGuardSpec
+                      Test.RepairGridSpec
+                      Test.GoalHonestySpec
+                      Test.WorldCardSpec
+                      Test.RepairCascadeSpec
+                      Test.HoleDirectedInvariantSpec
+                      Test.WorldChangeGateSpec
+                      Test.RedStreakSpec
+                      Test.CounterexampleSpec
+                      Test.VerifyDiagSpec
+                      Test.ContextCharsSpec
                       Test.LanguageSpec
                       Test.ProvenanceSpec
                       Test.CrossSeamSpec
+                      Test.FutilitySpec
+                      Test.TransportFailureSpec
                       Test.TransportSpec
                       Test.HubTokenSpec
                       Test.LoginSpec
                       Test.McpSpec
+                      Test.NoteLedgerSpec
+                      Test.NudgeSpec
+                      Test.OutcomeDistillSpec
+                      Test.PostNudgeGateSpec
+                      Test.CardGateSpec
+                      Test.FactSelectSpec
+                      Test.VerifierSurfaceSpec
+                      Test.SteerSpec
+                      Test.SteerLoopSpec
+                      Test.WrapUpSpec
+                      Test.WrapUpLoopSpec
+                      Test.ScaffoldChatSpec
+                      Test.ToolRouteSpec
+                      Test.SchemaRecoverySpec
+                      Test.GrammarCardSpec
+                      Test.LeverSurfaceSpec
+                      Test.VerdictSurfaceSpec
+                      Test.EmitLedgerSpec
+                      Test.EmitLedgerProtectSpec
+                      Test.AdviceSpec
+                      Test.CandidateSpec
+                      Test.CandidateRankSpec
+                      Test.EscalateSpec
+                      Test.RoutedUnblockSpec
+                      Test.RenderContractSpec
+                      Test.DoneSignalSpec
+                      Test.ReEchoFixture
+                      Test.ReEchoFixtureSpec
     default-language: Haskell2010
     default-extensions: OverloadedStrings
     build-depends:    base >= 4 && < 5
                     , siza-client
                     , sabela:sabela-contract >= 0.1 && < 0.2
                     , hspec >= 2 && < 3
+                    , http-client >= 0.7 && < 0.10
                     , aeson >= 2.0 && < 3
                     , bytestring >= 0.10 && < 0.13
                     , text >= 1.2 && < 3

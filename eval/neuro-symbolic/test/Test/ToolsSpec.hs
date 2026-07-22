@@ -40,7 +40,7 @@ spec = do
     describe "unknownToolMsg (recovery hint for an invented tool)" $ do
         it "names the invented tool" $
             ("browse" `T.isInfixOf` unknownToolMsg "browse") `shouldBe` True
-        it "redirects a browse to find_function" $
-            ("find_function" `T.isInfixOf` unknownToolMsg "browse") `shouldBe` True
+        it "redirects a browse to discover" $
+            ("discover" `T.isInfixOf` unknownToolMsg "browse") `shouldBe` True
         it "lists delete_cell among the valid tools" $
             ("delete_cell" `T.isInfixOf` unknownToolMsg "bogus") `shouldBe` True

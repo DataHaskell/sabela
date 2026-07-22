@@ -24,7 +24,12 @@ import Sabela.AI.Capabilities.Edit.Run (
  )
 import Sabela.AI.CellResult
 import Sabela.AI.Types (ExecutionResult (..))
-import Sabela.Model (CellError (..), MimeType (..), OutputItem (..))
+import Sabela.Model (
+    CellError (..),
+    MimeType (..),
+    OutputItem (..),
+    bareCellError,
+ )
 import Test.Hspec
 
 -- | Round-trip a value through the real ToJSON/FromJSON pair.
@@ -50,7 +55,7 @@ sampleOutput :: OutputItem
 sampleOutput = OutputItem MimePlain "hi"
 
 cerr :: CellError
-cerr = CellError (Just 1) (Just 2) "boom"
+cerr = bareCellError (Just 1) (Just 2) "boom"
 
 -- | The legacy ok-derivation, reproduced to assert the law against it.
 legacyOk :: ExecutionResult -> Bool

@@ -36,11 +36,13 @@ module Sabela.Parse (
     CellSymbols (..),
     cellNames,
     cellSymbols,
+    parseCellModule,
     staleBindings,
+    unparseableChunks,
     validateCellShape,
 ) where
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -51,6 +53,7 @@ import GHC.Driver.Session (
     defaultDynFlags,
     xopt_set,
  )
+import qualified GHC.Hs as Hs
 import qualified GHC.LanguageExtensions.Type as LE
 import GHC.Parser.Lexer (ParseResult (..))
 import GHC.Types.SrcLoc (GenLocated (..), unLoc)
@@ -95,20 +98,45 @@ extra channels feed typeclass reactivity.
 -}
 cellSymbols :: Text -> CellSymbols
 cellSymbols src =
-    let preprocessed = preprocess src
-        moduleSrc =
+    case parseCellModule src of
+        Just hsMod -> extractFromModule hsMod
+        Nothing ->
+            let (defs, uses) = fallbackPerChunk (preprocess src)
+             in CellSymbols
+                    { csDefs = defs
+                    , csUses = uses
+                    , csProvides = S.empty
+                    , csClassMethods = S.empty
+                    }
+
+-- | Parse a cell as a synthetic module; 'Nothing' on any parse failure.
+parseCellModule :: Text -> Maybe (Hs.HsModule Hs.GhcPs)
+parseCellModule src =
+    let moduleSrc =
             "module SabelaCell where\n"
-                ++ T.unpack (T.unlines preprocessed)
+                ++ T.unpack (T.unlines (preprocess src))
      in case P.parseModule moduleSrc dynFlags of
-            POk _ (L _ hsMod) -> extractFromModule hsMod
-            PFailed _ ->
-                let (defs, uses) = fallbackPerChunk preprocessed
-                 in CellSymbols
-                        { csDefs = defs
-                        , csUses = uses
-                        , csProvides = S.empty
-                        , csClassMethods = S.empty
-                        }
+            POk _ (L _ hsMod) -> Just hsMod
+            PFailed _ -> Nothing
+
+{- | The chunks that parse as none of a declaration, an expression, or
+module-level content (imports, headers), after 'cellSymbols'-style fragment
+preprocessing — the parse-health evidence 'Sabela.AI.NormalizeGate' compares.
+-}
+unparseableChunks :: Text -> [Text]
+unparseableChunks src =
+    [ chunk
+    | chunk <- splitChunks (filter (not . commentLine) (preprocess src))
+    , isNothing (tryParseChunk chunk)
+    , not (moduleLevel chunk)
+    ]
+  where
+    commentLine l =
+        let t = T.stripStart l
+         in "--" `T.isPrefixOf` t || "{-#" `T.isPrefixOf` t
+    moduleLevel chunk = case P.parseModule (T.unpack chunk) dynFlags of
+        POk _ _ -> True
+        PFailed _ -> False
 
 -- ---------------------------------------------------------------------------
 -- Pre-GHC structural validator (C2)

@@ -2,6 +2,8 @@ module Siza.Agent.Tools (
     catalogue,
     catalogueWith,
     dispatch,
+    offeredArgKeys,
+    offeredNames,
     withInsertDefaults,
     renderOutcome,
     unknownToolMsg,
@@ -15,8 +17,16 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Sabela.AI.Capabilities.ToolName (ToolName (..), resolveToolCall)
+import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.Agent.Ack (reconcileWrite)
+import Siza.Agent.Discover.Request (requestProperties, requestRequired)
+import Siza.Agent.DiscoverTool (
+    discoverToolDescription,
+    runDiscoverCall,
+ )
+import Siza.Agent.OutcomeDistill (distillOutcome)
+import Siza.Agent.ToolRoute (Route (..), routeCallWith)
 import Siza.Transport (Conn, callTool)
 import System.Environment (lookupEnv)
 
@@ -40,31 +50,16 @@ intProp d = object ["type" .= ("integer" :: Text), "description" .= d]
 boolProp :: Text -> Value
 boolProp d = object ["type" .= ("boolean" :: Text), "description" .= d]
 
-{- | The model-facing tool catalogue, parameterised by whether @search_capability@
-is offered (the rest is constant). The product chat passes 'True'; the eval
-harness gates it via 'catalogue' as an A/B lever.
+{- | The model-facing tool catalogue. The Bool is caller compatibility only:
+the @SABELA_CAPABILITY_SEARCH@ lever gates enrichment inside @discover@,
+not the catalogue, so both arms see one discovery tool.
 -}
 catalogueWith :: Bool -> [Value]
-catalogueWith capSearch = baseCatalogue ++ [searchCapabilityTool | capSearch]
+catalogueWith _ = baseCatalogue
 
-{- | The eval-harness catalogue: @search_capability@ is gated behind the
-@SABELA_CAPABILITY_SEARCH@ env var (the A/B lever). Unset omits the tool entirely
-so the OFF arm's model never knows it exists.
--}
+-- | The eval-harness catalogue (constant; see 'catalogueWith' for the lever).
 catalogue :: IO [Value]
-catalogue = do
-    capSearch <- isJust <$> lookupEnv "SABELA_CAPABILITY_SEARCH"
-    pure (catalogueWith capSearch)
-
-searchCapabilityTool :: Value
-searchCapabilityTool =
-    fn
-        "search_capability"
-        "Search ALL of Hackage by plain-language description, type signature, or keyword to DISCOVER functions/packages you don't know. e.g. \"compute how different two strings are\", or a type \"Text -> Text -> Int\", or a name. Returns ranked candidate packages, each with its cabal build-depends line, the modules to import, its key exported functions with signatures, and a paste-able usage example (import line plus a call skeleton for the top function). Use this to find the right library AND see how to call it before importing it."
-        ( props
-            [("query", prop "A description, a type signature, or a name.")]
-            ["query"]
-        )
+catalogue = pure baseCatalogue
 
 baseCatalogue :: [Value]
 baseCatalogue =
@@ -90,7 +85,7 @@ baseCatalogue =
         )
     , fn
         "find_cells_by_content"
-        "Search the NOTEBOOK's own cell sources for a substring (e.g. \"model\", \"fitDecisionTree\"); returns matching cell ids and the matching lines. This is how you locate which cell defines or uses something so you can edit it — unlike find_function/find_by_type, which search installed LIBRARIES, not your notebook."
+        "Search the NOTEBOOK's own cell sources for a substring (e.g. \"model\", \"fitDecisionTree\"); returns matching cell ids and the matching lines. This is how you locate which cell defines or uses something so you can edit it — unlike discover, which searches installed LIBRARIES, not your notebook."
         ( props
             [
                 ( "pattern"
@@ -122,47 +117,16 @@ baseCatalogue =
         (props [] [])
     , fn
         "check_type"
-        "Get the type of an expression, or the kind/definition of a type or class you already know, without running it. To find a name you do not know, use find_function or find_by_type."
+        "Get the type of an expression, or the kind/definition of a type or class you already know, without running it. To find a name you do not know, use discover."
         (props [("expr", prop "An expression, value name, or type/class name.")] ["expr"])
     , fn
-        "find_by_type"
-        "Find an installed function whose TYPE matches a goal type (e.g. \"[Int] -> Int\"). Use when you know the type you need but not the name; differs from find_function, which searches by name/keyword."
-        (props [("goal", prop "A goal type, e.g. \"[Int] -> Int\".")] ["goal"])
+        "discover"
+        discoverToolDescription
+        (props requestProperties requestRequired)
     , fn
         "scratchpad"
         "Run a SELF-CONTAINED Haskell snippet in an isolated session (cannot see notebook bindings). Put the snippet in the `code` argument."
         (props [("code", prop "The self-contained Haskell snippet to run.")] ["code"])
-    , fn
-        "find_package"
-        "Find which Haskell package provides a capability you have not installed yet. Query a keyword or description (e.g. \"linear regression\", \"read csv\", \"plot a bar chart\"); returns the packages, the -- cabal: build-depends: line for a cell's first line, and key modules. The FIRST step for a new capability."
-        ( props
-            [
-                ( "query"
-                , prop
-                    "A keyword or task, e.g. \"linear regression\", \"read csv\", \"plotting\"."
-                )
-            ]
-            ["query"]
-        )
-    , fn
-        "find_example_cell"
-        "Search runnable example cells for a cell-shape idiom (e.g. \"read csv\", \"typed column\"); returns source to paste and adapt. To find which package or function does a task, use find_package or find_function."
-        ( props
-            [("query", prop "A shape idiom, e.g. \"read csv\" or \"typed column\".")]
-            ["query"]
-        )
-    , fn
-        "find_function"
-        "Find a function by NAME or KEYWORD in the installed LIBRARIES, or list a library module's exports by passing a module name (\"DataFrame\", \"Granite.Svg\"). Returns ranked matches with module and signature; nothing on a true miss. This searches installed libraries, NOT your notebook — to find where something is defined or used in your notebook, use find_cells_by_content or list_cells. To search by TYPE use find_by_type."
-        ( props
-            [
-                ( "query"
-                , prop
-                    "A keyword (\"animate\"), a type fragment (\"Double -> Picture\"), or a module name (\"Granite.Svg\")."
-                )
-            ]
-            ["query"]
-        )
     , fn
         "delete_cell"
         "Delete a cell from the notebook. Use this to remove a cell you cannot fix in place — e.g. a failing cell that is blocking you from inserting a new one."
@@ -173,7 +137,7 @@ baseCatalogue =
         (props [] [])
     , fn
         "await_idle"
-        "Block until the running cell or build finishes (a bounded ~45s long-poll), then return the fresh kernel status. Call this when a tool says the kernel is busy — do NOT re-run the cell. Re-call while it reports timedOut; the kernel is still working."
+        "Block until the running cell or build finishes (a bounded ~45s long-poll), then return the fresh kernel status. `waited` is one of: idle | settled | timedOut | kernelDead. Call this when a tool says the kernel is busy — do NOT re-run the cell. Re-call while it reports timedOut (the kernel is still working); if the reply carries a `resource` line the cell looks non-terminating — interrupt, shrink the work, rewrite. kernelDead means the kernel died: kernel_restart."
         (props [] [])
     , fn
         "interrupt"
@@ -194,21 +158,66 @@ props ps required =
         , "required" .= required
         ]
 
+{- | Dispatch through the 'routeCall' boundary: an offered name can never be
+answered "unknown tool" for its argument shape (P4/M8); a still-wrong shape
+answers one hint naming the wrapper.
+-}
 dispatch :: Conn -> Text -> ToolCall -> IO (Either Text ToolOutcome)
-dispatch conn base (ToolCall name args) =
-    case resolveToolCall name args of
-        Nothing -> pure (Left (unknownToolMsg name))
-        Just (InsertCell, a) -> callTool conn base InsertCell (withInsertDefaults a)
-        Just (tn, a) -> callTool conn base tn a
+dispatch conn base tc = case routeCallWith offeredArgKeys tc of
+    RouteBadArgs hint ->
+        pure (Right (ToolErr (object ["error" .= hint])))
+    RouteDiscover q args -> do
+        capSearch <- isJust <$> lookupEnv "SABELA_CAPABILITY_SEARCH"
+        Right <$> runDiscoverCall capSearch (callTool conn base) q args
+    RouteTool InsertCell a ->
+        reconcile =<< callTool conn base InsertCell (withInsertDefaults a)
+    RouteTool tn a -> reconcile =<< callTool conn base tn a
+    RouteUnknown name -> pure (Left (unknownToolMsg name))
+  where
+    -- R6.1: an executing write ack settles through await_idle before any
+    -- consumer (health gate, sampling, markers) reads it as an outcome.
+    reconcile = reconcileWrite (callTool conn base)
 
+{- | Derived from the same catalogue values the model is offered, so the
+valid-list can never drift from the catalogue again (a drifted list once
+listed the very tool it was rejecting).
+-}
 unknownToolMsg :: Text -> Text
 unknownToolMsg name =
     "unknown tool '"
         <> name
-        <> "'. Valid tools: list_cells, read_cell, find_cells_by_content, insert_cell, \
-           \replace_cell_source, execute_cell, delete_cell, list_bindings, check_type, \
-           \find_by_type, scratchpad, find_package, find_example_cell, find_function, \
-           \search_capability."
+        <> "'. Valid tools: "
+        <> T.intercalate ", " offeredNames
+        <> "."
+
+-- | The function names in the offered catalogue.
+offeredNames :: [Text]
+offeredNames = map fst offeredArgKeys
+
+{- | Every offered tool's (name, (property keys, required keys)), derived
+from the same catalogue values the model sees, so the garbled-name rescue
+fingerprint can never drift from the advertised schemas.
+-}
+offeredArgKeys :: [(Text, ([Text], [Text]))]
+offeredArgKeys =
+    [ (n, schemaKeys f)
+    | Object o <- baseCatalogue
+    , Just (Object f) <- [KM.lookup "function" o]
+    , Just (String n) <- [KM.lookup "name" f]
+    ]
+
+-- | A function schema's property-key and required-key lists.
+schemaKeys :: KM.KeyMap Value -> ([Text], [Text])
+schemaKeys f = case KM.lookup "parameters" f of
+    Just (Object p) -> (propKeys p, reqKeys p)
+    _ -> ([], [])
+  where
+    propKeys p = case KM.lookup "properties" p of
+        Just (Object ps) -> map K.toText (KM.keys ps)
+        _ -> []
+    reqKeys p = case KM.lookup "required" p of
+        Just (Array rs) -> [r | String r <- foldr (:) [] rs]
+        _ -> []
 
 {- | Fill the cell_type/language defaults the eval model often omits. Placement
 needs no default: the server appends every new cell.
@@ -222,10 +231,14 @@ withInsertDefaults (Object o) =
     def k val m = if KM.member k m then m else KM.insert k val m
 withInsertDefaults v = v
 
+{- | Render a tool outcome for the model's context. Execution outputs are
+distilled to a bounded, escape-stripped preview ('distillOutcome', R10-T5)
+before encoding; 'trunc' stays as an absolute backstop.
+-}
 renderOutcome :: Either Text ToolOutcome -> Text
 renderOutcome (Left e) = "transport error: " <> e
-renderOutcome (Right (ToolOk v)) = trunc (enc v)
-renderOutcome (Right (ToolErr v)) = "TOOL ERROR: " <> trunc (enc v)
+renderOutcome (Right (ToolOk v)) = trunc (enc (distillOutcome v))
+renderOutcome (Right (ToolErr v)) = "TOOL ERROR: " <> trunc (enc (distillOutcome v))
 
 enc :: Value -> Text
 enc = TE.decodeUtf8 . LBS.toStrict . encode

@@ -31,12 +31,15 @@ importedModule l = case T.words l of
     alias _ ("as" : p : _) = p
     alias m _ = m
 
-{- | Whether an error implicates the live grammar (a name the model got wrong),
-so re-browsing the cell's modules is worth doing.
+{- | Injection trigger 2 of search-api.md §9.1: a failed compile whose
+diagnostic names an unresolved symbol or module. Instance/type errors
+implicate the USAGE of known names, not the name surface — no re-browse.
 -}
 grammarImplicated :: Text -> Bool
 grammarImplicated err =
-    any (`T.isInfixOf` T.toLower err) ["not in scope", "no instance for"]
+    any
+        (`T.isInfixOf` T.toLower err)
+        ["not in scope", "could not load module", "could not find module"]
 
 {- | Modules to re-browse for a red cell: its imports, when the error implicates
 the grammar; none otherwise.

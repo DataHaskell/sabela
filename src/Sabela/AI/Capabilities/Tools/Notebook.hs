@@ -200,7 +200,7 @@ notebookTools =
         )
     , mkTool
         Scratchpad
-        "Run code in an isolated scratchpad session. Does NOT modify the notebook. The scratchpad has the same packages available but separate state. Use this for standalone experiments."
+        "Run code in an isolated scratchpad session. Does NOT modify the notebook. The scratchpad has the same packages available but separate state. Use this for standalone experiments. It CANNOT see notebook variables (a cell's `df`, etc.) — to inspect or run a pure function on a live notebook value, use eval_live."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"

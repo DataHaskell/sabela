@@ -56,10 +56,10 @@ data ToolName
     | AwaitIdle
     | ExportNotebook
     | PeekData
-    | FindPackage
     | FindExampleCell
     | FindFunction
     | SearchCapability
+    | EvalLive
     deriving (Eq, Show)
 
 parseToolName :: Text -> Maybe ToolName
@@ -86,10 +86,10 @@ parseToolName = \case
     "await_idle" -> Just AwaitIdle
     "export_notebook" -> Just ExportNotebook
     "peek_data" -> Just PeekData
-    "find_package" -> Just FindPackage
     "find_example_cell" -> Just FindExampleCell
     "find_function" -> Just FindFunction
     "search_capability" -> Just SearchCapability
+    "eval_live" -> Just EvalLive
     _ -> Nothing
 
 {- | Resolve a possibly-malformed tool call to a typed name and args: a weak model
@@ -126,13 +126,13 @@ primaryArgKey :: ToolName -> Maybe Text
 primaryArgKey = \case
     FindFunction -> Just "query"
     SearchCapability -> Just "query"
-    FindPackage -> Just "query"
     FindExampleCell -> Just "query"
     FindCellsByContent -> Just "pattern"
     CheckType -> Just "expr"
     FindByType -> Just "goal"
     DescribeFunction -> Just "name"
     ApiReference -> Just "module"
+    EvalLive -> Just "expression"
     _ -> Nothing
 
 {- | Wire-format spelling of a 'ToolName'. The inverse of 'parseToolName':
@@ -163,10 +163,10 @@ toolWireName = \case
     AwaitIdle -> "await_idle"
     ExportNotebook -> "export_notebook"
     PeekData -> "peek_data"
-    FindPackage -> "find_package"
     FindExampleCell -> "find_example_cell"
     FindFunction -> "find_function"
     SearchCapability -> "search_capability"
+    EvalLive -> "eval_live"
 
 {- | Build a 'ToolDef' from a typed 'ToolName'. The wire-name string sent
 to Anthropic comes from 'toolWireName', the single source of truth that

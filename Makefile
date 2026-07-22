@@ -1,8 +1,8 @@
 # Sabela convenience targets. Most day-to-day commands are still plain
 # `cabal` / `./scripts/*.sh` (see CLAUDE.md); this Makefile exists mainly
-# to make regenerating the embedded API reference discoverable.
+# to make rebuilding the embedded frontend and search cache discoverable.
 
-.PHONY: help api-reference frontend frontend-check hub-assets search-cache capability-index
+.PHONY: help frontend frontend-check hub-assets search-cache capability-index
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -24,10 +24,6 @@ hub-assets: ## Refresh the hub's WASM assets (sabela-hub/static/) so it builds/d
 		&& echo "copied mhs-embed.js from static/" \
 		|| echo "static/mhs-embed.js absent; keeping the committed sabela-hub/static/mhs-embed.js (vendored runtime)"
 	@echo "Committed sabela-hub/static/* is what the hub Dockerfile bundles into /opt/static."
-
-api-reference: ## Regenerate data/api-reference.txt from dataframe/granite (rerun when those packages change)
-	./tools/gen-api-reference.sh
-	@echo "Now rebuild sabela (cabal build) so the embedded card picks up changes."
 
 search-cache: ## Build/refresh the LOCAL Hoogle + Hackage-names cache the resolver queries (no network at run time)
 	./tools/update-search-cache.sh

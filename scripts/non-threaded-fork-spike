@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+if [ "${SABELA_TYPECHECK_FORK_SCRATCH:-}" != "1" ]; then
+    echo "unavailable=flag-disabled"
+    exit 78
+fi
+
+case "${1:-}" in
+    idle|after-cell|live-busy|execute-timeout) ;;
+    *) echo "unavailable=unknown-scenario"; exit 64 ;;
+esac
+
+build_dir="dist-newstyle/non-threaded-fork-spike"
+runner="$build_dir/runner"
+source_file="spike/non-threaded-fork/Main.hs"
+mkdir -p "$build_dir"
+if [ ! -x "$runner" ] || [ "$source_file" -nt "$runner" ]; then
+    ghc -O0 -package ghc -package unix "$source_file" -outputdir "$build_dir" -o "$runner" >/dev/null
+fi
+libdir=$(ghc --print-libdir)
+exec "$runner" "$libdir" "$1"

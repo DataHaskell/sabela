@@ -4,12 +4,27 @@
 module Sabela.Errors where
 
 import Control.Applicative ((<|>))
+import Data.Char (isDigit)
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
 import Sabela.Model (CellError (..))
 import ScriptHs.Compiled (parseLinePragmaTag)
+
+{- | The @NNNNN@ of GHC's @[GHC-NNNNN]@ diagnostic code, if the text carries one.
+The textual path (pre-9.8 GHC, and the scratchpad which forces JSON off) still
+prints the code inline, so a coded diagnostic keeps its errors.haskell.org key.
+-}
+ghcCodeIn :: Text -> Maybe Int
+ghcCodeIn t = case T.breakOn "[GHC-" t of
+    (_, rest)
+        | not (T.null rest) ->
+            let digits = T.takeWhile isDigit (T.drop 5 rest)
+             in if T.null digits
+                    then Nothing
+                    else either (const Nothing) (Just . fst) (TR.decimal digits)
+    _ -> Nothing
 
 parseErrors :: Text -> [CellError]
 parseErrors stderr
@@ -20,11 +35,12 @@ parseErrors stderr
         let ls = T.lines block
          in case ls of
                 (hdr : _) -> case parseErrorHeader hdr of
-                    Just (ln, col) -> [CellError (Just ln) col (T.strip block)]
+                    Just (ln, col) ->
+                        [CellError (Just ln) col (T.strip block) (ghcCodeIn block)]
                     Nothing
                         -- Only treat as error if it contains "error" or "Error"
                         | "error" `T.isInfixOf` T.toLower (T.strip block) ->
-                            [CellError Nothing Nothing (T.strip block)]
+                            [CellError Nothing Nothing (T.strip block) (ghcCodeIn block)]
                         | otherwise -> []
                 _ -> []
 
@@ -73,9 +89,9 @@ parseCompiledErrors stderrText =
   where
     addBlock block (m, loose) = case compiledHeader block of
         Just (cid, ln, col) ->
-            let ce = CellError (Just ln) col (scrubTags (T.strip block))
+            let ce = CellError (Just ln) col (scrubTags (T.strip block)) (ghcCodeIn block)
              in (M.insertWith (++) cid [ce] m, loose)
-        Nothing -> (m, CellError Nothing Nothing (T.strip block) : loose)
+        Nothing -> (m, CellError Nothing Nothing (T.strip block) (ghcCodeIn block) : loose)
 
 -- | @sabela-cell-12:4:7@ → (12, 4, Just 7) from a block's first line.
 compiledHeader :: Text -> Maybe (Int, Int, Maybe Int)

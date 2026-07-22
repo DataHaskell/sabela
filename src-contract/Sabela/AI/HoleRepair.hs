@@ -5,7 +5,11 @@ implies, turn a hole-fit blob into candidate names, and substitute a wrong name
 for a fit in source. Shared by the notebook repair path and the eval harness.
 -}
 module Sabela.AI.HoleRepair (
+    afterInfixCI,
     goalFromError,
+    goalSpans,
+    holeSpans,
+    holeQueryFor,
     arityFromError,
     holeTypeFromDiagnostic,
     droppableAnnotation,
@@ -14,16 +18,23 @@ module Sabela.AI.HoleRepair (
     holeFitRewrites,
     suggestedNames,
     orderBySimilarity,
+    editDistance,
     substituteName,
     substituteNameAt,
+    substituteNameAtAll,
 ) where
 
-import Data.Char (isAlphaNum)
+import Control.Monad (foldM)
+import Data.Char (isAlphaNum, isDigit)
 import Data.List (nub, sortOn)
+import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.GoalText (holeQueryFor)
 import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
+import Sabela.AI.Types (ExecutionResult (..))
+import Sabela.Model (CellError (..), bareCellError)
 
 {- | The in-context type GHC infers for a typed hole: @"Found hole: _ :: T"@ →
 @T@. Read non-committingly via @:type@ on a holed expression, so it reflects the
@@ -32,7 +43,7 @@ cell's real bindings — stronger than the type parsed from a not-in-scope error
 holeTypeFromDiagnostic :: Text -> Maybe Text
 holeTypeFromDiagnostic t = do
     rest <- afterInfix "Found hole: _ :: " t
-    let ty = T.strip (T.takeWhile (/= '\n') rest)
+    let ty = joinTypeLines rest
     if T.null ty then Nothing else Just ty
 
 {- | The bad expression annotation GHC names in @"In an expression type
@@ -92,18 +103,81 @@ inferred type, or a type-constructor error, which has no goal type to fit).
 -}
 goalFromError :: Text -> Maybe (Text, Text)
 goalFromError err = do
-    rest <- afterInfix "not in scope:" err
+    rest <- afterInfixCI "not in scope:" err
     let (lhs, rhs) = T.breakOn "::" rest
-    if T.null rhs
+    if T.null rhs || "•" `T.isInfixOf` lhs
         then Nothing
         else do
             name <- lastWord (T.strip lhs)
-            let ty = T.strip (T.takeWhile (/= '\n') (T.drop 2 rhs))
+            let ty = joinTypeLines (T.drop 2 rhs)
             if T.null ty then Nothing else Just (name, ty)
   where
+    -- A hint/context line between the name and a later "::" means the error
+    -- itself printed no type — scavenging one fabricates a wrong goal; so does
+    -- taking a numeric literal for the name.
     lastWord t = case reverse (T.words t) of
-        (w : _) -> Just w
-        [] -> Nothing
+        (w : _) | not (T.all (\c -> isDigit c || c == '.') w) -> Just w
+        _ -> Nothing
+
+{- | The @(wrong, goalType, span)@ triples a failed run implies, one per
+not-in-scope diagnostic. A holistic error carries no span, so only the global
+rewrite applies to it.
+-}
+goalSpans :: Either Text ExecutionResult -> [(Text, Text, Maybe (Int, Int))]
+goalSpans (Left e) = [(w, t, Nothing) | Just (w, t) <- [goalFromError e]]
+goalSpans (Right er) =
+    [ (w, t, (,) <$> ceLine ce <*> ceCol ce)
+    | ce <- resultDiags er
+    , Just (w, t) <- [goalFromError (ceMessage ce)]
+    ]
+
+{- | The @("_", goalType, span)@ triples of literal Found-hole diagnostics —
+the hole-token twin of 'goalSpans', so the hole-fit tier engages on a hole
+the model actually wrote (live_test cell 4).
+-}
+holeSpans :: Either Text ExecutionResult -> [(Text, Text, Maybe (Int, Int))]
+holeSpans (Left e) =
+    [("_", t, Nothing) | Just t <- [holeTypeFromDiagnostic e]]
+holeSpans (Right er) =
+    [ ("_", t, (,) <$> ceLine ce <*> ceCol ce)
+    | ce <- resultDiags er
+    , Just t <- [holeTypeFromDiagnostic (ceMessage ce)]
+    ]
+
+-- | A failed run's diagnostics: the holistic error plus structured messages.
+resultDiags :: ExecutionResult -> [CellError]
+resultDiags er =
+    maybe [] (\m -> [bareCellError Nothing Nothing m]) (erError er)
+        ++ erErrors er
+
+{- | Join a goal type GHC may have wrapped across indented continuation lines:
+the text after @::@ plus every following more-indented, non-blank line, collapsed
+to one whitespace-normalized line. A single-line type is unchanged. The wrapped
+@-> ParsecT …@ tail is exactly what excludes a same-named foreign fit (attoparsec's
+@takeWhile1 :: … -> Parser Text@), so it must survive.
+-}
+joinTypeLines :: Text -> Text
+joinTypeLines afterColon =
+    T.unwords (T.words (T.unlines (firstLine : conts)))
+  where
+    ls = T.lines afterColon
+    firstLine = case ls of
+        (x : _) -> x
+        [] -> ""
+    conts = takeWhile isCont (drop 1 ls)
+    isCont l =
+        not (T.null s)
+            && T.length (T.takeWhile (== ' ') l) >= 2
+            && not ("::" `T.isInfixOf` l)
+            && not (hintLine s)
+      where
+        s = T.strip l
+    -- GHC hint/context prose that can trail a wrapped type: absorbing it into
+    -- the goal silently zeroes every downstream type search.
+    hintLine s =
+        any
+            (`T.isPrefixOf` s)
+            ["Perhaps", "Suggested", "Valid hole fits", "•", "In ", "(imported"]
 
 {- | The expected FUNCTION type a misapplication names, from GHC's
 @"Couldn't match expected type: A -> B"@. A function-shaped expectation means the
@@ -201,3 +275,25 @@ afterInfix :: Text -> Text -> Maybe Text
 afterInfix needle t = case T.breakOn needle t of
     (_, rest) | not (T.null rest) -> Just (T.drop (T.length needle) rest)
     _ -> Nothing
+
+{- | 'afterInfix' matched casefolded, returning the ORIGINAL-case remainder —
+the one extractor seam for GHC's mixed-case phrase variants (R9-T1).
+-}
+afterInfixCI :: Text -> Text -> Maybe Text
+afterInfixCI needle t = case T.breakOn (T.toLower needle) (T.toLower t) of
+    (pre, rest)
+        | not (T.null rest) ->
+            Just (T.drop (T.length pre + T.length needle) t)
+    _ -> Nothing
+
+{- | Substitute the fit at EVERY reported site of the wrong name, later
+positions first so earlier spans stay valid. All-or-nothing: any site that
+does not hold the name yields no candidate. One multi-site diagnostic is one
+entry in the message-set health, so only an all-sites fix shows improvement.
+-}
+substituteNameAtAll :: [(Int, Int)] -> Text -> Text -> Text -> Maybe Text
+substituteNameAtAll [] _ _ _ = Nothing
+substituteNameAtAll spans wrong fit src =
+    foldM (\s sp -> substituteNameAt sp wrong fit s) src ordered
+  where
+    ordered = sortOn Down (nub spans)

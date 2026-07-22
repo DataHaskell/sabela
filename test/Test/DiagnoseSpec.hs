@@ -29,7 +29,7 @@ import Sabela.Diagnose.Packages (
     resolvePackageToken,
     table,
  )
-import Sabela.Model (CellError (..))
+import Sabela.Model (CellError (..), bareCellError)
 import Test.Hspec
 
 cats :: [Guidance] -> [Text]
@@ -132,7 +132,8 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
                     ]
             src = "f = putStrLn \"take a break\" >> take 3 xs"
             withSpan =
-                Right (ExecutionResult [] Nothing [CellError (Just 1) (Just 32) ambigMsg] [])
+                Right
+                    (ExecutionResult [] Nothing [bareCellError (Just 1) (Just 32) ambigMsg] [])
         it "qualifies the use-site, leaving the same name in a string untouched" $
             ambiguousCandidates withSpan src
                 `shouldContain` ["f = putStrLn \"take a break\" >> DataFrame.take 3 xs"]
@@ -225,7 +226,7 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
             let cr =
                     CellResult
                         ( Rejected
-                            [CellError (Just 2) (Just 1) "Could not find module \8216Granite.Svg\8217"]
+                            [bareCellError (Just 2) (Just 1) "Could not find module \8216Granite.Svg\8217"]
                         )
                         []
                         []

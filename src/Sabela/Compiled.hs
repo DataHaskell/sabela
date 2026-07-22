@@ -26,7 +26,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.Deps (sabelaDefaultExts)
-import Sabela.Model (Cell (..), CellError (..))
+import Sabela.Model (Cell (..), CellError (..), bareCellError)
 import qualified Sabela.Topo as Topo
 import ScriptHs.Compiled (
     CellChunk (..),
@@ -143,7 +143,7 @@ cellViolations posMap defMap candidates (c, modName) =
         | not (isValidModuleName modName)
         ]
     declErrs =
-        [ CellError (Just (ciLine i)) Nothing (ciReason i)
+        [ bareCellError (Just (ciLine i)) Nothing (ciReason i)
         | i <- checkCompilable numbered
         ]
     bridgeErrs =
@@ -167,7 +167,7 @@ cellViolations posMap defMap candidates (c, modName) =
     errs = nameErrs ++ declErrs ++ bridgeErrs ++ interpErrs
 
 planError :: Text -> CellError
-planError = CellError Nothing Nothing
+planError = bareCellError Nothing Nothing
 
 position :: M.Map Int Int -> Int -> Text
 position posMap cid = T.pack (show (M.findWithDefault cid cid posMap))

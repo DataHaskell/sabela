@@ -3,11 +3,9 @@
 {- | The @api_reference@ tool. Given a module substring, name, or type, it
 gathers signatures from three LOCAL sources — the offline @hoogle@ CLI
 ('Sabela.AI.HoogleResolve'), the live session's @:browse@ ('sbQueryBrowse'), and
-typed-hole fits ('sbQueryHoleFits') — and merges them, preferring the dynamic
-results. The curated static card ('sliceApiReference') is the offline FALLBACK,
-used only when every dynamic source is empty. Hoogle + the static card need no
-live session, so the tool still answers before any cell has run; @:browse@ and
-hole fits enrich the result when a kernel exists.
+typed-hole fits ('sbQueryHoleFits') — and merges them. Hoogle needs no live
+session, so the tool still answers before any cell has run; @:browse@ and hole
+fits enrich the result when a kernel exists.
 -}
 module Sabela.AI.Capabilities.ApiRef (
     execApiReference,
@@ -26,7 +24,6 @@ import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Util (fieldText)
 import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQuery)
-import Sabela.AI.ReferenceCard (sliceApiReference)
 import Sabela.AI.Types (ToolOutcome, okOutcome)
 import Sabela.SessionTypes (SessionBackend (..))
 import Sabela.State (App (..))
@@ -47,30 +44,28 @@ argKind t0
   where
     t = T.strip t0
 
-{- | The four inputs 'mergeApiRef' folds into one reference: scoped Hoogle hits,
-the live @:browse@ text, the typed-hole-fits text, and the static-card slice.
-The @Maybe Text@ live sources are 'Nothing' when no kernel was available.
+{- | The inputs 'mergeApiRef' folds into one reference: scoped Hoogle hits, the
+live @:browse@ text, and the typed-hole-fits text. The @Maybe Text@ live sources
+are 'Nothing' when no kernel was available.
 -}
 data ApiRefSources = ApiRefSources
     { arsArg :: Text
     , arsHoogle :: [HoogleHit]
     , arsBrowse :: Maybe Text
     , arsHoles :: Maybe Text
-    , arsStatic :: Text
     }
 
 execApiReference :: App -> Value -> IO ToolOutcome
 execApiReference app input = do
     let arg = T.strip (apiRefArg input)
-        static = sliceApiReference arg
     if T.null arg
-        then pure (okOutcome (mergeApiRef (ApiRefSources "" [] Nothing Nothing static)))
+        then pure (okOutcome (mergeApiRef (ApiRefSources "" [] Nothing Nothing)))
         else do
             hoogle <- scopedHoogle arg
             mBackend <- getHaskellSession (appSessions app)
             (browse, holes) <-
                 maybe (pure (Nothing, Nothing)) (gatherLive arg) mBackend
-            pure (okOutcome (mergeApiRef (ApiRefSources arg hoogle browse holes static)))
+            pure (okOutcome (mergeApiRef (ApiRefSources arg hoogle browse holes)))
 
 -- | The tool arg: the @module@ field, falling back to a bare @query@.
 apiRefArg :: Value -> Text
@@ -111,16 +106,21 @@ gatherLive arg backend = case argKind arg of
   where
     asHole g = if "_" `T.isPrefixOf` g then g else "_ :: " <> g
 
-{- | Merge the sources into one reference value. Prefer the dynamic sources
-(Hoogle / @:browse@ / hole fits); use the static card only when all are empty.
+{- | Merge the dynamic sources (Hoogle / @:browse@ / hole fits) into one
+reference value. When all are empty, return an explicit no-result note.
 -}
 mergeApiRef :: ApiRefSources -> Value
 mergeApiRef s
     | not (hasDynamic s) =
         object
             [ "module" .= arsArg s
-            , "source" .= ("static" :: Text)
-            , "reference" .= arsStatic s
+            , "source" .= ("none" :: Text)
+            , "note"
+                .= ( "No signatures found via hoogle, :browse, or hole fits. Try a"
+                        <> " different module or name, a type query, or run a cell so"
+                        <> " :browse can see an in-scope binding." ::
+                        Text
+                   )
             ]
     | otherwise =
         object $

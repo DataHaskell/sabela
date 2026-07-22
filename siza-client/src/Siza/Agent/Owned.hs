@@ -5,6 +5,7 @@ module Siza.Agent.Owned (
     stopDecision,
     ownedCellOutcome,
     bestFailing,
+    latestDraft,
     redSignature,
     noProgressStep,
 ) where
@@ -64,6 +65,14 @@ bestFailing owned =
     case [oc | oc <- Map.elems owned, not (ocHealthy oc)] of
         (oc : _) -> "Gave up with a failing cell. Last diagnostic: " <> ocDiagnostic oc
         [] -> ""
+
+{- | The model's own most recent draft (R3.8): the source of the highest-id
+owned cell — the candidate seed nearest the proposer, mined as generator input
+only ('candidateCellFrom' vets it), never trusted as a fact. 'Nothing' when the
+episode has written nothing to seed from.
+-}
+latestDraft :: Map CellId OwnedCell -> Maybe Text
+latestDraft owned = ocSource . snd <$> Map.lookupMax owned
 
 {- | A stable no-progress signature for the still-red owned cells: each red cell
 paired with its rendered diagnostic, sorted. An identical signature across two

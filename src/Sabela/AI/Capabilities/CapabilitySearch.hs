@@ -29,10 +29,14 @@ module Sabela.AI.Capabilities.CapabilitySearch (
     execSearchCapability,
     capabilityOutcome,
     enrichedOutcome,
+    exactOnlyHits,
     packageBuckets,
+    semanticWanted,
 ) where
 
-import Data.Aeson (Value, object, (.=))
+import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KM
 import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -82,20 +86,52 @@ name. Empty query yields no hits. Tries the SHIP helper first; if it returns no
 hits (absent/down/empty) falls back to the local hoogle lexical query. The top
 packages are then enriched with their key API. Shells out only — no live session
 needed, so it is usable before the first cell is run.
+
+Two optional flags (search-api.md sections 2 and 7): @semantic: false@ skips
+the SHIP retriever (the A/B lever gates enrichment only — the lexical channel
+always runs); @exact: true@ is the stage-0 exact-name lookup, distinct from
+the widened fuzzy scan.
 -}
 execSearchCapability :: App -> Value -> IO ToolOutcome
 execSearchCapability _ input
     | T.null (T.strip q) = pure (enrichedOutcome q [])
     | otherwise = do
-        helperHits <- runCapabilityHelper maxHits q
+        helperHits <-
+            if semanticWanted input && not exact
+                then runCapabilityHelper maxHits q
+                else pure []
         pkgs <-
             if null helperHits
-                then packageBuckets <$> hoogleQuery maxHits q
+                then packageBuckets . exactFilter <$> hoogleQuery maxHits q
                 else pure [(hePackage h, heSynopsis h) | h <- helperHits]
         enriched <- enrichPackages enrichPkgs perPkgApi q pkgs
         pure (enrichedOutcome q enriched)
   where
     q = fieldText "query" input
+    exact = boolField "exact" input == Just True
+    exactFilter = if exact then exactOnlyHits q else id
+
+-- | The SHIP retriever runs unless the caller passed @semantic: false@.
+semanticWanted :: Value -> Bool
+semanticWanted input = boolField "semantic" input /= Just False
+
+boolField :: Text -> Value -> Maybe Bool
+boolField k v = case v of
+    Object o | Just (Bool b) <- KM.lookup (Key.fromText k) o -> Just b
+    _ -> Nothing
+
+{- | Stage 0 (section 7): the exact subset of a hoogle answer — name, module
+or package equality, a lookup rather than a ranking. Package equality is what
+lets a prose term naming a package reach its symbols (section 2).
+-}
+exactOnlyHits :: Text -> [HoogleHit] -> [HoogleHit]
+exactOnlyHits q = filter match
+  where
+    lq = T.toLower q
+    match h =
+        hhName h == q
+            || hhModule h == q
+            || T.toLower (hhPackage h) == lq
 
 {- | Collapse symbol-level hoogle hits (the lexical fallback) into per-package
 buckets, preserving first-seen order. The synopsis is the first hit's docs blurb.
@@ -123,8 +159,17 @@ list is a valid "nothing found".
 -}
 enrichedOutcome :: Text -> [(Text, Text, [ApiFn])] -> ToolOutcome
 enrichedOutcome q hits =
-    okOutcome $ object ["query" .= q, "hits" .= zipWith hitJSON [0 ..] hits]
+    okOutcome $
+        object (["query" .= q, "hits" .= zipWith hitJSON [0 ..] hits] <> nameFallback)
   where
+    -- No index hit: a single-token query is usually the package name itself
+    -- (megaparsec, fgl). Suggest declaring it — hoogle indexes definitions, not
+    -- package names, and a wrong name is a clean, recoverable compile error.
+    nameFallback
+        | not (null hits) = []
+        | T.null qs || T.any (== ' ') qs = []
+        | otherwise = ["tryCabal" .= ("-- cabal: build-depends: " <> qs)]
+    qs = T.strip q
     hitJSON i (pkg, syn, api) =
         object $
             [ "package" .= pkg

@@ -11,6 +11,7 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text, isInfixOf)
 import qualified Data.Text as T
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.Agent.Check (CheckResult (..))
 import Test.Hspec
 
 import Eval.Agent (
@@ -26,14 +27,28 @@ import Eval.Task (Grader (..), Task (..))
 
 spec :: Spec
 spec = describe "Agent loop discipline (N4 budget, N10 retry)" $ do
-    describe "N4: read-discovery budget nudge" $ do
-        it "injects a forcing 'act now' message after too many discovery calls" $ do
+    describe "N4: held-fact act nudge (R5.6)" $ do
+        it
+            "injects a forcing 'act now' message once a call-ready fact is \
+            \held and reads keep coming"
+            $ do
+                driver <-
+                    scriptedDriver
+                        discoverAnswers
+                        ( map
+                            Right
+                            [discoverTurn "bars", discoverTurn "granite bars", doneTurn]
+                        )
+                run <- runEpisodeWith' GrammarOff openBudget driver (taskPrompt dummyTask) 20
+                transcriptText run `shouldSatisfy` isInfixOf "act now"
+
+        it "never nudges on a fact-free ledger, however long the spiral" $ do
             driver <-
                 scriptedDriver
                     alwaysHealthy
                     (map Right (replicate 8 (callTurn "read_cell") ++ [doneTurn]))
             run <- runEpisodeWith' GrammarOff openBudget driver (taskPrompt dummyTask) 20
-            transcriptText run `shouldSatisfy` isInfixOf "act now"
+            transcriptText run `shouldSatisfy` (not . isInfixOf "act now")
 
         it "does not nudge when the model acts (insert_cell resets the budget)" $ do
             driver <-
@@ -64,7 +79,7 @@ spec = describe "Agent loop discipline (N4 budget, N10 retry)" $ do
                         { drvChat = \_ -> pure (Right doneTurn)
                         , drvDispatch = alwaysHealthy
                         , drvNow = pure 0
-                        , drvVerify = pure False
+                        , drvVerify = pure (CheckFailed, Nothing)
                         }
             run <-
                 runEpisodeWith' GrammarOff openBudget stuckDriver (taskPrompt dummyTask) 50
@@ -84,6 +99,37 @@ callTurn :: Text -> Turn
 callTurn name =
     Turn (object ["role" .= ("assistant" :: Text)]) "" [ToolCall name (object [])]
 
+discoverTurn :: Text -> Turn
+discoverTurn q =
+    Turn
+        (object ["role" .= ("assistant" :: Text)])
+        ""
+        [ToolCall "discover" (object ["query" .= q])]
+
+{- | Answer discover with a found, exact, typed hit (a call-ready fact);
+everything else with the healthy write ack.
+-}
+discoverAnswers :: ToolCall -> IO (Either Text ToolOutcome)
+discoverAnswers (ToolCall "discover" _) =
+    pure . Right . ToolOk $
+        object
+            [ "query" .= ("bars" :: Text)
+            , "state" .= ("found" :: Text)
+            , "hits"
+                .= [ object
+                        [ "name" .= ("bars" :: Text)
+                        , "type" .= ("[(Text, Double)] -> Plot -> Text" :: Text)
+                        , "module" .= ("Granite.Svg" :: Text)
+                        , "package" .= ("granite" :: Text)
+                        , "version" .= ("0.7.4.0" :: Text)
+                        , "install" .= ("installed" :: Text)
+                        , "matchKind" .= ("exact" :: Text)
+                        , "origin" .= ("session" :: Text)
+                        ]
+                   ]
+            ]
+discoverAnswers tc = alwaysHealthy tc
+
 doneTurn :: Turn
 doneTurn = Turn (object ["role" .= ("assistant" :: Text)]) "done" []
 
@@ -100,7 +146,7 @@ scriptedDriver disp script = do
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = pure True
+            , drvVerify = pure (CheckPassed, Nothing)
             }
 
 alwaysHealthy :: ToolCall -> IO (Either Text ToolOutcome)

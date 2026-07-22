@@ -15,6 +15,8 @@ module Sabela.AI.KernelState (
 import Data.Aeson (Value, object, (.=))
 import Data.Text (Text)
 
+import Sabela.AI.KernelVocab (tagBuilding, tagCold, tagExecuting, tagIdle)
+
 {- | The kernel as a tag. @Cold@ is pre-spawn (never inferred from @gen == 0@);
 every @Alive@ carries @ksGen@ (the restart counter @sbSessionGen@) and its
 'Activity'. \"Wedged\" is deliberately absent: it is a two-observation harness
@@ -66,7 +68,7 @@ isOccupied (Alive _ activity building) = activity == Executing || building
 @ksGen@ — it is never folded in here under the word \"gen\".
 -}
 kernelStateJSON :: KernelState -> Value
-kernelStateJSON Cold = object ["state" .= ("cold" :: Text)]
+kernelStateJSON Cold = object ["state" .= tagCold]
 kernelStateJSON (Alive gen activity building) =
     object
         [ "state" .= activityTag activity building
@@ -74,11 +76,12 @@ kernelStateJSON (Alive gen activity building) =
         , "building" .= building
         ]
 
-{- | The single @state@ tag. @building@ stands alone only when idle; while a
+{- | The single @state@ tag, drawn from the closed vocabulary
+("Sabela.AI.KernelVocab"). @building@ stands alone only when idle; while a
 cell runs the tag stays @executing@ and 'ksBuilding' carries the rebuild, so
 neither axis swallows the other.
 -}
 activityTag :: Activity -> Bool -> Text
-activityTag Executing _ = "executing"
-activityTag Idle True = "building"
-activityTag Idle False = "idle"
+activityTag Executing _ = tagExecuting
+activityTag Idle True = tagBuilding
+activityTag Idle False = tagIdle

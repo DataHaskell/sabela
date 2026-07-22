@@ -1,0 +1,5 @@
+# machine-produced by tools/update-search-cache.sh — do not hand-edit
+generated_epoch=1784523052
+generated_utc=2026-07-20T04:50:52Z
+hackage_packages=19348
+hoogle=/Users/mchavinda/.cabal/bin/hoogle

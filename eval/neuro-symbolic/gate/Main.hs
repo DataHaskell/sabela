@@ -9,12 +9,21 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Network.HTTP.Client.TLS (newTlsManager)
-import System.Environment (lookupEnv, setEnv)
+import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
 
 import Eval.Agent (EpisodeBudget (..), defaultBudget)
 import Eval.Bench (BenchConfig (..))
 import qualified Eval.Corpus as Corpus
+import Eval.Episode (
+    defaultToolTimeout,
+    naNote,
+    readNaFlags,
+    readSaturatedFlags,
+    readVoidFlags,
+    saturatedNote,
+    voidNote,
+ )
 import Eval.Gate (
     GateLever (..),
     GateResult (..),
@@ -22,6 +31,13 @@ import Eval.Gate (
     renderGateResults,
     runGateResuming,
  )
+import Eval.GateMetrics (renderGateMetrics)
+import Eval.Provenance (
+    RunProvenance (..),
+    captureProvenanceCheckedSelf,
+    freshRunDirUnder,
+ )
+import Eval.ReportGuard (guardReportDirFor)
 import Eval.Task (Task (..), taskId)
 import Siza.Transport (newConn)
 
@@ -31,8 +47,12 @@ main = do
     seeds <- parseSeeds <$> lookupEnv "SIZA_GATE_SEEDS"
     foldSel <- normFold <$> lookupEnv "SIZA_GATE_FOLD"
     bin <- fromMaybe defaultBin <$> lookupEnv "SABELA_BIN"
+    -- R8.3: unset transcript dir -> fresh per-run-id directory; the relink
+    -- probe (round-6 finding 5) aborts on a stale server OR driver binary.
+    prov <- captureProvenanceCheckedSelf bin
     transcripts <-
-        fromMaybe "/tmp/siza-gate-transcripts" <$> lookupEnv "SIZA_GATE_TRANSCRIPTS"
+        fromMaybe (freshRunDirUnder "/tmp/siza-gate-transcripts" prov)
+            <$> lookupEnv "SIZA_GATE_TRANSCRIPTS"
     resultsFile <-
         fromMaybe "/tmp/siza-gate-results.jsonl" <$> lookupEnv "SIZA_GATE_RESULTS"
     taskSel <- lookupEnv "SIZA_BENCH_TASKS"
@@ -42,7 +62,8 @@ main = do
     mgr <- newTlsManager
     conn <- newConn
     -- Distinct base port from siza-bench (3100) so the two can run side by side.
-    let cfg = BenchConfig mgr conn model budget maxTurns bin 3300 transcripts
+    let cfg =
+            BenchConfig mgr conn model budget maxTurns bin 3300 transcripts prov
         tasks = selectTasks (Corpus.selectFold (Just foldSel)) taskSel
     TIO.putStrLn
         (banner model seeds foldSel (length tasks) budget maxTurns toolTimeout)
@@ -50,7 +71,8 @@ main = do
         "all" -> reportGap cfg resultsFile seeds
         _ -> do
             _ <- runGateResuming cfg (leverFor foldSel) resultsFile tasks seeds
-            readGateResults resultsFile >>= TIO.putStr . renderGateResults
+            rs <- readGateResults resultsFile
+            printGuarded cfg rs
 
 {- | The episode budget from the same knobs siza-eval reads: @SIZA_EVAL_DEADLINE_SECS@
 caps total time, @SIZA_EVAL_MAX_REPAIRS@ caps repair rounds.
@@ -64,21 +86,33 @@ envBudget = do
             <$> lookupEnv "SIZA_EVAL_DEADLINE_SECS"
     pure defaultBudget{ebMaxRepairs = d, ebDeadlineSecs = secs}
 
-{- | Default the client's per-call HTTP timeout generously (300s) when unset, so a
-held-out task's dep-install + kernel-restart does not blow the default 60s and
-thrash the episode. Must run before 'newConn', which reads the var. Returns the
-effective value for the banner.
+{- | The guarded gate report: VOID/NA/saturated pairs are excluded from the
+numbers and named; the numbers are WITHHELD only when THIS run-id's
+transcripts are unsound — sibling runs' defects demote to a warning
+(see 'Eval.ReportGuard.guardReportRun').
 -}
-defaultToolTimeout :: IO Int
-defaultToolTimeout = do
-    m <- lookupEnv "SABELA_TOOL_TIMEOUT"
-    case m of
-        Just s -> pure (fromMaybe 300 (readMaybe s))
-        Nothing -> setEnv "SABELA_TOOL_TIMEOUT" "300" >> pure 300
+printGuarded :: BenchConfig -> [GateResult] -> IO ()
+printGuarded cfg rs = do
+    let dir = bcTranscriptDir cfg
+    voids <- readVoidFlags dir
+    nas <- readNaFlags dir
+    sats <- readSaturatedFlags dir
+    let excluded = voids ++ nas ++ sats
+        live = [g | g <- rs, (grTask g, grSeed g) `notElem` excluded]
+    metrics <- renderGateMetrics dir live
+    guarded <-
+        guardReportDirFor dir (rpRunId (bcProvenance cfg)) $
+            voidNote voids
+                <> naNote nas
+                <> saturatedNote sats
+                <> renderGateResults live
+                <> metrics
+    TIO.putStr guarded
 
 {- | Normalise @SIZA_GATE_FOLD@, defaulting to @held-out@. Folds: @in-index@ /
 @held-out@ / @capability@ / @reasoning@ / @all@, plus the self-healing levers
-@hole-fit@ / @live-grammar@ / @self-heal@ (each toggles a default-ON server flag).
+@hole-fit@ / @arity-fix@ / @live-grammar@ / @self-heal@ (each toggles a default-ON
+server flag).
 -}
 normFold :: Maybe String -> Text
 normFold m = case fmap (T.toLower . T.strip . T.pack) m of
@@ -86,6 +120,7 @@ normFold m = case fmap (T.toLower . T.strip . T.pack) m of
     Just "capability" -> "capability"
     Just "reasoning" -> "reasoning"
     Just "hole-fit" -> "hole-fit"
+    Just "arity-fix" -> "arity-fix"
     Just "live-grammar" -> "live-grammar"
     Just "self-heal" -> "self-heal"
     Just "all" -> "all"
@@ -99,8 +134,10 @@ leverFor :: Text -> GateLever
 leverFor "capability" = CapabilityLever
 leverFor "reasoning" = CapabilityLever
 leverFor "hole-fit" = ServerFlagLever "SABELA_HOLE_FIT"
+leverFor "arity-fix" = ServerFlagLever "SABELA_ARITY_FIX"
 leverFor "live-grammar" = ServerFlagLever "SABELA_LIVE_GRAMMAR"
 leverFor "self-heal" = ServerFlagLever "SABELA_SELF_HEAL_REENTER"
+leverFor "type-resolve" = ServerFlagLever "SABELA_TYPE_RESOLVE"
 leverFor _ = ResolverLever
 
 -- | The env var name the fold's lever toggles, for the banner.
@@ -109,6 +146,7 @@ leverName f
     | f `elem` ["capability", "reasoning"] =
         "SABELA_CAPABILITY_SEARCH (gate-process tool toggle)"
     | f == "hole-fit" = "SABELA_HOLE_FIT (server, default ON)"
+    | f == "arity-fix" = "SABELA_ARITY_FIX (server, default ON)"
     | f == "live-grammar" = "SABELA_LIVE_GRAMMAR (server, default ON)"
     | f == "self-heal" = "SABELA_SELF_HEAL_REENTER (server, default ON)"
     | otherwise = "SABELA_HOOGLE_RESOLVE (server)"
@@ -130,13 +168,29 @@ reportGap cfg resultsFile seeds = do
             (Corpus.selectFold (Just "held-out"))
             seeds
     allResults <- readGateResults resultsFile
-    let inIdx = [g | g <- allResults, grTask g `elem` inIdxIds]
-        held = [g | g <- allResults, grTask g `notElem` inIdxIds]
-    TIO.putStrLn "== in-index =="
-    TIO.putStr (renderGateResults inIdx)
-    TIO.putStrLn "\n== held-out =="
-    TIO.putStr (renderGateResults held)
-    TIO.putStrLn ("\nindex-vs-held-out gap: " <> renderGap inIdx held)
+    voids <- readVoidFlags (bcTranscriptDir cfg)
+    nas <- readNaFlags (bcTranscriptDir cfg)
+    sats <- readSaturatedFlags (bcTranscriptDir cfg)
+    let excluded = voids ++ nas ++ sats
+        liveResults =
+            [g | g <- allResults, (grTask g, grSeed g) `notElem` excluded]
+        inIdx = [g | g <- liveResults, grTask g `elem` inIdxIds]
+        held = [g | g <- liveResults, grTask g `notElem` inIdxIds]
+    metrics <- renderGateMetrics (bcTranscriptDir cfg) liveResults
+    guarded <-
+        guardReportDirFor (bcTranscriptDir cfg) (rpRunId (bcProvenance cfg)) $
+            voidNote voids
+                <> naNote nas
+                <> saturatedNote sats
+                <> "== in-index ==\n"
+                <> renderGateResults inIdx
+                <> "\n== held-out ==\n"
+                <> renderGateResults held
+                <> "\nindex-vs-held-out gap: "
+                <> renderGap inIdx held
+                <> "\n\n"
+                <> metrics
+    TIO.putStr guarded
 
 {- | The gap in SearchOn pass rate between the two folds, signed held-out minus
 in-index, with the underlying rates shown.

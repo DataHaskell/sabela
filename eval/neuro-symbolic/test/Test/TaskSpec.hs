@@ -6,23 +6,27 @@ import Data.Aeson (object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Maybe (isJust)
 import Data.Text (Text, isInfixOf)
+import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.Agent.Check (CheckResult (..))
 import Test.Hspec
 
 import Eval.Task (
     Grader (..),
     Task (..),
     Verdict (..),
-    findTask,
+    fitVerdict,
+    fitVerify,
+    gradeVerify,
     markerSrc,
     outputHasVerdict,
     renderVerdict,
     runMarkerWith,
     stepsVerdict,
     taskTest,
-    tasks,
  )
+import Eval.TaskSet (findTask, tasks)
 
 outcomeWith :: Text -> Text -> ToolOutcome
 outcomeWith mime payload =
@@ -43,6 +47,53 @@ isByValue _ = False
 
 spec :: Spec
 spec = describe "plotting/dataframe tasks" $ do
+    describe "verify-channel honesty for uncovered tasks"
+        $ it
+            "an Untested task never fabricates a failing check \
+            \(run-20260720 symbolicRegression repair spiral)"
+        $ do
+            let t = Task "untestedT" "prompt" Untested
+            r <- gradeVerify (error "transport must not be consulted") "" t
+            r `shouldBe` (CheckPassed, Nothing)
+    describe "fitVerify (three-valued verify channel, R5-T5)" $ do
+        let pts = [(1, 1), (2, 4), (3, 9), (4, 16)]
+            tol = 1e-6 :: Double
+        it "confirms the run-20260720-085948 live wording that was denied" $
+            fitVerify pts tol "Best expression: (x * x), SSE: 0.0"
+                `shouldBe` (CheckPassed, Nothing)
+        it "denies ONLY with recomputed-error evidence, and names it" $
+            case fitVerify pts tol "Best expression: (x+1), SSE: 0.0" of
+                (CheckFailed, Just ev) -> do
+                    ev `shouldSatisfy` T.isInfixOf "recomputed"
+                    ev `shouldSatisfy` T.isInfixOf "x+1"
+                r -> expectationFailure (show r)
+        it "routes an extraction miss to not-yet-confirmed with what to run" $
+            case fitVerify pts tol "the computation finished" of
+                (CheckUncheckable, Just guide) -> do
+                    guide `shouldSatisfy` T.isInfixOf "not yet confirmed"
+                    guide `shouldSatisfy` T.isInfixOf "print"
+                    guide `shouldSatisfy` (not . T.isInfixOf "fail")
+                r -> expectationFailure (show r)
+        it "never leaks the answer in the what-to-run guidance" $
+            case fitVerify pts tol "" of
+                (CheckUncheckable, Just guide) ->
+                    guide `shouldSatisfy` (not . T.isInfixOf "x*x")
+                r -> expectationFailure (show r)
+    describe "ByFit covering check (symbolicRegression)" $ do
+        let pts = [(1, 1), (2, 4), (3, 9), (4, 16)]
+            tol = 1e-6 :: Double
+        it "surfaces the known-correct trajectory output" $
+            fst (fitVerdict pts tol "Best expression: (x*x), total squared error 0.0")
+                `shouldBe` Surfaced
+        it "surfaces an equivalent zero-error expression, not the literal string" $
+            fst (fitVerdict pts tol "Best expression: x^2") `shouldBe` Surfaced
+        it "withholds a wrong expression even when it self-reports zero error" $
+            fst (fitVerdict pts tol "Best expression: (x+1), total squared error 0.0")
+                `shouldSatisfy` isWithheld
+        it "withholds when the output reports no expression" $
+            fst (fitVerdict pts tol "computation finished") `shouldSatisfy` isWithheld
+        it "keeps symbolicRegression a Grader value the harness can hold" $
+            ByFit pts tol `shouldBe` ByFit pts tol
     describe "the dataset carries the new tasks" $ do
         it "has a granite bar-chart task graded by render" $ do
             (taskGrader <$> findTask "quarterlyBars") `shouldBe` Just ByRender

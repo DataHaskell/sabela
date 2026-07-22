@@ -76,7 +76,6 @@ toolNames =
     , "execute_cell"
     , "delete_cell"
     , "search_capability"
-    , "find_package"
     , "find_function"
     , "find_by_type"
     , "find_example_cell"

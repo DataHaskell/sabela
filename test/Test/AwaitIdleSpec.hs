@@ -21,8 +21,11 @@ import Data.Text (Text)
 import Data.Unique (newUnique)
 import GHC.Clock (getMonotonicTimeNSec)
 
+import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Sabela.AI.Capabilities.Kernel (execAwaitIdle)
+import qualified Sabela.AI.Store as AIStore
 import Sabela.AI.Types (toolOutcomeValue)
+import Sabela.Anthropic.Types (AnthropicConfig (..))
 import Sabela.Model (NotebookEvent (..))
 import Sabela.Server (newApp)
 import qualified Sabela.SessionTypes as ST
@@ -62,13 +65,18 @@ fakeBackend busy = do
                 }
     pure backend
 
--- | App with a fake Haskell session of the given busy state attached.
-liveApp :: Bool -> IO App
+-- | App + AI store with a fake Haskell session of the given busy state.
+liveApp :: Bool -> IO (App, AIStore.AIStore)
 liveApp busy = do
     app <- newApp "." Set.empty Nothing Nothing []
     backend <- fakeBackend busy
     setHaskellSession (appSessions app) (Just backend)
-    pure app
+    mgr <- newManager defaultManagerSettings
+    store <-
+        AIStore.newAIStore
+            (AnthropicConfig "" "placeholder" "https://api.anthropic.com")
+            mgr
+    pure (app, store)
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
@@ -91,13 +99,13 @@ forkFlood app gapUs = do
 spec :: Spec
 spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
     it "returns immediately when the kernel is already idle" $ do
-        app <- liveApp False
-        v <- toolOutcomeValue <$> execAwaitIdle app
+        (app, store) <- liveApp False
+        v <- toolOutcomeValue <$> execAwaitIdle app store
         field "waited" v `shouldBe` Just (String "idle")
 
     it "carries a fresh kernel status snapshot in the reply" $ do
-        app <- liveApp False
-        v <- toolOutcomeValue <$> execAwaitIdle app
+        (app, store) <- liveApp False
+        v <- toolOutcomeValue <$> execAwaitIdle app store
         -- status is the typed execKernelStatus blob; its tag is
         -- status.state.state and the legacy kernel/running keys are gone
         (field "state" =<< field "state" =<< field "status" v)
@@ -106,19 +114,19 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
             `shouldBe` Nothing
 
     it "while building (idle run-lock) it still long-polls, not idle" $ do
-        app <- liveApp False
+        (app, store) <- liveApp False
         setBuilding app True
         done <- newEmptyMVar
-        _ <- forkIO (execAwaitIdle app >>= putMVar done . toolOutcomeValue)
+        _ <- forkIO (execAwaitIdle app store >>= putMVar done . toolOutcomeValue)
         threadDelay 50000
         broadcast (appEvents app) EvExecutionDone
         v <- takeMVar done
         field "waited" v `shouldBe` Just (String "settled")
 
     it "a busy kernel settles only when EvExecutionDone fires" $ do
-        app <- liveApp True
+        (app, store) <- liveApp True
         done <- newEmptyMVar
-        _ <- forkIO (execAwaitIdle app >>= putMVar done . toolOutcomeValue)
+        _ <- forkIO (execAwaitIdle app store >>= putMVar done . toolOutcomeValue)
         threadDelay 50000
         -- a non-fence event must NOT settle the poll
         broadcast (appEvents app) (EvCellResult 1 [] Nothing [] [])
@@ -128,7 +136,7 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         field "waited" v `shouldBe` Just (String "settled")
 
     it "settles on the fence even when the kernel reports busy throughout" $ do
-        app <- liveApp True
+        (app, _) <- liveApp True
         res <- newEmptyMVar
         _ <-
             forkIO
@@ -144,7 +152,7 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         r `shouldBe` AwaitSettled
 
     it "kill-aware: a dead kernel returns a terminal state, not a wedge" $ do
-        app <- liveApp True
+        (app, _) <- liveApp True
         res <- newEmptyMVar
         _ <-
             forkIO
@@ -158,7 +166,7 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         r `shouldBe` AwaitKernelDead
 
     it "the bounded budget elapses to a non-terminal timeout (caller re-loops)" $ do
-        app <- liveApp True
+        (app, _) <- liveApp True
         r <-
             awaitExecutionDone
                 (appEvents app)
@@ -167,7 +175,7 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         r `shouldBe` AwaitTimedOut
 
     it "a steady non-fence flood still times out within budget (wall-clock bound)" $ do
-        app <- liveApp True
+        (app, _) <- liveApp True
         stop <- forkFlood app 1000
         r <-
             awaitExecutionDone
@@ -178,7 +186,7 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         r `shouldBe` AwaitTimedOut
 
     it "a non-fence flood does not defeat the ~budget wall-clock ceiling" $ do
-        app <- liveApp True
+        (app, _) <- liveApp True
         stop <- forkFlood app 1000
         start <- getMonotonicTimeNSec
         _ <- awaitExecutionDone (appEvents app) 200000 (pure True)
@@ -190,7 +198,7 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         elapsedUs `shouldSatisfy` (< 2000000)
 
     it "mid-stream kernel death under a flood returns AwaitKernelDead, not a wedge" $ do
-        app <- liveApp True
+        (app, _) <- liveApp True
         alive <- newIORef True
         stop <- forkFlood app 1000
         _ <- forkIO (threadDelay 50000 >> writeIORef alive False)
@@ -203,9 +211,9 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         r `shouldBe` AwaitKernelDead
 
     it "execAwaitIdle on a kernel that dies mid-wait reports kernelDead" $ do
-        app <- liveApp True
+        (app, store) <- liveApp True
         done <- newEmptyMVar
-        _ <- forkIO (execAwaitIdle app >>= putMVar done . toolOutcomeValue)
+        _ <- forkIO (execAwaitIdle app store >>= putMVar done . toolOutcomeValue)
         threadDelay 50000
         setHaskellSession (appSessions app) Nothing
         v <- takeMVar done

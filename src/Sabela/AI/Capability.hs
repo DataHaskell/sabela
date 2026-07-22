@@ -64,23 +64,49 @@ defaultSynonyms =
     , ("frp", ["behavior", "event"])
     ]
 
-{- | Rank an index against a free-text query; best matches first, capped. Ties
-break toward the more specific (longer) module, then duplicates of the same
-function — an umbrella module re-exporting it — collapse to one row.
+{- | Rank an index against a free-text query; best matches first, FOCUSED: a
+high-confidence (exact/prefix) hit silences the low-confidence tail, and the
+list is capped well below a wall — low-confidence walls are negative
+information for a small model. Ties break toward the SHORTER module path (the
+public umbrella API, not deep internals); duplicates of the same function — an
+umbrella module re-exporting it — collapse to one row.
 -}
 searchCapabilities :: Synonyms -> [Capability] -> Text -> [Hit]
 searchCapabilities syns idx query =
-    take 20 $
+    focus $
         nubByNameType $
             sortOn rank $
                 [Hit c s v | c <- idx, Just (s, v) <- [scoreCap syns ql qToks c]]
   where
-    ql = T.toLower (T.strip query)
+    ql = lexQuery (T.toLower (T.strip query))
     qToks = tokens ql
-    rank h = (Down (hitScore h), Down (T.length (capModule (hitCap h))))
+    rank h = (Down (hitScore h), T.length (capModule (hitCap h)))
     nubByNameType =
         nubBy (\a b -> sameKey (hitCap a) (hitCap b))
     sameKey x y = capName x == capName y && capType x == capType y
+    focus hits = case hits of
+        (h : _) | hitScore h >= 80 -> take 5 (takeWhile ((>= 80) . hitScore) hits)
+        _ -> take 8 hits
+
+{- | Strip Haskell surface syntax a name index can never match — type
+applications (@\@Type@) and string-literal arguments — so a query written the
+way code is written still lands on the exact tier.
+-}
+lexQuery :: Text -> Text
+lexQuery q =
+    T.unwords
+        [ w
+        | w <- T.words (dropLiterals q)
+        , not ("@" `T.isPrefixOf` w)
+        , w /= "@"
+        ]
+  where
+    dropLiterals = T.pack . go False . T.unpack
+    go _ [] = []
+    go True ('"' : cs) = go False cs
+    go True (_ : cs) = go True cs
+    go False ('"' : cs) = go True cs
+    go False (c : cs) = c : go False cs
 
 {- | The highest-scoring signal a capability matches on, or Nothing — ordered
 strongest first (exact > prefix > substring > token > type > synonym > module),
@@ -105,9 +131,14 @@ scoreCap syns ql qToks c =
     typeMatch = length qToks >= 2 && all (`T.isInfixOf` typeL) qToks
     synMatch = any (`T.isInfixOf` nameL) (synonymsFor syns ql)
 
--- | Synonym expansions whose key occurs in the query.
+{- | Synonym expansions whose key occurs as a WHOLE token of the query — a
+substring match let a key inside a longer domain word bridge to an unrelated
+vocabulary, and the wrong-domain "hit" then blocked the discover fallthrough.
+-}
 synonymsFor :: Synonyms -> Text -> [Text]
-synonymsFor syns ql = concat [vs | (k, vs) <- syns, k `T.isInfixOf` ql]
+synonymsFor syns ql = concat [vs | (k, vs) <- syns, k `elem` toks]
+  where
+    toks = tokens ql
 
 -- | Alphanumeric tokens: "double -> picture" → ["double","picture"].
 tokens :: Text -> [Text]

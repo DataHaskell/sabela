@@ -10,10 +10,9 @@ import Control.Concurrent (
     MVar,
     putMVar,
     tryReadMVar,
-    tryTakeMVar,
     withMVar,
  )
-import Control.Exception (SomeException, bracket_, finally, mask, try)
+import Control.Exception (SomeException, bracket_, try)
 import Control.Monad (when)
 import Data.Char (isDigit)
 import Data.IORef (
@@ -253,37 +252,6 @@ while a cell is mid-flight.
 -}
 isBusy :: Session -> IO Bool
 isBusy sess = isNothing <$> tryReadMVar (sessLock sess)
-
-{- | Outcome of an atomic admission attempt at the run-lock: 'Ran' carries the
-action's result (the slot was free and we held it for the run); 'Busy' carries
-the cell id already holding the lock (or our own candidate if no holder was
-recorded). The sum tag is the atomic decision, mapped to the busy 'ToolOutcome'
-by the dispatcher, not a re-read of the @running@ boolean.
--}
-data Admission a
-    = Ran a
-    | Busy {running :: !Int}
-    deriving (Eq, Show)
-
-{- | Atomic admission: a SINGLE 'tryTakeMVar' on the run-lock decides busy and
-acquires the slot in one step — no check-then-acquire gap where two callers
-both observe \"free\" and then both stack behind the lock. On a free lock it
-records the candidate id, runs the action, and restores the lock even on
-exception; on a held lock it reports 'Busy' with the recorded holder id without
-ever blocking. A lone caller on a free lock always 'Ran' and never deadlocks.
--}
-admit :: MVar () -> IORef (Maybe Int) -> Int -> IO a -> IO (Admission a)
-admit lock holderRef cid act = mask $ \restore -> do
-    got <- tryTakeMVar lock
-    case got of
-        Nothing -> do
-            held <- readIORef holderRef
-            pure (Busy (fromMaybe cid held))
-        Just () -> do
-            writeIORef holderRef (Just cid)
-            let release = writeIORef holderRef Nothing >> putMVar lock ()
-            r <- restore act `finally` release
-            pure (Ran r)
 
 {- | The live backend generation. Born at @firstSessionGen@; a restart
 seeds a strictly-higher one so a client can discard a result tagged with an

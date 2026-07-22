@@ -10,7 +10,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Sabela.AI.Capabilities.Discover (findExamplesOutcome, findLibraryOutcome)
+import Sabela.AI.Capabilities.Discover (findExamplesOutcome)
 import Sabela.AI.Types (ToolOutcome (..))
 import Test.Hspec
 
@@ -26,11 +26,6 @@ query q = object ["query" .= q]
 
 spec :: Spec
 spec = describe "discovery tool handlers" $ do
-    it "find_package returns ranked suggestions with a ready cabal line" $ do
-        let t = enc (findLibraryOutcome (query "linear regression"))
-        t `shouldSatisfy` T.isInfixOf "dataframe-learn"
-        t `shouldSatisfy` T.isInfixOf "build-depends: dataframe, dataframe-learn"
-
     it "find_example_cell returns a runnable example cell for a covered query" $ do
         let t = enc (findExamplesOutcome (query "read csv"))
         t `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: dataframe"
@@ -39,7 +34,3 @@ spec = describe "discovery tool handlers" $ do
     it "find_example_cell returns no example for a retired query (no near-miss)" $ do
         let t = enc (findExamplesOutcome (query "plotting"))
         t `shouldSatisfy` T.isInfixOf "\"examples\":[]"
-
-    it "an unmatched query yields empty results, not an error" $ do
-        let t = enc (findLibraryOutcome (query "xyzzy unrelated"))
-        t `shouldSatisfy` T.isInfixOf "\"suggestions\":[]"

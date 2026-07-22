@@ -9,10 +9,25 @@ import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
 
 import Eval.Agent (defaultBudget)
-import Eval.Bench (BenchConfig (..), renderReportFull, runBench)
+import Eval.Bench (BenchConfig (..), renderReportFlagged, runBench)
 import qualified Eval.Corpus as Corpus
 import qualified Eval.Corpus.Reasoning as Reasoning
+import Eval.Episode (
+    defaultToolTimeout,
+    naNote,
+    readNaFlags,
+    readSaturatedFlags,
+    readVoidFlags,
+    saturatedNote,
+    voidNote,
+ )
 import Eval.Preflight (ensureOllama)
+import Eval.Provenance (
+    RunProvenance (..),
+    captureProvenanceCheckedSelf,
+    freshRunDirUnder,
+ )
+import Eval.ReportGuard (guardReportDirFor)
 import Eval.Task (Grader (..), Task (..))
 import Siza.Transport (newConn)
 
@@ -85,7 +100,13 @@ benchTasks =
         \arithmetic expressions built from x, +, *, and numeric constants to find one \
         \whose predictions fit the points, and print the best expression and its \
         \total squared error."
-        Untested
+        (ByFit [(1, 1), (2, 4), (3, 9), (4, 16)] 1e-6)
+    , Task
+        "hggScatter"
+        "Using the hgg library, create a scatter plot of the points \
+        \[(1.0, 2.0), (2.0, 4.0), (3.0, 1.0), (4.0, 5.0)] and show it in \
+        \the notebook."
+        ByRender
     , Task
         "movieLensClassify"
         "Download the MovieLens 100k dataset and train a simple model to predict \
@@ -102,12 +123,21 @@ main = do
         corpusPool <$> lookupEnv "SIZA_BENCH_CORPUS" <*> lookupEnv "SIZA_BENCH_FOLD"
     tasks <- selectTasks pool <$> lookupEnv "SIZA_BENCH_TASKS"
     bin <- fromMaybe defaultBin <$> lookupEnv "SABELA_BIN"
+    -- R8.3: provenance is captured once; an unset transcript dir defaults to
+    -- a FRESH per-run-id directory, so an old directory self-identifies.
+    -- The relink probe (round-6 finding 5) aborts on a stale server OR a
+    -- stale driver binary; both labeled verdicts land in every header.
+    prov <- captureProvenanceCheckedSelf bin
     transcripts <-
-        fromMaybe "/tmp/siza-bench-transcripts" <$> lookupEnv "SIZA_BENCH_TRANSCRIPTS"
+        fromMaybe (freshRunDirUnder "/tmp/siza-bench-transcripts" prov)
+            <$> lookupEnv "SIZA_BENCH_TRANSCRIPTS"
     mgr <- newTlsManager
     ensureOllama mgr
+    -- M7: pin the client tool timeout (300s default) BEFORE newConn reads it.
+    toolTimeout <- defaultToolTimeout
     conn <- newConn
-    let cfg = BenchConfig mgr conn model defaultBudget 12 bin 3100 transcripts
+    let cfg =
+            BenchConfig mgr conn model defaultBudget 12 bin 3100 transcripts prov
     TIO.putStrLn
         ( "siza-bench \183 "
             <> model
@@ -115,10 +145,24 @@ main = do
             <> T.pack (show seeds)
             <> " \183 "
             <> T.pack (show (length tasks))
-            <> " tasks \183 fresh server per run from port 3100"
+            <> " tasks \183 tool timeout "
+            <> T.pack (show toolTimeout)
+            <> "s \183 fresh server per run from port 3100"
         )
-    outcomes <- runBench cfg tasks seeds
-    TIO.putStr (renderReportFull outcomes)
+    rows <- runBench cfg tasks seeds
+    voids <- readVoidFlags transcripts
+    nas <- readNaFlags transcripts
+    sats <- readSaturatedFlags transcripts
+    -- R8.2: VOID pairs appear in no row; NA and saturated pairs are graded
+    -- per-arm but excluded from every lever number; all are named. The guard
+    -- withholds on THIS run's defects only (sibling runs demote to a warning).
+    report <-
+        guardReportDirFor transcripts (rpRunId prov) $
+            voidNote voids
+                <> naNote nas
+                <> saturatedNote sats
+                <> renderReportFlagged voids nas sats rows
+    TIO.putStr report
 
 -- | The Sabela server binary each run spawns; override with @SABELA_BIN@.
 defaultBin :: FilePath

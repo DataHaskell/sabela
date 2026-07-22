@@ -7,7 +7,6 @@ handles returned by other tools. (@api_reference@ lives in the sibling
 "Sabela.AI.Capabilities.ApiRef".)
 -}
 module Sabela.AI.Capabilities.Query (
-    execListBindings,
     execCheckType,
     execFindByType,
     execDescribeFunction,
@@ -21,6 +20,7 @@ module Sabela.AI.Capabilities.Query (
     guidedOutcome,
     typeConstructors,
     recordDecl,
+    withBackend,
 ) where
 
 import Control.Exception (try)
@@ -35,19 +35,17 @@ import qualified Data.Text.IO as TIO
 import System.Directory (canonicalizePath)
 import System.FilePath (normalise, splitDirectories, (</>))
 
-import Sabela.AI.Capabilities.Util (fieldInt, fieldText)
-import Sabela.AI.Handles (
-    HandleId (..),
-    LargeResult (..),
-    grepLines,
-    headLines,
-    lookupHandle,
-    sliceLines,
-    tailLines,
+import Sabela.AI.Capabilities.Query.Explore (
+    ExploreOp (..),
+    execExploreResult,
+    parseExploreOp,
+    runExplore,
  )
+import Sabela.AI.Capabilities.Util (fieldInt, fieldText)
+import Sabela.AI.LeakShape (leakyLine)
 import Sabela.AI.PeekData (peekData, peekResultJSON)
-import Sabela.AI.Store
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
+import Sabela.AI.VerifierDistill (answerVerdict, distillInfo, distillTypeAnswer)
 import Sabela.Api (errorJson)
 import Sabela.Diagnose (diagnose, guidancePairs)
 import Sabela.SessionTypes (SessionBackend (..))
@@ -80,13 +78,6 @@ guidedOutcome fields result =
     okOutcome $
         object (fields <> ["result" .= result] <> guidancePairs (diagnose result))
 
--- | @list_bindings@: every variable currently bound in the session, with types.
-execListBindings :: App -> Value -> IO ToolOutcome
-execListBindings app _ =
-    withBackend app $ \backend -> do
-        result <- sbQueryBindings backend
-        pure (guidedOutcome [] result)
-
 {- | @check_type@: the type of an expression, or the kind/definition of a type
 or class — without running anything. The BACKEND owns the dispatch (no @op@ for
 the model to get wrong): a multi-token expression goes to @:type@; a bare name
@@ -105,18 +96,29 @@ execCheckType app input = do
                 )
         else withBackend app $ \backend -> do
             (via, result) <- dispatchCheckType backend expr
-            pure (guidedOutcome ["expr" .= expr, "via" .= via] result)
+            pure
+                ( guidedOutcome
+                    [ "expr" .= expr
+                    , "via" .= via
+                    , "verdict" .= answerVerdict result
+                    ]
+                    result
+                )
 
+{- | Every answer routes through 'distillTypeAnswer' at this emitting seam
+(R3.10): the signature stays, trailing leak-shaped output never crosses.
+-}
 dispatchCheckType :: SessionBackend -> Text -> IO (Text, Text)
 dispatchCheckType backend expr
-    | length (T.words expr) > 1 = (,) "type" <$> sbQueryType backend expr
+    | length (T.words expr) > 1 =
+        (,) "type" . distillTypeAnswer <$> sbQueryType backend expr
     | otherwise = do
-        ty <- sbQueryType backend expr
+        ty <- distillTypeAnswer <$> sbQueryType backend expr
         if looksResolved ty
             then do
                 struct <- typeStructure backend ty
                 pure ("type", if T.null struct then ty else ty <> "\n\n" <> struct)
-            else (,) "info" <$> sbQueryInfo backend expr
+            else (,) "info" . distillTypeAnswer <$> sbQueryInfo backend expr
 
 {- | True when @:type@ actually resolved the query, so we keep its answer rather
 than falling back to @:info@. Matches GHC's "didn't resolve" forms
@@ -142,7 +144,7 @@ typeStructure backend = go . take 4 . candidates
   where
     go [] = pure ""
     go (c : cs) = do
-        decl <- recordDecl <$> sbQueryInfo backend c
+        decl <- recordDecl . distillInfo <$> sbQueryInfo backend c
         maybe (go cs) pure decl
     candidates = concatMap variants . typeConstructors
     variants t =
@@ -182,6 +184,7 @@ recordDecl info
     keep l =
         let t = T.strip l
          in not (T.null t)
+                && not (leakyLine t)
                 && not ("instance " `T.isPrefixOf` t)
                 && not ("-- Defined in" `T.isInfixOf` t)
     hasAdt = "data " `T.isInfixOf` kept || "newtype " `T.isInfixOf` kept
@@ -212,63 +215,6 @@ execDescribeFunction app input = do
         else withBackend app $ \backend -> do
             result <- sbQueryDoc backend name
             pure (guidedOutcome ["name" .= name] result)
-
-execExploreResult :: AIStore -> Value -> IO ToolOutcome
-execExploreResult store input = do
-    let hidText = fieldText "handle_id" input
-        op = fieldText "op" input
-    if T.null hidText
-        then pure (errOutcome (errorJson "handle_id required"))
-        else do
-            mLr <- lookupHandle (aiHandles store) (HandleId hidText)
-            case mLr of
-                Nothing ->
-                    pure
-                        (errOutcome (errorJson ("Handle not found (may have expired): " <> hidText)))
-                -- 'runExplore' returns 'errorJson' for an unknown op; propagate
-                -- that as a typed tool error rather than masquerading as
-                -- success.
-                Just lr -> case parseExploreOp op of
-                    Nothing ->
-                        pure (errOutcome (runExplore op input lr))
-                    Just _ ->
-                        pure (okOutcome (runExplore op input lr))
-
-{- | The four 'explore_result' ops the schema declares an enum for.
-Parsed at the boundary so 'runExplore' is total.
--}
-data ExploreOp = ExHead | ExTail | ExSlice | ExGrep
-    deriving (Eq, Show)
-
-parseExploreOp :: Text -> Maybe ExploreOp
-parseExploreOp "head" = Just ExHead
-parseExploreOp "tail" = Just ExTail
-parseExploreOp "slice" = Just ExSlice
-parseExploreOp "grep" = Just ExGrep
-parseExploreOp _ = Nothing
-
-runExplore :: Text -> Value -> LargeResult -> Value
-runExplore rawOp input lr = case parseExploreOp rawOp of
-    Nothing -> errorJson ("Unknown op: " <> rawOp <> " (use head|tail|slice|grep)")
-    Just ExHead ->
-        let n = fromMaybe 20 (fieldInt "n" input)
-         in object ["lines" .= headLines n lr, "totalLines" .= lrTotalLines lr]
-    Just ExTail ->
-        let n = fromMaybe 20 (fieldInt "n" input)
-         in object ["lines" .= tailLines n lr, "totalLines" .= lrTotalLines lr]
-    Just ExSlice ->
-        let from = fromMaybe 1 (fieldInt "from" input)
-            to = fromMaybe (from + 20) (fieldInt "to" input)
-         in object
-                [ "lines" .= sliceLines from to lr
-                , "from" .= from
-                , "to" .= to
-                , "totalLines" .= lrTotalLines lr
-                ]
-    Just ExGrep ->
-        let pat = fieldText "pattern" input
-            hits = [object ["line" .= i, "text" .= t] | (i, t) <- grepLines pat lr]
-         in object ["hits" .= hits, "totalLines" .= lrTotalLines lr]
 
 -- | Default number of data rows 'execPeekData' returns when @n@ is omitted.
 defaultPeekRows :: Int

@@ -33,7 +33,7 @@ import Sabela.AI.Capabilities.Tools (chatTools)
 import Sabela.AI.CellResult (okCellResult, toCellResult)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Anthropic.Types (ToolDef (..))
-import Sabela.Model (CellError (..))
+import Sabela.Model (CellError (..), bareCellError)
 import Test.Hspec
 
 -- | Look up a tool's schema by its wire name.
@@ -110,6 +110,7 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "check_type"
                     , "find_by_type"
                     , "describe_function"
+                    , "eval_live"
                     , "peek_data"
                     , "api_reference"
                     , "explore_result"
@@ -118,7 +119,6 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "kernel_restart"
                     , "await_idle"
                     , "export_notebook"
-                    , "find_package"
                     , "find_example_cell"
                     , "find_function"
                     , "search_capability"
@@ -158,8 +158,8 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
         it "list_bindings requires nothing" $
             requiredOf "list_bindings" `shouldBe` []
         it "the find_* discovery tools require query" $
-            map requiredOf ["find_package", "find_example_cell", "find_function"]
-                `shouldBe` [["query"], ["query"], ["query"]]
+            map requiredOf ["find_example_cell", "find_function"]
+                `shouldBe` [["query"], ["query"]]
         it "explore_result requires handle_id and op" $
             requiredOf "explore_result" `shouldBe` ["handle_id", "op"]
         it "peek_data requires path" $
@@ -239,7 +239,7 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                 _ -> expectationFailure "not an object"
 
     describe "cell-result is the typed CellResult (autoExecuteAfterMutation)" $ do
-        let cerr = CellError (Just 1) (Just 1) "boom"
+        let cerr = bareCellError (Just 1) (Just 1) "boom"
             summaryOf res = toJSON (toCellResult res [])
         it "ok holds iff the outcome is Succeeded (legacy law preserved)" $ do
             okCellResult (toCellResult (Right (ExecutionResult [] Nothing [] [])) [])

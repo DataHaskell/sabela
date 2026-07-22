@@ -13,8 +13,10 @@ module Siza.Agent.Exemplars (
     Exemplar (..),
     exemplarStorePath,
     saveExemplar,
+    saveVerified,
     loadExemplars,
     retrieveExemplars,
+    retrieveForPrompt,
     exemplarMessage,
 ) where
 
@@ -84,6 +86,32 @@ retrieveExemplars k task =
         . filter ((>= 0.1) . fst)
         . map (\e -> (trigramSimilarity task (exTask e), e))
 
+{- | Retrieve the exemplar message for a similar prompt; [] when the store
+env is unset (the default episode stays byte-identical).
+-}
+retrieveForPrompt :: Text -> IO [Value]
+retrieveForPrompt prompt = do
+    mstore <- exemplarStorePath
+    case mstore of
+        Nothing -> pure []
+        Just fp -> do
+            exs <- loadExemplars fp
+            pure (exemplarMessage (retrieveExemplars 2 prompt exs))
+
+{- | Persist a verified deliverable's healthy sources; no-op when the store
+env is unset or the sources are blank.
+-}
+saveVerified :: Text -> [Text] -> IO ()
+saveVerified prompt srcs = do
+    mstore <- exemplarStorePath
+    case mstore of
+        Nothing -> pure ()
+        Just fp -> do
+            let src = T.intercalate "\n\n" srcs
+            if T.null (T.strip src)
+                then pure ()
+                else saveExemplar fp (Exemplar prompt src)
+
 {- | Render exemplars as one in-context user message (imitation, not a spec): the
 working sources under a "similar solved task" heading, adapted by the model. Empty
 list ⇒ no message.
@@ -102,7 +130,7 @@ exemplarMessage es =
             <> (if length es == 1 then "is a" else "are")
             <> " verified working solution"
             <> (if length es == 1 then "" else "s")
-            <> " to a SIMILAR task. Adapt the exact pattern (names, types, imports); \
-               \do not invent a different API:\n\n"
+            <> " to a SIMILAR task. Adapt the exact pattern (names, types, \
+               \imports) to this task:\n\n"
             <> T.intercalate "\n\n" (map fence es)
     fence e = "```haskell\n" <> exSource e <> "\n```"

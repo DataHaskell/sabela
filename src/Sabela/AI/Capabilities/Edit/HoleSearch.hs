@@ -8,66 +8,221 @@ is vetted by the caller's verify-and-revert. Split from "Sabela.AI.Capabilities.
 to keep both under the size cap.
 -}
 module Sabela.AI.Capabilities.Edit.HoleSearch (
+    argInsertCandidates,
     holeFitCandidates,
     holeSearchCandidates,
-    selectByTypeCheck,
     goalSpans,
+    vacuousFit,
 ) where
 
+import Control.Exception (SomeException, try)
 import Data.List (nub)
-import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import qualified Data.Set as S
+import Sabela.AI.ArgRepair (
+    argFillCandidates,
+    insertArgAt,
+    missingArgType,
+    tooFewArgsTarget,
+ )
 import Sabela.AI.Capabilities.Edit.Repair (resultErrorText)
+import Sabela.AI.Capabilities.Edit.ScratchVet (scratchScopeBackend)
 import Sabela.AI.Capabilities.Util (featureEnabled)
-import Sabela.AI.Health (healthOfTypeQuery, isClean)
+import Sabela.AI.HoleFits (refinementFits)
 import Sabela.AI.HoleRepair (
     dropAnnotation,
     droppableAnnotation,
-    goalFromError,
+    goalSpans,
     holeFitNames,
+    holeQueryFor,
+    holeSpans,
     holeTypeFromDiagnostic,
     orderBySimilarity,
     substituteNameAt,
+    substituteNameAtAll,
     suggestedNames,
  )
-import Sabela.AI.Repair (firstJustM)
+import Sabela.AI.Repair (interleave)
+import Sabela.AI.SelfHeal (plausibleRename)
+import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Errors.Json (parseJsonInteractive)
 import Sabela.Model (CellError (..))
+import Sabela.Parse (cellNames)
+import Sabela.Session.Query (TypecheckResult (..), typecheckValueWith)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), getHaskellSession)
+import System.Environment (lookupEnv)
 
 {- | Speculative hole-fit candidates for a red not-in-scope-with-type cell: query
-GHC hole fits for the inferred goal type and substitute the wrong name. Checked
-compile-only before any is committed; empty unless the error carries a goal type.
+GHC hole fits for the inferred goal type and substitute the wrong name; returns
+(type-endorsed refinement rewrites, lexical did-you-mean rewrites). Empty
+unless the error carries a goal type.
+
+The query runs in the SCRATCH session with the cell's scope replayed: GHC may
+spell the goal with the cell's own type synonym, which the live prompt cannot
+parse. Falls back to the live backend if the scratch fails.
 -}
-holeFitCandidates :: App -> Either Text ExecutionResult -> Text -> IO [Text]
-holeFitCandidates app res src = do
+holeFitCandidates ::
+    App ->
+    AIStore ->
+    Either Text ExecutionResult ->
+    Text ->
+    IO ([Text], [Text])
+holeFitCandidates app store res src = do
     on <- featureEnabled "SABELA_HOLE_FIT"
+    mBackend <- queryBackend
+    case (on, mBackend, nameGoals (goalSpans res ++ holeSpans res)) of
+        (True, Just backend, goals@(_ : _)) -> do
+            pairs <- mapM (candidatesFor backend) goals
+            pure
+                ( nub (interleave (map fst pairs))
+                , nub (interleave (map snd pairs))
+                )
+        _ -> pure ([], [])
+  where
+    queryBackend = do
+        primitive <- featureEnabled "SABELA_TYPECHECK_PRIMITIVE"
+        if primitive
+            then getHaskellSession (appSessions app)
+            else do
+                scratch <-
+                    try (scratchScopeBackend app store [] src) ::
+                        IO (Either SomeException ST.SessionBackend)
+                either (const (getHaskellSession (appSessions app))) (pure . Just) scratch
+    errText = resultErrorText res
+    -- One goal per WRONG NAME with every reported site: a multi-site name is
+    -- one entry in the message-set health, so only an all-sites candidate can
+    -- show improvement. Names the CELL defines are knock-on casualties, never
+    -- repair targets.
+    nameGoals goals =
+        [ (w, ty, [sp | (w', _, Just sp) <- goals, w' == w])
+        | (w, ty) <- nub [(w, ty) | (w, ty, _) <- goals]
+        , not (w `S.member` cellDefs)
+        ]
+    cellDefs = fst (cellNames src)
+    candidatesFor backend (wrong, ty, spans) = do
+        blob <- queryHole backend (holeQueryFor ty)
+        debugDumpFits (holeQueryFor ty) blob
+        let fitText = decodeDiagnostics blob
+            -- Did-you-mean first, then hole fits, ranked by spelling closeness
+            -- so a typo heals to the nearest valid name. Vacuous fits dropped
+            -- ('vacuousFit'); lexically distant fits declined ('renameOk') —
+            -- except for a literal hole, whose fits GHC already type-endorsed.
+            names =
+                filter (renameOk wrong) $
+                    orderBySimilarity
+                        wrong
+                        ( nub
+                            ( suggestedNames errText
+                                ++ filter (not . vacuousFit) (holeFitNames fitText)
+                            )
+                        )
+        let plain = [s | n <- names, s <- rewrites spans wrong n, s /= src]
+        refined <-
+            concat
+                <$> mapM
+                    (refinementRewrites backend spans wrong)
+                    (filter (renameOk wrong . fst) (refinementFits fitText))
+        -- Refined candidates are TYPE-ENDORSED (GHC proposed them for the
+        -- full goal); plain did-you-mean names are lexical only. Split so the
+        -- caller does not re-check endorsed ones against a scope that cannot
+        -- see the cell's own bindings.
+        pure (refined, plain)
+    {- A refinement fit @fn (_ :: ArgTy)@ proposes BOTH the right name and its
+    missing argument's type (takeWhileP + Maybe String); fill the sub-hole by
+    its own hole fits and splice @(fn fill)@ at every site of the wrong name. -}
+    refinementRewrites backend spans wrong (fn, argTy) = do
+        fillBlob <- queryHole backend (holeQueryFor argTy)
+        let fills = take 3 (argFillCandidates (decodeDiagnostics fillBlob))
+        pure
+            [ s
+            | fill <- fills
+            , Just s <-
+                [ substituteNameAtAll
+                    spans
+                    wrong
+                    ("(" <> fn <> " " <> fill <> ")")
+                    src
+                ]
+            , s /= src
+            ]
+    -- Span-localized rewrites only: a global lexical replace would corrupt the
+    -- name inside strings/comments (which the compile check cannot catch), so a
+    -- diagnostic with no usable span yields no candidate rather than a risky one.
+    rewrites spans wrong n = maybeToList (substituteNameAtAll spans wrong n src)
+    -- Lexical closeness is meaningless for the hole token: its fits are
+    -- type-endorsed by GHC, so only real renames pass 'plausibleRename'.
+    renameOk wrong n = wrong == "_" || plausibleRename wrong n
+
+{- | Raw hole-fit responses appended to the file @SABELA_DEBUG_HOLE_FITS@ names
+— a debugging tap for when the tier looks inert; off unless the var is set.
+-}
+debugDumpFits :: Text -> Text -> IO ()
+debugDumpFits query blob = do
+    mp <- lookupEnv "SABELA_DEBUG_HOLE_FITS"
+    case mp of
+        Just p
+            | not (null p)
+            , p /= "0" ->
+                appendFile
+                    p
+                    (T.unpack ("== " <> query <> " ==\n" <> blob <> "\n"))
+        _ -> pure ()
+
+{- | Argument-insertion candidates for GHC's \"applied to too few arguments\"
+diagnostic: the model (or a rename) wrote @fn args@ where @fn@ wants one more
+leading argument; GHC names @fn@ and the missing argument's type, a hole fit of
+that type feeds the fill (@takeWhileP Nothing@). Same site discipline as every
+substitution; vetted by the caller. @SABELA_ARG_INSERT=0@ disables.
+-}
+argInsertCandidates :: App -> Either Text ExecutionResult -> Text -> IO [Text]
+argInsertCandidates app res src = do
+    enabled <- featureEnabled "SABELA_ARG_INSERT"
     mBackend <- getHaskellSession (appSessions app)
-    case (on, mBackend, goalSpans res) of
-        (True, Just backend, goals@(_ : _)) ->
-            nub . concat <$> mapM (candidatesFor backend) goals
+    case (enabled, mBackend, tooFewArgsTarget errText) of
+        (True, Just backend, Just fn) ->
+            case missingArgType errText fn of
+                Nothing -> pure []
+                Just argTy -> do
+                    blob <- queryHole backend (holeQueryFor argTy)
+                    let fills = take 3 (argFillCandidates (decodeDiagnostics blob))
+                    pure
+                        [ s
+                        | sp <- tooFewArgsSites fn res
+                        , fill <- fills
+                        , Just s <- [insertArgAt sp fn fill src]
+                        , s /= src
+                        ]
         _ -> pure []
   where
     errText = resultErrorText res
-    candidatesFor backend (wrong, ty, mspan) = do
-        blob <- ST.sbQueryHoleFits backend ("_ :: " <> ty)
-        let fitText = decodeDiagnostics blob
-            -- Did-you-mean first, then hole fits, ranked by spelling closeness
-            -- so a typo heals to the nearest valid name.
-            names =
-                orderBySimilarity
-                    wrong
-                    (nub (suggestedNames errText ++ holeFitNames fitText))
-        pure [s | n <- names, s <- rewrites mspan wrong n, s /= src]
-    -- Span-localized rewrite only: a global lexical replace would corrupt the
-    -- name inside strings/comments (which the compile check cannot catch), so a
-    -- diagnostic with no usable span yields no candidate rather than a risky one.
-    rewrites mspan wrong n =
-        maybe [] (\sp -> maybeToList (substituteNameAt sp wrong n src)) mspan
+
+-- | The reported spans of the too-few-arguments diagnostics naming @fn@.
+tooFewArgsSites :: Text -> Either Text ExecutionResult -> [(Int, Int)]
+tooFewArgsSites _ (Left _) = []
+tooFewArgsSites fn (Right er) =
+    [ (l, c)
+    | ce <- erErrors er
+    , ("`" <> fn <> "' is applied to too few arguments")
+        `T.isInfixOf` ceMessage ce
+    , Just l <- [ceLine ce]
+    , Just c <- [ceCol ce]
+    ]
+
+{- | Generic hole-fits GHC offers for any Monoid/Foldable/Maybe goal — @mempty@,
+@[]@, @undefined@, @Nothing@… — that compile but discard meaning. Never a valid
+heal for a mis-typed reference (substituting one for a not-in-scope name silently
+empties the cell), so drop them: a free name with no real match stays a surfaced
+error instead.
+-}
+vacuousFit :: Text -> Bool
+vacuousFit n =
+    T.strip n
+        `elem` ["mempty", "undefined", "[]", "Nothing", "mzero", "empty", "()"]
 
 {- | Two compiler-driven moves, selected compile-only by the caller: drop the
 @:: T@ GHC flagged, or hole the name and fill from hole-fits of its in-context
@@ -95,10 +250,13 @@ holeSearchCandidates app res src = do
     inContextFills _ (_, _, Nothing) = pure []
     inContextFills backend (wrong, tyErr, Just (l, c)) = do
         let holed = fromMaybe src (substituteNameAt (l, c) wrong "_" src)
-        typeResp <- ST.sbQueryType backend (rhsAt l holed)
+        typeResp <- queryHole backend (rhsAt l holed)
         let ty = fromMaybe tyErr (holeTypeFromDiagnostic (decodeDiagnostics typeResp))
-        blob <- ST.sbQueryHoleFits backend ("_ :: " <> ty)
-        let names = orderBySimilarity wrong (nub (holeFitNames (decodeDiagnostics blob)))
+        blob <- queryHole backend (holeQueryFor ty)
+        let names =
+                orderBySimilarity
+                    wrong
+                    (filter (not . vacuousFit) (nub (holeFitNames (decodeDiagnostics blob))))
         pure [s | n <- names, Just s <- [substituteNameAt (l, c) wrong n src], s /= src]
     -- The expression on line l to :type: the RHS of an @x = e@ binding, else the line.
     rhsAt l holed = case drop (l - 1) (T.lines holed) of
@@ -107,60 +265,20 @@ holeSearchCandidates app res src = do
              in if T.null rhs then T.strip ln else T.strip (T.drop 3 rhs)
         _ -> ""
 
-{- | The @(wrong, goalType, span)@ triples a failed run implies, one per
-not-in-scope diagnostic. A holistic error carries no span, so only the global
-rewrite applies to it.
+{- | Default-on Path-2 hole inspection. The escape hatch retains the prior
+backend command, while the normal route is exactly a live @:type@ query.
 -}
-goalSpans :: Either Text ExecutionResult -> [(Text, Text, Maybe (Int, Int))]
-goalSpans (Left e) = [(w, t, Nothing) | Just (w, t) <- [goalFromError e]]
-goalSpans (Right er) =
-    [ (w, t, (,) <$> ceLine ce <*> ceCol ce)
-    | ce <- diags
-    , Just (w, t) <- [goalFromError (ceMessage ce)]
-    ]
-  where
-    diags =
-        maybe [] (\m -> [CellError Nothing Nothing m]) (erError er)
-            ++ erErrors er
-
-{- | The first candidate whose expression @:type@-checks clean, WITHOUT running
-it. 'Nothing' when none check clean (or there is no session).
--}
-selectByTypeCheck :: App -> [Text] -> IO (Maybe Text)
-selectByTypeCheck _ [] = pure Nothing
-selectByTypeCheck app cands = do
-    mBackend <- getHaskellSession (appSessions app)
-    case mBackend of
-        Nothing -> pure Nothing
-        Just backend -> fmap fst <$> firstJustM (checkClean backend) cands
-  where
-    checkClean backend c = do
-        out <- ST.sbQueryType backend (typeCheckTarget c)
-        pure (if isClean (healthOfTypeQuery out) then Just () else Nothing)
-
-{- | The expression to @:type@ for a candidate source: the RHS of the LAST
-@x = expr@ binding line, else the whole stripped source. The last binding is the
-one a cell defines for its dependents, and the one a repair rewrote.
-
-A multi-line cell must not fall through to @:type@-ing the whole source — that
-never checks clean, so every correct candidate would be rejected and the tier
-would look inert. Imports and @x <- e@ statements are skipped; a non-checkable
-candidate still fails the check, so at worst a repair is missed, never kept.
--}
-typeCheckTarget :: Text -> Text
-typeCheckTarget src = case reverse (mapMaybe bindingRhs (T.lines stripped)) of
-    (rhs : _) -> rhs
-    [] -> stripped
-  where
-    stripped = T.strip src
-    bindingRhs ln
-        | T.isPrefixOf "import " l = Nothing
-        | (_, rhs) <- T.breakOn " = " l
-        , not (T.null rhs) =
-            Just (T.strip (T.drop 3 rhs))
-        | otherwise = Nothing
-      where
-        l = T.strip ln
+queryHole :: ST.SessionBackend -> Text -> IO Text
+queryHole backend expression = do
+    primitive <- featureEnabled "SABELA_TYPECHECK_PRIMITIVE"
+    if primitive
+        then
+            tcDiagnostics
+                <$> typecheckValueWith
+                    (ST.sbQueryType backend)
+                    (ST.sbQueryBindings backend)
+                    expression
+        else ST.sbQueryHoleFits backend expression
 
 {- | Decode a live @:type@ / hole-fit reply to the plain text the parsers expect:
 the session emits @-fdiagnostics-as-json@, so fits arrive JSON-escaped.

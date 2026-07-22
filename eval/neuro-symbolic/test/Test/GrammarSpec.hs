@@ -11,13 +11,20 @@ import Sabela.AI.Grammar (
     Envelope (..),
     ImportStyle (..),
     applyEnvelope,
+    discoverGrammarBlock,
     displayEnvelope,
     grammarPromptBlock,
     grammarTerminals,
     normalizeName,
     parseBrowse,
  )
-import Sabela.AI.Grammar.Synth (Surface (..), synthesizeGrammar)
+import Sabela.AI.Grammar.Synth (
+    Surface (..),
+    exclusivityViolations,
+    synthesizeGrammar,
+    synthesizeGrammarProven,
+    usedNames,
+ )
 
 graniteSvgBrowse :: Text
 graniteSvgBrowse =
@@ -110,17 +117,26 @@ spec = describe "E1 grammar prompting" $ do
 
     describe "grammarPromptBlock (short: points at the search tools)" $ do
         let block = grammarPromptBlock
-        it "points at find_package and find_example_cell instead of dumping examples" $ do
-            ("find_package" `T.isInfixOf` block) `shouldBe` True
+        it "points at the product search tools instead of dumping examples" $ do
+            ("find_function" `T.isInfixOf` block) `shouldBe` True
             ("find_example_cell" `T.isInfixOf` block) `shouldBe` True
         it "keeps the -- cabal: mechanism but carries no worked example cells" $ do
             ("-- cabal: build-depends:" `T.isInfixOf` block) `shouldBe` True
             ("D.readCsv \"revenue.csv\"" `T.isInfixOf` block) `shouldBe` False
             ("Granite.Svg.bars" `T.isInfixOf` block) `shouldBe` False
-
         it "nudges toward the typed-column idiom for CSV column work" $ do
             ("typed-column" `T.isInfixOf` block) `shouldBe` True
             ("compile error" `T.isInfixOf` block) `shouldBe` True
+
+    describe "discoverGrammarBlock (the siza surface's cheat-sheet)" $ do
+        let block = discoverGrammarBlock
+        it "points at discover, not the tools that catalogue no longer offers" $ do
+            ("discover" `T.isInfixOf` block) `shouldBe` True
+            ("find_function" `T.isInfixOf` block) `shouldBe` False
+            ("search_capability" `T.isInfixOf` block) `shouldBe` False
+            ("find_example_cell" `T.isInfixOf` block) `shouldBe` False
+        it "keeps the -- cabal: install mechanism" $
+            ("-- cabal: build-depends:" `T.isInfixOf` block) `shouldBe` True
 
     describe "synthesizeGrammar (live :browse -> grammar prior)" $ do
         let graniteBlock =
@@ -166,3 +182,109 @@ spec = describe "E1 grammar prompting" $ do
             ("columnNotFound" `T.isInfixOf` block) `shouldBe` False
             ("ttrace" `T.isInfixOf` block) `shouldBe` False
             ("combineAndVec" `T.isInfixOf` block) `shouldBe` False
+
+    describe "exclusivity-language lint (R9.7 / search-api §6)" $ do
+        it "flags the banned exclusivity fixtures" $ do
+            exclusivityViolations "use ONLY these names" `shouldNotBe` []
+            exclusivityViolations "Use only these names; nothing else exists"
+                `shouldNotBe` []
+            exclusivityViolations "no other names may be written"
+                `shouldNotBe` []
+        it "passes plain non-exclusive card text" $
+            exclusivityViolations
+                "## Live API grammar — verified names, not exhaustive"
+                `shouldBe` []
+        it "every synthesized card is lint-clean (generated surfaces)" $
+            mapM_
+                ( \surfs ->
+                    exclusivityViolations (synthesizeGrammar surfs) `shouldBe` []
+                )
+                surfaceGrid
+
+    describe "R9.7 completeness: a post-compile card includes every proven name" $ do
+        it "a compile-proven name survives the noise filter (fixture first)" $ do
+            -- `metric` returns String (noise class) and `colE` returns internal
+            -- currency (noise class); the compiled cell uses BOTH, so the card
+            -- must include them — the revenueTotal `col` omission class.
+            let browse =
+                    T.unlines
+                        [ "D.readCsv :: FilePath -> IO D.DataFrame"
+                        , "D.metric :: D.DataFrame -> String"
+                        , "D.colE :: T.Text -> D.NumExpr Double"
+                        ]
+                cell = "total = D.metric df\ne = D.colE \"revenue\""
+                block =
+                    synthesizeGrammarProven
+                        (usedNames cell)
+                        [Surface "DataFrame" (QualifiedAs "D") browse]
+            ("D.metric ::" `T.isInfixOf` block) `shouldBe` True
+            ("D.colE ::" `T.isInfixOf` block) `shouldBe` True
+        it "unproven noise stays filtered alongside proven names" $ do
+            let browse =
+                    T.unlines
+                        [ "D.metric :: D.DataFrame -> String"
+                        , "D.ttrace :: String -> a -> a"
+                        ]
+                block =
+                    synthesizeGrammarProven
+                        (usedNames "x = D.metric df")
+                        [Surface "DataFrame" (QualifiedAs "D") browse]
+            ("D.metric ::" `T.isInfixOf` block) `shouldBe` True
+            ("ttrace" `T.isInfixOf` block) `shouldBe` False
+        it "property: every parsed-uses ∩ export-set name appears (generated grid)" $
+            mapM_
+                ( \(cell, browse, style, expectPresent) -> do
+                    let block =
+                            synthesizeGrammarProven
+                                (usedNames cell)
+                                [Surface "M" style browse]
+                    mapM_
+                        ( \n ->
+                            ((cell, n), (n <> " ::") `T.isInfixOf` block)
+                                `shouldBe` ((cell, n), True)
+                        )
+                        expectPresent
+                )
+                completenessGrid
+
+{- | Generated surface grid for the lint property: every import style crossed
+with clean, noisy, and empty browse bodies.
+-}
+surfaceGrid :: [[Surface]]
+surfaceGrid =
+    [ [Surface "M" style browse]
+    | style <- [Unqualified, QualifiedAs "Q"]
+    , browse <-
+        [ ""
+        , "M.f :: Int -> Text"
+        , "M.err :: Int -> String\nM.ttrace :: String -> a -> a"
+        , graniteSvgBrowse
+        ]
+    ]
+        ++ [[]]
+
+{- | Generated (cell, browse, style, expected-present) cases: the proven set
+is the cell's lexical uses; expectation lists each uses ∩ exports name in
+its normalised written form.
+-}
+completenessGrid :: [(Text, Text, ImportStyle, [Text])]
+completenessGrid =
+    [
+        ( "y = shout x"
+        , "M.shout :: Int -> String"
+        , Unqualified
+        , ["shout"]
+        )
+    ,
+        ( "y = Q.shout x\nz = Q.quiet y"
+        , "M.shout :: Int -> String\nM.quiet :: Int -> Int"
+        , QualifiedAs "Q"
+        , ["Q.shout", "Q.quiet"]
+        )
+    ,
+        ( "y = plain 1"
+        , "M.plain :: Int -> Int"
+        , Unqualified
+        , ["plain"]
+        )
+    ]

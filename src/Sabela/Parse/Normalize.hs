@@ -10,6 +10,7 @@ module Sabela.Parse.Normalize (
     looksLikeHaskellCode,
     unwrapMain,
     rewriteTopLevelLet,
+    normalizeCode,
     normalizeInsert,
 ) where
 
@@ -18,6 +19,10 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.NormalizeProposals (
+    foldCabalComments,
+    renameKeywordBindings,
+ )
 import Sabela.Model (CellType (..))
 import Sabela.Parse (CellSymbols (..), cellSymbols)
 import Sabela.Parse.Preprocess (noTopLevelIn)
@@ -95,11 +100,13 @@ looksLikeHaskellCode src =
 
 {- | Rewrite a statement-form top-level @let@ into plain declarations, including a
 multi-line block (de-indent the @let@ line and each continuation to its binding
-column). A @let ... in ...@ expression and an indented (nested) @let@ are left.
+column). A @let ... in ...@ expression and an indented (nested) @let@ are left;
+a source with no such @let@ is preserved byte-identically (R7.2).
 -}
 rewriteTopLevelLet :: Text -> Text
-rewriteTopLevelLet = T.intercalate "\n" . go . T.lines
+rewriteTopLevelLet src = T.intercalate "\n" (go (T.lines src)) <> trailing
   where
+    trailing = if "\n" `T.isSuffixOf` src then "\n" else ""
     go [] = []
     go (line : rest) = case T.stripPrefix "let " line of
         Just body
@@ -113,21 +120,35 @@ rewriteTopLevelLet = T.intercalate "\n" . go . T.lines
     contAt bcol l =
         not (T.null (T.strip l)) && T.length (T.takeWhile (== ' ') l) >= bcol
 
+{- | The code-cell generator composition, one note per fix: cabal-comment
+fold, top-level @let@ rewrite, keyword-binding rename, @main@ unwrap. The
+UNGATED candidate — 'Sabela.AI.NormalizeGate' vets it before it is kept.
+-}
+normalizeCode :: Text -> (Text, [Text])
+normalizeCode src = (unMained, notes)
+  where
+    (deCabal, cabalNotes) = foldCabalComments src
+    deLet = rewriteTopLevelLet deCabal
+    (renamed, renameNotes) = renameKeywordBindings deLet
+    unMained = unwrapMain renamed
+    notes =
+        cabalNotes
+            <> [letMsg | deLet /= deCabal]
+            <> renameNotes
+            <> [mainMsg | unMained /= renamed]
+    letMsg = "Rewrote a top-level `let x = …` to a plain `x = …` declaration."
+    mainMsg = "Rewrote `main` to a top-level do so the cell runs."
+
 {- | Normalize an AI-inserted cell: a prose cell that is really Haskell becomes a
-code cell, a top-level @let@ is rewritten to a plain binding, and a top-level
-@main@ is unwrapped so it runs. Returns the type, source, and a note per fix.
+code cell, and the 'normalizeCode' generators run on code cells. Returns the
+type, source, and a note per fix.
 -}
 normalizeInsert :: CellType -> Text -> (CellType, Text, [Text])
 normalizeInsert ty src = (ty', src', notes)
   where
     reclassified = ty == ProseCell && looksLikeHaskellCode src
     ty' = if reclassified then CodeCell else ty
-    deLet = if ty' == CodeCell then rewriteTopLevelLet src else src
-    src' = if ty' == CodeCell then unwrapMain deLet else src
-    notes =
-        [reclassMsg | reclassified]
-            <> [letMsg | deLet /= src]
-            <> [mainMsg | src' /= deLet]
+    (src', codeNotes) =
+        if ty' == CodeCell then normalizeCode src else (src, [])
+    notes = [reclassMsg | reclassified] <> codeNotes
     reclassMsg = "Inserted as a CodeCell — the source is Haskell, not prose."
-    letMsg = "Rewrote a top-level `let x = …` to a plain `x = …` declaration."
-    mainMsg = "Rewrote `main` to a top-level do so the cell runs."

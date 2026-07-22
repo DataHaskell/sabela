@@ -8,8 +8,9 @@ module Test.RepairEngineSpec (spec) where
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Test.Hspec
 
+import Sabela.AI.Capabilities.Edit.Run (parseRepairBudget, repairTierOrder)
 import Sabela.AI.HoleRepair (holeFitRewrites)
-import Sabela.AI.Repair (firstJustM)
+import Sabela.AI.Repair (firstJustM, interleave)
 
 -- | Run 'firstJustM' over @xs@, returning its result and the candidates visited.
 traced :: (Int -> Maybe String) -> [Int] -> IO (Maybe (Int, String), [Int])
@@ -29,6 +30,37 @@ spec = describe "Sabela.AI.Repair (shared repair core)" $ do
                 `shouldReturn` (Nothing, [1, 2, 3])
         it "is Nothing on an empty candidate list" $
             traced keep [] `shouldReturn` (Nothing, [])
+
+    describe "interleave — candidate diversity under a small execution cap" $ do
+        -- The cap must sample across GROUPS (names, tiers) before trying a
+        -- second variant of the same one: three executions should cover three
+        -- different problems, not three spellings of one.
+        it "round-robins across groups" $
+            interleave [["a1", "a2", "a3"], ["b1"], ["c1", "c2"]]
+                `shouldBe` ["a1", "b1", "c1", "a2", "c2", "a3"]
+        it "is flat concat for a single group" $
+            interleave [["a1", "a2"]] `shouldBe` ["a1", "a2"]
+        it "drops empty groups" $
+            interleave [[], ["b1"], []] `shouldBe` ["b1"]
+
+    describe "parseRepairBudget — the cascade's wall-clock allowance" $ do
+        it "defaults when unset" $
+            parseRepairBudget Nothing `shouldBe` 150
+        it "reads an explicit seconds value" $
+            parseRepairBudget (Just "60") `shouldBe` 60
+        it "falls back to the default on junk" $
+            parseRepairBudget (Just "fast") `shouldBe` 150
+
+    describe "repairTierOrder (the list the cascade driver iterates)"
+        $ it
+            "runs the compile-only speculative tier before the session-committing resolvers"
+        $ repairTierOrder
+            `shouldBe` [ "firstFix"
+                       , "moduleDep"
+                       , "speculative"
+                       , "resolvers"
+                       , "restart"
+                       ]
 
     describe "holeFitRewrites" $ do
         it "substitutes each plain fit for the wrong name, dropping no-ops" $

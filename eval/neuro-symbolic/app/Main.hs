@@ -21,7 +21,8 @@ import System.Directory (createDirectoryIfMissing)
 
 import Eval.Agent (AgentRun (..), EpisodeBudget (..), defaultBudget, runEpisode)
 import Eval.Preflight (ensureOllama)
-import Eval.Task (Task (..), Verdict (..), findTask, grade, tasks)
+import Eval.Task (Task (..), Verdict (..), grade)
+import Eval.TaskSet (findTask, tasks)
 import Eval.Transcript (renderTranscript)
 import Siza.Transport (Conn (..), Env (..), newConn)
 

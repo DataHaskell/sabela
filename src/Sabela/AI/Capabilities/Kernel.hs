@@ -16,17 +16,32 @@ module Sabela.AI.Capabilities.Kernel (
     haskellKernelOccupied,
     kernelStateBefore,
     awaitIdleBudgetUs,
+    awaitTag,
 ) where
 
 import Control.Concurrent (forkIO)
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Data.Aeson (Value, object, (.=))
+import Data.Aeson.Types (Pair)
 import Data.IORef (readIORef)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import GHC.Clock (getMonotonicTimeNSec)
 
+import Sabela.AI.Capabilities.Edit.Ack (settledWritesField)
+import Sabela.AI.Capabilities.KernelHealth (
+    awaitIdleBudgetUsOf,
+    noteSettled,
+    resourceField,
+ )
 import Sabela.AI.KernelState (KernelState, kernelStateJSON, kernelStateOf)
+import Sabela.AI.KernelVocab (
+    tagIdle,
+    tagKernelDead,
+    tagSettled,
+    tagTimedOut,
+ )
+import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ToolOutcome, okOutcome, toolOutcomeValue)
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model
@@ -35,7 +50,7 @@ import Sabela.State (App (..))
 import Sabela.State.EventBus (
     AwaitResult (..),
     EventBus (..),
-    awaitExecutionDone,
+    awaitExecutionDoneCounting,
  )
 import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
@@ -121,38 +136,54 @@ cascade in flight (not a @running == false@ sample — the cascade releases
 the run-lock between cells). When the kernel is already idle at entry there
 is no fence to wait for, so it returns immediately. Its own kill-aware
 timeout returns a terminal state on kernel death so the poll cannot itself
-wedge; the caller re-loops on a non-@settled@ outcome.
+wedge; the caller re-loops on a non-@settled@ outcome. Settled-but-
+undelivered write acks reconcile here, exactly once (R6.1). A settle opens
+the post-settled consistency window (R6.4); a timeout attaches the bounded
+@resource@ runaway line when the evidence warrants it (R6.5).
 -}
-execAwaitIdle :: App -> IO ToolOutcome
-execAwaitIdle app = do
+execAwaitIdle :: App -> AIStore -> IO ToolOutcome
+execAwaitIdle app store = do
     busy <- haskellKernelBusy app
     building <- readIORef (appBuilding app)
     if not (busy || building)
-        then awaitResult "idle" =<< awaitIdleState app
+        then finishAwait tagIdle []
         else do
-            res <-
-                awaitExecutionDone
+            budgetUs <- awaitIdleBudgetUsOf awaitIdleBudgetUs
+            (res, seen) <-
+                awaitExecutionDoneCounting
                     (appEvents app)
-                    awaitIdleBudgetUs
+                    budgetUs
                     (haskellKernelAlive app)
-            awaitResult (awaitTag res) =<< awaitIdleState app
+            resource <-
+                if res == AwaitTimedOut
+                    then resourceField store seen
+                    else pure []
+            finishAwait (awaitTag res) resource
+  where
+    finishAwait tag extra = do
+        when (tag == tagIdle || tag == tagSettled) (noteSettled app store)
+        writes <- settledWritesField store
+        status <- awaitIdleState app
+        awaitResult tag status (writes <> extra)
 
 -- | Lock-free: is a Haskell session attached (kernel not torn down)?
 haskellKernelAlive :: App -> IO Bool
 haskellKernelAlive app = isJust <$> getHaskellSession (appSessions app)
 
+-- | Await tags drawn from the closed vocabulary ("Sabela.AI.KernelVocab").
 awaitTag :: AwaitResult -> Text
-awaitTag AwaitSettled = "settled"
-awaitTag AwaitKernelDead = "kernelDead"
-awaitTag AwaitTimedOut = "timedOut"
+awaitTag AwaitSettled = tagSettled
+awaitTag AwaitKernelDead = tagKernelDead
+awaitTag AwaitTimedOut = tagTimedOut
 
 {- | The @await_idle@ result: the long-poll @waited@ tag plus a fresh
 kernel-status snapshot, so the caller sees the kernel's terminal state in
 the same reply and re-loops only when @waited@ is not @settled@/@idle@.
+The @writes@ pairs carry any newly settled write-ack reconciliations.
 -}
-awaitResult :: Text -> Value -> IO ToolOutcome
-awaitResult tag status =
-    pure $ okOutcome $ object ["waited" .= tag, "status" .= status]
+awaitResult :: Text -> Value -> [Pair] -> IO ToolOutcome
+awaitResult tag status writes =
+    pure $ okOutcome $ object (["waited" .= tag, "status" .= status] <> writes)
 
 -- | Snapshot of the live kernel status, shared by 'execAwaitIdle'.
 awaitIdleState :: App -> IO Value

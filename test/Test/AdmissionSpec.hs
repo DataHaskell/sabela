@@ -21,7 +21,8 @@ import Control.Concurrent (
 import Control.Concurrent.MVar (MVar)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (partition)
-import Data.Maybe (fromMaybe, isNothing, mapMaybe)
+import Data.Maybe (isNothing, mapMaybe)
+import Data.Word (Word64)
 
 import Sabela.AI.Capabilities (needsKernel)
 import Sabela.AI.Capabilities.ToolName (
@@ -31,7 +32,7 @@ import Sabela.AI.Capabilities.ToolName (
  )
 import Sabela.AI.Capabilities.Tools (chatTools)
 import Sabela.Anthropic.Types (ToolDef (..))
-import Sabela.Session (Admission (..), admit)
+import Sabela.Session.Admission (Admission (..), admit)
 import Test.Hspec
 
 newKernelTools :: [ToolName]
@@ -105,7 +106,12 @@ check-then-acquire shape uses it to expose its TOCTOU window — both callers
 pass the busy check before either takes the lock.
 -}
 type Strategy =
-    MVar () -> IORef (Maybe Int) -> IO () -> Int -> IO () -> IO (Admission Int)
+    MVar () ->
+    IORef (Maybe (Int, Word64)) ->
+    IO () ->
+    Int ->
+    IO () ->
+    IO (Admission Int)
 
 {- | Race two callers (ids 1 and 2) through a 'Strategy' on ONE run-lock. A
 two-arrival barrier sits between the busy decision and the acquire; the
@@ -156,10 +162,12 @@ checkThenAcquire lock reg barrier cid work = do
     busy <- isNothing <$> tryReadMVar lock
     barrier
     if busy
-        then Busy . fromMaybe cid <$> readIORef reg
+        then do
+            held <- readIORef reg
+            pure (Busy (maybe cid fst held) 0)
         else do
             takeMVar lock
-            writeIORef reg (Just cid)
+            writeIORef reg (Just (cid, 0))
             r <- work >> pure cid
             writeIORef reg Nothing
             putMVar lock ()

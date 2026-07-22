@@ -40,34 +40,42 @@ errorsJsonSpec = describe "Sabela.Errors.Json" $ do
             warns `shouldBe` []
             residual `shouldBe` ""
             case errs of
-                [CellError ln col msg] -> do
+                [CellError ln col msg _] -> do
                     ln `shouldBe` Just 2
                     col `shouldBe` Just 7
                     ("Couldn't match type" `T.isInfixOf` msg) `shouldBe` True
                 other -> expectationFailure ("expected one error, got " <> show other)
 
+        it "captures GHC's diagnostic code (the errors.haskell.org key)" $ do
+            let ([CellError _ _ _ code], _, _) = parseJsonInteractive errLine
+            code `shouldBe` Just 83865
+
         it "joins multi-paragraph messages" $ do
-            let ([CellError _ _ msg], _, _) = parseJsonInteractive errLine
+            let ([CellError _ _ msg _], _, _) = parseJsonInteractive errLine
             ("In the expression" `T.isInfixOf` msg) `shouldBe` True
 
         it "splits warnings from errors by severity" $ do
             let (errs, warns, _) = parseJsonInteractive warnLine
             errs `shouldBe` []
             case warns of
-                [CellError ln _ msg] -> do
+                [CellError ln _ msg code] -> do
                     ln `shouldBe` Just 1
+                    code `shouldBe` Just 40910
                     ("Defined but not used" `T.isInfixOf` msg) `shouldBe` True
                 other -> expectationFailure ("expected one warning, got " <> show other)
 
-        it "keeps a null span as an error with no location" $ do
+        it "keeps a null span as an error with no location, code still captured" $ do
             let (errs, _, _) = parseJsonInteractive noSpanErr
             case errs of
-                [CellError ln col _] -> (ln, col) `shouldBe` (Nothing, Nothing)
+                [CellError ln col _ code] -> do
+                    (ln, col) `shouldBe` (Nothing, Nothing)
+                    code `shouldBe` Just 35235
                 other -> expectationFailure ("expected one error, got " <> show other)
 
         it "appends GHC hints to the message" $ do
-            let ([CellError _ _ msg], _, _) = parseJsonInteractive hintErr
+            let ([CellError _ _ msg code], _, _) = parseJsonInteractive hintErr
             ("Perhaps use" `T.isInfixOf` msg) `shouldBe` True
+            code `shouldBe` Just 88464
 
         it "returns non-JSON stderr lines as residual, untouched" $ do
             let raw = T.unlines ["runtime boom", errLine, "ld: warning: noise"]

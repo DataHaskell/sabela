@@ -23,6 +23,7 @@ module Sabela.Model (
 
     -- * Errors
     CellError (..),
+    bareCellError,
 ) where
 
 import Data.Aeson (
@@ -267,11 +268,23 @@ data CellError = CellError
     -- ^ 1-based line within cell
     , ceCol :: Maybe Int
     , ceMessage :: Text
+    , ceCode :: Maybe Int
+    {- ^ GHC diagnostic code (the NNNNN of @GHC-NNNNN@) when the compiler
+    emitted one; the errors.haskell.org taxonomy key. 'Nothing' for
+    synthetic errors and diagnostics GHC left uncoded.
+    -}
     }
     deriving (Eq, Generic, Show)
 
 instance ToJSON CellError
 instance FromJSON CellError
+
+{- | A diagnostic with no GHC code: synthetic\/holistic errors Sabela raises
+itself, and the pre-code textual path. Keeps those call sites from threading a
+'Nothing' the compiler never gave them.
+-}
+bareCellError :: Maybe Int -> Maybe Int -> Text -> CellError
+bareCellError l c m = CellError l c m Nothing
 
 lookupCell :: Int -> Notebook -> Maybe Cell
 lookupCell cid nb = find (\c -> cellId c == cid) (nbCells nb)

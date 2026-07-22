@@ -81,6 +81,72 @@ spec = describe "Sabela.AI.Capability.searchCapabilities" $ do
         fmap fst (top "granite") `shouldBe` Just "Granite.Svg"
         via "granite" `shouldBe` Just ByModule
 
+    describe "context economy — focused hits, not walls" $ do
+        -- Measured live: low-confidence token walls buried the exact hit and
+        -- burned a small model's context. Laws tested on shapes the model
+        -- used (name + type application, name + literal arg, bare name), over
+        -- a synthetic index so the laws generalise beyond the eval corpus.
+        let wallIdx =
+                Capability "Synth.Osc" "osc" "Wave a => Text -> Gen a"
+                    : Capability "Synth.Patch.Deep.Internal.Wire" "oscillator" "Patch -> Int"
+                    : [ Capability
+                            "Synth.Codec.Midi.Internal.Frame"
+                            ("evt_osc_internal_" <> T.pack (show i))
+                            "MidiEvent -> Int"
+                      | i <- [1 .. 19 :: Int]
+                      ]
+        it "a type application in the query is noise, not a match killer" $ do
+            let hits = searchCapabilities defaultSynonyms wallIdx "osc @Sine"
+            (capName . hitCap <$> take 1 hits) `shouldBe` ["osc"]
+            (hitVia <$> take 1 hits) `shouldBe` [ByName]
+        it "a string-literal argument in the query is stripped the same way" $ do
+            let hits = searchCapabilities defaultSynonyms wallIdx "osc \"a440\""
+            (capName . hitCap <$> take 1 hits) `shouldBe` ["osc"]
+        it "an exact hit silences the token-noise tail" $ do
+            -- Exact + prefix are both high-confidence (2 rows is fine); the
+            -- law is that the 19-entry token-noise wall disappears.
+            let hits = searchCapabilities defaultSynonyms wallIdx "osc @"
+            (capName . hitCap <$> take 1 hits) `shouldBe` ["osc"]
+            length hits `shouldSatisfy` (<= 5)
+            hits
+                `shouldSatisfy` ( not
+                                    . any (T.isPrefixOf "evt_" . capName . hitCap)
+                                )
+        it "with no high-tier hit the list is capped well below a wall" $ do
+            let hits = searchCapabilities defaultSynonyms wallIdx "internal"
+            length hits `shouldSatisfy` (<= 8)
+        it "ties prefer the SHORTER module path (public API over internals)" $ do
+            -- Same tier: the umbrella-module export must outrank the
+            -- deep-internal one (measured inversion buried the public name).
+            let idx2 =
+                    [ Capability "Geo.Shape.Internal.Mesh.Raw" "areaOf" "Mesh -> Double"
+                    , Capability "Geo" "area" "Shape -> Double"
+                    ]
+                hits = searchCapabilities defaultSynonyms idx2 "area"
+            (capModule . hitCap <$> take 1 hits) `shouldBe` ["Geo"]
+
+    describe "synonyms match whole tokens, never substrings" $ do
+        -- Measured live: a synonym key that is a SUBSTRING of a query word
+        -- injected unrelated-domain hits, which then counted as a "hit" and
+        -- blocked the fallthrough ladder.
+        let idx =
+                [ Capability "Sound.Fx" "reverb" "Time -> Audio -> Audio"
+                , Capability "Mail.Send" "sendMail" "Message -> IO ()"
+                ]
+            -- synonym key "mail" would substring-match "mailbox"-style words
+            -- inside longer domain tokens; token matching must not fire then.
+            syns = [("email", ["sendmail"]), ("verb", ["sendmail"])]
+        it "a substring of a query word does not trigger the synonym tier" $
+            -- "verb" ⊂ "reverbnation" must not bridge to mail functions; with
+            -- no other tier firing either, the result is a clean MISS — which
+            -- lets the discover fallthrough consult the next backend instead
+            -- of stopping on a confident wrong-domain answer.
+            searchCapabilities syns idx "reverbnation upload client"
+                `shouldBe` []
+        it "the synonym still fires on the whole token" $ do
+            let hits = searchCapabilities syns idx "email for messages"
+            (capName . hitCap <$> take 1 hits) `shouldBe` ["sendMail"]
+
     it "returns nothing for an unrelated query (no misleading near-miss)" $
         searchCapabilities defaultSynonyms idx "quantum teleportation" `shouldBe` []
 

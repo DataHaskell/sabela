@@ -9,6 +9,7 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.Agent.Check (CheckResult (..))
 import Test.Hspec
 
 import Eval.Agent (
@@ -116,7 +117,7 @@ spec = describe "B2 health gate" $ do
 
     describe "reenterMessage" $ do
         it "names the unhealthy cell ids and pushes for a fix" $ do
-            let msg = reenterMessage [2, 4]
+            let msg = reenterMessage [(2, ""), (4, "")]
             ("2" `T.isInfixOf` msg) `shouldBe` True
             ("4" `T.isInfixOf` msg) `shouldBe` True
             (T.length msg > 0) `shouldBe` True
@@ -192,14 +193,18 @@ scriptedDriver disp script = do
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = pure True
+            , drvVerify = pure (CheckPassed, Nothing)
             }
 
 scriptedDriverV ::
     (ToolCall -> IO (Either Text ToolOutcome)) -> [Turn] -> Bool -> IO Driver
 scriptedDriverV disp script verdict = do
     d <- scriptedDriver disp script
-    pure d{drvVerify = pure verdict}
+    pure
+        d
+            { drvVerify =
+                pure (if verdict then CheckPassed else CheckFailed, Nothing)
+            }
 
 redInsertHealthyReplace :: ToolCall -> IO (Either Text ToolOutcome)
 redInsertHealthyReplace (ToolCall name _)

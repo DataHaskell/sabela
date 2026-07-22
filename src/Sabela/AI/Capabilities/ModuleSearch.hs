@@ -11,13 +11,15 @@ module Sabela.AI.Capabilities.ModuleSearch (
     interesting,
 ) where
 
-import Data.Aeson (Value, object, (.=))
+import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isUpper)
 import Data.List (nub)
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.BrowseCard (browseCard)
 import Sabela.AI.Capabilities.Resolve (lookupByName)
 import Sabela.AI.Capabilities.Util (fieldText)
 import Sabela.AI.Capability (
@@ -30,7 +32,6 @@ import Sabela.AI.Capability (
  )
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
-import Sabela.Diagnose (diagnose, guidancePairs)
 import Sabela.Model (Cell (..), Notebook (..))
 import Sabela.SessionTypes (SessionBackend (..))
 import Sabela.State (App (..))
@@ -60,17 +61,27 @@ execFindFunction app input =
                         )
                 Just backend -> do
                     mods <- sbQueryComplete backend "import "
-                    -- A module-name query browses that module DIRECTLY — :browse works on
-                    -- any installed module even when it's absent from the import-completion
-                    -- list (so an unimported module like DataFrame.Model is still reachable).
+                    -- A module-name query browses that module DIRECTLY — :browse works
+                    -- on any installed module even when absent from the import-completion
+                    -- list. Applicability is decided by TRYING the oracle: any
+                    -- module-shaped query attempts :browse, and only a usable card is
+                    -- kept — an unusable one falls back to keyword search.
                     if q `elem` mods || looksLikeModule q
                         then do
                             raw <- sbQueryBrowse backend q
-                            if browseEmpty raw
+                            let card = browseCard q raw
+                            if browseEmpty raw || not (usableCard card)
                                 then keywordSearch backend mods
-                                else pure (browseOutcome q raw)
+                                else pure (okOutcome card)
                         else keywordSearch backend mods
   where
+    keywordSearch backend _mods
+        | not (T.null qModule) && qModule /= q = do
+            -- module+query together SCOPE the keyword search to that module
+            -- instead of being silently ignored (measured: a refinement call
+            -- had zero effect and no signal).
+            caps <- buildIndex backend [qModule]
+            pure (matchesOutcome q (searchCapabilities defaultSynonyms caps q))
     keywordSearch backend mods = do
         surfacing <- isJust <$> lookupEnv "SABELA_INSTANCE_SURFACING"
         let baseMods = filter interesting mods
@@ -90,6 +101,7 @@ execFindFunction app input =
     q =
         let qq = fieldText "query" input
          in if T.null qq then fieldText "module" input else qq
+    qModule = fieldText "module" input
 
 {- | Installed modules exporting @name@, over the same bounded browse-index
 @find_function@ uses. Lets the add-import repair resolve an unimported name
@@ -108,14 +120,20 @@ resolveNameToModules app name = do
             caps <- buildIndex backend mods
             pure (lookupByName name caps)
 
-{- | A dotted, uppercase-headed token with no spaces — a module name to browse
-directly (@DataFrame.Model@), not a keyword.
+{- | An uppercase-headed token with no spaces — a module-shaped query worth
+ATTEMPTING to browse (@DataFrame.Model@, but also dotless umbrella modules
+like @DataFrame@ or @Granite@). The oracle decides: an unusable browse falls
+back to keyword search, so a capitalized non-module costs one cheap query.
 -}
 looksLikeModule :: Text -> Bool
 looksLikeModule t =
-    T.isInfixOf "." t
-        && not (T.any (== ' ') t)
+    not (T.any (== ' ') t)
         && maybe False (isUpper . fst) (T.uncons t)
+
+-- | A card the model can act on; an @error@ card means fall back instead.
+usableCard :: Value -> Bool
+usableCard (Object o) = KM.lookup "status" o /= Just (String "error")
+usableCard _ = False
 
 -- | A @:browse@ that resolved to nothing usable (empty or a scope/parse error).
 browseEmpty :: Text -> Bool
@@ -210,13 +228,3 @@ matchName ByName = "name"
 matchName ByType = "type"
 matchName BySynonym = "synonym"
 matchName ByModule = "module"
-
-{- | A module-name query returns the module's RAW @:browse@ listing — every
-export (values, types, classes), not just the value bindings 'parseCapabilities'
-keeps — with the same @-- cabal:@ guidance a failed cell gets, so a hidden-package
-wall becomes an actionable dependency hint.
--}
-browseOutcome :: Text -> Text -> ToolOutcome
-browseOutcome m raw =
-    okOutcome $
-        object (["module" .= m, "exports" .= raw] <> guidancePairs (diagnose raw))

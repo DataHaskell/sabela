@@ -47,3 +47,9 @@ spec = describe "Eval.Exemplars (learning loop memory)" $ do
             (T.isInfixOf "```haskell\nx = 1\n```" <$> body) `shouldBe` Just True
         it "is empty for no exemplars" $
             exemplarMessage [] `shouldBe` []
+        it "carries no invent-ban boilerplate (R5.8: search misses can be wrong)" $ do
+            let body = case exemplarMessage [Exemplar "t" "x = 1"] of
+                    (msg : _) -> content msg
+                    [] -> Nothing
+            (T.isInfixOf "do not invent" . T.toLower <$> body) `shouldBe` Just False
+            (T.isInfixOf "invent" . T.toLower <$> body) `shouldBe` Just False
