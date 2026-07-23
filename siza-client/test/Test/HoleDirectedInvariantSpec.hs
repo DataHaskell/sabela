@@ -107,8 +107,10 @@ emptyFitSpec =
     describe "no-inline-fit hole engages TierTypeDirected" $ do
         it "ClassRefinement dispatches to the type-directed tier" $
             tiersFor ClassRefinement `shouldContain` [TierTypeDirected]
-        it "a no-inline-fit diagnostic yields candidates from a non-empty producer query" $
-            forM_ synTypes $ \ty -> do
+        it
+            "a no-inline-fit diagnostic yields candidates from a non-empty producer query"
+            $ forM_ synTypes
+            $ \ty -> do
                 -- The diagnostic carries NO fits; the producers arrive from the
                 -- queried find_by_type blob (buildInput's queryHoleFits path).
                 let cands =

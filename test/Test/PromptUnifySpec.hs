@@ -38,6 +38,20 @@ spec = describe "product systemPrompt (unified)" $ do
     it "names no phantom ghci_query tool" $
         ("ghci_query" `T.isInfixOf` systemPrompt) `shouldBe` False
 
+    it "advertises one try interface and no legacy evaluation modes" $ do
+        ("try" `T.isInfixOf` systemPrompt) `shouldBe` True
+        ("scratchpad" `T.isInfixOf` systemPrompt) `shouldBe` False
+        ("eval_live" `T.isInfixOf` systemPrompt) `shouldBe` False
+
+    it "distinguishes durable cell effects from the narrower try grammar" $ do
+        ("same rules in cells AND try" `T.isInfixOf` systemPrompt) `shouldBe` False
+        systemPrompt `shouldSatisfy` T.isInfixOf "at most one final expression"
+        systemPrompt `shouldSatisfy` T.isInfixOf "GHCi meta-commands"
+        systemPrompt
+            `shouldSatisfy` T.isInfixOf "compile-time escapes (including TH and FFI)"
+        systemPrompt `shouldSatisfy` T.isInfixOf "unrestricted IO"
+        systemPrompt `shouldSatisfy` T.isInfixOf "owned effects in a notebook cell"
+
     it "generates the tool-surface block from the real catalogue" $ do
         ("## Tools available" `T.isInfixOf` systemPrompt) `shouldBe` True
         let names = map (toolWireName . toolName) chatToolSpecs

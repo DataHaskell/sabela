@@ -156,6 +156,8 @@ library
                       Sabela.AI.Capabilities.Resolve,
                       Sabela.AI.PeekData,
                       Sabela.AI.Capabilities.Scratchpad,
+                      Sabela.AI.Capabilities.Try,
+                      Sabela.AI.Capabilities.TryPlan,
                       Sabela.AI.Capabilities.Tools,
                       Sabela.AI.Capabilities.Tools.Notebook,
                       Sabela.AI.Capabilities.Tools.Query,
@@ -176,6 +178,7 @@ library
                       Sabela.Session,
                       Sabela.Session.Admission,
                       Sabela.Session.Drain,
+                      Sabela.Session.Materialize,
                       Sabela.Session.ParentPoller,
                       Sabela.Session.Proc,
                       Sabela.Session.Process,
@@ -312,6 +315,9 @@ test-suite sabela-test
                       Test.SessionSpec,
                       Test.SessionLoopSpec,
                       Test.SessionLiveSpec,
+                      Test.PureEvalLiveSpec,
+                      Test.TryPlanSpec,
+                      Test.TrySpec,
                       Test.StaleRunSpec,
                       Test.SwitchNotebookSpec,
                       Test.TopoSpec,
@@ -443,7 +449,8 @@ test-suite sabela-test
                       Test.QueryGuidanceSpec,
                       Test.TimeoutEscalationSpec,
                       Test.SessionGenSpec,
-                      Test.PeekDataSpec
+                      Test.PeekDataSpec,
+                      Test.MaterializeSpec
     build-depends:
         base >= 4 && < 5,
         sabela-notebook >= 0.1 && < 0.2,

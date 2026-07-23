@@ -20,6 +20,7 @@ import Sabela.LLM.Ollama.Client (
     ToolCall (..),
     Turn (..),
     parseTurnWithTools,
+    recoverFromContent,
  )
 
 spec :: Spec
@@ -57,10 +58,15 @@ spec = describe "Ollama tool-call parse safety" $ do
                 Left failure -> pfClass failure `shouldSatisfy` (`elem` unsafeClasses)
                 Right t -> expectationFailure ("unsafe payload dispatched: " <> show t)
 
+    it "recovers a bare code payload as the unified try tool" $
+        recoverFromContent "{\"code\":\"1 + 1\"}"
+            `shouldBe` Just (ToolCall "try" (object ["code" .= ("1 + 1" :: T.Text)]))
+
 schemas :: [Value]
 schemas =
     [ tool "insert_cell" ["source"] ["source"]
     , tool "replace_cell_source" ["cell_id", "new_source"] ["cell_id", "new_source"]
+    , tool "try" ["code", "language"] ["code"]
     , tool "discover" ["query", "limit"] ["query"]
     , tool "list_cells" ["full"] []
     ]
@@ -73,6 +79,7 @@ toolCases =
         , object ["cell_id" .= (4 :: Int), "new_source" .= ("x = 2" :: T.Text)]
         )
     , ("discover", object ["query" .= ("map" :: T.Text)])
+    , ("try", object ["code" .= ("map (+1) [1,2]" :: T.Text)])
     , ("list_cells", object [])
     ]
 

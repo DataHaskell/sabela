@@ -68,6 +68,7 @@ import Sabela.Session.Proc (
     withSpawnedSession,
  )
 import Sabela.Session.Query (
+    evalPureLive,
     queryBindings,
     queryBrowse,
     queryComplete,
@@ -137,15 +138,17 @@ notebook's directory.
 -}
 ghciArgs :: SessionConfig -> String -> [String]
 ghciArgs cfg rtsOpts =
-    [ "repl"
-    , "exe:main"
-    , "--project-dir=" ++ scProjectDir cfg
-    , "--builddir=" ++ scProjectDir cfg </> "dist-newstyle"
-    , "-v1"
-    , "--repl-options=-odir " ++ objDir ++ " -hidir " ++ objDir ++ jsonDiag
-    , "--ghc-options=" ++ rtsOpts
-    ]
+    storeArgs
+        ++ [ "repl"
+           , "exe:main"
+           , "--project-dir=" ++ scProjectDir cfg
+           , "--builddir=" ++ scProjectDir cfg </> "dist-newstyle"
+           , "-v1"
+           , "--repl-options=-odir " ++ objDir ++ " -hidir " ++ objDir ++ jsonDiag
+           , "--ghc-options=" ++ rtsOpts
+           ]
   where
+    storeArgs = maybe [] (\dir -> ["--store-dir=" ++ dir]) (scCabalStoreDir cfg)
     objDir = scProjectDir cfg </> "ghci-objs"
     jsonDiag
         | scJsonDiagnostics cfg = " -fdiagnostics-as-json"
@@ -314,4 +317,5 @@ ghciBackend sess =
         , ST.sbQueryDoc = queryDoc sess
         , ST.sbQueryHoleFits = queryHoleFits sess
         , ST.sbQueryBindings = queryBindings sess
+        , ST.sbEvalPureLive = evalPureLive sess
         }

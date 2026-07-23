@@ -46,6 +46,7 @@ import Sabela.Session.Drain (
 import Sabela.Session.Proc (ProcSession (..))
 import Sabela.Session.Process (
     closeSession,
+    ghciArgs,
     newSession,
     resetSession,
     startupErrorMessage,
@@ -116,8 +117,10 @@ defaultCfg =
     SessionConfig
         { scProjectDir = "."
         , scWorkDir = "."
+        , scCabalStoreDir = Nothing
         , scExecutionTimeoutUs = tcExecutionUs defaultTimeoutConfig
         , scResyncTimeoutUs = tcResyncUs defaultTimeoutConfig
+        , scJsonDiagnostics = False
         }
 
 emptyMeta :: CabalMeta
@@ -142,6 +145,13 @@ withTimeout usec action = do
 
 spec :: Spec
 spec = do
+    describe "disposable Cabal store isolation" $ do
+        it "uses no store override for a normal live session" $
+            take 1 (ghciArgs defaultCfg "") `shouldBe` ["repl"]
+        it "places a disposable store override before the cabal command" $
+            take 2 (ghciArgs defaultCfg{scCabalStoreDir = Just "/tmp/isolated-store"} "")
+                `shouldBe` ["--store-dir=/tmp/isolated-store", "repl"]
+
     describe "groupEntries (multi-line :show bindings entries)" $
         it "absorbs indented continuation lines into one entry" $
             groupEntries

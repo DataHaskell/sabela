@@ -20,9 +20,11 @@ import Sabela.SessionTypes (CellLang (..))
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), getHaskellSession)
 
--- | Hard AI write gate for exactly the proven value subset. Declaration forms
--- keep the established route; unavailable is explicit, never a false OK.
-prewriteValueVeto :: App -> CellLang -> CellType -> Text -> IO (Maybe ToolOutcome)
+{- | Hard AI write gate for exactly the proven value subset. Declaration forms
+keep the established route; unavailable is explicit, never a false OK.
+-}
+prewriteValueVeto ::
+    App -> CellLang -> CellType -> Text -> IO (Maybe ToolOutcome)
 prewriteValueVeto app Haskell CodeCell src = do
     enabled <- featureEnabled "SABELA_TYPECHECK_PRIMITIVE"
     if not enabled || classifyTypecheckInput src == OutsideValueSubset

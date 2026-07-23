@@ -74,8 +74,10 @@ mkCfg execUs resyncUs =
     SessionConfig
         { scProjectDir = "."
         , scWorkDir = "."
+        , scCabalStoreDir = Nothing
         , scExecutionTimeoutUs = execUs
         , scResyncTimeoutUs = resyncUs
+        , scJsonDiagnostics = False
         }
 
 spec :: Spec

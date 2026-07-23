@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | The recovery layer: code-bearing tools (insert_cell, replace_cell_source,
-scratchpad) take their Haskell straight from the (recovered) tool-call args.
+try) take their Haskell straight from the (recovered) tool-call args.
 gpt-oss usually escapes backslashes correctly, but intermittently (1) emits an
 unescaped backslash that makes Ollama return a 500 @error parsing tool call:
 raw='...', err=...@, or (2) emits the whole tool-call JSON in the content/thinking
@@ -91,10 +91,10 @@ spec = describe "Recovery layer (code from tool args, repaired)" $ do
                     field "cell_id" args `shouldBe` Just (Number 3)
                     field "new_source" args `shouldBe` Just (String "g = \\acc")
                 other -> expectationFailure ("unexpected: " <> show other)
-        it "infers scratchpad from a {code} payload" $
+        it "infers try from a {code} payload" $
             case recoverFromError
                 "error parsing tool call: raw='{\"code\":\"h = \\x -> x\"}', err=..." of
-                Just (Turn _ _ [ToolCall name _]) -> name `shouldBe` "scratchpad"
+                Just (Turn _ _ [ToolCall name _]) -> name `shouldBe` "try"
                 other -> expectationFailure ("unexpected: " <> show other)
         it "recovers a tool call whose raw payload is prefixed by reasoning prose" $
             case recoverFromError
@@ -215,7 +215,7 @@ spec = describe "Recovery layer (code from tool args, repaired)" $ do
     bases =
         [ ("insert_cell", "{\"source\":\"f = \\acc b -> acc * 58 + b\"}")
         , ("replace_cell_source", "{\"cell_id\":3,\"new_source\":\"g = \\acc\"}")
-        , ("scratchpad", "{\"code\":\"h = \\x -> x\"}")
+        , ("try", "{\"code\":\"h = \\x -> x\"}")
         , ("discover", "{\"query\":\"regex \\d matcher\"}")
         , ("insert_cell", "{\"source\":\"xs = [1,2] \\\n  ++ [3]\"}")
         , ("insert_cell", "{\"source\":\"ok = \\\"quoted\\\" \\after valid\\n\"}")

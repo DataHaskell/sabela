@@ -83,6 +83,10 @@ data Session = Session
 data SessionConfig = SessionConfig
     { scProjectDir :: FilePath
     , scWorkDir :: FilePath
+    , scCabalStoreDir :: Maybe FilePath
+    {- ^ Optional per-session Cabal store. Disposable trials set this to a
+    temporary directory so dependency builds cannot mutate the live store.
+    -}
     , scExecutionTimeoutUs :: Int
     -- ^ Per-cell execution budget (microseconds), from 'mkSessionConfig'.
     , scResyncTimeoutUs :: Int
@@ -104,6 +108,7 @@ mkSessionConfig projDir workDir = do
         SessionConfig
             { scProjectDir = projDir
             , scWorkDir = workDir
+            , scCabalStoreDir = Nothing
             , scExecutionTimeoutUs = tcExecutionUs tc
             , scResyncTimeoutUs = tcResyncUs tc
             , scJsonDiagnostics = jsonDiag
@@ -155,31 +160,54 @@ resyncTimeoutUs = scResyncTimeoutUs . sessConfig
 runBlock :: Session -> Text -> IO (Text, Text)
 runBlock sess block = runBlockStreaming sess block (\_ -> pure ())
 
+-- | Run one block with a caller-specific wall-clock budget.
+runBlockWithTimeout :: Int -> Session -> Text -> IO (Text, Text)
+runBlockWithTimeout budgetUs sess block =
+    runBlockStreamingWithTimeout budgetUs sess block (\_ -> pure ())
+
 {- | Run a cell's rendered block. On timeout: group SIGINT, then resync
 on a fresh marker; if the session stays silent it is destroyed. EOF
 mid-run (dead interpreter) also destroys and surfaces as a crash.
 -}
 runBlockStreaming :: Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
-runBlockStreaming sess block onLine = withMVar (sessLock sess) $ \_ -> do
+runBlockStreaming sess =
+    runBlockStreamingWithTimeout (executionTimeoutUs sess) sess
+
+runBlockStreamingWithTimeout ::
+    Int -> Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
+runBlockStreamingWithTimeout budgetUs sess block onLine =
+    withMVar (sessLock sess) $ \_ ->
+        runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine
+
+{- | The marker/timeout body for a caller already holding 'sessLock'. This is
+used by the atomic pure-live transaction, which must retain both session locks
+across its type proof, binding fingerprints, and evaluation.
+-}
+runBlockStreamingUnlockedWithTimeout ::
+    Int -> Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
+runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine = do
     checkProcessAlive sess
     resetErrorBuffer sess
     mk <- getMarker sess
     mResult <-
-        timeout (executionTimeoutUs sess) $ do
+        timeout budgetUs $ do
             mapM_ (sendRaw sess . T.unpack) (T.lines block)
             placeMarker sess mk
             bracket_ (setBusy sess True) (setBusy sess False) $
                 drainUntilMarker (sessLines sess) (markerText mk) onLine
-    finishRun sess mResult
+    finishRunWithTimeout budgetUs sess mResult
 
 finishRun :: Session -> Maybe DrainResult -> IO (Text, Text)
-finishRun sess (Just (DrainOk out)) = do
+finishRun sess = finishRunWithTimeout (executionTimeoutUs sess) sess
+
+finishRunWithTimeout :: Int -> Session -> Maybe DrainResult -> IO (Text, Text)
+finishRunWithTimeout _budgetUs sess (Just (DrainOk out)) = do
     errLines <- readErrorBuffer sess
     pure (out, errLines)
-finishRun sess (Just (DrainEof _)) = do
+finishRunWithTimeout _budgetUs sess (Just (DrainEof _)) = do
     destroySession (sessProcSess sess)
     ioError (userError "GHCi session ended unexpectedly mid-cell")
-finishRun sess Nothing = do
+finishRunWithTimeout budgetUs sess Nothing = do
     interruptSessionRaw sess
     mk2 <- getMarker sess
     synced <-
@@ -191,9 +219,9 @@ finishRun sess Nothing = do
             errLines <- readErrorBuffer sess
             pure
                 ( ""
-                , errLines <> timedOutMessage (executionTimeoutUs sess)
+                , errLines <> timedOutMessage budgetUs
                 )
-        _ -> killAndRespawn sess
+        _ -> killAndRespawnWithTimeout budgetUs sess
 
 {- | The interrupt rung was ignored within the resync window: escalate the
 kill ladder (INT → TERM → KILL via the portable group wrappers), reap, and
@@ -202,13 +230,16 @@ broadcasts the crash, and the next run spawns a fresh idle kernel — so the
 kernel self-recovers with no human (stress cases 8–10, 17).
 -}
 killAndRespawn :: Session -> IO (Text, Text)
-killAndRespawn sess = do
+killAndRespawn sess = killAndRespawnWithTimeout (executionTimeoutUs sess) sess
+
+killAndRespawnWithTimeout :: Int -> Session -> IO (Text, Text)
+killAndRespawnWithTimeout budgetUs sess = do
     escalateKill (sessProcSess sess)
     destroySession (sessProcSess sess)
     ioError
         ( userError
             ( T.unpack
-                (T.strip (timedOutKilledMessage (executionTimeoutUs sess)))
+                (T.strip (timedOutKilledMessage budgetUs))
             )
         )
 
@@ -285,7 +316,14 @@ getMarker sess = do
     pure (Marker (mkMarkerText (sessNonce sess * markerNonceBase + n)))
 
 placeMarker :: Session -> Marker -> IO ()
-placeMarker sess (Marker mk) = sendRaw sess $ "putStrLn " ++ show (T.unpack mk)
+placeMarker sess (Marker mk) =
+    -- A bare @putStrLn@ statement rebinds GHCi's special @it@ to @()@.
+    -- @:cmd@ performs the same framed write without creating an interactive
+    -- result binding, so protocol bookkeeping stays invisible to notebooks.
+    sendRaw sess $
+        ":cmd ((Prelude.>>) (Prelude.putStrLn "
+            ++ show (T.unpack mk)
+            ++ ") (Prelude.pure \"\"))"
 
 resetErrorBuffer :: Session -> IO ()
 resetErrorBuffer sess = atomicModifyIORef' (sessErrBuf sess) (const ([], ()))

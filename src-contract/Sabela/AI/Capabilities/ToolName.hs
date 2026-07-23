@@ -43,7 +43,9 @@ data ToolName
     | InsertCell
     | DeleteCell
     | ExecuteCell
-    | Scratchpad
+    | Try
+    | -- | Legacy, non-advertised entry points retained for old clients/transcripts.
+      Scratchpad
     | ListBindings
     | CheckType
     | FindByType
@@ -73,6 +75,7 @@ parseToolName = \case
     "insert_cell" -> Just InsertCell
     "delete_cell" -> Just DeleteCell
     "execute_cell" -> Just ExecuteCell
+    "try" -> Just Try
     "scratchpad" -> Just Scratchpad
     "list_bindings" -> Just ListBindings
     "check_type" -> Just CheckType
@@ -132,6 +135,7 @@ primaryArgKey = \case
     FindByType -> Just "goal"
     DescribeFunction -> Just "name"
     ApiReference -> Just "module"
+    Try -> Just "code"
     EvalLive -> Just "expression"
     _ -> Nothing
 
@@ -150,6 +154,7 @@ toolWireName = \case
     InsertCell -> "insert_cell"
     DeleteCell -> "delete_cell"
     ExecuteCell -> "execute_cell"
+    Try -> "try"
     Scratchpad -> "scratchpad"
     ListBindings -> "list_bindings"
     CheckType -> "check_type"

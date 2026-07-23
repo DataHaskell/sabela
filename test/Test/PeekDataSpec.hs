@@ -105,6 +105,7 @@ allToolNames =
     , InsertCell
     , DeleteCell
     , ExecuteCell
+    , Try
     , Scratchpad
     , ListBindings
     , CheckType
@@ -120,4 +121,6 @@ allToolNames =
     , PeekData
     , FindExampleCell
     , FindFunction
+    , SearchCapability
+    , EvalLive
     ]

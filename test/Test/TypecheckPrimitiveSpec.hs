@@ -28,7 +28,8 @@ spec = describe "flagged no-add type-check feasibility prototype" $ do
         classifyTypecheckInput "(_ :: Maybe Int)" `shouldBe` ValueExpression
 
     it "gracefully routes declaration forms outside the Path-2 subset" $ do
-        map classifyTypecheckInput
+        map
+            classifyTypecheckInput
             [ "data Candidate = Candidate"
             , "class Candidate a where candidate :: a"
             , "instance Show Candidate where show _ = \"Candidate\""

@@ -15,8 +15,8 @@ import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.AI.Health (healthOfTypeQuery, isClean)
 import Sabela.AI.Capabilities.Util (featureEnabled)
+import Sabela.AI.Health (healthOfTypeQuery, isClean)
 import Sabela.Session.Query (
     TypecheckInput (..),
     TypecheckResult (..),

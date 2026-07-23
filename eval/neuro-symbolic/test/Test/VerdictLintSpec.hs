@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | R6-T4 R8.4 lint extension: a verifier-surface answer (verify channel,
-scratchpad result) with no decodable verdict is a lint issue — silence cannot
+@try@ result) with no decodable verdict is a lint issue — silence cannot
 pass review — while marker-bearing, JSON-field-bearing and transport-classed
 answers all decode. Red-then-green fixture: the marker-less pre-R6-T4 verify
 message shape FAILS, the current producers' shape passes.
@@ -41,27 +41,27 @@ spec = describe "verdict lint (R8.4 x section 5.3: verifier answers decode)" $ d
                 "The task is not done: the deliverable's check still fails."
             ]
             `shouldBe` ["verifier-no-verdict"]
-    it "a scratchpad answer with no verdict field is flagged" $
+    it "a try answer with no verdict field is flagged" $
         rules
-            [call "scratchpad", toolRes "scratchpad" "{\"stdout\":\"\",\"stderr\":\"\"}"]
+            [call "try", toolRes "try" "{\"stdout\":\"\",\"stderr\":\"\"}"]
             `shouldContain` ["verifier-no-verdict"]
     it "GREEN: every current verify-channel producer passes" $
         lintMessages
             [doneSignalMsg, verifyMsgWith 0 [] Nothing, unconfirmedMsgWith 1 [] Nothing]
             `shouldBe` []
-    it "GREEN: a scratchpad payload carrying the verdict field passes" $
+    it "GREEN: a try payload carrying the verdict field passes" $
         rules
-            [ call "scratchpad"
+            [ call "try"
             , toolRes
-                "scratchpad"
+                "try"
                 "{\"verdict\":\"could-not-run\",\"stdout\":\"\",\"stderr\":\"\"}"
             ]
             `shouldBe` []
     it "a transport-swallowed verifier answer decodes as infra (not flagged)" $
         rules
-            [ call "scratchpad"
+            [ call "try"
             , toolRes
-                "scratchpad"
+                "try"
                 "[infra] no response within 300s. The server is likely STILL WORKING."
             ]
             `shouldBe` []
@@ -69,7 +69,7 @@ spec = describe "verdict lint (R8.4 x section 5.3: verifier answers decode)" $ d
         rules [call "insert_cell", toolRes "insert_cell" "{\"cellId\":1,\"ok\":true}"]
             `shouldBe` []
     it "the empty verifier answer (nycTaxiStats shape) can never pass silently" $
-        rules [call "scratchpad", toolRes "scratchpad" ""]
+        rules [call "try", toolRes "try" ""]
             `shouldSatisfy` elem "verifier-no-verdict"
     it "detail names the offending channel" $ do
         let issues = lintMessages [toolRes "verify" "no marker here"]

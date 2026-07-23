@@ -48,7 +48,7 @@ salvageCap = 4000
 
 {- | Drop lines of an extracted block that are a bare tool-call statement — a
 known tool name (after trimming) immediately followed by @(@ and ending in @)@
-with nothing else, e.g. @insert_cell()@ / @scratchpad ()@. gpt-oss sometimes
+with nothing else, e.g. @insert_cell()@ / @try ()@. gpt-oss sometimes
 writes a tool call inside the ```haskell fence, where it would compile as
 @insert_cell :: () -> t@ and wedge the episode. Conservative: only an EXACT bare
 call is removed; real Haskell that merely mentions a tool name is untouched.
@@ -67,11 +67,15 @@ dropToolCallLines = T.unlines . filter (not . isBareToolCall) . T.lines
                     && T.last args == ')'
         Nothing -> False
 
--- | The known siza tool names a stray bare call inside the fence may be.
+{- | The known siza tool names a stray bare call inside the fence may be.
+Includes the legacy @scratchpad@ spelling, still stripped from old-model
+transcripts.
+-}
 toolNames :: [Text]
 toolNames =
     [ "insert_cell"
     , "replace_cell_source"
+    , "try"
     , "scratchpad"
     , "execute_cell"
     , "delete_cell"

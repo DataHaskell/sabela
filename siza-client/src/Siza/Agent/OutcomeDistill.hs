@@ -43,8 +43,9 @@ distillOutcome v
     | not (containsOutputArray v) = v
     | otherwise = hardBound (shedOutputs (distillNode v))
 
--- | Whether this is an execution-shaped value that owns an @outputs@ array.
--- Non-execution tool envelopes remain byte-identical.
+{- | Whether this is an execution-shaped value that owns an @outputs@ array.
+Non-execution tool envelopes remain byte-identical.
+-}
 containsOutputArray :: Value -> Bool
 containsOutputArray (Object o) =
     outputHere || any containsOutputArray (KM.elems o)
@@ -107,10 +108,10 @@ shedOutputs v
     | serialisedChars v <= outcomeCharBudget = v
     | otherwise = maybe v shedOutputs (dropOneOutput v)
 
--- | Outputs are normally enough to shed. If another execution field (for
--- example a warning wall) still breaches the contract, cap all textual detail;
--- if a pathological object remains too large, retain only the stable execution
--- frame. Thus the declared budget is a real postcondition, not a best effort.
+{- | Outputs are normally enough to shed; if another field (a warning wall)
+still breaches the contract, cap all textual detail, then fall back to the
+stable execution frame — the declared budget is a postcondition, not a best effort.
+-}
 hardBound :: Value -> Value
 hardBound v
     | serialisedChars v <= outcomeCharBudget = v

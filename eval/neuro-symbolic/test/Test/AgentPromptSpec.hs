@@ -115,7 +115,14 @@ spec = describe "shared prompt core (unified, satisfiable)" $ do
                 $ literalCallerReachesWrite (workingRules surface)
                     `shouldBe` Right ()
 
-    describe "write-is-the-verifier guidance is present" $
-        it "the shared core says the live notebook compile is the check" $ do
+    describe "one speculative interface guidance is present" $
+        it "the shared core says to try before commit without naming legacy modes" $ do
             let core = T.toLower (sharedPromptCoreWith discoverGrammarBlock)
-            core `shouldSatisfy` T.isInfixOf "compile check"
+            core `shouldSatisfy` T.isInfixOf "try, then commit"
+            core `shouldSatisfy` T.isInfixOf "at most one final expression"
+            core `shouldSatisfy` T.isInfixOf "ghci meta-commands"
+            core `shouldSatisfy` T.isInfixOf "compile-time escapes"
+            core `shouldSatisfy` T.isInfixOf "unrestricted io"
+            core `shouldSatisfy` T.isInfixOf "durable home for owned effects"
+            core `shouldSatisfy` (not . T.isInfixOf "scratchpad")
+            core `shouldSatisfy` (not . T.isInfixOf "eval_live")

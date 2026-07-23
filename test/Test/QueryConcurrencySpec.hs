@@ -40,8 +40,10 @@ defaultCfg =
     SessionConfig
         { scProjectDir = "."
         , scWorkDir = "."
+        , scCabalStoreDir = Nothing
         , scExecutionTimeoutUs = 120_000_000
         , scResyncTimeoutUs = 5_000_000
+        , scJsonDiagnostics = False
         }
 
 dummySession :: IO Session

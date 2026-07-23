@@ -4,6 +4,7 @@ module Sabela.SessionTypes where
 
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time (UTCTime)
 import Data.Unique (Unique)
 import GHC.Generics (Generic)
@@ -55,7 +56,78 @@ data SessionBackend = SessionBackend
     -}
     , sbQueryBindings :: IO Text
     -- ^ The session's interactive bindings and their types (GHCi @:show bindings@).
+    , sbEvalPureLive :: PureEvalRequest -> IO PureEvalResult
+    {- ^ Atomically admit and evaluate one compiler-proven non-@IO@ expression
+    against this backend, pinned to one locked session generation;
+    non-Haskell backends report 'PureEvalUnavailable'.
+    -}
     }
+
+-- | One generation-pinned request for the internal pure-live fast path.
+data PureEvalRequest = PureEvalRequest
+    { pureEvalExpectedGeneration :: Int
+    , pureEvalTimeoutUs :: Int
+    , pureEvalExpression :: Text
+    }
+    deriving (Eq, Generic, Show)
+
+instance ToJSON PureEvalRequest
+instance FromJSON PureEvalRequest
+
+-- | Compiler/runtime verdict for a pure-live request.
+data PureEvalVerdict
+    = PureEvalSucceeded
+    | PureEvalRejected
+    | PureEvalRuntimeError
+    | PureEvalTimedOut
+    | PureEvalStale
+    | PureEvalInvariantFailed
+    | PureEvalUnavailable
+    deriving (Eq, Generic, Show)
+
+instance ToJSON PureEvalVerdict
+instance FromJSON PureEvalVerdict
+
+-- | Recovery work performed while bounding an evaluation.
+data PureEvalRecovery
+    = PureEvalNoRecovery
+    | PureEvalInterrupted
+    | PureEvalKernelDestroyed
+    deriving (Eq, Generic, Show)
+
+instance ToJSON PureEvalRecovery
+instance FromJSON PureEvalRecovery
+
+{- | Complete evidence returned by the atomic operation. 'pureEvalOutput' is
+already capped inside GHCi, before it reaches the session output accumulator.
+-}
+data PureEvalResult = PureEvalResult
+    { pureEvalVerdict :: PureEvalVerdict
+    , pureEvalGeneration :: Int
+    , pureEvalInferredType :: Text
+    , pureEvalOutput :: Text
+    , pureEvalError :: Text
+    , pureEvalBindingsUnchanged :: Bool
+    , pureEvalItUnchanged :: Bool
+    , pureEvalRecovery :: PureEvalRecovery
+    }
+    deriving (Eq, Generic, Show)
+
+instance ToJSON PureEvalResult
+instance FromJSON PureEvalResult
+
+pureEvalUnavailableResult :: PureEvalRequest -> Text -> PureEvalResult
+pureEvalUnavailableResult req msg =
+    PureEvalResult
+        { pureEvalVerdict = PureEvalUnavailable
+        , pureEvalGeneration = pureEvalExpectedGeneration req
+        , pureEvalInferredType = T.empty
+        , pureEvalOutput = T.empty
+        , pureEvalError = msg
+        , pureEvalBindingsUnchanged = True
+        , pureEvalItUnchanged = True
+        , pureEvalRecovery = PureEvalNoRecovery
+        }
 
 data CellLang = Haskell | Python
     deriving (Eq, Generic, Ord, Show)

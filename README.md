@@ -408,7 +408,8 @@ walk through it.
 Sabela exposes its notebook over a small REST API at `/api/ai/*`, and **siza** is
 a Claude Code skill that drives it. With your notebook open in the browser and
 siza installed in a second terminal, Claude can list cells, read them, run them,
-propose edits you approve in the UI, and try code in a throwaway scratchpad.
+propose edits you approve in the UI, and use one `try` operation for
+non-committing experiments against notebook context and candidate dependencies.
 Every change shows up live in your browser, against the same GHCi session you're
 already using.
 

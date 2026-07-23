@@ -79,6 +79,7 @@ import Sabela.State.SessionManager (
     modifyHaskellSession,
     setHaskellSession,
     takeHaskellSession,
+    withHaskellLifecycle,
  )
 import ScriptHs.Parser (CabalMeta (..))
 import System.FilePath (isAbsolute, (</>))
@@ -95,18 +96,20 @@ killAllSessions app =
 past a wedged cell's run-lock) and respawn reusing the built env, no rebuild/re-run.
 -}
 hardResetKernel :: App -> Int -> IO ()
-hardResetKernel app gen = whenCurrentGen app gen $ do
-    debugLog app "[handler] hardResetKernel: force-kill + respawn"
-    mSess <- getHaskellSession (appSessions app)
-    killAllSessions app
-    whenCurrentGen app gen $ do
-        let projDir = envTmpDir (appEnv app) </> "repl-project"
-        ok <- case mSess of
-            Just _ -> startSessionWith app projDir
-            Nothing ->
-                installAndRestart app gen . collectMetadata
-                    =<< readNotebook (appNotebook app)
-        when ok $ broadcast app EvExecutionDone
+hardResetKernel app gen =
+    withHaskellLifecycle (appSessions app) $
+        whenCurrentGen app gen $ do
+            debugLog app "[handler] hardResetKernel: force-kill + respawn"
+            mSess <- getHaskellSession (appSessions app)
+            killAllSessions app
+            whenCurrentGen app gen $ do
+                let projDir = envTmpDir (appEnv app) </> "repl-project"
+                ok <- case mSess of
+                    Just _ -> startSessionWith app projDir
+                    Nothing ->
+                        installAndRestartUnlocked app gen . collectMetadata
+                            =<< readNotebook (appNotebook app)
+                when ok $ broadcast app EvExecutionDone
 
 {- | Server-exit teardown: polite closes plus the registry sweep that
 reclaims sessions no manager slot references (scratchpad, half-spawns).
@@ -179,7 +182,12 @@ neededProjectSig app metas =
      in projectSig localPkgs merged
 
 installAndRestart :: App -> Int -> CabalMeta -> IO Bool
-installAndRestart app gen metas = do
+installAndRestart app gen metas =
+    withHaskellLifecycle (appSessions app) $
+        installAndRestartUnlocked app gen metas
+
+installAndRestartUnlocked :: App -> Int -> CabalMeta -> IO Bool
+installAndRestartUnlocked app gen metas = do
     current <- isCurrentGen app gen
     if not current
         then pure False
@@ -190,9 +198,9 @@ timeout covers this phase, so a wedged install would otherwise hang forever. The
 masked spawn reaps the half-built process, so a timeout stays recoverable.
 -}
 installDepsAndStartSession :: App -> Int -> CabalMeta -> IO Bool
-installDepsAndStartSession app _gen metas = withBuilding app $ do
+installDepsAndStartSession app gen metas = withBuilding app $ do
     budgetUs <- tcBuildUs <$> readTimeoutConfig
-    result <- timeout budgetUs (runInstallAndStart app metas)
+    result <- timeout budgetUs (runInstallAndStart app gen metas)
     case result of
         Just ok -> pure ok
         Nothing -> do
@@ -201,8 +209,8 @@ installDepsAndStartSession app _gen metas = withBuilding app $ do
             pure False
 
 -- | The dep-install + cold-start body, run under the 'tcBuildUs' bound above.
-runInstallAndStart :: App -> CabalMeta -> IO Bool
-runInstallAndStart app metas = do
+runInstallAndStart :: App -> Int -> CabalMeta -> IO Bool
+runInstallAndStart app gen metas = do
     broadcastDepsStatus app metas
     setHaskellExts (appDeps app) (S.fromList (metaExts metas))
     let projDir = envTmpDir (appEnv app) </> "repl-project"
@@ -214,9 +222,14 @@ runInstallAndStart app metas = do
                 merged
     setHaskellProjectSig (appDeps app) (projectSig localPkgs merged)
     setupReplProject WithNotebookSupport localPkgs projDir merged
-    broadcast app (EvSessionStatus SStarting)
-    killSession app
-    startSessionWith app projDir
+    current <- isCurrentGen app gen
+    if not current
+        then pure False
+        else do
+            broadcast app (EvSessionStatus SStarting)
+            killSession app
+            currentAfterDetach <- isCurrentGen app gen
+            if currentAfterDetach then startSessionWith app projDir else pure False
 
 broadcastDepsStatus :: App -> CabalMeta -> IO ()
 broadcastDepsStatus app metas = do

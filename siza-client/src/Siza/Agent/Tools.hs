@@ -124,9 +124,21 @@ baseCatalogue =
         discoverToolDescription
         (props requestProperties requestRequired)
     , fn
-        "scratchpad"
-        "Run a SELF-CONTAINED Haskell snippet in an isolated session (cannot see notebook bindings). Put the snippet in the `code` argument."
-        (props [("code", prop "The self-contained Haskell snippet to run.")] ["code"])
+        "try"
+        "Try code against the current notebook without modifying it. This is the ONE speculative execution interface: it can use notebook bindings and candidate-only dependencies, while Sabela internally chooses a read-only live fast path or a disposable re-materialized scratch environment."
+        ( props
+            [ ("code", prop "The code to try.")
+            ,
+                ( "language"
+                , object
+                    [ "type" .= ("string" :: Text)
+                    , "enum" .= (["Haskell", "Python"] :: [Text])
+                    , "description" .= ("Language. Default: Haskell." :: Text)
+                    ]
+                )
+            ]
+            ["code"]
+        )
     , fn
         "delete_cell"
         "Delete a cell from the notebook. Use this to remove a cell you cannot fix in place — e.g. a failing cell that is blocking you from inserting a new one."

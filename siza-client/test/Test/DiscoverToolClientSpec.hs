@@ -150,6 +150,11 @@ discoverToolSpec = describe "discover tool (plumbing)" $ do
             d `shouldSatisfy` (not . T.isInfixOf "never empty")
 
     describe "catalogue — one spec list, structurally drift-free" $ do
+        it "offers one try interface and no legacy evaluation modes" $ do
+            let ns = catalogueNames (catalogueWith True)
+            ns `shouldContain` ["try"]
+            ns `shouldNotContain` ["scratchpad"]
+            ns `shouldNotContain` ["eval_live"]
         it "offers discover and not the tools it subsumes" $ do
             let ns = catalogueNames (catalogueWith True)
             ns `shouldContain` ["discover"]

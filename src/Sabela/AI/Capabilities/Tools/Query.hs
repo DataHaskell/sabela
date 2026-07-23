@@ -131,25 +131,6 @@ queryTools =
             ]
         )
     , mkTool
-        EvalLive
-        "Evaluate one Haskell expression against the LIVE notebook kernel and return its TYPE and (for a pure expression) its VALUE. This is how you inspect a binding a cell already created — a DataFrame `df`, a fitted model, any in-scope name — or run a pure function over it: `df` (its type), `columnAsList \"x\" df`, `D.columnNames df`, `take 5 (F.toList df)` (type + value). It must be a SINGLE expression that binds no new name; it may reference live variables but is read-only. An IO-typed expression (`readCsv …`, anything with `<-`) returns its TYPE only, not run — to execute effects or define helpers, use scratchpad. Unlike list_bindings / check_type / describe_function (names and types only) this returns the evaluated value; unlike scratchpad, whose isolated session cannot see notebook variables, this runs where the real `df` lives."
-        ( object
-            [ "type" .= ("object" :: Text)
-            , "properties"
-                .= object
-                    [ "expression"
-                        .= object
-                            [ "type" .= ("string" :: Text)
-                            , "description"
-                                .= ( "One Haskell expression to evaluate in the live kernel, e.g. columnAsList \"x\" df." ::
-                                        Text
-                                   )
-                            ]
-                    ]
-            , "required" .= (["expression"] :: [Text])
-            ]
-        )
-    , mkTool
         FindExampleCell
         "Search runnable example cells for a cell-shape idiom (e.g. \"read csv\", \"typed column\"); returns the title and full source to paste and adapt. Covers loading data and typed column access. To find which package or function does a task, use search_capability or find_function."
         (queryArg "A shape idiom, e.g. \"read csv\" or \"typed column\".")

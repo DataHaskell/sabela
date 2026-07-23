@@ -9,7 +9,7 @@ the sibling modules:
 
 * "Sabela.AI.Capabilities.Notebook" — read-only inspection.
 * "Sabela.AI.Capabilities.Edit" — mutating ops + executeCell.
-* "Sabela.AI.Capabilities.Scratchpad" — isolated GHCi/Python sandbox.
+* "Sabela.AI.Capabilities.Try" — unified speculative evaluation router.
 * "Sabela.AI.Capabilities.Query" — GHCi introspection + api_reference + explore_result.
 * "Sabela.AI.Capabilities.Tools" — the static schemas, split into Notebook + Query sub-modules.
 -}
@@ -28,7 +28,7 @@ module Sabela.AI.Capabilities (
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, try)
-import Control.Monad (void)
+import Control.Monad (unless, void)
 import Data.Aeson (Value (..), (.=))
 import Data.IORef (readIORef)
 import Data.Maybe (fromMaybe)
@@ -48,7 +48,6 @@ import Sabela.AI.Capabilities.Edit (
     executeCell,
  )
 import Sabela.AI.Capabilities.Edit.Ack (writeGate)
-import Sabela.AI.Capabilities.EvalLive (execEvalLive)
 import Sabela.AI.Capabilities.Kernel (
     execAwaitIdle,
     execExportNotebook,
@@ -72,9 +71,9 @@ import Sabela.AI.Capabilities.Query (
     execFindByType,
     execPeekData,
  )
-import Sabela.AI.Capabilities.Scratchpad (execScratchpadGuarded)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), resolveToolCall)
 import Sabela.AI.Capabilities.Tools (chatTools)
+import Sabela.AI.Capabilities.Try (execTry)
 import Sabela.AI.Capabilities.Util (field, fieldInt)
 import Sabela.AI.KernelVocab (
     BusyVerdict (..),
@@ -155,7 +154,10 @@ executeTool app store rn cancelTok toolName rawInput =
     naming the locking cell and elapsed when a registry knows them. -}
     kernelGuarded :: ToolName -> Value -> IO ToolOutcome
     kernelGuarded tool input = do
-        warmKernel app
+        -- `try` can materialize a cold notebook itself. Warming an empty base
+        -- kernel here would make the router mistake that empty session for a
+        -- faithful live notebook context.
+        unless (isTryAlias tool) (warmKernel app)
         v <-
             resolveOccupied
                 busyRetryRounds
@@ -184,7 +186,10 @@ executeTool app store rn cancelTok toolName rawInput =
         InsertCell -> execInsertCell app store rn cancelTok input
         DeleteCell -> execDeleteCell app input
         ExecuteCell -> execExecuteCell app store rn cancelTok input
-        Scratchpad -> execScratchpadGuarded app store input
+        Try -> execTry app input
+        -- Backward-compatible, non-advertised aliases. Both enter the same
+        -- router so old transcripts cannot revive the split public surface.
+        Scratchpad -> execTry app input
         ListBindings -> execListBindings app input
         CheckType -> execCheckType app input
         FindByType -> execFindByType app input
@@ -197,7 +202,7 @@ executeTool app store rn cancelTok toolName rawInput =
         AwaitIdle -> execAwaitIdle app store
         ExportNotebook -> execExportNotebook app input
         PeekData -> execPeekData app input
-        EvalLive -> execEvalLive app input
+        EvalLive -> execTry app input
         FindExampleCell -> execFindExampleCell input
         FindFunction -> execFindFunction app input
         SearchCapability -> execSearchCapability app input
@@ -244,8 +249,16 @@ needsKernel = \case
     FindByType -> True
     DescribeFunction -> True
     FindFunction -> True
+    Try -> True
+    Scratchpad -> True
     EvalLive -> True
     _ -> False
+
+isTryAlias :: ToolName -> Bool
+isTryAlias Try = True
+isTryAlias Scratchpad = True
+isTryAlias EvalLive = True
+isTryAlias _ = False
 
 {- | The orchestrator's parse-error hint for an undecodable streamed tool_use;
 dispatch fails fast instead of reporting misleading "cell_id required".

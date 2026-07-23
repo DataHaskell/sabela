@@ -61,6 +61,7 @@ import qualified Test.JsonDiagSpec as JsonDiagSpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
 import qualified Test.KernelVocabSpec as KernelVocabSpec
 import qualified Test.MarkerSpec as MarkerSpec
+import qualified Test.MaterializeSpec as MaterializeSpec
 import qualified Test.ModuleResolveSpec as ModuleResolveSpec
 import qualified Test.NonThreadedForkSpec as NonThreadedForkSpec
 import qualified Test.NormalizeGateSpec as NormalizeGateSpec
@@ -87,6 +88,7 @@ import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.ProvenanceWireSpec as ProvenanceWireSpec
 import qualified Test.ProviderAdapterSpec as ProviderAdapterSpec
 import qualified Test.ProviderSelectSpec as ProviderSelectSpec
+import qualified Test.PureEvalLiveSpec as PureEvalLiveSpec
 import qualified Test.QualifiedNameSpec as QualifiedNameSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.QueryDistillSpec as QueryDistillSpec
@@ -120,6 +122,8 @@ import qualified Test.ToolOutcomeWireSpec as ToolOutcomeWireSpec
 import qualified Test.ToolParseSpec as ToolParseSpec
 import qualified Test.TopoSpec as TopoSpec
 import qualified Test.TriageSpec as TriageSpec
+import qualified Test.TryPlanSpec as TryPlanSpec
+import qualified Test.TrySpec as TrySpec
 import qualified Test.TypeDirectedResolveSpec as TypeDirectedResolveSpec
 import qualified Test.TypeDiscoverySpec as TypeDiscoverySpec
 import qualified Test.TypecheckPrimitiveSpec as TypecheckPrimitiveSpec
@@ -149,6 +153,8 @@ main = do
         SessionSpec.spec
         SessionLoopSpec.spec
         SessionLiveSpec.spec
+        PureEvalLiveSpec.spec
+        MaterializeSpec.spec
         StaleRunSpec.spec
         SwitchNotebookSpec.spec
         TopoSpec.spec
@@ -181,6 +187,8 @@ main = do
         TypeDirectedResolveSpec.spec
         TypeDiscoverySpec.spec
         TypecheckPrimitiveSpec.spec
+        TryPlanSpec.spec
+        TrySpec.spec
         ThrowawayExecuteSpec.spec
         NonThreadedForkSpec.spec
         SelfHealSpec.spec

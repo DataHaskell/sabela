@@ -186,11 +186,11 @@ With a token, add `-H "Authorization: Bearer $SABELA_AI_TOKEN"` to each request.
 [`plugins/siza/skills/siza/SKILL.md`](plugins/siza/skills/siza/SKILL.md) is the prose Claude reads when the skill triggers. It documents:
 
 - the tools with input / output JSON shapes,
-- a worked example for analysing data ("discover → list_cells → read_cell → scratchpad → insert_cell → match the typed `outcome` tag"),
+- a worked example for analysing data ("discover → list_cells → read_cell → try → insert_cell → match the typed `outcome` tag"),
 - decision tree for `propose_edit` vs `replace_cell_source` vs `insert_cell`,
 - the typed cell-result outcome (`Succeeded` / `Raised` / `Rejected` / `Aborted`), with outputs and warnings,
 - handle lifecycle and the `explore_result` ops (`head` / `tail` / `slice` / `grep`),
-- scratchpad rules (per-language, per-turn, no top-level `let`, 3-error circuit breaker),
+- `try` rules (one speculative interface, notebook context, candidate-only dependencies, and fail-closed effects),
 - `expected_hash` optimistic concurrency and how to recover from a hash mismatch,
 - the 4096-token response cap and how to split large `propose_edit` payloads.
 

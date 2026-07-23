@@ -70,6 +70,7 @@ fakeBackend busy = do
                 , ST.sbQueryBindings = pure ""
                 , ST.sbQueryDoc = \_ -> pure ""
                 , ST.sbQueryHoleFits = \_ -> pure ""
+                , ST.sbEvalPureLive = \req -> pure (ST.pureEvalUnavailableResult req "fake backend")
                 }
     pure backend
 

@@ -20,12 +20,12 @@ import qualified Data.Text as T
 
 import Sabela.AI.Verdict (parseVerdict)
 
-{- | Verifier surfaces: the harness verify channel and the scratchpad. The
-@verify@ name counts only when harness-injected — a result answering a model
-call named @verify@ is that call's answer, not the verifier's.
+{- | Verifier surfaces: the harness verify channel, unified @try@ tool, and
+legacy @scratchpad@ alias. @verify@ counts only when harness-injected, never
+a model call answer of the same name.
 -}
 verifierChannels :: [Text]
-verifierChannels = ["verify", "scratchpad"]
+verifierChannels = ["verify", "try", "scratchpad"]
 
 -- | Each verdict-free verifier answer as a @(rule, detail)@ pair.
 verdictProblems :: [Value] -> [(Text, Text)]

@@ -18,7 +18,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.IORef (newIORef, readIORef)
 import qualified Data.Set as Set
 import Data.Text (Text)
-import Data.Unique (newUnique)
+import Data.Unique (hashUnique, newUnique)
 import Sabela.AI.Capabilities.Kernel (execKernelStatus)
 import Sabela.AI.Types (toolOutcomeValue)
 import Sabela.Server (newApp)
@@ -28,7 +28,11 @@ import Sabela.Session.Process (bumpSessionGen, firstSessionGen)
 import Sabela.Session.Reader (newOutQueue)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), setBuilding)
-import Sabela.State.SessionManager (setHaskellSession)
+import Sabela.State.SessionManager (
+    getHaskellSession,
+    setHaskellSession,
+    takeHaskellSessionIfSame,
+ )
 import Test.Hspec (Spec, describe, it, shouldBe)
 
 defaultCfg :: SessionConfig
@@ -36,8 +40,10 @@ defaultCfg =
     SessionConfig
         { scProjectDir = "."
         , scWorkDir = "."
+        , scCabalStoreDir = Nothing
         , scExecutionTimeoutUs = 120_000_000
         , scResyncTimeoutUs = 5_000_000
+        , scJsonDiagnostics = False
         }
 
 dummySession :: Int -> IO Session
@@ -104,6 +110,7 @@ fakeBackend busy g = do
                 , ST.sbQueryBindings = pure ""
                 , ST.sbQueryDoc = \_ -> pure ""
                 , ST.sbQueryHoleFits = \_ -> pure ""
+                , ST.sbEvalPureLive = \req -> pure (ST.pureEvalUnavailableResult req "fake backend")
                 }
     pure backend
 
@@ -120,6 +127,32 @@ statusWith busy g = do
 
 spec :: Spec
 spec = do
+    describe "crashed-backend compare-and-swap" $ do
+        it "detaches only the backend whose identity was captured" $ do
+            app <- newApp "." Set.empty Nothing Nothing []
+            old <- fakeBackend False 1
+            fresh <- fakeBackend False 2
+            setHaskellSession (appSessions app) (Just fresh)
+            claimed <-
+                takeHaskellSessionIfSame
+                    (appSessions app)
+                    (ST.sbSessionId old)
+            claimed `shouldBeBackend` Nothing
+            current <- getHaskellSession (appSessions app)
+            current `shouldBeBackend` Just fresh
+
+        it "atomically clears and returns the matching backend" $ do
+            app <- newApp "." Set.empty Nothing Nothing []
+            old <- fakeBackend False 1
+            setHaskellSession (appSessions app) (Just old)
+            claimed <-
+                takeHaskellSessionIfSame
+                    (appSessions app)
+                    (ST.sbSessionId old)
+            claimed `shouldBeBackend` Just old
+            current <- getHaskellSession (appSessions app)
+            current `shouldBeBackend` Nothing
+
     describe "session generation (stress case 36)" $ do
         it "is born at firstSessionGen" $
             firstSessionGen `shouldBe` 1
@@ -179,5 +212,8 @@ spec = do
                 (\k -> field k v `shouldBe` Nothing)
                 ["kernel", "running", "compiling", "sessionGen"]
   where
+    shouldBeBackend actual expected =
+        fmap (hashUnique . ST.sbSessionId) actual
+            `shouldBe` fmap (hashUnique . ST.sbSessionId) expected
     shouldReturnVal act expected = act >>= (`shouldBe` expected)
     statePath k v = field "state" v >>= field k

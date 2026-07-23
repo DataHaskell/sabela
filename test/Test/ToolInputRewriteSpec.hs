@@ -63,6 +63,14 @@ spec = describe "tool-input sanitizers" $ do
         it "routes the inline arg to the tool's own primary key" $
             resolveToolCall "describe_function fold" (object [])
                 `shouldBe` Just (DescribeFunction, object ["name" .= String "fold"])
+        it "routes an inline try snippet to code" $
+            resolveToolCall "try \"1 + 1\"" (object [])
+                `shouldBe` Just (Try, object ["code" .= String "1 + 1"])
+        it "keeps legacy evaluation names parseable but distinct" $ do
+            resolveToolCall "scratchpad" (object ["code" .= String "1"])
+                `shouldBe` Just (Scratchpad, object ["code" .= String "1"])
+            resolveToolCall "eval_live" (object ["expression" .= String "1"])
+                `shouldBe` Just (EvalLive, object ["expression" .= String "1"])
         it "keeps an explicit arg over the name-baked one" $
             resolveToolCall "find_function \"x\"" (object ["query" .= String "y"])
                 `shouldBe` Just (FindFunction, object ["query" .= String "y"])

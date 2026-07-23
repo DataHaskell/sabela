@@ -2,30 +2,66 @@
 
 module Main (main) where
 
-import Control.Exception (SomeException, displayException, try)
 import Control.Concurrent (rtsSupportsBoundThreads)
+import Control.Exception (SomeException, displayException, try)
 import Control.Monad (void, when)
 import Data.Word (Word64)
-import GHC (Ghc, getContext, getSessionDynFlags, handleSourceError, parseName, runGhc, setSessionDynFlags)
+import GHC (
+    Ghc,
+    getContext,
+    getSessionDynFlags,
+    handleSourceError,
+    parseName,
+    runGhc,
+    setSessionDynFlags,
+ )
 import qualified GHC.Clock
 import GHC.Driver.Monad (Ghc (..), reflectGhc)
 import qualified GHC.Driver.Monad as GM
 import GHC.Runtime.Context (InteractiveImport (..))
-import GHC.Runtime.Eval (execOptions, execStmt, parseImportDecl, runDecls, setContext)
+import GHC.Runtime.Eval (
+    execOptions,
+    execStmt,
+    parseImportDecl,
+    runDecls,
+    setContext,
+ )
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.IO (BufferMode (..), Handle, hClose, hGetContents, hPutStrLn, hSetBuffering)
+import System.IO (
+    BufferMode (..),
+    Handle,
+    hClose,
+    hGetContents,
+    hPutStrLn,
+    hSetBuffering,
+ )
 import qualified System.IO
 import System.Posix.IO (createPipe, fdToHandle)
-import System.Posix.Process (ProcessStatus (..), exitImmediately, forkProcess, getProcessStatus)
+import System.Posix.Process (
+    ProcessStatus (..),
+    exitImmediately,
+    forkProcess,
+    getProcessStatus,
+ )
 import System.Posix.Signals (sigKILL, signalProcess)
-import System.Process (ProcessHandle, getProcessExitCode, proc, terminateProcess, waitForProcess, withCreateProcess)
+import System.Process (
+    ProcessHandle,
+    getProcessExitCode,
+    proc,
+    terminateProcess,
+    waitForProcess,
+    withCreateProcess,
+ )
 import System.Timeout (timeout)
 
 main :: IO ()
-main = getArgs >>= \case
-    [libdir, scenario] -> runGhc (Just libdir) (proof scenario)
-    _ -> hPutStrLn stderrHandle "usage: runner LIBDIR SCENARIO" >> exitWith (ExitFailure 64)
+main =
+    getArgs >>= \case
+        [libdir, scenario] -> runGhc (Just libdir) (proof scenario)
+        _ ->
+            hPutStrLn stderrHandle "usage: runner LIBDIR SCENARIO"
+                >> exitWith (ExitFailure 64)
 
 proof :: String -> Ghc ()
 proof scenario = do
@@ -64,12 +100,18 @@ proof scenario = do
             ("execute-timeout", Just (Terminated _ _), Right ()) -> healthy
             (_, Just (Exited ExitSuccess), Right ()) -> healthy
             _ -> do
-                hPutStrLn stderrHandle ("proof failed: " ++ show status ++ " " ++ either displayException (const "") parentOk)
+                hPutStrLn
+                    stderrHandle
+                    ( "proof failed: "
+                        ++ show status
+                        ++ " "
+                        ++ either displayException (const "") parentOk
+                    )
                 exitWith (ExitFailure 1)
-      where
-        healthy = do
-                putStrLn "parent=usable"
-                putStrLn "pollution=none"
+  where
+    healthy = do
+        putStrLn "parent=usable"
+        putStrLn "pollution=none"
 
 child :: String -> GM.Session -> Handle -> Handle -> IO ()
 child scenario session readHandle writeHandle = do
@@ -94,13 +136,14 @@ childCheck = do
     setContext (IIDecl imp : context)
     void (runDecls declarations)
   where
-    declarations = unlines
-        [ "data Candidate = Candidate Int deriving (Eq, Show)"
-        , "class HasCandidate a where candidateValue :: a -> Int"
-        , "instance HasCandidate Candidate where candidateValue (Candidate n) = n"
-        , "candidateMap = M.fromList [(\"answer\", Candidate liveSeed)]"
-        , "candidateAnswer = candidateValue (candidateMap M.! \"answer\")"
-        ]
+    declarations =
+        unlines
+            [ "data Candidate = Candidate Int deriving (Eq, Show)"
+            , "class HasCandidate a where candidateValue :: a -> Int"
+            , "instance HasCandidate Candidate where candidateValue (Candidate n) = n"
+            , "candidateMap = M.fromList [(\"answer\", Candidate liveSeed)]"
+            , "candidateAnswer = candidateValue (candidateMap M.! \"answer\")"
+            ]
 
 parentCheck :: Ghc ()
 parentCheck = do

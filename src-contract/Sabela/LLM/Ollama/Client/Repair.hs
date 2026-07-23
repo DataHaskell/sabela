@@ -58,7 +58,7 @@ inferToolName :: KM.KeyMap Value -> Maybe Text
 inferToolName o
     | has "source" = Just "insert_cell"
     | has "new_source" = Just "replace_cell_source"
-    | has "code" = Just "scratchpad"
+    | has "code" = Just "try"
     | otherwise = Nothing
   where
     has k = KM.member (K.fromText k) o

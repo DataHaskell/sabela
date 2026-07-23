@@ -10,13 +10,19 @@ import Sabela.Output.Widgets (widgetDefs)
 
 {- | Inline GHCi prelude that defines the Sabela display/widget API.
 Safe to re-run before each cell because it uses ':{ :}' blocks rather than
-':load', which would reset the entire GHCi context.
+':load', which would reset the entire GHCi context. Also imports the modules
+the pure-live admission/eval protocol (Sabela.Session.Query) addresses by
+full qualified name, since GHCi requires the import even when unqualified
+names are never brought into scope.
 -}
 displayPrelude :: Text
 displayPrelude =
     T.unlines
         [ "import Data.IORef"
-        , "import System.IO.Unsafe (unsafePerformIO)"
+        , "import qualified System.IO.Unsafe as SabelaUnsafe"
+        , "import qualified Control.Exception"
+        , "import qualified Data.Proxy"
+        , "import qualified Data.Typeable"
         , ":{"
         , "data Input a = Input {iValue :: IO a, iShow :: IO ()}"
         , "instance Functor Input where"
@@ -25,9 +31,9 @@ displayPrelude =
         , "    pure x = Input{iValue = pure x, iShow = pure ()}"
         , "    bf <*> bx = Input{iValue = iValue bf <*> iValue bx, iShow = iShow bf >> iShow bx}"
         , "_sabelaWidgetRef :: IORef [(String, String)]"
-        , "_sabelaWidgetRef = unsafePerformIO (newIORef [])"
+        , "_sabelaWidgetRef = SabelaUnsafe.unsafePerformIO (newIORef [])"
         , "_sabelaCellIdRef :: IORef String"
-        , "_sabelaCellIdRef = unsafePerformIO (newIORef \"0\")"
+        , "_sabelaCellIdRef = SabelaUnsafe.unsafePerformIO (newIORef \"0\")"
         , "displayMime_ :: String -> String -> IO ()"
         , "displayMime_ t c = putStrLn (\"<!-- MIME:\" ++ t ++ \" -->\") >> putStrLn c"
         , "displayHtml :: String -> IO ()"
@@ -66,6 +72,17 @@ displayPrelude =
         <> widgetDefs
         <> scatterDefs
         <> ":}\n"
+
+-- | Framing understood by the atomic pure-live session primitive.
+pureAdmittedMarker, pureIOMarker, pureValueMarker, pureErrorMarker :: Text
+pureAdmittedMarker = "---SABELA_PURE_ADMITTED---"
+pureIOMarker = "---SABELA_PURE_IO---"
+pureValueMarker = "---SABELA_PURE_VALUE---"
+pureErrorMarker = "---SABELA_PURE_ERROR---"
+
+-- | Bound rendering before it reaches the session's much larger run buffer.
+pureValueCap :: Int
+pureValueCap = 4000
 
 -- New (valid-HTML) marker shape. Hidden by every Markdown previewer.
 mimeMarkerHtmlPrefix :: Text

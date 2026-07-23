@@ -105,12 +105,11 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "insert_cell"
                     , "delete_cell"
                     , "execute_cell"
-                    , "scratchpad"
+                    , "try"
                     , "list_bindings"
                     , "check_type"
                     , "find_by_type"
                     , "describe_function"
-                    , "eval_live"
                     , "peek_data"
                     , "api_reference"
                     , "explore_result"
@@ -147,8 +146,8 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
             requiredOf "delete_cell" `shouldBe` ["cell_id"]
         it "execute_cell requires cell_id" $
             requiredOf "execute_cell" `shouldBe` ["cell_id"]
-        it "scratchpad requires code" $
-            requiredOf "scratchpad" `shouldBe` ["code"]
+        it "try requires code" $
+            requiredOf "try" `shouldBe` ["code"]
         it "check_type requires expr" $
             requiredOf "check_type" `shouldBe` ["expr"]
         it "find_by_type requires goal" $
@@ -183,8 +182,8 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
             enumIn "insert_cell" "cell_type" `shouldBe` ["CodeCell", "ProseCell"]
         it "insert_cell language enum is Haskell/Python" $
             enumIn "insert_cell" "language" `shouldBe` ["Haskell", "Python"]
-        it "scratchpad language enum is Haskell/Python" $
-            enumIn "scratchpad" "language" `shouldBe` ["Haskell", "Python"]
+        it "try language enum is Haskell/Python" $
+            enumIn "try" "language" `shouldBe` ["Haskell", "Python"]
         it "explore_result op enum is head/tail/slice/grep" $
             enumIn "explore_result" "op"
                 `shouldBe` ["grep", "head", "slice", "tail"]
@@ -199,7 +198,7 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                 `shouldBe` Just "string"
             (typeOf "pattern" =<< schemaOf "find_cells_by_content")
                 `shouldBe` Just "string"
-            (typeOf "code" =<< schemaOf "scratchpad") `shouldBe` Just "string"
+            (typeOf "code" =<< schemaOf "try") `shouldBe` Just "string"
 
     describe "kernel_status result shape (execKernelStatus)" $ do
         let statusResult =

@@ -51,6 +51,10 @@ spec = describe "Rank 3 code-fence salvage" $ do
             salvageCell "```haskell\nscratchpad ()\nx = 1\n```"
                 `shouldBe` Just "x = 1"
 
+        it "drops a bare unified try call" $
+            salvageCell "```haskell\ntry ()\nx = 1\n```"
+                `shouldBe` Just "x = 1"
+
         it "leaves real Haskell that merely mentions a tool name untouched" $
             salvageCell "```haskell\nresult = read_cell 1 ++ go (x)\n```"
                 `shouldBe` Just "result = read_cell 1 ++ go (x)"

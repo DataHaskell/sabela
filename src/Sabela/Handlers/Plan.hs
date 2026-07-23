@@ -12,6 +12,7 @@ module Sabela.Handlers.Plan (
     executeAffected,
     executeSingleCell,
     executeFullRestart,
+    recoverHaskellSession,
     executeRunAll,
     isSessionUpToDate,
 
@@ -21,6 +22,7 @@ module Sabela.Handlers.Plan (
 ) where
 
 import Control.Concurrent (forkIO)
+import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void, when)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -59,9 +61,13 @@ import Sabela.Reactivity (
     haskellCodeCells,
  )
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..))
+import Sabela.State (App (..), clearCompiledModules)
 import Sabela.State.BridgeStore (getBridgeValues)
 import Sabela.State.NotebookStore (readNotebook)
+import Sabela.State.SessionManager (
+    getHaskellSession,
+    takeHaskellSessionIfSame,
+ )
 import qualified Sabela.Topo as Topo
 
 dispatchByLang :: App -> Int -> Int -> ST.CellLang -> IO () -> IO ()
@@ -166,6 +172,53 @@ executeFullRestart app gen = do
             when ok $ executeFullPlan app gen allCode nb
         whenCurrentGen app gen $
             executeNonHaskellCells app gen
+
+{- | Recover only the exact live backend destroyed by a bounded pure trial
+(compare-and-swap detach prevents a late callback killing a newer backend).
+Rebuilds and replays Haskell only; other backends are not collateral damage.
+-}
+recoverHaskellSession :: App -> ST.SessionBackend -> Int -> IO Bool
+recoverHaskellSession app crashed gen = do
+    claimed <-
+        takeHaskellSessionIfSame
+            (appSessions app)
+            (ST.sbSessionId crashed)
+    case claimed of
+        Nothing -> do
+            current <- getHaskellSession (appSessions app)
+            pure $
+                maybe
+                    False
+                    ((/= ST.sbSessionId crashed) . ST.sbSessionId)
+                    current
+        Just backend -> do
+            clearCompiledModules app
+            _ <- try (ST.sbClose backend) :: IO (Either SomeException ())
+            current <- isCurrentGen app gen
+            if not current
+                then pure False
+                else do
+                    notebook <- readNotebook (appNotebook app)
+                    stillCurrent <- isCurrentGen app gen
+                    if not stillCurrent
+                        then pure False
+                        else do
+                            ok <- installAndRestart app gen (collectMetadata notebook)
+                            when ok $
+                                executeFullPlan
+                                    app
+                                    gen
+                                    (haskellCodeCells notebook)
+                                    notebook
+                            replacement <- getHaskellSession (appSessions app)
+                            finalCurrent <- isCurrentGen app gen
+                            pure $
+                                ok
+                                    && finalCurrent
+                                    && maybe
+                                        False
+                                        ((/= ST.sbSessionId crashed) . ST.sbSessionId)
+                                        replacement
 
 executeFullPlan :: App -> Int -> [Cell] -> Notebook -> IO ()
 executeFullPlan app gen allCode nb = do
