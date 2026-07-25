@@ -3,13 +3,17 @@
 {- | R9-T3: candidate-seed re-ranking. The seed is the model's own writable
 draft when one is held, else the held consumer minimising its genuine-gap count
 (argument types no held fact produces). Over a generated grid of >=2-consumer
-fact ledgers with differing gap counts the minimiser wins; the 1-hole @bars@ vs
-8-hole record-stub fixture is the secondary confirmation.
+fact ledgers with differing gap counts the minimiser wins; the 1-gap @bars@ vs
+8-gap record-stub fixture is the secondary confirmation.
+
+G3: a gap is filled from a harness hole probe, never from a hole, so each
+fixture holds the probe conclusions its gaps need.
 -}
 module Test.CandidateRankSpec (candidateRankSpec) where
 
 import Control.Monad (forM_)
-import Data.List (minimumBy)
+import Data.List (minimumBy, nub)
+import Data.Maybe (isNothing)
 import Data.Ord (comparing)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -20,7 +24,7 @@ import Siza.Agent.Discover.Candidate (
     candidateCellFrom,
     candidateClauseFrom,
  )
-import Siza.Agent.Discover.Goal (genuineGaps)
+import Siza.Agent.Discover.Goal (argTypesOf, genuineGaps, literalFill)
 
 -- | A held consumer fact in the 'harvestFacts' shape 'consumerOf' parses.
 consumerFact :: Text -> Text -> Text -> Text -> Text
@@ -50,8 +54,24 @@ grid =
     , [("z", "M -> Text"), ("y", "N -> Text"), ("x", "L -> Text")]
     ]
 
+{- | The ledger a fixture holds: its consumers, plus the hole-probe
+conclusion for every argument type no literal can fill.
+-}
 factsOf :: [C] -> [Text]
-factsOf cs = [consumerFact n sig "Mod" "pkg" | (n, sig) <- cs]
+factsOf cs =
+    [consumerFact n sig "Mod" "pkg" | (n, sig) <- cs]
+        ++ map probedFact (gapTypes cs)
+
+gapTypes :: [C] -> [Text]
+gapTypes cs =
+    nub [t | (_, sig) <- cs, t <- argTypesOf sig, isNothing (literalFill t)]
+
+probedFact :: Text -> Text
+probedFact t = "`" <> t <> "` is produced by: `mk" <> t <> "` (via: hole-probe)"
+
+-- | Does this consumer have an argument slot no literal can fill?
+hasGap :: C -> Bool
+hasGap (_, sig) = any (isNothing . literalFill) (argTypesOf sig)
 
 -- | The expected minimiser of a fact set: fewest genuine gaps, first on a tie.
 expectedSeed :: [C] -> Text
@@ -70,7 +90,13 @@ candidateRankSpec = describe "candidate-seed re-ranking (R9-T3)" $ do
                     Nothing -> expectationFailure ("no candidate: " <> show cs)
                     Just got -> (cs, got) `shouldBe` (cs, expectedSeed cs)
 
-    describe "the 1-hole bars vs 8-hole record-stub fixture" $
+    describe "an unprobed gap proposes nothing at all (G3)" $
+        it "a ledger whose every consumer has a gap yields no candidate" $
+            forM_ [cs | cs <- grid, all hasGap cs] $ \cs ->
+                candidateCell [consumerFact n sig "Mod" "pkg" | (n, sig) <- cs]
+                    `shouldBe` Nothing
+
+    describe "the 1-gap bars vs 8-gap record-stub fixture" $
         it "bars (1 genuine gap) wins over the wide record stub (8)" $ do
             let facts =
                     factsOf
@@ -89,8 +115,10 @@ candidateRankSpec = describe "candidate-seed re-ranking (R9-T3)" $ do
             let facts = factsOf [("bars", "[(Text, Double)] -> Plot -> Text")]
             (candidateCellFrom (Just "   \n") facts >>= seedName)
                 `shouldBe` Just "bars"
-        it "the clause carries the drafted source, not a holed synthesis" $ do
+        it "the clause carries the drafted source, and never a hole" $ do
             let draft = "bars myData (barPlot 400 300)"
                 clause = candidateClauseFrom (Just draft) []
             clause `shouldSatisfy` T.isInfixOf draft
             clause `shouldSatisfy` (not . T.isInfixOf "(_ :: ")
+        it "a draft the model holed itself is not a usable seed (G3)" $
+            candidateClauseFrom (Just "bars myData (_ :: Plot)") [] `shouldBe` ""

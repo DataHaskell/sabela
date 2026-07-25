@@ -26,7 +26,7 @@ import Siza.Agent.DiscoverTool (
     runDiscoverCall,
  )
 import Siza.Agent.OutcomeDistill (distillOutcome)
-import Siza.Agent.ToolRoute (Route (..), routeCallWith)
+import Siza.Agent.ToolRoute (Route (..), installSteer, routeCallWith)
 import Siza.Transport (Conn, callTool)
 import System.Environment (lookupEnv)
 
@@ -125,7 +125,7 @@ baseCatalogue =
         (props requestProperties requestRequired)
     , fn
         "try"
-        "Try code against the current notebook without modifying it. This is the ONE speculative execution interface: it can use notebook bindings and candidate-only dependencies, while Sabela internally chooses a read-only live fast path or a disposable re-materialized scratch environment."
+        "Try candidate code without touching the notebook: it sees the notebook's live bindings and may declare a candidate-only dependency to test with. Always safe to call — nothing is added, changed, or removed. Returns the value or output on success, or a diagnostic saying why it could not run."
         ( props
             [ ("code", prop "The code to try.")
             ,
@@ -201,6 +201,7 @@ unknownToolMsg name =
         <> "'. Valid tools: "
         <> T.intercalate ", " offeredNames
         <> "."
+        <> installSteer name
 
 -- | The function names in the offered catalogue.
 offeredNames :: [Text]

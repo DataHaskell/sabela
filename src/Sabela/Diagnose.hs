@@ -6,6 +6,7 @@ module Sabela.Diagnose (
     guidanceForCell,
     guidancePairs,
     cellResultWithGuidance,
+    cellResultWithExtraGuidance,
     topLevelLetMessage,
     holeFitGoal,
     hiddenPackage,
@@ -68,7 +69,14 @@ guidancePairs gs = ["guidance" .= gs]
 for the @execution@ summary embedded by @insert_cell@/@replace_cell_source@.
 -}
 cellResultWithGuidance :: CellResult -> Value
-cellResultWithGuidance cr = case (toJSON cr, guidanceForCell cr) of
+cellResultWithGuidance = cellResultWithExtraGuidance []
+
+{- | 'cellResultWithGuidance', with additional guidance appended — the seam an
+IO-computed rule (e.g. a filesystem-backed near-miss check) merges through
+without 'diagnose' itself gaining IO.
+-}
+cellResultWithExtraGuidance :: [Guidance] -> CellResult -> Value
+cellResultWithExtraGuidance extra cr = case (toJSON cr, guidanceForCell cr ++ extra) of
     (Object o, gs@(_ : _)) -> Object (KM.insert "guidance" (toJSON gs) o)
     (v, _) -> v
 

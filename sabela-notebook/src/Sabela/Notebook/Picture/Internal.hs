@@ -22,7 +22,7 @@ type Point = (Double, Double)
 
 {- | A drawing. Build one from shapes and combine pictures with @'<>'@; the empty
 picture is 'mempty'. A picture is just a description — nothing is drawn until you
-call @picture@.
+call @displayPicture@.
 -}
 data Picture
     = Blank

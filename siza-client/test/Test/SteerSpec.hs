@@ -204,6 +204,43 @@ ladderSpec = describe "a value-of-type miss cluster is steered by miss 2" $ do
                     , ("col ", missEnvOf "col ")
                     ]
         forM_ outs $ \o -> steered o `shouldBe` False
+    -- live_test20: `pictures`, `overlay`, `color` are three DIFFERENT clusters,
+    -- so each sat at rung 1 and the per-cluster ladder never escalated. The
+    -- model then guessed a package. Distinct misses are the signal that the
+    -- lexical question itself is wrong.
+    it "distinct concept misses are taught the type question by the 2nd" $ do
+        let (_, outs) =
+                scriptLedger
+                    [ ("pictures", missEnvOf "pictures")
+                    , ("overlay", missEnvOf "overlay")
+                    ]
+        adviceOf (head outs) `shouldNotSatisfy` T.isInfixOf "find_by_type"
+        adviceOf (outs !! 1) `shouldSatisfy` T.isInfixOf "find_by_type"
+
+    it "the type-question example is generic, never a library name" $ do
+        let (_, outs) =
+                scriptLedger
+                    [ ("pictures", missEnvOf "pictures")
+                    , ("overlay", missEnvOf "overlay")
+                    ]
+            advice = T.toLower (adviceOf (outs !! 1))
+        forM_ ["plume", "framing", "styling", "granite", "dataframe", "gloss"] $
+            \lib -> (lib, lib `T.isInfixOf` advice) `shouldBe` (lib, False)
+
+    it "repeats of ONE cluster are not the distinct-miss signal" $ do
+        let (_, outs) =
+                scriptLedger
+                    [ ("col", missEnvOf "col")
+                    , ("`col`", missEnvOf "`col`")
+                    ]
+        adviceOf (outs !! 1) `shouldNotSatisfy` T.isInfixOf "find_by_type"
+
+    it "R5.7: a post-close miss is never taught to search by type either" $ do
+        let closed = ledgerClose emptyLedger
+            (led1, _) = ledgerRecord "pictures" (missEnvOf "pictures") closed
+            (_, out) = ledgerRecord "overlay" (missEnvOf "overlay") led1
+        adviceOf out `shouldNotSatisfy` T.isInfixOf "find_by_type"
+
     it "R5.7: a post-close miss is never steered back into searching" $ do
         let closed = ledgerClose emptyLedger
             (_, out) = ledgerRecord "newChart" (missEnvOf "newChart") closed

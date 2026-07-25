@@ -12,40 +12,42 @@ module Sabela.AI.Capabilities.Try (
     trialPlanErrorText,
 ) where
 
-import Control.Concurrent.MVar (readMVar)
 import Data.Aeson (Value (..), object, (.=))
-import Data.Aeson.Types (Pair)
-import Data.IORef (readIORef)
-import qualified Data.Map.Strict as M
-import Data.Maybe (isNothing)
-import qualified Data.Set as S
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KM
+import Data.Maybe (isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Unique (Unique)
 
+import Sabela.AI.Capabilities.Try.HoleProbe (runHoleProbe)
+import Sabela.AI.Capabilities.Try.Payload (
+    disposablePayload,
+    inputErrorPayload,
+    invariantPayload,
+    planErrorPayload,
+    purePayload,
+    trialPlanErrorText,
+    unrestrictedIOPayload,
+ )
+import Sabela.AI.Capabilities.Try.Snapshot (AppSnapshot (..), snapshotApp)
 import Sabela.AI.Capabilities.TryPlan
 import Sabela.AI.Capabilities.Util (fieldText, parseCellLang)
-import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
+import Sabela.AI.DepRepair (addBuildDepend)
+import Sabela.AI.NormalizeGate (gatedRewrite)
+import Sabela.AI.TypedHole (containsTypedHole)
+import Sabela.AI.Types (ToolOutcome (..), errOutcome, okOutcome)
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
-import Sabela.Deps (ProjectSig, collectMetadata)
+import Sabela.Deps (collectMetadata)
+import Sabela.Diagnose (hiddenPackage)
 import Sabela.Handlers.Lifecycle (sessionMetaMatches)
 import Sabela.Handlers.Plan (executeFullRestart)
-import Sabela.Model (Cell (..), Notebook)
+import Sabela.Model (Cell (..))
 import Sabela.Reactivity (haskellCodeCells)
 import Sabela.Session.Materialize
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
-import Sabela.State.BridgeStore (getBridgeValues)
-import Sabela.State.DependencyTracker (
-    getHaskellDeps,
-    getHaskellExts,
-    getHaskellProjectSig,
-    getPythonDeps,
- )
-import Sabela.State.EventBus (EventBus (..))
 import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
-import Sabela.State.WidgetStore (WidgetStore (..))
 
 execTry :: App -> Value -> IO ToolOutcome
 execTry app input
@@ -69,9 +71,13 @@ execTry app input
                             Text
                        )
                 ]
-    | otherwise = case planTrial rawCode of
-        Left planErr -> pure (errOutcome (planErrorPayload planErr))
-        Right plan -> runHaskellTrial app plan
+    | otherwise =
+        attachNormalizeNote normalizeNotes <$> case planTrial code of
+            Left planErr -> pure (errOutcome (planErrorPayload planErr))
+            -- G3 task 4: a hole is a question, so the answer route is
+            -- typecheck-only. The plan's hazard checks still gate entry.
+            Right _ | containsTypedHole code -> runHoleProbe app code
+            Right plan -> runTrialWithDepAutofix app code plan
   where
     codeField = fieldText "code" input
     expressionField = fieldText "expression" input
@@ -81,6 +87,74 @@ execTry app input
         if T.null rawLanguage
             then Just ST.Haskell
             else parseCellLang rawLanguage
+    -- G7: the same normalizer/gate insert_cell and replace_cell_source use,
+    -- so a candidate's let-desugar or transport fix reads identically on
+    -- every path; the echoed source below is always this normalized code.
+    (code, normalizeNotes) = gatedRewrite rawCode
+
+{- | Attach the G7 normalization disclosure to whichever outcome the trial
+produced — success or rejection alike, since a rejection AFTER normalization
+(a genuine type error, say) still owes the model the source it was actually
+judged against.
+-}
+attachNormalizeNote :: [Text] -> ToolOutcome -> ToolOutcome
+attachNormalizeNote [] out = out
+attachNormalizeNote notes out = withField "normalized" (String (T.unwords notes)) out
+
+withField :: Text -> Value -> ToolOutcome -> ToolOutcome
+withField k v (ToolOk (Object o)) = ToolOk (Object (KM.insert (Key.fromText k) v o))
+withField k v (ToolErr (Object o)) = ToolErr (Object (KM.insert (Key.fromText k) v o))
+withField _ _ out = out
+
+{- | Mechanical dependency repair: a candidate failing only because its import
+lives in a hidden package is retried once with that package declared, and the
+addition disclosed. Scratch-only; committing a dependency stays deliberate.
+-}
+runTrialWithDepAutofix :: App -> Text -> TrialPlan -> IO ToolOutcome
+runTrialWithDepAutofix app code plan = do
+    outcome <- runHaskellTrial app plan
+    case hiddenPackageOf outcome of
+        Just pkg
+            | repairedCode <- addBuildDepend pkg code
+            , Right repaired <- planTrial repairedCode ->
+                withField "autofix" (String (autofixNote pkg repairedCode))
+                    <$> runHaskellTrial app repaired
+        _ -> pure outcome
+
+{- | R7.1: the trial declared the dependency itself, so it owes the caller the
+source that carries it. Committing the pre-repair source would fail the gate,
+which declares no dependency the model did not write.
+-}
+autofixNote :: Text -> Text -> Text
+autofixNote pkg repairedCode =
+    "Declared build-depends: "
+        <> pkg
+        <> " for this trial (the module was in a hidden package). Commit this \
+           \CURRENT source, which carries the dependency line:\n"
+        <> repairedCode
+
+{- | The hidden package named by a rejected trial, read from the fields that
+actually carry the compiler's words.
+-}
+hiddenPackageOf :: ToolOutcome -> Maybe Text
+hiddenPackageOf (ToolOk _) = Nothing
+hiddenPackageOf (ToolErr value) =
+    listToMaybe (mapMaybe hiddenPackage (diagnosticTexts value))
+
+diagnosticTexts :: Value -> [Text]
+diagnosticTexts value =
+    [ text
+    | key <- ["stderr", "error", "diagnostic"]
+    , Just (String text) <- [lookupField key value]
+    ]
+        ++ [ text
+           | Just failure <- [lookupField "failure" value]
+           , Just (String text) <- [lookupField "message" failure]
+           ]
+
+lookupField :: Text -> Value -> Maybe Value
+lookupField key (Object obj) = KM.lookup (Key.fromText key) obj
+lookupField _ _ = Nothing
 
 runHaskellTrial :: App -> TrialPlan -> IO ToolOutcome
 runHaskellTrial app plan
@@ -166,23 +240,6 @@ isUnrestrictedIO result =
      in "scratch candidate is io" `T.isInfixOf` lower
             || "sabela_unrestricted_io" `T.isInfixOf` lower
 
-unrestrictedIOPayload :: ST.PureEvalResult -> Value
-unrestrictedIOPayload result =
-    object
-        [ "route" .= ("unavailable" :: Text)
-        , "verdict" .= verdictTag VerdictCouldNotRun
-        , "outcome" .= ("unavailable" :: Text)
-        , "reason"
-            .= ( "The candidate has an unrestricted IO type and no qualified containment backend is available; no candidate code ran." ::
-                    Text
-               )
-        , "type" .= ST.pureEvalInferredType result
-        , "purityAssurance" .= ("type_only" :: Text)
-        , "generation" .= ST.pureEvalGeneration result
-        , "bindingsUnchanged" .= ST.pureEvalBindingsUnchanged result
-        , "itUnchanged" .= ST.pureEvalItUnchanged result
-        ]
-
 runDisposable :: App -> TrialPlan -> IO ToolOutcome
 runDisposable app plan = do
     before <- snapshotApp app
@@ -209,12 +266,14 @@ candidateSpec plan =
                             <> "\n"
                             <> hiddenExpressionBinding expression
                     , candidateExpression = Just "_sabelaTryCandidate"
+                    , candidateReplacesCellId = Nothing
                     }
         expression ->
             CandidateSpec
                 { candidateMetadataSource = trialSource plan
                 , candidateSetup = trialSetup plan
                 , candidateExpression = expression
+                , candidateReplacesCellId = Nothing
                 }
 
 hiddenExpressionBinding :: Text -> Text
@@ -228,202 +287,3 @@ hiddenExpressionBinding expression =
 
 liveTimeoutUs :: Int
 liveTimeoutUs = 30 * 1000000
-
-purePayload :: ST.PureEvalResult -> Value
-purePayload result =
-    object
-        [ "route" .= ("pure_live" :: Text)
-        , "verdict" .= verdictTag (pureVerdictClass (ST.pureEvalVerdict result))
-        , "outcome" .= pureOutcomeText (ST.pureEvalVerdict result)
-        , "type" .= ST.pureEvalInferredType result
-        , "stdout" .= ST.pureEvalOutput result
-        , "stderr" .= ST.pureEvalError result
-        , "purityAssurance" .= ("type_only" :: Text)
-        , "pollutionContract" .= ("semantic_read_only" :: Text)
-        , "generation" .= ST.pureEvalGeneration result
-        , "bindingsUnchanged" .= ST.pureEvalBindingsUnchanged result
-        , "itUnchanged" .= ST.pureEvalItUnchanged result
-        , "recovery" .= pureRecoveryText (ST.pureEvalRecovery result)
-        ]
-
-disposablePayload :: DisposableResult -> Value
-disposablePayload result =
-    object
-        ( [ "route" .= disposableRoute result
-          , "verdict" .= verdictTag (disposableVerdictClass (disposableVerdict result))
-          , "outcome" .= disposableOutcomeText (disposableVerdict result)
-          , "type" .= disposableType result
-          , "stdout" .= disposableStdout result
-          , "stderr" .= disposableStderr result
-          , "purityAssurance" .= ("type_only" :: Text)
-          , "pollutionContract" .= ("disposable_session" :: Text)
-          , "replayedCells" .= disposableReplayedCells result
-          , "dependencies" .= disposableDependencies result
-          ]
-            <> failurePairs (disposableFailure result)
-            <> silentSuccessPairs result
-        )
-
-silentSuccessPairs :: DisposableResult -> [Pair]
-silentSuccessPairs result
-    | disposableVerdict result == DisposableOk
-        && T.null (T.strip (disposableStdout result))
-        && T.null (T.strip (disposableStderr result)) =
-        [ "diagnostic"
-            .= ( "Candidate declarations compiled successfully; no expression was executed." ::
-                    Text
-               )
-        ]
-    | otherwise = []
-
-failurePairs :: Maybe MaterializeFailure -> [Pair]
-failurePairs Nothing = []
-failurePairs (Just failure) =
-    [ "failure"
-        .= object
-            [ "stage" .= materializeStageText (failureStage failure)
-            , "cellId" .= failureCellId failure
-            , "message" .= failureMessage failure
-            ]
-    ]
-
-planErrorPayload :: TrialPlanError -> Value
-planErrorPayload planErr =
-    object
-        [ "route" .= ("unavailable" :: Text)
-        , "verdict" .= verdictTag VerdictDiagnostic
-        , "outcome" .= ("rejected" :: Text)
-        , "reason" .= trialPlanErrorText planErr
-        ]
-
-invariantPayload :: Text -> Value
-invariantPayload reason =
-    object
-        [ "route" .= ("unavailable" :: Text)
-        , "verdict" .= verdictTag VerdictCouldNotRun
-        , "outcome" .= ("invariant_failed" :: Text)
-        , "reason" .= reason
-        ]
-
-inputErrorPayload :: Text -> Value
-inputErrorPayload reason =
-    object
-        [ "route" .= ("unavailable" :: Text)
-        , "verdict" .= verdictTag VerdictDiagnostic
-        , "outcome" .= ("invalid_input" :: Text)
-        , "reason" .= reason
-        ]
-
-trialPlanErrorText :: TrialPlanError -> Text
-trialPlanErrorText planErr = case planErr of
-    TrialEmpty -> "code required"
-    TrialMultipleExpressions ->
-        "try accepts imports/declarations and at most one final expression; no code ran"
-    TrialExpressionNotFinal ->
-        "the optional try expression must be the final code unit; no code was reordered or run"
-    TrialEffectfulStatement stmt ->
-        "unrestricted effectful statement is unavailable; no code ran: " <> stmt
-    TrialMetaCommand cmd ->
-        "GHCi meta-commands are not admitted by try; no command ran: " <> cmd
-    TrialUnsafeSyntax reason -> reason <> "; no code ran"
-
-pureOutcomeText :: ST.PureEvalVerdict -> Text
-pureOutcomeText verdict = case verdict of
-    ST.PureEvalSucceeded -> "ok"
-    ST.PureEvalRejected -> "compile_error"
-    ST.PureEvalRuntimeError -> "runtime_error"
-    ST.PureEvalTimedOut -> "timed_out"
-    ST.PureEvalStale -> "stale"
-    ST.PureEvalInvariantFailed -> "invariant_failed"
-    ST.PureEvalUnavailable -> "unavailable"
-
-pureRecoveryText :: ST.PureEvalRecovery -> Text
-pureRecoveryText recovery = case recovery of
-    ST.PureEvalNoRecovery -> "none"
-    ST.PureEvalInterrupted -> "interrupted"
-    ST.PureEvalKernelDestroyed -> "restarted_kernel"
-
-pureVerdictClass :: ST.PureEvalVerdict -> VerdictClass
-pureVerdictClass verdict = case verdict of
-    ST.PureEvalSucceeded -> VerdictOk
-    ST.PureEvalRejected -> VerdictDiagnostic
-    ST.PureEvalRuntimeError -> VerdictDiagnostic
-    ST.PureEvalTimedOut -> VerdictDiagnostic
-    ST.PureEvalStale -> VerdictCouldNotRun
-    ST.PureEvalInvariantFailed -> VerdictCouldNotRun
-    ST.PureEvalUnavailable -> VerdictCouldNotRun
-
-disposableOutcomeText :: DisposableVerdict -> Text
-disposableOutcomeText verdict = case verdict of
-    DisposableOk -> "ok"
-    DisposableCompileError -> "compile_error"
-    DisposableRuntimeError -> "runtime_error"
-    DisposableTimedOut -> "timed_out"
-    DisposableUnavailable -> "unavailable"
-
-disposableVerdictClass :: DisposableVerdict -> VerdictClass
-disposableVerdictClass verdict = case verdict of
-    DisposableOk -> VerdictOk
-    DisposableCompileError -> VerdictDiagnostic
-    DisposableRuntimeError -> VerdictDiagnostic
-    DisposableTimedOut -> VerdictDiagnostic
-    DisposableUnavailable -> VerdictCouldNotRun
-
-materializeStageText :: MaterializeStage -> Text
-materializeStageText stage = case stage of
-    StagePlan -> "plan"
-    StageProject -> "project"
-    StageSession -> "session"
-    StageCompiled -> "compiled"
-    StagePrelude -> "prelude"
-    StageCellReplay -> "cell_replay"
-    StageSnapshot -> "snapshot"
-    StageSafety -> "safety"
-    StageCandidateSetup -> "candidate_setup"
-    StageCandidateTypecheck -> "candidate_typecheck"
-    StageCandidateRun -> "candidate_run"
-
-data AppSnapshot = AppSnapshot
-    { snapshotNotebook :: Notebook
-    , snapshotEventGeneration :: Int
-    , snapshotHaskellDeps :: S.Set Text
-    , snapshotHaskellExts :: S.Set Text
-    , snapshotProjectSig :: ProjectSig
-    , snapshotPythonDeps :: S.Set Text
-    , snapshotCompiledModules :: M.Map Text Text
-    , snapshotBridgeValues :: M.Map Text Text
-    , snapshotWidgetValues :: M.Map Int (M.Map Text Text)
-    , snapshotHaskellSession :: Maybe (Unique, Int)
-    }
-    deriving (Eq)
-
-snapshotApp :: App -> IO AppSnapshot
-snapshotApp app = do
-    notebook <- readNotebook (appNotebook app)
-    eventGeneration <- readIORef (ebGeneration (appEvents app))
-    haskellDeps <- getHaskellDeps (appDeps app)
-    haskellExts <- getHaskellExts (appDeps app)
-    projectSig <- getHaskellProjectSig (appDeps app)
-    pythonDeps <- getPythonDeps (appDeps app)
-    compiled <- readIORef (appCompiledModules app)
-    bridge <- getBridgeValues (appBridge app)
-    widgets <- readMVar (wsValues (appWidgets app))
-    session <- getHaskellSession (appSessions app)
-    sessionFingerprint <- case session of
-        Nothing -> pure Nothing
-        Just backend -> do
-            generation <- ST.sbSessionGen backend
-            pure (Just (ST.sbSessionId backend, generation))
-    pure
-        AppSnapshot
-            { snapshotNotebook = notebook
-            , snapshotEventGeneration = eventGeneration
-            , snapshotHaskellDeps = haskellDeps
-            , snapshotHaskellExts = haskellExts
-            , snapshotProjectSig = projectSig
-            , snapshotPythonDeps = pythonDeps
-            , snapshotCompiledModules = compiled
-            , snapshotBridgeValues = bridge
-            , snapshotWidgetValues = widgets
-            , snapshotHaskellSession = sessionFingerprint
-            }

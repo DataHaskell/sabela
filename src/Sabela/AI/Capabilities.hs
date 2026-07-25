@@ -48,6 +48,7 @@ import Sabela.AI.Capabilities.Edit (
     executeCell,
  )
 import Sabela.AI.Capabilities.Edit.Ack (writeGate)
+import Sabela.AI.Capabilities.Edit.CompileGate (compileGateCheck)
 import Sabela.AI.Capabilities.Kernel (
     execAwaitIdle,
     execExportNotebook,
@@ -286,25 +287,46 @@ acceptEdit app store rn eid = do
     case mEdit of
         Nothing -> pure Nothing
         Just edit -> do
-            committed <- atomicEditNotebook (appNotebook app) $ \nb ->
-                case lookupCell (aeCellId edit) nb of
-                    Nothing -> (nb, False)
-                    Just c -> case setCellSourceChecked c (aeNewSource edit) nb of
-                        Left _ -> (nb, False)
-                        Right (nb', _) -> (nb', True)
-            if not committed
-                then pure Nothing
-                else do
-                    -- 'updateEditStatus' on a terminal state also removes the
-                    -- entry from the pending-edits map.
-                    updateEditStatus store (aeEditId edit) Accepted
-                    broadcastNotebook app
-                    -- Block on execution so the HTTP response / tool_result
-                    -- carries the actual outputs instead of forcing a poll.
-                    ct <- newCancelToken
-                    _ <- executeCell app rn (aeCellId edit) ct
-                    nb <- readNotebook (appNotebook app)
-                    pure (lookupCell (aeCellId edit) nb)
+            nb0 <- readNotebook (appNotebook app)
+            case lookupCell (aeCellId edit) nb0 of
+                Nothing -> pure Nothing
+                Just c -> do
+                    -- G1: propose_edit content is AI-authored, so accepting it
+                    -- is gated like insert/replace — a human clicking Accept
+                    -- still cannot land a candidate that does not compile.
+                    gate <-
+                        compileGateCheck
+                            app
+                            (Just (aeCellId edit))
+                            (cellLang c)
+                            (cellType c)
+                            (aeNewSource edit)
+                    case gate of
+                        Left _ -> pure Nothing
+                        Right () -> commitAcceptedEdit app store rn edit
+
+commitAcceptedEdit ::
+    App -> AIStore -> ReactiveNotebook -> AiEdit -> IO (Maybe Cell)
+commitAcceptedEdit app store rn edit = do
+    committed <- atomicEditNotebook (appNotebook app) $ \nb ->
+        case lookupCell (aeCellId edit) nb of
+            Nothing -> (nb, False)
+            Just c -> case setCellSourceChecked c (aeNewSource edit) nb of
+                Left _ -> (nb, False)
+                Right (nb', _) -> (nb', True)
+    if not committed
+        then pure Nothing
+        else do
+            -- 'updateEditStatus' on a terminal state also removes the
+            -- entry from the pending-edits map.
+            updateEditStatus store (aeEditId edit) Accepted
+            broadcastNotebook app
+            -- Block on execution so the HTTP response / tool_result
+            -- carries the actual outputs instead of forcing a poll.
+            ct <- newCancelToken
+            _ <- executeCell app rn (aeCellId edit) ct
+            nb <- readNotebook (appNotebook app)
+            pure (lookupCell (aeCellId edit) nb)
 
 revertEdit :: App -> AIStore -> EditId -> IO ()
 revertEdit app store eid = do

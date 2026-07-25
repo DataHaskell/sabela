@@ -62,6 +62,15 @@ defaultSynonyms =
     , ("regression", ["linear", "fit"])
     , ("reactive", ["frp", "behavior", "event"])
     , ("frp", ["behavior", "event"])
+    , -- Composition: how two pictures become one. A caller reaches for
+      -- "overlay" or "superimpose"; the API calls it group/<>/mconcat
+      -- (live_test20 guessed the gloss package instead).
+      ("overlay", ["group", "mconcat"])
+    , ("superimpose", ["group", "mconcat"])
+    , ("combine", ["group", "mconcat"])
+    , ("compose", ["group", "mconcat"])
+    , ("stack", ["group", "mconcat"])
+    , ("pictures", ["picture"])
     ]
 
 {- | Rank an index against a free-text query; best matches first, FOCUSED: a

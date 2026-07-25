@@ -6,14 +6,18 @@ instead of needing the recipe pre-loaded into its prompt.
 -}
 module Test.DiagnoseSpec (diagnoseSpec) where
 
+import Data.Aeson (Value (..), toJSON)
+import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.Capabilities.Edit.Repair (ambiguousCandidates)
+import Sabela.AI.Capabilities.Edit.Repair.Resolvers (ambiguousCandidates)
 import Sabela.AI.CellResult (CellOutcome (..), CellResult (..))
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (
     Guidance (..),
     ambiguousOccurrence,
+    cellResultWithExtraGuidance,
+    cellResultWithGuidance,
     couldNotFindModule,
     diagnose,
     guidanceForCell,
@@ -241,3 +245,14 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
         it "emits a guidance pair only when there is guidance" $ do
             let g = diagnose "Could not find module \8216Granite.Svg\8217"
             length (guidancePairs g) `shouldBe` 1
+
+    describe "cellResultWithExtraGuidance" $ do
+        it "matches cellResultWithGuidance when there is no extra guidance" $ do
+            let cr = CellResult (Raised "Ambiguous type variable \8216a0\8217") [] []
+            cellResultWithExtraGuidance [] cr `shouldBe` cellResultWithGuidance cr
+        it "appends extra guidance alongside the diagnosed guidance" $ do
+            let cr = CellResult Succeeded [] []
+                extra = Guidance "file-not-found" "no similar file was found"
+            case cellResultWithExtraGuidance [extra] cr of
+                Object o -> KM.lookup "guidance" o `shouldBe` Just (toJSON [extra])
+                _ -> expectationFailure "expected an object"

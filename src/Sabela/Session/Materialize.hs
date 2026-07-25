@@ -25,6 +25,7 @@ module Sabela.Session.Materialize (
     DisposableVerdict (..),
     MaterializeStage (..),
     MaterializeFailure (..),
+    SkippedCell (..),
     DisposableResult (..),
     runDisposableTry,
 
@@ -36,10 +37,11 @@ module Sabela.Session.Materialize (
     -- * Pure pieces used by focused tests
     candidateProjectMeta,
     materializationPlanFailure,
+    partitionReplayCells,
     disposableRouteName,
+    materializeStageText,
 ) where
 
-import Control.Concurrent.MVar (withMVar)
 import Control.Exception (
     SomeException,
     bracket,
@@ -47,7 +49,6 @@ import Control.Exception (
     try,
  )
 import Control.Monad (forM_, void)
-import Data.IORef (readIORef)
 import qualified Data.Map.Strict as M
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -56,15 +57,14 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (isAbsolute, takeDirectory, (</>))
-import System.IO.Temp (withTempDirectory)
 import System.Timeout (timeout)
 
-import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
+import Sabela.AI.Health (healthOfCellError, isClean)
+import Sabela.Bridge (bridgePreamble, widgetPreamble)
 import Sabela.Compiled (CompilePlan (..), moduleFilePath)
 import Sabela.Deps (collectMetadata, mergedMeta, repairDeps)
-import Sabela.Errors (parseErrors)
 import Sabela.Handlers.Shared (partitionExports)
-import Sabela.Model (Cell (..), CellError (..), Notebook)
+import Sabela.Model (Cell (..), CellError (..), Notebook (..))
 import Sabela.Output (displayPrelude, parseMimeOutputs)
 import Sabela.Reactivity (
     ExecutionPlan (..),
@@ -72,17 +72,38 @@ import Sabela.Reactivity (
     haskellCodeCells,
  )
 import Sabela.Session (SessionConfig (..), mkSessionConfig)
+import Sabela.Session.Materialize.Run (
+    runChecked,
+    runLoadChecked,
+    runOptional,
+ )
+import Sabela.Session.MaterializeSnapshot (
+    MaterializeSnapshot (..),
+    captureMaterializeSnapshot,
+    snapshotStillCurrent,
+    withCurrentSnapshot,
+ )
 import Sabela.Session.Process (ghciBackend, newSession)
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 import Sabela.Session.Query (captureBindingsBaseline)
-import Sabela.Session.Timeout (readTimeoutConfig, tcBuildUs)
+import Sabela.Session.Timeout (
+    readTimeoutConfig,
+    tcTryBuildUs,
+    tryBuildTimedOutMessage,
+ )
+import Sabela.Session.TryCache (
+    CacheEntry (..),
+    acquireCacheEntry,
+    cacheKeyText,
+    commitCacheEntry,
+    discardCacheEntry,
+    resolvedGhcVersion,
+    tryCacheMaxEntries,
+    tryCacheRoot,
+ )
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
-import qualified Sabela.State.BridgeStore as BridgeStore
 import Sabela.State.Environment (Environment (..))
-import qualified Sabela.State.EventBus as EventBus
-import qualified Sabela.State.NotebookStore as NotebookStore
-import qualified Sabela.State.WidgetStore as WidgetStore
 import ScriptHs.Parser (
     CabalMeta (..),
     ScriptFile (..),
@@ -106,6 +127,11 @@ data CandidateSpec = CandidateSpec
     {- ^ A final expression to admit and evaluate.  'Nothing' means the setup
     is a declarations-only compile trial.
     -}
+    , candidateReplacesCellId :: Maybe Int
+    {- ^ The cell id a replace candidate supersedes, dropped from the
+    reconstructed prefix so the candidate replays against the notebook AFTER
+    the edit, not alongside its own stale predecessor. 'Nothing' for an insert.
+    -}
     }
     deriving (Eq, Show)
 
@@ -116,6 +142,7 @@ expressionCandidate source =
         { candidateMetadataSource = source
         , candidateSetup = ""
         , candidateExpression = Just source
+        , candidateReplacesCellId = Nothing
         }
 
 data DisposableVerdict
@@ -147,6 +174,16 @@ data MaterializeFailure = MaterializeFailure
     }
     deriving (Eq, Show)
 
+{- | A prefix cell the disposable replay declined to materialize because it does
+not compile in the notebook (its stored 'cellError'). Skipping it keeps a known-
+red cell from failing the whole replay and misattributing to the candidate.
+-}
+data SkippedCell = SkippedCell
+    { skippedCellId :: Int
+    , skippedReason :: Text
+    }
+    deriving (Eq, Show)
+
 data DisposableResult = DisposableResult
     { disposableRoute :: Text
     , disposableVerdict :: DisposableVerdict
@@ -155,6 +192,7 @@ data DisposableResult = DisposableResult
     , disposableStderr :: Text
     , disposableFailure :: Maybe MaterializeFailure
     , disposableReplayedCells :: [Int]
+    , disposableSkippedCells :: [SkippedCell]
     , disposableDependencies :: [Text]
     }
     deriving (Eq, Show)
@@ -162,102 +200,24 @@ data DisposableResult = DisposableResult
 disposableRouteName :: Text
 disposableRouteName = "disposable_scratch"
 
-{- | One immutable cut across every App value used to reconstruct a notebook.
-The scratch process never consults the mutable stores again; it only checks
-this cut for staleness immediately before admitting candidate code.
--}
-data MaterializeSnapshot = MaterializeSnapshot
-    { msNotebook :: Notebook
-    , msEventGeneration :: Int
-    , msBridgeValues :: M.Map Text Text
-    , msWidgetValues :: M.Map Int (M.Map Text Text)
-    }
-    deriving (Eq)
-
-snapshotCaptureRetries :: Int
-snapshotCaptureRetries = 3
-
-captureMaterializeSnapshot :: App -> IO (Either Text MaterializeSnapshot)
-captureMaterializeSnapshot app = attempt (snapshotCaptureRetries + 1)
-  where
-    attempt remaining = do
-        generationBefore <- readGeneration app
-        snapshot <- copyMaterializeStores app generationBefore
-        generationAfter <- readGeneration app
-        if generationBefore == generationAfter
-            then pure (Right snapshot)
-            else
-                if remaining > 1
-                    then attempt (remaining - 1)
-                    else
-                        pure
-                            ( Left
-                                "notebook changed while capturing disposable context; no candidate code ran"
-                            )
-
-copyMaterializeStores :: App -> Int -> IO MaterializeSnapshot
-copyMaterializeStores app generation =
-    withMVar (NotebookStore.nsNotebook (appNotebook app)) $ \notebook ->
-        withMVar (BridgeStore.bsValues (appBridge app)) $ \bridge ->
-            withMVar (WidgetStore.wsValues (appWidgets app)) $ \widgets ->
-                pure
-                    MaterializeSnapshot
-                        { msNotebook = notebook
-                        , msEventGeneration = generation
-                        , msBridgeValues = bridge
-                        , msWidgetValues = widgets
-                        }
-
-readGeneration :: App -> IO Int
-readGeneration = readIORef . EventBus.ebGeneration . appEvents
-
-snapshotStillCurrent :: App -> MaterializeSnapshot -> IO (Either Text ())
-snapshotStillCurrent app expected = do
-    current <- captureMaterializeSnapshot app
-    pure $ case current of
-        Left message -> Left message
-        Right actual
-            | actual == expected -> Right ()
-            | otherwise ->
-                Left
-                    "notebook or render context changed during disposable materialization; no candidate code ran"
-
-{- | Compare and run while every mutable context store remains locked. This
-closes the check/use gap at the candidate boundary: edits and widget/bridge
-updates cannot land between the equality check and the bounded candidate.
--}
-withCurrentSnapshot ::
-    App ->
-    MaterializeSnapshot ->
-    IO a ->
-    IO (Either Text a)
-withCurrentSnapshot app expected action =
-    withMVar (NotebookStore.nsNotebook (appNotebook app)) $ \notebook ->
-        withMVar (BridgeStore.bsValues (appBridge app)) $ \bridge ->
-            withMVar (WidgetStore.wsValues (appWidgets app)) $ \widgets -> do
-                generationBefore <- readGeneration app
-                if notebook /= msNotebook expected
-                    || bridge /= msBridgeValues expected
-                    || widgets /= msWidgetValues expected
-                    || generationBefore /= msEventGeneration expected
-                    then
-                        pure
-                            ( Left
-                                "notebook or render context changed during disposable materialization; no candidate code ran"
-                            )
-                    else do
-                        result <- action
-                        generationAfter <- readGeneration app
-                        pure $
-                            if generationAfter == msEventGeneration expected
-                                then Right result
-                                else
-                                    Left
-                                        "notebook generation changed while the isolated candidate ran; its result was discarded"
+-- | The wire text for a 'MaterializeStage', shared by every disposable-route caller.
+materializeStageText :: MaterializeStage -> Text
+materializeStageText stage = case stage of
+    StagePlan -> "plan"
+    StageProject -> "project"
+    StageSession -> "session"
+    StageCompiled -> "compiled"
+    StagePrelude -> "prelude"
+    StageCellReplay -> "cell_replay"
+    StageSnapshot -> "snapshot"
+    StageSafety -> "safety"
+    StageCandidateSetup -> "candidate_setup"
+    StageCandidateTypecheck -> "candidate_typecheck"
+    StageCandidateRun -> "candidate_run"
 
 {- | Reconstruct the supplied notebook snapshot and run a disposable trial.
-The snapshot is read exactly once; the live session manager and dependency
-tracker are intentionally absent from this module's write surface.
+The snapshot is read exactly once; the built package environment is served
+from 'Sabela.Session.TryCache' (fresh scratch process every call regardless).
 -}
 runDisposableTry :: App -> CandidateSpec -> IO DisposableResult
 runDisposableTry app spec = do
@@ -265,7 +225,7 @@ runDisposableTry app spec = do
     case captured of
         Left message -> pure (snapshotFailure (emptyResult []) [] message)
         Right snapshot -> do
-            let nb = msNotebook snapshot
+            let nb = prefixFor spec (msNotebook snapshot)
                 meta = candidateProjectMeta (envGlobalDeps env) nb spec
                 deps = S.toAscList (S.fromList (metaDeps meta))
                 plan = computeFullExecutionPlan (haskellCodeCells nb) nb
@@ -278,27 +238,49 @@ runDisposableTry app spec = do
                             , disposableFailure = Just failure
                             }
                 Nothing -> do
+                    ghcVersion <- resolvedGhcVersion
+                    let cacheRoot = tryCacheRoot (envTmpDir env)
+                        key = cacheKeyText meta ghcVersion
+                    entry <- acquireCacheEntry cacheRoot key
                     outcome <-
                         try
-                            ( withTempDirectory (envTmpDir env) "sabela-try" $ \root ->
-                                runInDisposableRoot app snapshot plan meta spec root
+                            ( runInDisposableRoot
+                                app
+                                snapshot
+                                plan
+                                meta
+                                spec
+                                entry
+                                cacheRoot
+                                deps
                             ) ::
                             IO (Either SomeException DisposableResult)
-                    pure $ case outcome of
-                        Right result -> result
-                        Left e ->
-                            base
-                                { disposableVerdict = DisposableUnavailable
-                                , disposableFailure =
-                                    Just
-                                        ( MaterializeFailure
-                                            StageProject
-                                            Nothing
-                                            (T.pack (displayException e))
-                                        )
-                                }
+                    case outcome of
+                        Right result -> pure result
+                        Left e -> do
+                            discardCacheEntry (ceBucketDir entry)
+                            pure
+                                base
+                                    { disposableVerdict = DisposableUnavailable
+                                    , disposableFailure =
+                                        Just
+                                            ( MaterializeFailure
+                                                StageProject
+                                                Nothing
+                                                (T.pack (displayException e))
+                                            )
+                                    }
   where
     env = appEnv app
+
+{- | The notebook a candidate replays against: unchanged for an insert, or
+with 'candidateReplacesCellId' dropped for a replace, so the stale copy
+never also compiles (or double-defines) alongside the candidate.
+-}
+prefixFor :: CandidateSpec -> Notebook -> Notebook
+prefixFor spec nb = case candidateReplacesCellId spec of
+    Nothing -> nb
+    Just cid -> nb{nbCells = filter ((/= cid) . cellId) (nbCells nb)}
 
 {- | Merge the complete candidate Cabal metadata with the notebook and global
 environment.  Unlike the legacy scratch path, this preserves extensions,
@@ -338,18 +320,20 @@ runInDisposableRoot ::
     ExecutionPlan ->
     CabalMeta ->
     CandidateSpec ->
+    CacheEntry ->
     FilePath ->
+    [Text] ->
     IO DisposableResult
-runInDisposableRoot app snapshot plan meta spec root = do
+runInDisposableRoot app snapshot plan meta spec entry cacheRoot deps = do
     let env = appEnv app
-        projectDir = root </> "project"
+        projectDir = ceProjectDir entry
         localPackages = resolveLocalPackages env meta
-        deps = S.toAscList (S.fromList (metaDeps meta))
         base = emptyResult deps
     projectResult <-
         try (setupReplProject WithNotebookSupport localPackages projectDir meta)
     case projectResult of
-        Left (e :: SomeException) ->
+        Left (e :: SomeException) -> do
+            discardCacheEntry (ceBucketDir entry)
             pure (failed base StageProject Nothing (T.pack (displayException e)))
         Right () -> do
             cfg0 <- mkSessionConfig projectDir (envWorkDir env)
@@ -358,12 +342,13 @@ runInDisposableRoot app snapshot plan meta spec root = do
             let cfg =
                     cfg0
                         { scJsonDiagnostics = False
-                        , scCabalStoreDir = Just (root </> "cabal-store")
+                        , scCabalStoreDir = Just (ceStoreDir entry)
                         }
-            buildBudget <- tcBuildUs <$> readTimeoutConfig
-            spawned <- timeout buildBudget (newSession cfg)
+            tryBuildBudget <- tcTryBuildUs <$> readTimeoutConfig
+            spawned <- timeout tryBuildBudget (newSession cfg)
             case spawned of
-                Nothing ->
+                Nothing -> do
+                    discardCacheEntry (ceBucketDir entry)
                     pure
                         base
                             { disposableVerdict = DisposableTimedOut
@@ -372,10 +357,11 @@ runInDisposableRoot app snapshot plan meta spec root = do
                                     ( MaterializeFailure
                                         StageSession
                                         Nothing
-                                        "disposable GHCi startup/package build timed out"
+                                        (tryBuildTimedOutMessage deps tryBuildBudget)
                                     )
                             }
-                Just sess ->
+                Just sess -> do
+                    commitCacheEntry cacheRoot (ceBucketDir entry) tryCacheMaxEntries
                     bracket
                         (pure (ghciBackend sess))
                         (closeQuietly . ST.sbClose)
@@ -399,8 +385,10 @@ runMaterialized ::
     IO () ->
     ST.SessionBackend ->
     IO DisposableResult
-runMaterialized app snapshot projectDir plan spec base captureBaseline backend = do
+runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend = do
     let context = snapshotRenderContext snapshot
+        (skipped, toReplay) = partitionReplayCells (epCellsToRun plan)
+        base = base0{disposableSkippedCells = skipped}
     compiled <- loadCompiled projectDir backend (epCompilePlan plan)
     case compiled of
         Left msg -> pure (failed base StageCompiled Nothing msg)
@@ -420,7 +408,7 @@ runMaterialized app snapshot projectDir plan spec base captureBaseline backend =
                                     (T.pack (displayException e))
                                 )
                         Right () -> do
-                            replayed <- replayCells backend context (epCellsToRun plan)
+                            replayed <- replayCells backend context toReplay
                             case replayed of
                                 Left (done, cid, stage, msg) ->
                                     pure
@@ -548,17 +536,38 @@ evalCandidate backend expression base = do
                         then Nothing
                         else Just (MaterializeFailure stage Nothing err)
                 }
-    pure $ case ST.pureEvalVerdict result of
-        ST.PureEvalSucceeded -> finish DisposableOk StageCandidateRun
+    case ST.pureEvalVerdict result of
+        ST.PureEvalSucceeded -> pure (finish DisposableOk StageCandidateRun)
         ST.PureEvalRejected
-            | unrestrictedIOError err ->
-                finish DisposableUnavailable StageCandidateTypecheck
-            | otherwise -> finish DisposableCompileError StageCandidateTypecheck
-        ST.PureEvalRuntimeError -> finish DisposableRuntimeError StageCandidateRun
-        ST.PureEvalTimedOut -> finish DisposableTimedOut StageCandidateRun
-        ST.PureEvalStale -> finish DisposableUnavailable StageCandidateTypecheck
-        ST.PureEvalInvariantFailed -> finish DisposableUnavailable StageCandidateRun
-        ST.PureEvalUnavailable -> finish DisposableUnavailable StageCandidateRun
+            | unrestrictedIOError err -> runIOCandidate backend expression inferred base
+            | otherwise -> pure (finish DisposableCompileError StageCandidateTypecheck)
+        ST.PureEvalRuntimeError -> pure (finish DisposableRuntimeError StageCandidateRun)
+        ST.PureEvalTimedOut -> pure (finish DisposableTimedOut StageCandidateRun)
+        ST.PureEvalStale -> pure (finish DisposableUnavailable StageCandidateTypecheck)
+        ST.PureEvalInvariantFailed -> pure (finish DisposableUnavailable StageCandidateRun)
+        ST.PureEvalUnavailable -> pure (finish DisposableUnavailable StageCandidateRun)
+
+{- | The disposable session is thrown away, so an IO candidate runs here as a
+committed cell would. The live route keeps its purity guard
+('Sabela.Session.Query.evalPureLive'), which backs @semantic_read_only@.
+-}
+runIOCandidate ::
+    ST.SessionBackend ->
+    Text ->
+    Maybe Text ->
+    DisposableResult ->
+    IO DisposableResult
+runIOCandidate backend expression inferred base = do
+    outcome <- runChecked backend expression
+    pure $ case outcome of
+        Left message -> failed base StageCandidateRun Nothing message
+        Right (out, err) ->
+            base
+                { disposableVerdict = DisposableOk
+                , disposableType = inferred
+                , disposableStdout = out
+                , disposableStderr = err
+                }
 
 candidateTimeoutUs :: Int
 candidateTimeoutUs = 30 * 1000000
@@ -666,61 +675,6 @@ loadCompiled projectDir backend cplan
                         (T.unlines ["import " <> name | name <- moduleNames])
                 pure (void imported)
 
-runOptional :: ST.SessionBackend -> Text -> IO (Either Text (Text, Text))
-runOptional backend source
-    | T.null (T.strip source) = pure (Right ("", ""))
-    | otherwise = runChecked backend source
-
-runChecked :: ST.SessionBackend -> Text -> IO (Either Text (Text, Text))
-runChecked = runCheckedWith False
-
-runLoadChecked :: ST.SessionBackend -> Text -> IO (Either Text (Text, Text))
-runLoadChecked = runCheckedWith True
-
-runCheckedWith ::
-    Bool ->
-    ST.SessionBackend ->
-    Text ->
-    IO (Either Text (Text, Text))
-runCheckedWith checkLoadOutput backend source = do
-    outcome <-
-        try (ST.sbRunBlock backend source) ::
-            IO (Either SomeException (Text, Text))
-    pure $ case outcome of
-        Left e -> Left (T.pack (displayException e))
-        Right pair@(out, err)
-            | Just message <- textualStderrFailure err -> Left message
-            | checkLoadOutput, loadFailed out -> Left (T.strip out)
-            | otherwise -> Right pair
-
--- Keep the textual scratch path aligned with the normal non-JSON cell engine:
--- compiler diagnostics and runtime exceptions live on stderr; Template
--- Haskell chatter and linker warnings are harmless.  Stdout is user output,
--- except for GHCi's structural @Failed,@ line from a @:load@ command.
-textualStderrFailure :: Text -> Maybe Text
-textualStderrFailure rawErr
-    | T.null cleaned = Nothing
-    | isTemplateHaskellOutput rawErr = Nothing
-    | not (null errs) = Just cleaned
-    | any (`T.isInfixOf` T.toLower cleaned) runtimeFailureSignals = Just cleaned
-    | otherwise = Nothing
-  where
-    errs = parseErrors rawErr
-    cleaned =
-        T.strip . T.unlines . filter (not . isLinkerNoise) . T.lines $ rawErr
-    isLinkerNoise line = "ld: warning:" `T.isPrefixOf` T.strip line
-    runtimeFailureSignals =
-        [ "*** exception"
-        , "execution timed out"
-        , "interrupted"
-        , "repl failed"
-        , "kernel was killed"
-        ]
-
-loadFailed :: Text -> Bool
-loadFailed =
-    any (("failed," `T.isPrefixOf`) . T.toLower . T.stripStart) . T.lines
-
 resolveLocalPackages :: Environment -> CabalMeta -> [FilePath]
 resolveLocalPackages env meta =
     stableNub (envLocalPackages env <> map resolve (metaPackages meta))
@@ -753,8 +707,27 @@ emptyResult deps =
         , disposableStderr = ""
         , disposableFailure = Nothing
         , disposableReplayedCells = []
+        , disposableSkippedCells = []
         , disposableDependencies = deps
         }
+
+{- | Split the interpreted replay prefix into the cells that do not compile
+(skipped, each with its own error as the reason) and the cells to replay.
+\"Does not compile\" reuses 'Sabela.AI.Health' — a cell whose stored 'cellError'
+is not clean — so the try route judges red exactly as the rest of the system.
+-}
+partitionReplayCells :: [Cell] -> ([SkippedCell], [Cell])
+partitionReplayCells = foldr step ([], [])
+  where
+    step cell (skips, keep)
+        | isClean (healthOfCellError (cellError cell)) = (skips, cell : keep)
+        | otherwise = (SkippedCell (cellId cell) (skipReason cell) : skips, keep)
+    skipReason cell =
+        maybe
+            "cell has an unresolved compile error"
+            (compact . T.strip)
+            (cellError cell)
+    compact = T.unwords . T.words
 
 snapshotFailure :: DisposableResult -> [Int] -> Text -> DisposableResult
 snapshotFailure base replayed message =

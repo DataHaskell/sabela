@@ -13,7 +13,7 @@ module Test.HoleFitsSpec (spec) where
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
+import Sabela.AI.HoleFits (HoleFit (..), holeFitsJson, parseHoleFits)
 import Sabela.Diagnose (holeFitGoal)
 import Test.Hspec
 
@@ -154,6 +154,32 @@ spec = describe "Sabela hole-fits (D2)" $ do
 
         it "returns nothing for a blob without the header" $
             parseHoleFits "just some text\nno fits here" `shouldBe` []
+
+        -- Provenance is not noise: the module is where the fit comes FROM,
+        -- which is the half of the answer that tells the model what to import.
+        it "keeps the defining module of each fit" $ do
+            (hfModule <$> find ((== "genericLength") . hfWrite) plain)
+                `shouldBe` Just (Just "Data.List")
+            (hfModule <$> find ((== "length") . hfWrite) plain)
+                `shouldBe` Just (Just "Prelude")
+
+        it "has no module for a locally bound fit" $
+            all (\f -> hfModule f /= Just "<interactive>") fits `shouldBe` True
+
+    describe "holeFitsJson: the bounded, sanitized rendering (live_test20)" $ do
+        it "caps the fit count so a wide goal cannot flood the context" $
+            length (holeFitsJson 3 realBlob) `shouldBe` 3
+
+        it "renders name, type and module — and no GHC provenance clutter" $ do
+            let rendered = T.pack (show (holeFitsJson 5 realBlob))
+            rendered `shouldSatisfy` T.isInfixOf "genericLength"
+            rendered `shouldSatisfy` T.isInfixOf "Data.List"
+            rendered `shouldSatisfy` (not . T.isInfixOf "with genericLength")
+            rendered `shouldSatisfy` (not . T.isInfixOf "bound at")
+            rendered `shouldSatisfy` (not . T.isInfixOf "imported from")
+
+        it "is empty for a blob with no fits, never a raw error echo" $
+            holeFitsJson 5 "<interactive>:1:1: error: something else" `shouldBe` []
 
     describe "parseHoleFits on harder real blobs" $ do
         describe "multi-hole refinement fits (_ :: Maybe Int -> Int)" $ do

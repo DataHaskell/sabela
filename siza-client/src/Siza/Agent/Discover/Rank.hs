@@ -28,16 +28,17 @@ import Siza.Agent.Discover.Types (
  )
 
 {- | The total-order strata of section 7: environment exact first, then
-installed / hidden / absent exact, then weaker kinds — an exact match can
-never be outranked by substring, synonym or semantic evidence (R3.2).
+installed exact, then an IN-SCOPE prefix match, then exact matches the
+notebook cannot reach without a new dependency, then weaker kinds.
 -}
 stratum :: NotebookEnv -> Interpreted -> DHit -> Int
 stratum env interp h
     | exact && dhInstall h `elem` [InstBuiltin, InstNotebook] = 1
     | exact && aliasScoped = 1
     | exact && dhInstall h == InstInstalled = 2
-    | exact && dhInstall h == InstHidden = 3
-    | exact && dhInstall h `elem` [InstAbsentKnown, InstAbsentUnknown] = 4
+    | inScope && dhKind h == MkPrefix = 3
+    | exact && dhInstall h == InstHidden = 4
+    | exact && dhInstall h `elem` [InstAbsentKnown, InstAbsentUnknown] = 5
     | dhKind h == MkPrefix = 6
     | dhKind h == MkType = if iShape interp == "type" then 2 else 7
     | dhKind h `elem` [MkSubstring, MkModule] = 8
@@ -47,6 +48,13 @@ stratum env interp h
     exact = dhKind h == MkExact
     aliasScoped =
         dhModule h `elem` (map snd (neAliases env) ++ neImports env)
+    {- B2: reachability, judged by install state and import evidence, never by
+    package name. An exact export of a package the notebook would have to
+    install first is weaker evidence than a partial match it can already call.
+    -}
+    inScope =
+        dhInstall h `elem` [InstBuiltin, InstNotebook, InstInstalled]
+            || aliasScoped
 
 -- | The full deterministic ranking key (R3.7); 'Construct.producerKey' nests it.
 type RankKey =

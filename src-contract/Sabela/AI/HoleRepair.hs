@@ -238,19 +238,19 @@ substituteNameAt (line, col) wrong fit src
          in if tok == wrong then Just (pre <> fit <> post) else Nothing
     isIdent c = isAlphaNum c || c == '_' || c == '.' || c == '\''
 
-{- | Names GHC's "Perhaps use" did-you-mean offers: the backtick-quoted names
-after the phrase. Spelling-corrections, so the best first candidates for a typo
-(e.g. @lengthh@ -> @length@).
--}
+-- | Names GHC's "Perhaps use" offers, either quoting style (smart or backtick).
 suggestedNames :: Text -> [Text]
-suggestedNames err = maybe [] backtickNames (afterInfix "Perhaps use" err)
+suggestedNames err = maybe [] pickStyle (afterInfix "Perhaps use" err)
   where
-    backtickNames s = case T.breakOn "`" s of
+    pickStyle s = case quotedNames '\8216' '\8217' s of
+        [] -> quotedNames '`' '\'' s
+        ns -> ns
+    quotedNames open close s = case T.breakOn (T.singleton open) s of
         (_, r)
             | T.null r -> []
             | otherwise ->
-                let (nm, r2) = T.breakOn "'" (T.drop 1 r)
-                 in if T.null r2 then [] else nm : backtickNames (T.drop 1 r2)
+                let (nm, r2) = T.breakOn (T.singleton close) (T.drop 1 r)
+                 in if T.null r2 then [] else nm : quotedNames open close (T.drop 1 r2)
 
 {- | Order candidate names by closeness to the wrong name (Levenshtein), so a
 misspelling heals to the nearest valid spelling — @lengthh@ picks @length@, not

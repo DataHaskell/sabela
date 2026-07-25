@@ -144,12 +144,20 @@ data TypecheckResult = TypecheckResult
 data TypecheckInput = ValueExpression | ValueBindings | OutsideValueSubset
     deriving (Eq, Show)
 
+{- | A group is 'ValueBindings' only when EVERY meaningful line binds. A mix of
+bindings and expressions has no sound rendering — an expression is not legal
+inside the @let { … }@ group 'typecheckValueWith' builds — so it routes out of
+the subset rather than being wrapped into source the caller never wrote.
+-}
 classifyTypecheckInput :: Text -> TypecheckInput
 classifyTypecheckInput source
-    | any outside (meaningfulLines source) = OutsideValueSubset
-    | any isBinding (meaningfulLines source) = ValueBindings
+    | null ls = ValueExpression
+    | any outside ls = OutsideValueSubset
+    | all isBinding ls = ValueBindings
+    | any isBinding ls = OutsideValueSubset
     | otherwise = ValueExpression
   where
+    ls = map stripLet (meaningfulLines source)
     outside line = any (`T.isPrefixOf` lower line) excluded
     excluded =
         [ "data "
@@ -174,6 +182,13 @@ classifyTypecheckInput source
 
 meaningfulLines :: Text -> [Text]
 meaningfulLines = filter (not . T.null) . map T.strip . T.lines
+
+{- | Drop a cell-style @let@ prefix so the binding reads as the declaration it
+is. The wrapper below supplies its own @let@; leaving this one in place nested
+the keyword and made the group unparseable.
+-}
+stripLet :: Text -> Text
+stripLet line = maybe line T.stripStart (T.stripPrefix "let " (T.stripStart line))
 
 {- | Type-check a value-binding group against the live interactive scope
 without committing it. Disabled unless @SABELA_TYPECHECK_PRIMITIVE@ is set.
@@ -226,7 +241,11 @@ typecheckValueWith askType askBindings source = do
             )
     wrapped s = case classifyTypecheckInput s of
         ValueBindings ->
-            ("(let { " <>) . (<> " } in ())") . T.intercalate "; " $ meaningfulLines s
+            ("(let { " <>)
+                . (<> " } in ())")
+                . T.intercalate "; "
+                . map stripLet
+                $ meaningfulLines s
         _ -> s
     expectedSuffix s = case classifyTypecheckInput s of
         ValueBindings -> ":: ()"

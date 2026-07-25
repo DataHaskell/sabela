@@ -9,6 +9,7 @@ failure; a word-like foreign name stays honestly unknown.
 -}
 module Siza.Agent.ToolRoute (
     Route (..),
+    installSteer,
     isDiscoverName,
     orientationKey,
     maxNameDrift,
@@ -147,6 +148,7 @@ parseFailureHint name matches =
         <> ambiguity
         <> ". Re-send ONE call with an exact tool name and only that \
            \tool's arguments."
+        <> installSteer name
   where
     ambiguity = case matches of
         [] -> " and the arguments fit no single tool's schema"
@@ -154,6 +156,17 @@ parseFailureHint name matches =
             " and the arguments match more than one tool ("
                 <> T.intercalate ", " ts
                 <> ")"
+
+{- | There is no install tool — a garbled or nonexistent name shaped like one
+("install?", "install_granite") steers to the real idiom instead of just
+erroring, so a doomed "install X" call still lands somewhere useful.
+-}
+installSteer :: Text -> Text
+installSteer name
+    | "install" `T.isInfixOf` T.toLower name =
+        " There is no install tool: declare a package with \
+        \`-- cabal: build-depends: <package>` as the FIRST line of a cell instead."
+    | otherwise = ""
 
 -- | A call's unwrapped argument object (still-wrong shapes pass through).
 plainArgs :: ToolCall -> Value

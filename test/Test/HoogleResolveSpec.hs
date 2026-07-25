@@ -146,3 +146,30 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
         it "extracts the name the resolver then queries" $
             notInScopeName "Variable not in scope: runConduit :: ConduitT a b m r"
                 `shouldBe` Just "runConduit"
+
+    -- G2 regression `unionfind-point` (live_test4): resolving `Point` by
+    -- lexical name match must never surface the compiler's OWN toolchain
+    -- package (`ghc`'s `GHC.Data.UnionFind`), the exact sabotage that
+    -- rewrote the harness's hole probe before it ran.
+    describe "unionfind-point (G2 hard rule 2 — never resolve out-of-scope)" $ do
+        let unionfindBlob =
+                T.concat
+                    [ "[{\"item\":\"Point\""
+                    , ",\"module\":{\"name\":\"GHC.Data.UnionFind\"}"
+                    , ",\"package\":{\"name\":\"ghc\"}}]"
+                    ]
+            mixedBlob =
+                T.concat
+                    [ "[{\"item\":\"Point\""
+                    , ",\"module\":{\"name\":\"GHC.Data.UnionFind\"}"
+                    , ",\"package\":{\"name\":\"ghc\"}},"
+                    , "{\"item\":\"Point\""
+                    , ",\"module\":{\"name\":\"Sabela.Notebook.Picture\"}"
+                    , ",\"package\":{\"name\":\"sabela-notebook\"}}]"
+                    ]
+        it "never proposes a `ghc`-package hit, even as the only exact match" $
+            rankResolveTopK 3 "Point" Nothing (parseHoogleBlob unionfindBlob)
+                `shouldBe` []
+        it "drops the `ghc` hit but keeps a legitimate in-scope alternative" $
+            rankResolveTopK 3 "Point" Nothing (parseHoogleBlob mixedBlob)
+                `shouldBe` [("sabela-notebook", "Sabela.Notebook.Picture")]

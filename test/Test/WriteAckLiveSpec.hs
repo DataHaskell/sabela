@@ -8,7 +8,7 @@ reconciles the settled outcome. Skipped when ghc is not on PATH.
 -}
 module Test.WriteAckLiveSpec (spec) where
 
-import Control.Exception (bracket_)
+import Control.Exception (bracket, bracket_)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
@@ -29,7 +29,7 @@ import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
 import Sabela.Handlers (ReactiveNotebook, setupReactive)
 import Sabela.Model (Notebook (..))
 import Sabela.Server (newApp)
-import Sabela.State (App (..), readNotebook)
+import Sabela.State (App (..), forceResetAllSessions, readNotebook)
 import Test.Hspec
 
 withLiveEnv :: IO a -> IO a
@@ -69,11 +69,13 @@ awaitWrites app store rn n = do
         Just (Array ws) -> pure (foldr (:) [] ws)
         _ -> awaitWrites app store rn (n - 1)
 
--- | A cell that sleeps 8s: long enough to outlive the 2s ack deadline.
+{- | A cell that sleeps 20s: long enough to outlive both the ack deadline and
+G1's compile-gate cost (a real disposable GHCi spawn ahead of the ack path).
+-}
 slowSrc :: Text
 slowSrc =
     "import Control.Concurrent\n\
-    \main = threadDelay 8000000 >> putStrLn \"write-ack-done\""
+    \main = threadDelay 20000000 >> putStrLn \"write-ack-done\""
 
 spec :: Spec
 spec = describe "R10(c) live-kernel write-ack" $
@@ -82,20 +84,7 @@ spec = describe "R10(c) live-kernel write-ack" $
         case mGhc of
             Nothing -> pendingWith "ghc not on PATH"
             Just _ -> withLiveEnv $
-                withSystemTempDirectory "sabela-writeack" $ \dir -> do
-                    mgr <- newManager defaultManagerSettings
-                    -- The repl project needs the sabela-notebook overlay the
-                    -- production main resolves; without it GHCi cannot spawn.
-                    localPkgs <- supportOverlay
-                    app <- newApp dir Set.empty (Just mgr) Nothing localPkgs
-                    rn <- setupReactive app
-                    let cfg =
-                            AnthropicConfig
-                                { acApiKey = ""
-                                , acModel = "placeholder"
-                                , acBaseUrl = "https://api.anthropic.com"
-                                }
-                    store <- AIStore.newAIStore cfg mgr
+                withFixture "sabela-writeack" $ \(app, store, rn) -> do
                     -- Warm the kernel through a trivial write so the slow
                     -- insert's timing is not dominated by the cold spawn.
                     _ <- insertSrc app store rn "sabelaWarmup = (1 :: Int)"
@@ -104,8 +93,9 @@ spec = describe "R10(c) live-kernel write-ack" $
                     ack <- insertSrc app store rn slowSrc
                     t1 <- getMonotonicTimeNSec
                     -- Well under the 60s transport timeout AND under the
-                    -- cell's own 8s runtime: the ack outran execution.
-                    ((t1 - t0) < 7000000000) `shouldBe` True
+                    -- cell's own 20s runtime: the ack outran execution
+                    -- (the bound absorbs G1's real disposable-gate cost).
+                    ((t1 - t0) < 15000000000) `shouldBe` True
                     textField "status" ack `shouldBe` Just "executing"
                     let mCid = field "cellId" ack
                     isJust mCid `shouldBe` True
@@ -123,6 +113,37 @@ spec = describe "R10(c) live-kernel write-ack" $
 headMaybe :: [a] -> Maybe a
 headMaybe (x : _) = Just x
 headMaybe [] = Nothing
+
+{- | Run the test against a fresh fixture in its own temp dir, releasing the
+kernel afterwards so a leaked GHCi cannot hold its nursery for the rest of
+the suite.
+-}
+withFixture ::
+    String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a
+withFixture label action =
+    withSystemTempDirectory label $ \dir ->
+        bracket (newFixture dir) releaseFixture action
+
+releaseFixture :: (App, AIStore.AIStore, ReactiveNotebook) -> IO ()
+releaseFixture (app, _, _) = forceResetAllSessions (appSessions app)
+
+{- | The repl project needs the sabela-notebook overlay the production main
+resolves; without it GHCi cannot spawn.
+-}
+newFixture :: FilePath -> IO (App, AIStore.AIStore, ReactiveNotebook)
+newFixture dir = do
+    mgr <- newManager defaultManagerSettings
+    localPkgs <- supportOverlay
+    app <- newApp dir Set.empty (Just mgr) Nothing localPkgs
+    rn <- setupReactive app
+    let cfg =
+            AnthropicConfig
+                { acApiKey = ""
+                , acModel = "placeholder"
+                , acBaseUrl = "https://api.anthropic.com"
+                }
+    store <- AIStore.newAIStore cfg mgr
+    pure (app, store, rn)
 
 -- | The repo's sabela-notebook dir as a local package overlay, when present.
 supportOverlay :: IO [FilePath]

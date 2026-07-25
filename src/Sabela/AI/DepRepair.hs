@@ -3,6 +3,7 @@
 module Sabela.AI.DepRepair (
     addBuildDepend,
     depFromResult,
+    newDependencies,
 ) where
 
 import Control.Applicative ((<|>))
@@ -34,6 +35,22 @@ declaredDeps line =
     map T.strip (T.splitOn "," (T.drop (T.length "build-depends:") afterField))
   where
     afterField = snd (T.breakOn "build-depends:" line)
+
+{- | Every package a source's @-- cabal: build-depends:@ line declares, @[]@
+when it has none.
+-}
+sourceDeps :: Text -> [Text]
+sourceDeps src = case break (T.isInfixOf "build-depends:") (T.lines src) of
+    (_, depLine : _) -> filter (not . T.null) (declaredDeps depLine)
+    (_, []) -> []
+
+{- | The packages @candidate@ declares that @priorSrc@ did not — G2's test for
+whether a rewrite is a dependency ADD (never applied automatically, however
+green it gate-verifies; see "Sabela.AI.Capabilities.Edit.RepairGate").
+-}
+newDependencies :: Text -> Text -> [Text]
+newDependencies priorSrc candidate =
+    filter (`notElem` sourceDeps priorSrc) (sourceDeps candidate)
 
 {- | The package a failed run says is missing — the one GHC named in its "hidden
 package" wall — ready for 'addBuildDepend'. Nothing when the run did not fail on

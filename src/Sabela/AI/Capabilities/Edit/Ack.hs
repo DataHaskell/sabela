@@ -14,12 +14,14 @@ module Sabela.AI.Capabilities.Edit.Ack (
     writeAckDeadlineUs,
     writeSettleGraceUs,
     settledWritesField,
+    withNote,
 ) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, try)
 import Control.Monad (void)
 import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (Pair)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -31,7 +33,7 @@ import Sabela.AI.Capabilities.Edit.Run (autoExecuteAfterMutation)
 import Sabela.AI.Capabilities.KernelHealth (noteSettled)
 import Sabela.AI.Doc (cellHash)
 import Sabela.AI.Store (AIStore, aiWriteReg)
-import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
+import Sabela.AI.Types (ToolOutcome (..), errOutcome, okOutcome)
 import Sabela.AI.WriteAck
 import Sabela.AI.WriteRegistry
 import Sabela.Anthropic.Types (CancelToken)
@@ -188,3 +190,8 @@ settledWritesField store = do
           | not (null ws)
           ]
         )
+
+-- | Attach a note to a successful outcome; errors pass through untouched.
+withNote :: Text -> ToolOutcome -> ToolOutcome
+withNote n (ToolOk (Object o)) = ToolOk (Object (KM.insert "note" (String n) o))
+withNote _ out = out

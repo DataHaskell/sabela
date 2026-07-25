@@ -41,6 +41,7 @@ import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import GHC.Conc (getNumProcessors)
 import Sabela.Session (
     Session (..),
     SessionConfig (..),
@@ -85,6 +86,7 @@ import System.FilePath ((</>))
 import System.IO (Handle, hClose, hFlush, hPutStrLn)
 import System.Process (CreateProcess, proc, waitForProcess)
 import System.Timeout (timeout)
+import Text.Read (readMaybe)
 
 newSession :: SessionConfig -> IO Session
 newSession cfg = newSessionStreaming cfg (\_ -> pure ())
@@ -120,11 +122,28 @@ bumpSessionGen sess =
 ghciProcessSpec :: SessionConfig -> IO CreateProcess
 ghciProcessSpec cfg = do
     mGhc <- lookupEnv "GHC"
-    mCaps <- lookupEnv "SABELA_GHCI_CAPS"
     mHeap <- lookupEnv "SABELA_GHCI_MAXHEAP"
+    caps <- resolveGhciCaps
     let compilerArgs = ["--with-compiler=" ++ ghc | ghc <- maybeToList mGhc]
-        args = ghciArgs cfg (rtsGhcOptions mCaps mHeap) ++ compilerArgs
+        args = ghciArgs cfg (rtsGhcOptions caps mHeap) ++ compilerArgs
     pure (sessionProcessSpec (Just (scWorkDir cfg)) (proc "cabal" args))
+
+{- | Capabilities for the kernel: @SABELA_GHCI_CAPS@ when it parses positive
+(the hub passes the container's CPU count), else the host's cores capped at
+'detectedCapsCeiling'. An unparseable value falls back rather than mangling @-N@.
+-}
+resolveGhciCaps :: IO Int
+resolveGhciCaps = do
+    mCaps <- lookupEnv "SABELA_GHCI_CAPS"
+    case mCaps >>= readMaybe of
+        Just n | n > 0 -> pure n
+        _ -> min detectedCapsCeiling <$> getNumProcessors
+
+{- | Ceiling on auto-detected capabilities: past a handful GHCi gains little
+from more, and every capability costs a slice of the nursery budget.
+-}
+detectedCapsCeiling :: Int
+detectedCapsCeiling = 8
 
 {- | Repl args. The prompt runs **interpreted** (byte-code) so a plain
 notebook — and every restart — starts fast (incident K / stress case 26): the
@@ -154,17 +173,52 @@ ghciArgs cfg rtsOpts =
         | scJsonDiagnostics cfg = " -fdiagnostics-as-json"
         | otherwise = ""
 
-{- | GHCi RTS options. @-N@ and the heap limit are pinned from the environment
-so a containerized session honors its CPU/memory caps: a bare @-N@ spins up one
-capability per host core regardless of @--cpus@, and without @-M@ a runaway
-build can OOM the whole box. Unset (local dev) keeps the prior @-N@ behavior.
+{- | GHCi RTS options: an explicit @-N@ with the nursery budget split across
+those capabilities, plus the heap cap. @SABELA_GHCI_MAXHEAP@ overrides the cap
+size (@Just "4G"@ → @-M4G@); the @"0"@ sentinel opts out of @-M@ entirely.
 -}
-rtsGhcOptions :: Maybe String -> Maybe String -> String
-rtsGhcOptions mCaps mHeap =
-    "+RTS " ++ caps ++ " -A512m -n4m -H1G" ++ heap ++ " -RTS"
+rtsGhcOptions :: Int -> Maybe String -> String
+rtsGhcOptions caps mHeap =
+    concat
+        [ "+RTS -N"
+        , show n
+        , " -A"
+        , show (nurseryMb n)
+        , "m -n4m -H1G"
+        , heap
+        , " -RTS"
+        ]
   where
-    caps = maybe "-N" ("-N" ++) mCaps
-    heap = maybe "" (" -M" ++) mHeap
+    n = max 1 caps
+    heap = case mHeap of
+        Nothing -> " -M" ++ defaultMaxHeap
+        Just "0" -> ""
+        Just h -> " -M" ++ h
+
+{- | One capability's nursery slice, in MB. @-A@ is per-capability, so a fixed
+size scales the kernel's idle cost with core count: @-A512m@ cost 7.4GB idle on
+a 14-core box, against 574MB for the same total budget divided.
+-}
+nurseryMb :: Int -> Int
+nurseryMb caps = max nurseryFloorMb (nurseryTotalMb `div` max 1 caps)
+
+-- | Total allocation area across all capabilities, in MB.
+nurseryTotalMb :: Int
+nurseryTotalMb = 512
+
+{- | Floor on a single capability's slice, in MB. Past 32 capabilities the
+division would starve each one, so a very large @-N@ trades the flat total
+for a bounded per-capability area instead.
+-}
+nurseryFloorMb :: Int
+nurseryFloorMb = 16
+
+{- | The default GHCi max-heap cap applied when @SABELA_GHCI_MAXHEAP@ is unset:
+above any legitimate cell, yet low enough that a runaway dies by heap overflow
+before a developer's box starts thrashing.
+-}
+defaultMaxHeap :: String
+defaultMaxHeap = "8g"
 
 buildSessionState ::
     SessionConfig ->

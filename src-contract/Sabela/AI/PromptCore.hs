@@ -34,12 +34,12 @@ sharedPromptCoreWith searchBlock =
     T.unlines
         [ "## Working rules"
         , ""
-        , "- Try, then commit: use the single `try` tool for speculative code."
+        , "- Try, then commit: use the single `try` tool for speculative code before calling insert_cell or replace_cell."
         , "  It accepts imports and ordinary declarations, plus at most one final expression."
         , "  It can use live bindings and candidate-only dependencies."
         , "  It refuses GHCi meta-commands, compile-time escapes, and unrestricted IO."
-        , "  Notebook cells are the durable home for owned effects. Sabela chooses"
-        , "  the safe internal route. Commit only after a useful result."
+        , "  Notebook cells are the durable home for owned effects; commit only"
+        , "  after a useful result."
         , "- Look signatures up, don't recall them: use the search tools in"
         , "  your tool list to find real names and types. A search miss is"
         , "  weaker evidence than a compile: when they disagree, trust the"
@@ -70,8 +70,12 @@ sabelaBuiltins =
         , "- Interactive widgets, in scope: "
             <> T.intercalate ", " widgetBuiltins
         , "  (each builds an `Input a`; display / currentValue read one)."
-        , "- Drawing, animation, and FRP via `import Sabela.Notebook` (the Picture,"
-        , "  Anim, and Frp modules — they ship with every notebook)."
+        , "- Drawing, charts, and animation, after `import Sabela.Notebook`: "
+            <> T.intercalate ", " drawingBuiltins
+        , "  (build a `Picture`, then show it with displayPicture; `plot` charts"
+        , "  [(Double, Double)] points directly). Pictures COMPOSE: `a <> b`"
+        , "  draws b over a, `group [..]` overlays a list, `mempty` is blank —"
+        , "  that is how you superimpose two curves. FRP lives there too."
         , ""
         , "These are an internal library. Look the exact signatures up with"
         , "check_type or your search tools before calling, and let the types"
@@ -83,7 +87,30 @@ discover's environment layer derives from this SAME list, so a documented
 builtin can never be denied (R1.5 — one source of truth, no drift).
 -}
 builtinNames :: [Text]
-builtinNames = displayBuiltins ++ widgetBuiltins ++ ["display", "currentValue"]
+builtinNames =
+    displayBuiltins
+        ++ widgetBuiltins
+        ++ drawingBuiltins
+        ++ ["display", "currentValue"]
+
+{- | The drawing entry points. Named, not merely alluded to by module: the
+model reaches for what the prompt names — it used displaySvg happily and
+hand-rolled SVG in four consecutive live rounds while `plot` went unqueried.
+-}
+drawingBuiltins :: [Text]
+drawingBuiltins =
+    [ "displayPicture"
+    , "plot"
+    , "lineChart"
+    , "animate"
+    , "animateWith"
+    , "circle"
+    , "rectangle"
+    , "polyline"
+    , "fill"
+    , "translate"
+    , "group"
+    ]
 
 displayBuiltins :: [Text]
 displayBuiltins =

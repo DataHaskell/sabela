@@ -13,20 +13,22 @@ import Data.Aeson (Value, object, (.=))
 import Data.IORef (IORef, atomicModifyIORef')
 import Data.Text (Text)
 
-import Siza.Agent.Discover.Candidate (candidateClauseFrom)
+import Data.Set (Set)
+import Siza.Agent.Discover.Candidate (candidateClauseAgainst)
 import Siza.Agent.Loop.Support (factsBlock, forceActMsgWith)
 
 {- | Rung 1 echoes the ranked held facts; rung 2+ hands over the candidate,
 seeded from the model's own most recent draft when one is held (R3.8) — the
 seed nearest the proposer, never a list-order accident.
 -}
-escalateNudge :: IORef Int -> Maybe Text -> [Text] -> Text -> IO Value
-escalateNudge ref mDraft facts remaining = do
+escalateNudge ::
+    IORef Int -> Set Text -> Maybe Text -> [Text] -> Text -> IO Value
+escalateNudge ref refuted mDraft facts remaining = do
     n <- atomicModifyIORef' ref (\k -> (k + 1, k + 1))
     pure $
         if n <= 1
             then forceActMsgWith facts remaining
-            else forceWriteMsgWith mDraft facts remaining
+            else forceWriteMsgWith refuted mDraft facts remaining
 
 {- | The rung-2+ nudge: a candidate write whose typed holes make the compiler
 enumerate producers — the cost of trying is one turn and the failure output
@@ -40,8 +42,8 @@ The candidate is seeded from the model's own most recent draft (R3.8) when one
 is held, so the nudge hands back the proposer's closest source, not a
 list-order record stub.
 -}
-forceWriteMsgWith :: Maybe Text -> [Text] -> Text -> Value
-forceWriteMsgWith mDraft facts remaining =
+forceWriteMsgWith :: Set Text -> Maybe Text -> [Text] -> Text -> Value
+forceWriteMsgWith refuted mDraft facts remaining =
     object
         [ "role" .= ("user" :: Text)
         , "content"
@@ -53,7 +55,7 @@ forceWriteMsgWith mDraft facts remaining =
                )
         ]
   where
-    body = case candidateClauseFrom mDraft facts of
+    body = case candidateClauseAgainst refuted mDraft facts of
         "" ->
             "Make one write now (insert_cell / replace_cell_source), or \
             \state the blocker plainly."

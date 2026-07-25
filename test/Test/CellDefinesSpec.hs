@@ -82,3 +82,20 @@ spec = describe "Sabela.AI.Capabilities.Notebook.cellDefines" $ do
                     T.length s `shouldSatisfy` (< listCellSourceCap + 80)
                     s `shouldSatisfy` T.isInfixOf "read_cell"
                 other -> expectationFailure ("expected truncated source string, got " <> show other)
+
+        it "skips leading blank lines to preview the first NON-blank line" $ do
+            let src = T.unlines ["", "  ", "answer = 42"]
+                e = cellListEntry False 1 (codeCell src)
+            field "firstLine" e `shouldBe` Just (String "answer = 42")
+
+        it "truncates a long first line to the shared preview length" $ do
+            let src = T.replicate 200 "x"
+                e = cellListEntry False 1 (codeCell src)
+            case field "firstLine" e of
+                Just (String s) -> T.length s `shouldBe` T.length (T.take 80 src)
+                other -> expectationFailure ("expected a string, got " <> show other)
+
+        it "surfaces `print 5` (the live-transcript cell 0) in the very first preview" $ do
+            let e = cellListEntry False 1 (codeCell "print 5")
+            field "firstLine" e `shouldBe` Just (String "print 5")
+            field "defines" e `shouldBe` Just (toJSON ([] :: [Text]))

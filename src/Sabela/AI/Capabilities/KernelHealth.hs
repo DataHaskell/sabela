@@ -9,6 +9,7 @@ the current wiring supplies wall-clock and progress evidence.
 module Sabela.AI.Capabilities.KernelHealth (
     noteSettled,
     busyEvidenceNow,
+    runningHolder,
     resourceField,
     awaitIdleBudgetUsOf,
 ) where
@@ -16,7 +17,6 @@ module Sabela.AI.Capabilities.KernelHealth (
 import Data.Aeson ((.=))
 import Data.Aeson.Types (Pair)
 import Data.IORef (readIORef, writeIORef)
-import Data.Maybe (fromMaybe)
 import GHC.Clock (getMonotonicTimeNSec)
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)

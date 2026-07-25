@@ -8,6 +8,7 @@ fail the standing goal advances the SAME ladder a not_found does.
 -}
 module Siza.Agent.Discover.History (
     SearchLedger,
+    slRefuted,
     emptyLedger,
     heldEvidence,
     ladderState,
@@ -26,6 +27,7 @@ module Siza.Agent.Discover.History (
 
 import Data.Aeson (Value)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (isNothing)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -64,9 +66,13 @@ import Siza.Agent.Discover.Goal (
     withGoal,
  )
 import Siza.Agent.Discover.Ledger
-import Siza.Agent.Discover.MissLadder (missAdvice, withCandidate)
+import Siza.Agent.Discover.MissLadder (
+    attachTypeSteer,
+    missAdvice,
+    withCandidate,
+ )
 import Siza.Agent.Discover.Resolved (resolvedWhy)
-import Siza.Agent.Discover.Steer (goalTypeOf)
+import Siza.Agent.Discover.Steer (goalTypeOf, typeSteerAfterMisses)
 import Siza.Agent.Discover.Types (StandingGoal (..))
 
 {- | Answer from the ledger alone, skipping the backend — only ever for a
@@ -82,7 +88,7 @@ ledgerShortcut led q
             -- The close carries the section 8.1 candidate (R8-T3): the gate
             -- hands over the propose-and-compile write, not a bare refusal.
             Just
-                . withCandidate (slFacts led)
+                . withCandidate (slRefuted led) (slFacts led)
                 . duplicateEnvelope qn "discovery closed"
                 $ closedSummary
                     (bestHeldFor (slEvidence led) (entityOf qn))
@@ -153,7 +159,7 @@ ledgerRecord q v led0
                      in ( repeated
                         , maybe
                             (answerDup (strongEvidence v) qn n q0)
-                            (withCandidate (slFacts repeated))
+                            (withCandidate (slRefuted repeated) (slFacts repeated))
                             hard
                         )
             _ ->
@@ -246,16 +252,28 @@ ledgerRecord q v led0
                     }
             bestHeld = bestHeldFor (slEvidence led') entity
             consulted = Set.toAscList (slConsulted led')
+            -- Distinct missed names, not repeats of one: the signal that the
+            -- lexical question itself is wrong and a synonym will not fix it.
+            -- Pre-close rungs only, like the construct steer: by the give-up
+            -- rung the caller must act on held facts, not learn a new way to
+            -- search (R5.7), and the terse reference has a size budget.
+            teachTypeQuestion =
+                isNothing mGoal
+                    && not (slClosed ledIn)
+                    && n <= 2
+                    && Map.size (slMisses led') >= typeSteerAfterMisses
          in ( led'
-            , missAdvice
-                (sgType <$> mGoal)
-                (slTried led')
-                (slFacts led')
-                bestHeld
-                consulted
-                n
-                qn
-                vG
+            , attachTypeSteer teachTypeQuestion $
+                missAdvice
+                    (sgType <$> mGoal)
+                    (slTried led')
+                    (slRefuted led')
+                    (slFacts led')
+                    bestHeld
+                    consulted
+                    n
+                    qn
+                    vG
             )
 
 -- | The gate's answered-call budget after satisfaction (section 8.3).

@@ -32,6 +32,24 @@ import Siza.Agent.EmitLedger (
 import Siza.Agent.Tools (renderOutcome)
 import Test.DiscoverFixtures (hitsOf, textField)
 
+{- | A compiler diagnostic well above 'blockFloor': the working material a
+repeated rejection must keep handing back.
+-}
+longDiagnostic :: Text
+longDiagnostic =
+    T.intercalate
+        "\n"
+        ( "<interactive>:238:1: error: [GHC-88464]"
+            : replicate 6 "    Variable not in scope: sineWaveSvg :: String"
+        )
+
+-- | The autofix note carrying committable source (R7.1).
+longAutofix :: Text
+longAutofix =
+    "Declared build-depends: text for this trial (the module was in a hidden \
+    \package). Commit this CURRENT source, which carries the dependency line:\n"
+        <> T.intercalate "\n" (replicate 5 "import qualified Data.Text as T")
+
 -- | A signature comfortably above 'blockFloor' (the elision-risk class).
 longSig :: Text
 longSig =
@@ -210,6 +228,27 @@ emitLedgerProtectSpec = describe "load-bearing fields are elision-exempt (R8-T1)
     it "the load-bearing key set is the section 10 contract" $
         forM_ ["type", "signature", "use", "cabal", "name", "next", "exports"] $
             \k -> loadBearingKeys `shouldSatisfy` elem k
+
+    {- G5.8: dedup may compress any payload EXCEPT the diagnostic the model is
+    being asked to act on, and the fix that resolves it. live_test8 collapsed a
+    repeated rejection to a back-reference, withdrawing the error text; it also
+    stripped the autofix note carrying the committable source. @normalized@ is
+    NOT here: G7 delivers it on first emission, and a byte-identical repeat of
+    healed source is exactly what the byte budget dedups. -}
+    it "the actionable diagnostic and its resolution are exempt" $
+        forM_ ["diagnostic", "error", "stderr", "autofix"] $
+            \k -> loadBearingKeys `shouldSatisfy` elem k
+
+    it "a repeated rejection still carries its diagnostic in full" $ do
+        let rejection =
+                object
+                    [ "refusal" .= ("compile-gate" :: Text)
+                    , "verdict" .= ("diagnostic" :: Text)
+                    , "diagnostic" .= longDiagnostic
+                    , "autofix" .= longAutofix
+                    ]
+            rendered = renderOutcome (Right (ToolErr rejection))
+        assertProtected [rendered, rendered]
 
     describe "generated grid: protected values transmit byte-complete" $
         forM_ classes $ \(label, f) -> do

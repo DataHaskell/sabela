@@ -5,6 +5,7 @@ with body @{name, input}@ and a typed decode of @{isError, result}@ into
 'Sabela.AI.Types.ToolOutcome' — but in typed Haskell over http-client.
 -}
 module Siza.Transport (
+    defaultToolTimeoutSecs,
     Conn (..),
     Env (..),
     resolveEnv,
@@ -90,10 +91,18 @@ resolveEnv = do
             , envToken = mtok
             , envSession = session
             , envCookie = mcookie
-            , envToolTimeout = fromMaybe 60 mtimeout
+            , envToolTimeout = fromMaybe defaultToolTimeoutSecs mtimeout
             }
   where
     nonEmpty = fmap T.pack . (>>= \s -> if null s then Nothing else Just s)
+
+{- | Client-side per-tool wall clock. MUST exceed the server's own cell cap
+(@Sabela.Session.Timeout.defaultTimeoutConfig@: 120s execution + 5s resync) or
+the client abandons a request the server is still serving — live_test7 lost the
+session source that way, and the search then declared false futility.
+-}
+defaultToolTimeoutSecs :: Int
+defaultToolTimeoutSecs = 180
 
 {- | Make an explicit @--url@ the process @SABELA_URL@, so flag and env are ONE
 knob: discovery and the hub-token attach both key on 'envSabelaUrl', which only

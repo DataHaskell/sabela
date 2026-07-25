@@ -77,3 +77,8 @@ spec = do
         it "auto-scales points into the canvas (with a 30px margin)" $
             svgBody (lineChart (Canvas 100 100) [(0, 0), (10, 10)])
                 `shouldSatisfy` isInfixOf "30,70 70,30"
+
+    describe "plot" $
+        it "is lineChart on the default canvas, as displayPicture is displayPictureOn" $ do
+            let pts = [(0, 0), (10, 10), (20, 5)]
+            svgBody (plot pts) `shouldBe` svgBody (lineChart defaultCanvas pts)

@@ -10,6 +10,7 @@ rewrite, live in the product layer ("Sabela.AI.Capabilities.Edit.Run").
 module Sabela.AI.ModuleResolve (
     closestModules,
     isNoiseModule,
+    isOutOfScopePackage,
 ) where
 
 import Data.List (sortOn)
@@ -48,3 +49,26 @@ isNoiseModule m =
     m == "Internal"
         || "Documentation." `T.isPrefixOf` m
         || any (`T.isInfixOf` m) [".Internal", ".Example", ".Demo", ".Tutorial"]
+
+{- | The compiler's OWN toolchain packages (@ghc@ and its satellites): never a
+legitimate resolution target for a notebook's not-in-scope name (G2 hard rule
+2 — the @unionfind-point@ regression, where a lexical search resolved
+@Point@ to @ghc@'s internal @GHC.Data.UnionFind@). Package-keyed, not
+module-keyed: unlike 'isNoiseModule', @GHC.Generics@ from @base@ is legitimate
+and must not be caught by a namespace guess.
+-}
+isOutOfScopePackage :: Text -> Bool
+isOutOfScopePackage pkg = pkg `elem` compilerToolchainPackages
+
+compilerToolchainPackages :: [Text]
+compilerToolchainPackages =
+    [ "ghc"
+    , "ghc-boot"
+    , "ghc-boot-th"
+    , "ghci"
+    , "ghc-heap"
+    , "ghc-internal"
+    , "ghc-prim"
+    , "ghc-bignum"
+    , "rts"
+    ]

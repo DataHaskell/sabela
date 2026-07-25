@@ -44,6 +44,7 @@ import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model (Notebook (..), NotebookEvent (..))
 import Sabela.Server (newApp)
+import Sabela.Session.Project (buildTimeSupportDir)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), broadcast, readNotebook)
 import Sabela.State.SessionManager (setHaskellSession)
@@ -90,7 +91,9 @@ inertBackend = do
 mkFixture :: IO (App, AIStore.AIStore)
 mkFixture = do
     mgr <- newManager defaultManagerSettings
-    app <- newApp "." Set.empty (Just mgr) Nothing []
+    -- G1's compile gate always reconstructs a disposable session, which
+    -- (like the live kernel) needs the sabela-notebook overlay to spawn.
+    app <- newApp "." Set.empty (Just mgr) Nothing [buildTimeSupportDir]
     backend <- inertBackend
     setHaskellSession (appSessions app) (Just backend)
     let cfg =
@@ -157,10 +160,13 @@ ackExecuting = do
     (app, store) <- mkFixture
     barrier <- newEmptyMVar
     let rn = slowRn app barrier
-    mv <- timeout 15000000 (insertSrc app store rn "x = 1")
+    -- G1's compile gate pays a real disposable GHCi spawn before the ack
+    -- path even starts; the bound is loosened to absorb that, not to admit
+    -- waiting on the barrier — a stuck wait would hang, not merely run long.
+    mv <- timeout 30000000 (insertSrc app store rn "x = 1")
     case mv of
         Nothing -> do
-            expectationFailure "insert did not ack within 15s"
+            expectationFailure "insert did not ack within 30s"
             error "unreachable"
         Just v -> pure (app, store, rn, barrier, v)
 
@@ -170,7 +176,7 @@ spec = around_ withAckEnv $ describe "write-ack (R6.1/R6.2/R6.4)" $ do
         t0 <- getMonotonicTimeNSec
         (_, _, _, barrier, v) <- ackExecuting
         t1 <- getMonotonicTimeNSec
-        (t1 - t0) < 10000000000 `shouldBe` True
+        (t1 - t0) < 25000000000 `shouldBe` True
         textField "status" v `shouldBe` Just "executing"
         field "cellId" v `shouldBe` Just (Number 0)
         putMVar barrier ()

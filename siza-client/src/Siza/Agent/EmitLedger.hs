@@ -55,7 +55,23 @@ carry the fact. @candidate@ is the section 8.1/8.3 typed-hole cell.
 -}
 loadBearingKeys :: [Text]
 loadBearingKeys =
-    ["type", "signature", "use", "cabal", "name", "next", "exports", "candidate"]
+    [ "type"
+    , "signature"
+    , "use"
+    , "cabal"
+    , "name"
+    , "next"
+    , "exports"
+    , "candidate"
+    ]
+        ++ actionableKeys
+
+{- | G5.8: the diagnostic the model is being asked to act on, and the fix that
+resolves it. A repeat is the working material, not noise — live_test8 collapsed
+a rejection to a back-reference and withdrew the error it demanded be fixed.
+-}
+actionableKeys :: [Text]
+actionableKeys = ["diagnostic", "error", "stderr", "autofix"]
 
 emptyEmitLedger :: EmitLedger
 emptyEmitLedger = EmitLedger Map.empty Map.empty
@@ -123,9 +139,23 @@ dedupText turn text led0 =
   where
     chunkPass led chunk
         | T.length chunk < blockFloor = (led, chunk)
+        -- A chunk carrying an actionable diagnostic is never whole-replaced:
+        -- the model is being asked to fix precisely this text.
+        | carriesActionable chunk = (recordBlock turn chunk led, chunk)
         | otherwise = case rewriteBlock turn chunk led of
             (led', Just replacement) -> (led', replacement)
             (led', Nothing) -> spanPass turn chunk led'
+
+{- | Does this chunk carry a diagnostic the model must act on? Only a NON-EMPTY
+string counts: @"error":null@ rides along in every cell echo, and exempting
+those disabled the dedup that sheds ~15k re-injected bytes per request.
+-}
+carriesActionable :: Text -> Bool
+carriesActionable chunk = any nonEmptyValue actionableKeys
+  where
+    nonEmptyValue k =
+        ("\"" <> k <> "\":\"") `T.isInfixOf` chunk
+            && not (("\"" <> k <> "\":\"\"") `T.isInfixOf` chunk)
 
 -- | Record a text's blocks without rewriting (model-authored turns).
 recordText :: Int -> Text -> EmitLedger -> EmitLedger

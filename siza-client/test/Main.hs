@@ -44,8 +44,10 @@ import Test.FutilitySpec (futilitySpec)
 import Test.GoalHonestySpec (goalHonestySpec)
 import Test.GrammarCardSpec (grammarCardSpec)
 import Test.HoleDirectedInvariantSpec (holeDirectedInvariantSpec)
+import Test.HoleProbeSpec (holeProbeSpec)
 import Test.Hspec
 import Test.HubTokenSpec (hubTokenSpec)
+import Test.InstallAffordanceSpec (installAffordanceSpec)
 import Test.KernelVocabClientSpec (kernelVocabClientSpec)
 import Test.LanguageSpec (
     annotateSpec,
@@ -59,13 +61,14 @@ import Test.McpSpec (mcpSpec)
 import Test.NormalizeFindabilitySpec (normalizeFindabilitySpec)
 import Test.NoteLedgerSpec (noteLedgerSpec)
 import Test.NudgeSpec (nudgeSpec)
+import Test.NudgeTemplateSpec (nudgeTemplateSpec)
 import Test.OutcomeDistillSpec (outcomeDistillSpec)
 import Test.PostNudgeGateSpec (postNudgeGateSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
 import Test.ReadOnlyDedupSpec (readOnlyDedupSpec)
 import Test.RedStreakSpec (redStreakSpec)
-import Test.ReenterContrastSpec (reenterContrastSpec)
+import Test.ReenterContrastSpec (reenterAlarmSpec, reenterContrastSpec)
 import Test.RenderContractSpec (renderContractSpec)
 import Test.RepairCascadeSpec (repairCascadeSpec)
 import Test.RepairDispatchSpec (repairDispatchSpec)
@@ -80,12 +83,13 @@ import Test.SteerLoopSpec (steerLoopSpec)
 import Test.SteerSpec (steerSpec)
 import Test.ToolRouteSpec (toolRouteSpec)
 import Test.TransportFailureSpec (transportFailureSpec)
-import Test.TransportSpec (transportSpec)
+import Test.TransportSpec (toolTimeoutSpec, transportSpec)
 import Test.VerdictSurfaceSpec (verdictSurfaceSpec)
 import Test.VerifierSurfaceSpec (verifierSurfaceSpec)
 import Test.VerifyDiagSpec (verifyDiagSpec)
 import Test.WorldCardSpec (worldCardSpec)
 import Test.WorldChangeGateSpec (worldChangeGateSpec)
+import Test.WrapUpIntegritySpec (wrapUpIntegritySpec)
 import Test.WrapUpLoopSpec (wrapUpLoopSpec)
 import Test.WrapUpSpec (wrapUpSpec)
 import Test.WriteAckClientSpec (writeAckClientSpec)
@@ -102,12 +106,14 @@ main = hspec $ do
     retroSpec
     crossSeamSpec
     transportSpec
+    toolTimeoutSpec
     transportFailureSpec
     futilitySpec
     hubTokenSpec
     loginSpec
     mcpSpec
     agentCheckSpec
+    installAffordanceSpec
     kernelVocabClientSpec
     writeAckClientSpec
     discoverToolSpec
@@ -124,6 +130,7 @@ main = hspec $ do
     discoverVariantDedupSpec
     normalizeFindabilitySpec
     reenterContrastSpec
+    reenterAlarmSpec
     discoverMissSpec
     discoverRequestSpec
     discoverEnvelopeSpec
@@ -164,6 +171,7 @@ main = hspec $ do
     steerLoopSpec
     wrapUpSpec
     wrapUpLoopSpec
+    wrapUpIntegritySpec
     toolRouteSpec
     schemaRecoverySpec
     emitLedgerSpec
@@ -171,6 +179,8 @@ main = hspec $ do
     adviceSpec
     candidateSpec
     candidateRankSpec
+    holeProbeSpec
+    nudgeTemplateSpec
     escalateSpec
     routedUnblockSpec
     renderContractSpec

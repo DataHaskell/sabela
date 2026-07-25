@@ -14,6 +14,7 @@ module Sabela.Session.Timeout (
     timedOutMessage,
     timedOutKilledMessage,
     buildTimedOutMessage,
+    tryBuildTimedOutMessage,
 ) where
 
 import Data.Text (Text)
@@ -31,12 +32,17 @@ data TimeoutConfig = TimeoutConfig
     per-cell 'tcExecutionUs' does not cover this phase, so a wedged @cabal
     install@ or cold start is bounded here instead of hanging indefinitely.
     -}
+    , tcTryBuildUs :: Int
+    {- ^ Disposable @try@ package-environment build budget, in microseconds.
+    Tighter than 'tcBuildUs' so a slow disposable build fails fast with
+    'tryBuildTimedOutMessage' guidance instead of hanging toward the live ceiling.
+    -}
     }
     deriving (Eq, Show)
 
-{- | 120s execution, 5s resync (the historical pair); 900s build — high enough
-for a cold or heavy dependency install (e.g. hasktorch) to finish, while still
-bounding a genuinely wedged install rather than hanging forever.
+{- | 120s execution, 5s resync; 900s live-session build (room for a heavy
+install like hasktorch); 120s disposable-try build, since a speculative
+trial should fail fast rather than wait toward the live ceiling.
 -}
 defaultTimeoutConfig :: TimeoutConfig
 defaultTimeoutConfig =
@@ -44,6 +50,7 @@ defaultTimeoutConfig =
         { tcExecutionUs = 120_000_000
         , tcResyncUs = 5_000_000
         , tcBuildUs = 900_000_000
+        , tcTryBuildUs = 120_000_000
         }
 
 {- | Read the execution budget from @SABELA_CELL_TIMEOUT_SECONDS@. A
@@ -54,13 +61,17 @@ readTimeoutConfig :: IO TimeoutConfig
 readTimeoutConfig = do
     mEnv <- lookupEnv "SABELA_CELL_TIMEOUT_SECONDS"
     mBuild <- lookupEnv "SABELA_BUILD_TIMEOUT_SECONDS"
+    mTryBuild <- lookupEnv "SABELA_TRY_BUILD_TIMEOUT_SECONDS"
     let withExec cfg = case mEnv >>= readMaybe of
             Just secs | secs > 0 -> cfg{tcExecutionUs = secs * 1_000_000}
             _ -> cfg
         withBuild cfg = case mBuild >>= readMaybe of
             Just secs | secs > 0 -> cfg{tcBuildUs = secs * 1_000_000}
             _ -> cfg
-    pure (withBuild (withExec defaultTimeoutConfig))
+        withTryBuild cfg = case mTryBuild >>= readMaybe of
+            Just secs | secs > 0 -> cfg{tcTryBuildUs = secs * 1_000_000}
+            _ -> cfg
+    pure (withTryBuild (withBuild (withExec defaultTimeoutConfig)))
 
 -- | The execution budget rendered as whole seconds (for UI messages).
 timeoutSeconds :: Int -> Int
@@ -97,3 +108,21 @@ buildTimedOutMessage buildUs =
         <> T.pack (show (timeoutSeconds buildUs))
         <> " seconds; the kernel was reset. Check the dependencies compile, or \
            \raise SABELA_BUILD_TIMEOUT_SECONDS ***"
+
+{- | The notice when a disposable @try@ build breaches 'tcTryBuildUs': names
+the dependencies and points at the deliberate-commit alternative, rather
+than leaving a bare timeout.
+-}
+tryBuildTimedOutMessage :: [Text] -> Int -> Text
+tryBuildTimedOutMessage deps buildUs =
+    "\n*** try build timed out after "
+        <> T.pack (show (timeoutSeconds buildUs))
+        <> " seconds building "
+        <> depsText
+        <> "; this looks like a heavy dependency for a disposable trial. \
+           \Commit it deliberately with a `-- cabal:` line in a real cell \
+           \instead of retrying try ***"
+  where
+    depsText
+        | null deps = "the requested dependencies"
+        | otherwise = T.intercalate ", " deps

@@ -15,18 +15,21 @@ import Data.IORef (atomicModifyIORef')
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.Edit.Ack (withNote)
 import Sabela.AI.Capabilities.Util (field, fieldInt, fieldText)
 import Sabela.AI.Doc (cellHash)
+import Sabela.AI.NormalizeGate (gatedRewrite)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Api (errorJson, errorJsonWith)
 import Sabela.Model
+import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
 
 execProposeEdit :: App -> AIStore -> Value -> IO ToolOutcome
 execProposeEdit app store input = do
     let mcid = fieldInt "cell_id" input
-        newSrc = fieldText "new_source" input
+        rawSrc = fieldText "new_source" input
         mExpected = case field "expected_hash" input of
             Just (String s) | not (T.null s) -> Just s
             _ -> Nothing
@@ -50,7 +53,19 @@ execProposeEdit app store input = do
                                         ]
                                     )
                                 )
-                    _ -> proceedProposeEdit app store c newSrc
+                    _ -> do
+                        -- Staged content is AI-authored and gated on accept
+                        -- (Sabela.AI.Capabilities.acceptEdit) exactly like
+                        -- insert/replace, so it is normalized the same way
+                        -- before the human ever sees the diff (G7).
+                        let (newSrc, notes) =
+                                if cellLang c == Haskell
+                                    then gatedRewrite rawSrc
+                                    else (rawSrc, [])
+                        out <- proceedProposeEdit app store c newSrc
+                        pure $ case notes of
+                            [] -> out
+                            ns -> withNote (T.unwords ns) out
 
 proceedProposeEdit :: App -> AIStore -> Cell -> Text -> IO ToolOutcome
 proceedProposeEdit app store c newSrc = do

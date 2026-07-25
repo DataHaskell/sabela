@@ -5,7 +5,9 @@ module Test.AgentCheckSpec (agentCheckSpec) where
 import Siza.Agent.Check (
     CheckResult (..),
     classifyCheck,
+    degenerateCheck,
     extractTestExpr,
+    feedbackContinuation,
     interpretConfirm,
  )
 import Test.Hspec
@@ -25,6 +27,24 @@ agentCheckSpec = describe "siza chat covering-check helpers" $ do
         it "takes the first non-empty line when the reply has blanks" $
             extractTestExpr "\n\nrevenueTotal == 600\n" `shouldBe` "revenueTotal == 600"
 
+    describe "degenerateCheck (live_test8 #4)" $ do
+        it "rejects a literal, which passes while carrying no information" $
+            mapM_
+                (\t -> (t, degenerateCheck t) `shouldBe` (t, True))
+                ["True", "False", "1 == 1", "  True  ", "2 > 1"]
+
+        it "accepts a check that reads something the notebook defines" $
+            mapM_
+                (\t -> (t, degenerateCheck t) `shouldBe` (t, False))
+                [ "total == 600"
+                , "length xs == 3"
+                , "not (null svgStr)"
+                , "abs (head ys - 0.0) < 0.001"
+                ]
+
+        it "treats an empty proposal as degenerate, not as a pass" $
+            degenerateCheck "" `shouldBe` True
+
     describe "interpretConfirm" $ do
         it "accepts the proposal on a blank line" $
             interpretConfirm "x == 1" "" `shouldBe` "x == 1"
@@ -43,6 +63,29 @@ agentCheckSpec = describe "siza chat covering-check helpers" $ do
                 "x == 1"
                 "This is not markdown and it doesn't print the dataframe."
                 `shouldBe` ""
+
+    describe "feedbackContinuation" $ do
+        it "carries prose feedback forward verbatim" $
+            feedbackContinuation "x == 1" "I don't see anything."
+                `shouldBe` Just "I don't see anything."
+
+        it "carries any non-test prose forward, not just visual complaints" $
+            feedbackContinuation
+                "x == 1"
+                "This is not markdown and it doesn't print the dataframe."
+                `shouldBe` Just "This is not markdown and it doesn't print the dataframe."
+
+        it "is Nothing on accept (blank line)" $
+            feedbackContinuation "x == 1" "" `shouldBe` Nothing
+
+        it "is Nothing on accept (yes)" $
+            feedbackContinuation "x == 1" "y" `shouldBe` Nothing
+
+        it "is Nothing on skip" $
+            feedbackContinuation "x == 1" "skip" `shouldBe` Nothing
+
+        it "is Nothing when the input looks like an edited test" $
+            feedbackContinuation "x == 1" "y == 2" `shouldBe` Nothing
 
     describe "classifyCheck (covering-check marker output)" $ do
         it "treats GRADE_PASS output as a passed check" $

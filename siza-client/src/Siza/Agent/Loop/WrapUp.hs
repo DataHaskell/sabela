@@ -25,7 +25,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.CellResult (CellId)
 import Siza.Agent.Loop.Support (factsBlock, nudgeFloor, nudgeK)
-import Siza.Agent.Owned (OwnedCell (..))
+import Siza.Agent.Owned (OwnedCell (..), newestFailing)
 
 {- | What is left of every episode budget dimension, read at the top of a
 turn: remaining turns, remaining and spent repair rounds, and the unspent
@@ -126,20 +126,20 @@ wrapUpFinal stopped owned candidate
 
 -- | The owned-cell state line of a synthesised final, bounded (R3.9).
 stateLine :: Map CellId OwnedCell -> Text
-stateLine owned = case reds of
+stateLine owned = case newestFailing owned of
     _ | Map.null owned -> "no cell was written before the episode ended."
-    [] ->
+    Nothing ->
         tShow (Map.size owned)
             <> " cell(s) written and healthy; the episode ended before a \
                \summary was written."
-    (red : _) ->
+    Just red ->
         tShow (Map.size owned)
             <> " cell(s) written, "
-            <> tShow (length reds)
+            <> tShow redCount
             <> " still failing. Last diagnostic: "
             <> T.take 280 (ocDiagnostic red)
   where
-    reds = [oc | oc <- Map.elems owned, not (ocHealthy oc)]
+    redCount = Map.size (Map.filter (not . ocHealthy) owned)
 
 {- | Budget-proportional act-nudge threshold (R5.6): consecutive read-only
 calls tolerated before the nudge. 'nudgeK' while more than half the turn

@@ -36,6 +36,7 @@ module Siza.Agent.Loop (
     qualifiedBaseNames,
 ) where
 
+import Control.Applicative ((<|>))
 import Control.Monad (unless, void, when)
 import Data.Aeson (Value (..), object, (.=))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -60,15 +61,17 @@ import Siza.Agent.Discover (
     runDiscoverOutcomes,
     seamDiscover,
  )
-import Siza.Agent.Discover.History (SearchLedger)
+import Siza.Agent.Discover.History (SearchLedger, slRefuted)
 import Siza.Agent.Discover.HistoryGuard (
     closeSearchLedgerRanked,
     guardDiscover,
     heldCallReady,
     newSearchLedger,
+    recordProbeFacts,
     seedSearchLedger,
     setSearchPressure,
  )
+import Siza.Agent.Discover.HoleProbe (resolveCandidate)
 import Siza.Agent.EmitLedger (
     EmitLedger,
     dedupInjected,
@@ -101,7 +104,8 @@ import Siza.Agent.Loop.WrapUp (
  )
 import Siza.Agent.Messages (
     doneSignalMsg,
-    reenterMsg,
+    noCheckSignalMsg,
+    reenterAlarmMsg,
     streakMsg,
     toolMsg,
     unconfirmedMsgWith,
@@ -111,6 +115,7 @@ import Siza.Agent.Owned (
     OwnedCell (..),
     StopDecision (..),
     bestFailing,
+    hasArtifact,
     latestDraft,
     noProgressStep,
     ownedCellOutcome,
@@ -383,21 +388,28 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                             Stop -> do
                                 (result, mEv) <- drvVerify driver
                                 case result of
-                                    CheckPassed -> do
-                                        saveEx owned
-                                        finish owned (turn + 1) nCalls (turnContent t) "done" (msgs ++ [turnRaw t])
+                                    -- C3 still binds: an artifact is required
+                                    -- either way. A check that never ran is not
+                                    -- a passing check, but it does not deny a
+                                    -- committed deliverable either.
+                                    r
+                                        | r `elem` [CheckPassed, CheckNotApplicable]
+                                        , hasArtifact owned -> do
+                                            saveEx owned
+                                            finish owned (turn + 1) nCalls (turnContent t) "done" (msgs ++ [turnRaw t])
                                     _ -> do
                                         -- No-progress guard: model declared done, the check did
-                                        -- not confirm, nothing changed. A few in a row means a bad
-                                        -- or uncheckable check, so stop rather than spin.
+                                        -- not confirm (or passed vacuously with no owned artifact
+                                        -- to back it — C3), nothing changed. A few in a row means
+                                        -- a bad or uncheckable check, so stop rather than spin.
                                         s <- readIORef stuck
                                         if s + 1 >= maxStuckVerifies
                                             then finish owned (turn + 1) nCalls stuckFinal "stuck" (msgs ++ [turnRaw t])
                                             else do
                                                 writeIORef stuck (s + 1)
                                                 let vmsg = case result of
-                                                        CheckFailed -> diagVerifyMsg mEv owned
-                                                        _ -> unconfirmedDiagMsg mEv owned
+                                                        CheckUncheckable -> unconfirmedDiagMsg mEv owned
+                                                        _ -> diagVerifyMsg mEv owned
                                                 out <- emitTurn emits turn (turnRaw t) [vmsg]
                                                 go
                                                     start'
@@ -410,17 +422,17 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                 owned' <- repairReds owned reds
                                 redisc <- reDiscover delivered owned' reds
                                 let stillPairs =
-                                        [ (c, ocDiagnostic oc)
+                                        [ (c, ocDiagnostic oc, ocInvariantAlarm oc)
                                         | (c, oc) <- Map.toList owned'
                                         , not (ocHealthy oc)
                                         ]
-                                    still = map fst stillPairs
+                                    still = [c | (c, _, _) <- stillPairs]
                                     -- No check ran on this path, so a failure
                                     -- claim would be unevidenced (R5-T5).
                                     msg =
                                         if null still
                                             then unconfirmedDiagMsg Nothing owned'
-                                            else reenterMsg stillPairs
+                                            else reenterAlarmMsg stillPairs
                                     sig = redSignature still owned'
                                 out <- emitTurn emits turn (turnRaw t) (msg : redisc)
                                 let msgs' = msgs ++ out
@@ -567,7 +579,10 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 else do
                     writeIORef signalled True
                     (r, _) <- drvVerify driver
-                    pure [doneSignalMsg | r == CheckPassed]
+                    pure $ case r of
+                        CheckPassed -> [doneSignalMsg]
+                        CheckNotApplicable -> [noCheckSignalMsg]
+                        _ -> []
     -- Learning loop ('Siza.Agent.Exemplars'), gated by SIZA_EXEMPLAR_STORE.
     retrieveEx = retrieveForPrompt prompt
     saveEx owned =
@@ -672,11 +687,17 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
     -- R7-T4: nudge and wrap-up close the ledger through the ranked selection.
     rankedFacts owned =
         closeSearchLedgerRanked prompt (map ocSource (Map.elems owned)) ledger
-    -- R8-T3 escalation in kind: rung 1 echoes facts, rung 2+ carries the
-    -- typed-hole candidate ('Siza.Agent.Loop.Escalate').
+    -- R8-T3 escalation in kind: rung 1 echoes facts, rung 2+ carries a
+    -- candidate ('Siza.Agent.Loop.Escalate'). G3: before that, the harness
+    -- probes its own open gaps and keeps only a candidate try accepted.
     mkNudge rung turn owned = do
-        facts <- rankedFacts owned
-        escalateNudge rung (latestDraft owned) facts $
+        facts0 <- rankedFacts owned
+        let draft = latestDraft owned
+        (facts, resolved) <- resolveCandidate (drvDispatch driver) draft facts0
+        recordProbeFacts ledger facts
+        -- G5.4: never re-hand a candidate the gate already rejected.
+        refuted <- slRefuted <$> readIORef ledger
+        escalateNudge rung refuted (resolved <|> draft) facts $
             "Remaining turn budget: "
                 <> T.pack (show (maxTurns - turn))
                 <> "."

@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | The free-text (prose) hoogle query pipeline: denoise, progressive
-widening, and the package-scoped rescue (search-api.md section 4 step 4:
-widening can never silently drop a term that names a package).
+widening, the action-need stage ("Sabela.AI.HoogleIntent"), and the
+package-scoped rescue (never silently drops a term naming a package).
 -}
 module Sabela.AI.HoogleProse (
     hoogleQuery,
@@ -22,6 +22,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.HoogleClient (HoogleHit (..), queryAllDbs)
+import Sabela.AI.HoogleIntent (intentQueries)
 import Sabela.AI.HoogleRank (rankHits)
 
 {- | Run a hoogle query (free text, type, or name) against the LOCAL hoogle
@@ -32,8 +33,8 @@ hoogleQuery :: Int -> Text -> IO [HoogleHit]
 hoogleQuery = hoogleQueryWith rawQuery
 
 {- | 'hoogleQuery' over an injectable runner (the ladder tests' seam). Prose
-widens progressively: denoised phrase, keywords, the package-scoped rescue
-(before any stage that could drop the term), bigrams, round-robin singles.
+widens progressively: denoised phrase, keywords, the action need, the
+package-scoped rescue, bigrams, round-robin singles.
 -}
 hoogleQueryWith ::
     (Int -> Text -> IO [HoogleHit]) -> Int -> Text -> IO [HoogleHit]
@@ -50,6 +51,7 @@ hoogleQueryWith run k query
         , if length kws < length (T.words cleaned)
             then run k (T.unwords kws)
             else pure []
+        , actionNeedStage run k query
         , scopedRescue run k kws
         , concat <$> mapM (run k) (bigrams kws)
         , roundRobin <$> mapM (run k) kws
@@ -59,6 +61,16 @@ hoogleQueryWith run k query
     firstNonEmpty (s : ss) = do
         hits <- takeRanked <$> s
         if null hits then firstNonEmpty ss else pure hits
+
+{- | The classified action's need queries, run BEFORE the ladder's
+bigram\/single-noun stages so a request never widens straight down to an
+object-noun-only search. Empty when the request classifies to no action.
+-}
+actionNeedStage ::
+    (Int -> Text -> IO [HoogleHit]) -> Int -> Text -> IO [HoogleHit]
+actionNeedStage run k query = case intentQueries query of
+    [] -> pure []
+    qs -> concat <$> mapM (run k) qs
 
 {- | The rescue stage: keywords a package row answers for (evidence class
 "the query names a package", never a name list) scope the remaining terms

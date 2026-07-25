@@ -23,6 +23,14 @@ call src = ToolCall "insert_cell" (object ["source" .= src])
 failingWith :: Text -> ToolCall -> IO (Either Text ToolOutcome)
 failingWith e _ = pure (Left e)
 
+-- | The futility note a guarded outcome carries, if any.
+noteOf :: Either Text ToolOutcome -> Maybe Text
+noteOf (Left e) = Just e
+noteOf (Right (ToolErr (Object o))) = case KM.lookup "futility" o of
+    Just (String s) -> Just s
+    _ -> Nothing
+noteOf _ = Nothing
+
 hasNote :: Either Text ToolOutcome -> Bool
 hasNote (Left e) = "byte-identical" `T.isInfixOf` e
 hasNote (Right (ToolErr (Object o))) = KM.member "futility" o
@@ -49,6 +57,44 @@ futilitySpec = describe "Siza.Agent.Futility (retry-futility guard)" $ do
     it "directs away from payload rewriting, toward a different approach" $ do
         futilityNote `shouldSatisfy` T.isInfixOf "not the fault"
         futilityNote `shouldSatisfy` T.isInfixOf "Change approach"
+
+    {- G5.7: a deterministic rejection's fault IS the payload. live_test5 told
+    the model "the payload is not the fault" about a compile-gate rejection and
+    steered it at kernel_status, away from the one-character fix. -}
+    describe "truthful futility for a deterministic rejection" $ do
+        let gateRejection =
+                ToolErr
+                    ( object
+                        [ "refusal" .= ("compile-gate" :: Text)
+                        , "verdict" .= ("diagnostic" :: Text)
+                        , "diagnostic"
+                            .= ("<interactive>:238:1: error: [GHC-88464]" :: Text)
+                        ]
+                    )
+            rejecting _ = pure (Right gateRejection)
+            secondNote = do
+                g <- newFutilityGuard
+                _ <- guardDispatch g rejecting (call "x = 1 +")
+                out <- guardDispatch g rejecting (call "x = 1 +")
+                pure (noteOf out)
+
+        it "never tells the model the payload is not the fault" $ do
+            n <- secondNote
+            n `shouldSatisfy` maybe False (not . T.isInfixOf "not the fault")
+
+        it "names the source as the fault" $ do
+            n <- secondNote
+            n `shouldSatisfy` maybe False (T.isInfixOf "source")
+
+        it "never steers a source error at state-inspection tools" $ do
+            n <- secondNote
+            n `shouldSatisfy` maybe False (not . T.isInfixOf "kernel_status")
+
+        it "still gives the environmental note for a transport failure" $ do
+            g <- newFutilityGuard
+            _ <- guardDispatch g (failingWith "boom") (call "x = 1")
+            out <- guardDispatch g (failingWith "boom") (call "x = 1")
+            hasNote out `shouldBe` True
 
     it "does not annotate when the arguments differ" $ do
         g <- newFutilityGuard

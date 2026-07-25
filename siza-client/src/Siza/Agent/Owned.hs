@@ -1,11 +1,13 @@
 module Siza.Agent.Owned (
     OwnedCell (..),
     StopDecision (..),
+    hasArtifact,
     recordOwned,
     stopDecision,
     ownedCellOutcome,
     bestFailing,
     latestDraft,
+    newestFailing,
     redSignature,
     noProgressStep,
 ) where
@@ -26,26 +28,58 @@ import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Discover (isOwningTool, toolCallSource)
 import Siza.Agent.Tools (renderOutcome)
 
--- | Latest health, rendered diagnostic, and source for a cell this episode wrote.
+{- | Latest health, rendered diagnostic, and source for a cell this episode
+wrote. 'ocInvariantAlarm' is True for a compile-class ('Rejected') outcome —
+G1 makes that structurally impossible, so it flags a gate bug, not a fix-it.
+-}
 data OwnedCell = OwnedCell
     { ocHealthy :: Bool
     , ocDiagnostic :: Text
     , ocSource :: Text
+    , ocInvariantAlarm :: Bool
     }
 
 -- | The harness's verdict when the model stops calling tools.
 data StopDecision = Stop | Reenter [CellId]
     deriving (Eq, Show)
 
--- | Fold one (call, outcome) into the owned-cell health map.
+{- | Fold one (call, outcome) into the owned-cell health map. A successful
+delete un-owns the cell — the give-up and done paths must never cite or
+count a cell the model itself removed.
+-}
 recordOwned ::
     (ToolCall, Either Text ToolOutcome) ->
     Map CellId OwnedCell ->
     Map CellId OwnedCell
-recordOwned (tc, out) m = case ownedCellOutcome tc out of
-    Just (cid, healthy) ->
-        Map.insert cid (OwnedCell healthy (renderOutcome out) (toolCallSource tc)) m
-    Nothing -> m
+recordOwned (tc, out) m
+    | tcName tc == "delete_cell" = maybe m (`Map.delete` m) (deletedCellId out)
+    | otherwise = case ownedCellOutcome tc out of
+        Just (cid, healthy) ->
+            Map.insert
+                cid
+                (OwnedCell healthy (renderOutcome out) (toolCallSource tc) (rejectedClass out))
+                m
+        Nothing -> m
+
+-- | See 'ocInvariantAlarm': True iff the settled outcome tag is @Rejected@.
+rejectedClass :: Either Text ToolOutcome -> Bool
+rejectedClass (Right (ToolOk (Object o))) = outcomeTagIs "Rejected" o
+rejectedClass _ = False
+
+outcomeTagIs :: Text -> KM.KeyMap Value -> Bool
+outcomeTagIs want o = tagField (execObject o)
+  where
+    execObject e = case KM.lookup "execution" e of
+        Just (Object inner) -> inner
+        _ -> e
+    tagField e = case KM.lookup "outcome" e of
+        Just (Object oc) -> KM.lookup "tag" oc == Just (String want)
+        _ -> False
+
+deletedCellId :: Either Text ToolOutcome -> Maybe CellId
+deletedCellId (Right (ToolOk (Object o)))
+    | boolField "deleted" o = intField "cellId" o
+deletedCellId _ = Nothing
 
 stopDecision :: Map CellId Bool -> StopDecision
 stopDecision owned = case [cid | (cid, ok) <- Map.toList owned, not ok] of
@@ -61,10 +95,26 @@ ownedCellOutcome tc out
     | otherwise = Nothing
 
 bestFailing :: Map CellId OwnedCell -> Text
-bestFailing owned =
-    case [oc | oc <- Map.elems owned, not (ocHealthy oc)] of
-        (oc : _) -> "Gave up with a failing cell. Last diagnostic: " <> ocDiagnostic oc
-        [] -> ""
+bestFailing owned = case newestFailing owned of
+    Just oc -> "Gave up with a failing cell. Last diagnostic: " <> ocDiagnostic oc
+    Nothing -> ""
+
+{- | The still-failing owned cell with the highest 'CellId' — the newest one,
+and the one a give-up must cite. Deleted cells are already absent from
+'owned' ('recordOwned' un-owns them), so this never resurrects a stale one.
+-}
+newestFailing :: Map CellId OwnedCell -> Maybe OwnedCell
+newestFailing owned =
+    case Map.toDescList (Map.filter (not . ocHealthy) owned) of
+        ((_, oc) : _) -> Just oc
+        [] -> Nothing
+
+{- | Whether the episode holds an artifact: an owned cell it wrote this task.
+"Done" may end the episode only once this holds — a passing check on an
+empty owned map is a vacuous verdict, not a deliverable (C3).
+-}
+hasArtifact :: Map CellId OwnedCell -> Bool
+hasArtifact = not . Map.null
 
 {- | The model's own most recent draft (R3.8): the source of the highest-id
 owned cell — the candidate seed nearest the proposer, mined as generator input

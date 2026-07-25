@@ -8,7 +8,7 @@ on PATH.
 -}
 module Test.ResourceLiveSpec (spec) where
 
-import Control.Exception (bracket_)
+import Control.Exception (bracket, bracket_)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
@@ -28,7 +28,7 @@ import Sabela.AI.Types (toolOutcomeValue)
 import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
 import Sabela.Handlers (ReactiveNotebook, setupReactive)
 import Sabela.Server (newApp)
-import Sabela.State (App (..))
+import Sabela.State (App (..), forceResetAllSessions)
 import Test.Hspec
 
 {- | Shrink the ack deadline, await budget and resource wall budget so the
@@ -116,18 +116,7 @@ spec = describe "R10(c) live runaway-cell resource diagnostic" $
         case mGhc of
             Nothing -> pendingWith "ghc not on PATH"
             Just _ -> withLiveEnv $
-                withSystemTempDirectory "sabela-resource" $ \dir -> do
-                    mgr <- newManager defaultManagerSettings
-                    localPkgs <- supportOverlay
-                    app <- newApp dir Set.empty (Just mgr) Nothing localPkgs
-                    rn <- setupReactive app
-                    let cfg =
-                            AnthropicConfig
-                                { acApiKey = ""
-                                , acModel = "placeholder"
-                                , acBaseUrl = "https://api.anthropic.com"
-                                }
-                    store <- AIStore.newAIStore cfg mgr
+                withFixture "sabela-resource" $ \(app, store, rn) -> do
                     _ <-
                         callTool app store rn "insert_cell" $
                             object ["source" .= ("sabelaWarm = (1 :: Int)" :: Text)]
@@ -166,6 +155,34 @@ spec = describe "R10(c) live runaway-cell resource diagnostic" $
                     -- R8.4 hygiene: nothing we saw carries a raw exception.
                     let rendered = T.pack (show (st0 : stAfter : done : seen))
                     T.isInfixOf "HttpExceptionRequest" rendered `shouldBe` False
+
+{- | Run the test against a fresh fixture in its own temp dir, releasing the
+kernel afterwards so a leaked GHCi cannot hold its nursery for the rest of
+the suite.
+-}
+withFixture ::
+    String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a
+withFixture label action =
+    withSystemTempDirectory label $ \dir ->
+        bracket (newFixture dir) releaseFixture action
+
+releaseFixture :: (App, AIStore.AIStore, ReactiveNotebook) -> IO ()
+releaseFixture (app, _, _) = forceResetAllSessions (appSessions app)
+
+newFixture :: FilePath -> IO (App, AIStore.AIStore, ReactiveNotebook)
+newFixture dir = do
+    mgr <- newManager defaultManagerSettings
+    localPkgs <- supportOverlay
+    app <- newApp dir Set.empty (Just mgr) Nothing localPkgs
+    rn <- setupReactive app
+    let cfg =
+            AnthropicConfig
+                { acApiKey = ""
+                , acModel = "placeholder"
+                , acBaseUrl = "https://api.anthropic.com"
+                }
+    store <- AIStore.newAIStore cfg mgr
+    pure (app, store, rn)
 
 -- | The repo's sabela-notebook dir as a local package overlay, when present.
 supportOverlay :: IO [FilePath]

@@ -8,6 +8,7 @@ module Siza.Agent.Discover (
     browseText,
     discoverGrammarMsg,
     executionSucceeded,
+    refusedSource,
     runDiscover,
     runDiscoverOutcomes,
     discoverSurfaces,
@@ -72,6 +73,21 @@ runDiscoverOutcomes mode dispatch pairs =
             && not (null (targets (c, o)))
 
 -- | Did the call's cell actually run clean (payload execution report)?
+
+{- | The source a write offered and the gate refused (G5.4). A refusal
+commits nothing, so it leaves no owned cell — without this the rejected
+candidate is forgotten and can be recommended again.
+-}
+refusedSource :: ToolCall -> ToolOutcome -> Maybe Text
+refusedSource tc out
+    | not (isOwningTool (tcName tc)) = Nothing
+    | ToolErr (Object o) <- out
+    , Just (String _) <- KM.lookup "refusal" o =
+        case toolCallSource tc of
+            src | not (T.null (T.strip src)) -> Just src
+            _ -> Nothing
+    | otherwise = Nothing
+
 executionSucceeded :: ToolOutcome -> Bool
 executionSucceeded (ToolOk (Object o)) = case KM.lookup "execution" o of
     Just (Object e) -> okField e

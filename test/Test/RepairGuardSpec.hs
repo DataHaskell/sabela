@@ -10,6 +10,7 @@ import Test.Hspec
 
 import Sabela.AI.Capabilities.Edit.HoleSearch (vacuousFit)
 import Sabela.AI.HoogleResolve (isNoiseModule)
+import Sabela.AI.ModuleResolve (isOutOfScopePackage)
 
 spec :: Spec
 spec = describe "repair correctness guards" $ do
@@ -36,4 +37,20 @@ spec = describe "repair correctness guards" $ do
             any
                 isNoiseModule
                 ["Data.List.Split", "DataFrame", "Data.Text.Metrics", "Granite.Svg"]
+                `shouldBe` False
+
+    -- G2 hard rule 2: a lexical resolution must never step outside the
+    -- notebook's scope into the compiler's OWN toolchain packages (the
+    -- `unionfind-point` regression resolved `Point` to `ghc`'s
+    -- `GHC.Data.UnionFind`).
+    describe "isOutOfScopePackage (G2 scope guard)" $ do
+        it "excludes the compiler's own toolchain packages" $
+            all
+                isOutOfScopePackage
+                ["ghc", "ghc-boot", "ghc-boot-th", "ghci", "ghc-heap", "ghc-prim"]
+                `shouldBe` True
+        it "keeps ordinary library packages, including GHC.*-namespaced ones from base" $
+            any
+                isOutOfScopePackage
+                ["base", "containers", "text", "dataframe", "sabela-notebook"]
                 `shouldBe` False

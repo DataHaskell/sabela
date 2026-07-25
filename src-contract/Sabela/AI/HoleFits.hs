@@ -15,12 +15,16 @@ format is version-sensitive, so a large unexpected diff signals the format moved
 -}
 module Sabela.AI.HoleFits (
     HoleFit (..),
+    holeFitsJson,
     parseHoleFits,
     refinementFits,
 ) where
 
+import Data.Aeson (Value, object, (.=))
 import Data.Text (Text)
 import qualified Data.Text as T
+
+import Sabela.AI.Grammar.Synth (sanitizeTypeText)
 
 {- | One hole fit. 'hfWrite' is what the model writes at the hole: a bare name
 for a plain fit, an application skeleton with typed holes for a refinement fit.
@@ -31,8 +35,31 @@ data HoleFit = HoleFit
     { hfWrite :: Text
     , hfType :: Text
     , hfRefined :: Bool
+    , hfModule :: Maybe Text
+    {- ^ Where the fit comes from, off GHC's @(imported from ‘M’)@ line.
+    Kept, not discarded with the rest of the provenance: it is what tells
+    the caller which import makes the name reachable.
+    -}
     }
     deriving (Eq, Show)
+
+{- | The bounded, sanitized rendering every caller ships to a model: at most
+@cap@ fits as @{write, type, module, refined}@, each type through the one
+'sanitizeTypeText' seam. A hole answers "what fits here"; GHC says that in an
+error blob full of instantiation and source-span clutter, and an uncapped raw
+echo both confuses the reader and floods its context.
+-}
+holeFitsJson :: Int -> Text -> [Value]
+holeFitsJson cap = map render . take cap . parseHoleFits
+  where
+    render f =
+        object
+            ( [ "write" .= sanitizeTypeText (hfWrite f)
+              , "type" .= sanitizeTypeText (hfType f)
+              , "refined" .= hfRefined f
+              ]
+                <> ["module" .= m | Just m <- [hfModule f]]
+            )
 
 -- | Plain fits then refinement skeletons; @[]@ when the blob has no fits header.
 parseHoleFits :: Text -> [HoleFit]
@@ -60,10 +87,28 @@ plainFits (l : ls)
     | isEntryStart l =
         let (cont, rest) = span isTypeContinuation ls
             sig = T.unwords (map T.strip (l : cont))
-         in maybe id (\(n, t) -> (HoleFit n t False :)) (splitNameType sig) (plainFits rest)
+            modu = importedModule (takeWhile isProvenance rest)
+         in maybe
+                id
+                (\(n, t) -> (HoleFit n t False modu :))
+                (splitNameType sig)
+                (plainFits rest)
     | otherwise = plainFits ls
   where
     isEntryStart x = "::" `T.isInfixOf` x && not (isProvenance x)
+
+{- | The module named by a fit's @(imported from ‘M’)@ line. 'Nothing' for a
+locally bound fit, whose provenance is a source span rather than a module.
+-}
+importedModule :: [Text] -> Maybe Text
+importedModule ls =
+    case [ T.takeWhile (/= '\8217') r | l <- ls, let (_, r) = breakAfter l, not (T.null r)
+         ] of
+        (m : _) | not (T.null m) -> Just m
+        _ -> Nothing
+  where
+    breakAfter l = fmap (T.drop (T.length marker)) (T.breakOn marker (T.strip l))
+    marker = "(imported from \8216" :: Text
 
 {- | Each refinement entry is the skeleton line at the fit indent; its type
 comes from the @where <name> :: <type>@ line in the block beneath it.
@@ -71,7 +116,8 @@ comes from the @where <name> :: <type>@ line in the block beneath it.
 refinementSkeletons :: [Text] -> [HoleFit]
 refinementSkeletons = map toFit . groupEntries
   where
-    toFit (skel, blk) = HoleFit (T.strip skel) (whereType blk) True
+    toFit (skel, blk) =
+        HoleFit (T.strip skel) (whereType blk) True (importedModule blk)
 
 {- | Split the section into (entry line, block beneath) pairs: an entry sits at
 the shallowest indent, its block is the more-indented lines that follow.

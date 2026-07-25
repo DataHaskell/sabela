@@ -78,6 +78,11 @@ listingCard modName raw =
 
 {- | Public-API-first order: value signatures, then type/class declarations,
 underscore-prefixed internals last; stable within each band.
+
+A type-level line must be banded BEFORE the @" :: "@ test, because @:browse@
+renders a declaration as @type Canvas :: *@ — which contains @" :: "@ and would
+otherwise rank as a value signature, spending the whole cap on declarations and
+their record continuations while the module's verbs never appear.
 -}
 rankExports :: [Text] -> [Text]
 rankExports ls = map snd (sortOn key (zip [0 :: Int ..] ls))
@@ -85,8 +90,31 @@ rankExports ls = map snd (sortOn key (zip [0 :: Int ..] ls))
     key (i, l) = (band l, i)
     band l
         | "_" `T.isPrefixOf` l = 2 :: Int
+        | isTypeLevel l = 1
         | " :: " `T.isInfixOf` l = 0
         | otherwise = 1
+
+{- | A declaration or a continuation of one: a leading declaration keyword, a
+constructor/alternative continuation, or record-brace syntax (which a value
+signature cannot contain).
+-}
+isTypeLevel :: Text -> Bool
+isTypeLevel l =
+    any (`T.isPrefixOf` l) declKeywords
+        || any (`T.isPrefixOf` l) ["=", "|", ","]
+        || T.any (`elem` ("{}" :: String)) l
+        || "," `T.isSuffixOf` l
+  where
+    declKeywords =
+        [ "type "
+        , "data "
+        , "newtype "
+        , "class "
+        , "instance "
+        , "pattern "
+        , "foreign "
+        , "infix"
+        ]
 
 {- | The suggested (module, package) of a did-you-mean line like
 @DataFrame (needs flag -package-id dataframe-0.7.0.0)@.

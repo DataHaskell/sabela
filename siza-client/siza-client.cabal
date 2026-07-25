@@ -54,6 +54,7 @@ library
                       Siza.Agent.EmitLedger
                       Siza.Agent.Chat
                       Siza.Agent.Check
+                      Siza.Agent.Check.Vet
                       Siza.Agent.CheckExtract
                       Siza.Agent.Tools
                       Siza.Agent.OutcomeDistill
@@ -83,6 +84,8 @@ library
                       Siza.Agent.Discover.Request
                       Siza.Agent.Discover.Advice
                       Siza.Agent.Discover.Candidate
+                      Siza.Agent.Discover.Facts
+                      Siza.Agent.Discover.HoleProbe
                       Siza.Agent.Discover.MissLadder
                       Siza.Agent.Discover.Closure
                       Siza.Agent.Discover.Steer
@@ -224,9 +227,11 @@ test-suite siza-client-test
                       Test.SteerLoopSpec
                       Test.WrapUpSpec
                       Test.WrapUpLoopSpec
+                      Test.WrapUpIntegritySpec
                       Test.ScaffoldChatSpec
                       Test.ToolRouteSpec
                       Test.SchemaRecoverySpec
+                      Test.InstallAffordanceSpec
                       Test.GrammarCardSpec
                       Test.LeverSurfaceSpec
                       Test.VerdictSurfaceSpec
@@ -235,6 +240,9 @@ test-suite siza-client-test
                       Test.EmitLedgerProtectSpec
                       Test.AdviceSpec
                       Test.CandidateSpec
+                      Test.HoleProbeSpec
+                      Test.ProbeFixtures
+                      Test.NudgeTemplateSpec
                       Test.CandidateRankSpec
                       Test.EscalateSpec
                       Test.RoutedUnblockSpec

@@ -74,10 +74,10 @@ missNext env interp scope answers hk =
             "The notebook imports "
                 <> m
                 <> aliasOf m
-                <> "; if "
-                <> iName interp
-                <> " is real the compiler will accept it — write the cell \
-                   \and observe; a red cell is one replace away."
+                <> ", so the compiler is the authority on what it exports: \
+                   \probe with `try` (nothing commits, and a typed hole such \
+                   \as `_ :: <goal type>` reports what fits). Do not guess a \
+                   \package for a name this module may already provide."
     aliasOf m = case [a | (a, m') <- neAliases env, m' == m] of
         (a : _) -> " (as " <> a <> ")"
         [] -> ""
@@ -104,11 +104,13 @@ missNext env interp scope answers hk =
         ns -> "Nearest held names: " <> T.intercalate ", " ns <> "."
     -- The R5.3 clean-miss pointer: with no neighbours, redirect the search to
     -- the inventory question instead of padding with substring noise.
-    inventoryLine
-        | null nearNames =
-            "For 'what is available for a topic', call discover with \
-            \mode=\"inventory\"."
-        | otherwise = ""
+    -- Always offered on a miss: the export list is the answer to "what CAN I
+    -- use here", and a name miss is the moment the model most needs it
+    -- (live_test20 searched three synonyms, saw none of the 227 exports, and
+    -- guessed a package instead).
+    inventoryLine =
+        "For 'what is available for a topic', call discover with \
+        \mode=\"inventory\" and no query."
 
 -- | Up to three environment names within edit distance 2 (R5.1).
 nearestNames :: NotebookEnv -> Text -> [Text]

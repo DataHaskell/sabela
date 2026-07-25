@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | R8-T3: escalation in kind (search-api.md 8.1/8.3) — a refusing scripted
-caller through the REAL 'runEpisodeSeeded' sees facts, then the typed-hole
-candidate, then the candidate-carrying close; R5.7 sweep and R9.8 grid too.
+caller through the REAL 'runEpisodeSeeded' sees facts, then the candidate,
+then the candidate-carrying close; R5.7 sweep and R9.8 grid too. G3: the
+candidate's genuine gap is filled from a harness hole probe, never holed.
 -}
 module Test.EscalateSpec (escalateSpec) where
 
@@ -28,6 +29,7 @@ import Siza.Agent.Loop (
 import Siza.Agent.Loop.Support (nudgeFloor, nudgeK)
 import Siza.Agent.Loop.WrapUp (escalationK, missRungFloor)
 import Test.DiscoverFixtures (textField)
+import Test.ProbeFixtures (scriptedTryOutcome)
 
 barsSig :: Text
 barsSig = "[(Text, Double)] -> Plot -> Text"
@@ -53,9 +55,16 @@ foundEnvelope =
                ]
         ]
 
--- | The typed-hole candidate marker (nothing else emits a hole binder).
+{- | The synthesised candidate's application line: @bars@'s tuple-list
+literal plus the @Plot@ producer the harness hole probe established. Nothing
+else in the loop emits this shape.
+-}
 candidateMark :: Text
-candidateMark = "(_ :: "
+candidateMark = "bars [(\"\", 0.0)] defaultPlot"
+
+-- | The scripted @try@ backend both callers share: @Plot@ has one producer.
+tryOutcome :: Value -> Value
+tryOutcome = scriptedTryOutcome [("Plot", ["defaultPlot"])]
 
 -- | The harness-injected user-role messages (where nudges live).
 userMsgs :: AgentRun -> [Value]
@@ -98,6 +107,7 @@ runRefusing =
             }
     dispatch tc = case tcName tc of
         "discover" -> pure (Right (ToolOk foundEnvelope))
+        "try" -> pure (Right (ToolOk (tryOutcome (tcArgs tc))))
         "list_cells" ->
             pure (Right (ToolOk (object ["cells" .= ([] :: [Value])])))
         _ -> pure (Right (ToolOk (object [])))
@@ -138,6 +148,7 @@ runDrafting maxT = do
             }
     dispatch tc = case tcName tc of
         "discover" -> pure (Right (ToolOk foundEnvelope))
+        "try" -> pure (Right (ToolOk (tryOutcome (tcArgs tc))))
         "insert_cell" ->
             pure . Right . ToolOk $
                 object
@@ -170,7 +181,7 @@ escalateSpec = describe "escalation in kind (R8-T3)" $ do
         -- insert. With a held draft this must be the draft, never a synthesis.
         let isWriteNudge c =
                 "insert_cell" `T.isInfixOf` c
-                    && "verbatim" `T.isInfixOf` c
+                    && "proposal" `T.isInfixOf` c
                     && not (isNudge1 c)
         it "the rung-2 nudge carries the model's own draft, not a synthesis" $ do
             run <- runDrafting 14
@@ -202,10 +213,10 @@ escalateSpec = describe "escalation in kind (R8-T3)" $ do
             head n1 `shouldSatisfy` (< head n2)
             -- nudge 1 already argues from the held facts
             contents !! head n1 `shouldSatisfy` T.isInfixOf "`bars`"
-            -- nudge 2's candidate fills the tuple-list literal and holes the
-            -- genuine Plot gap (R3.10 literal-fill)
-            contents !! head n2
-                `shouldSatisfy` T.isInfixOf "bars [(\"\", 0.0)] (_ :: Plot)"
+            -- nudge 2's candidate fills the tuple-list literal and closes
+            -- the genuine Plot gap from the harness probe (R3.10 / G3)
+            contents !! head n2 `shouldSatisfy` T.isInfixOf candidateMark
+            contents !! head n2 `shouldSatisfy` (not . T.isInfixOf "_ ::")
             contents !! head n2 `shouldSatisfy` T.isInfixOf "import Granite.Svg"
         it "the closed cluster answers with the candidate in the envelope" $ do
             run <- runRefusing 12
@@ -216,7 +227,9 @@ escalateSpec = describe "escalation in kind (R8-T3)" $ do
                     , "discovery closed" `T.isInfixOf` c
                     ]
             closes `shouldSatisfy` (not . null)
-            closes `shouldSatisfy` any (T.isInfixOf candidateMark)
+            -- the close serialises its envelope, so match a quote-free
+            -- fragment of the same application line
+            closes `shouldSatisfy` any (T.isInfixOf "] defaultPlot")
         it "no byte-identical nudge is ever emitted twice" $ do
             run <- runRefusing 12
             let nudges =
@@ -233,7 +246,7 @@ escalateSpec = describe "escalation in kind (R8-T3)" $ do
         -- its own block for this to hold, which is exactly the wiring fix.
         it "the candidate stub is injected verbatim at most once" $ do
             run <- runRefusing 12
-            let stub = "bars [(\"\", 0.0)] (_ :: Plot)"
+            let stub = candidateMark
                 verbatim =
                     length
                         [ ()

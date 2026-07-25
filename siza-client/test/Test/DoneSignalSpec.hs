@@ -23,7 +23,7 @@ import Siza.Agent.Loop (
     GrammarMode (..),
     runEpisodeSeeded,
  )
-import Siza.Agent.Messages (doneSignal)
+import Siza.Agent.Messages (doneSignal, noCheckSignal)
 import Test.DiscoverFixtures (textField)
 
 cleanWrite :: Value
@@ -118,6 +118,22 @@ doneSignalSpec = describe "deliverable-green done-signal (R5.5/R5.7/R9.8)" $ do
         run <- runScript [[write], [readOnly], [readOnly]] (CheckPassed, Nothing)
         arStopped run `shouldBe` "done"
         length (signalMsgs run) `shouldBe` 1
+
+    -- live_test19 §39: the check did not compile, the CLI said so, and the
+    -- verify channel still told the model "the covering check passes". A
+    -- deliverable with no applicable check finishes on its artifact, and the
+    -- signal must not claim a check it never ran.
+    it "never claims a passing check when none applied" $ do
+        run <- runScript [[write], [readOnly], [readOnly]] (CheckNotApplicable, Nothing)
+        arStopped run `shouldBe` "done"
+        signalMsgs run `shouldBe` []
+
+    it "discloses the no-check state instead of nagging a landed deliverable" $ do
+        run <- runScript [[write], [readOnly], [readOnly]] (CheckNotApplicable, Nothing)
+        arStopped run `shouldNotBe` "stuck"
+        arTranscript run
+            `shouldSatisfy` any
+                (T.isInfixOf noCheckSignal . textField "content")
 
     it "fires only AFTER the write's outcome is in the transcript" $ do
         run <- runScript [[write], [readOnly], [readOnly]] (CheckPassed, Nothing)

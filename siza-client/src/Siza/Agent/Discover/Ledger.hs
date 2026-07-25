@@ -20,6 +20,9 @@ module Siza.Agent.Discover.Ledger (
     discoverFresh,
     discoverRepeat,
     ledgerPressure,
+    ledgerProbe,
+    ledgerRefute,
+    normaliseSource,
     ledgerResolve,
     ledgerSeed,
     ledgerWorldChanged,
@@ -39,7 +42,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Siza.Agent.Discover.Closure (worldNote)
-import Siza.Agent.Discover.Types (InstallState, installText)
+import Siza.Agent.Discover.Facts (foldFacts, installFactKey)
 
 -- | Per-session search memory; see module haddock for placement rationale.
 data SearchLedger = SearchLedger
@@ -51,6 +54,10 @@ data SearchLedger = SearchLedger
     -- ^ Asserted cluster -> (call, summary); denials of these are blocked (R1.4).
     , slSeeded :: Set Text
     -- ^ Turn-0 environment facts (imports, builtins) — deniable by nothing.
+    , slRefuted :: Set Text
+    {- ^ Candidate sources the gate or compiler already rejected (G5.4): a
+    nudge may never recommend one of these again.
+    -}
     , slResolved :: Set Text
     {- ^ Compiler-proven names (clean check_type, landed compile) — cancel
     lexical not_found in every mode/filter until the world changes (3.3).
@@ -87,6 +94,7 @@ emptyLedger :: SearchLedger
 emptyLedger =
     SearchLedger
         { slSeen = Map.empty
+        , slRefuted = Set.empty
         , slAnswers = Map.empty
         , slAsserted = Map.empty
         , slSeeded = Set.empty
@@ -141,6 +149,15 @@ ledgerResolve :: [Text] -> SearchLedger -> SearchLedger
 ledgerResolve ns led =
     led{slResolved = Set.union (Set.fromList (map T.toLower ns)) (slResolved led)}
 
+-- | Retire a candidate by evidence (G5.4): the compiler outranks the ledger.
+ledgerRefute :: Text -> SearchLedger -> SearchLedger
+ledgerRefute src led =
+    led{slRefuted = Set.insert (normaliseSource src) (slRefuted led)}
+
+-- | Whitespace-insensitive identity, so a re-indented repeat still matches.
+normaliseSource :: Text -> Text
+normaliseSource = T.unwords . T.words
+
 -- | Miss-ladder floor (R5.6); 'Siza.Agent.Loop.WrapUp.missRungFloor' sets it.
 ledgerPressure :: Int -> SearchLedger -> SearchLedger
 ledgerPressure n led = led{slRungFloor = max 1 n}
@@ -159,19 +176,11 @@ the change is never silent. Non-install facts and the turn-0 seed survive;
 held-hit evidence resets with the install states it carries.
 -}
 
-{- | The package of an install-state fact (@"pkg (state): …"@ as
-'Siza.Agent.Discover.Advice.harvestFacts' shapes them); 'Nothing' for any
-other held fact. The world-change wipe keys its fact reset on it.
+{- | Fold harness-probed facts (G3: hole-probe conclusions) into the held
+list, through the same bounded fold every harvested fact takes.
 -}
-installFactKey :: Text -> Maybe Text
-installFactKey f = case T.words f of
-    (p : st : _)
-        | "(" `T.isPrefixOf` st
-        , T.dropAround (`elem` ("():" :: String)) st `elem` states ->
-            Just p
-    _ -> Nothing
-  where
-    states = map installText [minBound .. maxBound :: InstallState]
+ledgerProbe :: [Text] -> SearchLedger -> SearchLedger
+ledgerProbe fs led = led{slFacts = foldFacts fs (slFacts led)}
 
 ledgerWorldChanged :: SearchLedger -> SearchLedger
 ledgerWorldChanged led =

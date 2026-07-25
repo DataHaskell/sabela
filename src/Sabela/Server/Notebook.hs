@@ -34,6 +34,7 @@ module Sabela.Server.Notebook (
     langTag,
 ) where
 
+import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (modifyMVar)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
@@ -60,6 +61,7 @@ import Sabela.Handlers (
     killSessionAsync,
     updateCellSource,
  )
+import Sabela.Handlers.Plan (executeFullRestart)
 import Sabela.Handlers.Shared (bumpGeneration)
 import Sabela.Model
 import Sabela.Output (parseMimeOutputs)
@@ -279,10 +281,16 @@ insertCellH app (InsertCell at typ lang src) = liftIO $ do
     broadcastNotebook app
     pure cell
 
+{- | Delete a cell and rebuild the live session from what remains: GHCi has
+no partial-unbind primitive, so a stale binding/import/declaration would
+otherwise stay resident (the 'executeFullRestart' path other structural changes use).
+-}
 deleteCellH :: App -> Int -> Handler Notebook
 deleteCellH app cid = liftIO $ do
     nb' <- modifyMVar (nsNotebook (appNotebook app)) $ \nb -> do
         let !nb'' = nb{nbCells = filter (\c -> cellId c /= cid) (nbCells nb)}
         pure (nb'', nb'')
     broadcastNotebook app
+    gen <- bumpGeneration app
+    void $ forkIO $ executeFullRestart app gen
     pure nb'

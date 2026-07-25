@@ -1,23 +1,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Cell-source normalization for AI inserts: detect Haskell mis-typed as a
-prose cell, and unwrap a top-level @main@ to bare top-level code so it runs. The
-mutation chokepoint ('Sabela.AI.Capabilities.Edit') applies 'normalizeInsert'
-and reports a note for each correction; the parsing itself reuses
-"Sabela.Parse".
+{- | THE single normalizer every candidate-source-accepting path shares
+(G7, docs/discover/implementation-plan.md): detect Haskell mis-typed as a
+prose cell, desugar a top-level @let@, rename a reserved-word binding, fold a
+misspelled @-- cabal:@ key, sanitize weak-model JSON-transport artifacts, and
+unwrap a top-level @main@ to bare top-level code so it runs.
+'Sabela.AI.NormalizeGate' vets the whole composition with the one acceptance
+law before any tool path — insert, replace, propose, or try — keeps it.
 -}
 module Sabela.Parse.Normalize (
     looksLikeHaskellCode,
     unwrapMain,
     rewriteTopLevelLet,
+    fixRawNewlineInString,
+    fixSpuriousUnicodeEscapes,
+    sanitizeTransport,
     normalizeCode,
     normalizeInsert,
 ) where
 
-import Data.Char (isLower)
+import Data.Char (chr, isHexDigit, isLower)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
+import Numeric (readHex)
 
 import Sabela.AI.NormalizeProposals (
     foldCabalComments,
@@ -120,19 +126,75 @@ rewriteTopLevelLet src = T.intercalate "\n" (go (T.lines src)) <> trailing
     contAt bcol l =
         not (T.null (T.strip l)) && T.length (T.takeWhile (== ' ') l) >= bcol
 
-{- | The code-cell generator composition, one note per fix: cabal-comment
-fold, top-level @let@ rewrite, keyword-binding rename, @main@ unwrap. The
-UNGATED candidate — 'Sabela.AI.NormalizeGate' vets it before it is kept.
+{- | A raw newline landing inside an unterminated string literal — the
+weak-model JSON-transport artifact behind live_test5's GHC-21231 lexical
+errors — rewritten to the escaped @\n@ GHC actually accepts. Line comments
+are skipped so a @--@ before a stray quote cannot mis-toggle string state; a
+source with no such literal is preserved byte-identically.
+-}
+fixRawNewlineInString :: Text -> Text
+fixRawNewlineInString src = T.pack (outside (T.unpack src))
+  where
+    outside [] = []
+    outside ('-' : '-' : rest) =
+        let (body, rest') = break (== '\n') rest
+         in '-' : '-' : body ++ outside rest'
+    outside (c@'"' : rest) = c : inside rest
+    outside (c : rest) = c : outside rest
+    inside [] = []
+    inside ('\\' : c : rest) = '\\' : c : inside rest
+    inside ('"' : rest) = '"' : outside rest
+    inside ('\n' : rest) = '\\' : 'n' : inside rest
+    inside (c : rest) = c : inside rest
+
+{- | Spurious JSON\/JS-style @\uXXXX@ escapes — not valid Haskell string
+syntax, and the second live_test5 lexical-error class — rewritten to the
+character they denote, so GHC lexes the source the model meant rather than
+an escape it invented. A source with none is preserved byte-identically.
+-}
+fixSpuriousUnicodeEscapes :: Text -> Text
+fixSpuriousUnicodeEscapes src = T.pack (go (T.unpack src))
+  where
+    go [] = []
+    go ('\\' : 'u' : rest)
+        | (hex, rest') <- splitAt 4 rest
+        , length hex == 4
+        , all isHexDigit hex
+        , [(n, "")] <- readHex hex =
+            chr n : go rest'
+    go (c : rest) = c : go rest
+
+{- | Both transport rewrites, one note per fix that actually changed the
+source — the generator 'normalizeCode' runs first so downstream generators
+see clean lexical input.
+-}
+sanitizeTransport :: Text -> (Text, [Text])
+sanitizeTransport src = (afterUnicode, notes)
+  where
+    afterNewline = fixRawNewlineInString src
+    afterUnicode = fixSpuriousUnicodeEscapes afterNewline
+    notes =
+        [newlineMsg | afterNewline /= src]
+            <> [unicodeMsg | afterUnicode /= afterNewline]
+    newlineMsg = "Escaped a raw newline found inside a string literal."
+    unicodeMsg = "Rewrote a spurious `\\uXXXX` escape to the character it denotes."
+
+{- | The code-cell generator composition, one note per fix: transport
+sanitization, cabal-comment fold, top-level @let@ rewrite, keyword-binding
+rename, @main@ unwrap. The UNGATED candidate — 'Sabela.AI.NormalizeGate'
+vets it before it is kept.
 -}
 normalizeCode :: Text -> (Text, [Text])
 normalizeCode src = (unMained, notes)
   where
-    (deCabal, cabalNotes) = foldCabalComments src
+    (deTransport, transportNotes) = sanitizeTransport src
+    (deCabal, cabalNotes) = foldCabalComments deTransport
     deLet = rewriteTopLevelLet deCabal
     (renamed, renameNotes) = renameKeywordBindings deLet
     unMained = unwrapMain renamed
     notes =
-        cabalNotes
+        transportNotes
+            <> cabalNotes
             <> [letMsg | deLet /= deCabal]
             <> renameNotes
             <> [mainMsg | unMained /= renamed]

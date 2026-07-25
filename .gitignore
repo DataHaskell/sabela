@@ -39,3 +39,6 @@ sabela-hub/dist-newstyle/
 # Neuro-symbolic eval runs (bench summaries + episode transcripts) kept for
 # investigation; large and machine-generated, never committed.
 eval-runs/
+
+__pycache__/
+*.pyc

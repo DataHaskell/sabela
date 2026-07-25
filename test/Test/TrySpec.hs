@@ -92,6 +92,164 @@ spec = describe "unified try operation" $ do
                         afterNotebook `shouldBe` beforeNotebook
                         afterDirs `shouldBe` beforeDirs
 
+    it
+        "live_test4 regression: a red prefix cell is skipped so the candidate is reached and succeeds"
+        $ do
+            cabal <- findExecutable "cabal"
+            case cabal of
+                Nothing -> pendingWith "cabal not found on PATH"
+                Just _ ->
+                    withSystemTempDirectory "sabela-try-skip" $ \dir -> do
+                        overlay <- supportOverlay
+                        app <- newApp dir Set.empty Nothing Nothing overlay
+                        let greenCell = codeCell 1 "baseline = (100 :: Int)"
+                            -- The live_test4 cell 4: a genuinely-red cell whose
+                            -- Point-kind error must not become the candidate's.
+                            redCell =
+                                (codeCell 4 "import Sabela.Notebook\nline (_ :: Point) (_ :: Point)")
+                                    { cellError =
+                                        Just
+                                            "cell 4, line 4: Expecting two more arguments to `Point'\n\
+                                            \Expected a type, but `Point' has kind `Type -> Type -> Type'"
+                                    }
+                            notebook = Notebook "sine.md" [greenCell, redCell]
+                        modifyNotebook (appNotebook app) (const notebook)
+
+                        outcome <-
+                            bounded
+                                ( execTry
+                                    app
+                                    ( object
+                                        [ "code"
+                                            .= ( "baseline + length (map (sin . fromIntegral) [1 .. 10 :: Int])" ::
+                                                    Text
+                                               )
+                                        ]
+                                    )
+                                )
+                        let v = toolOutcomeValue outcome
+                        toolOutcomeIsError outcome `shouldBe` False
+                        textField "route" v `shouldBe` Just "disposable_scratch"
+                        textField "outcome" v `shouldBe` Just "ok"
+                        textField "stdout" v `shouldBe` Just "110"
+                        intArrayField "replayedCells" v `shouldBe` [1]
+                        skippedCellIds v `shouldBe` [4]
+
+    it "runs an IO candidate on the disposable route instead of refusing it" $ do
+        cabal <- findExecutable "cabal"
+        case cabal of
+            Nothing -> pendingWith "cabal not found on PATH"
+            Just _ ->
+                withSystemTempDirectory "sabela-try-io" $ \dir -> do
+                    overlay <- supportOverlay
+                    app <- newApp dir Set.empty Nothing Nothing overlay
+                    before <- readNotebook (appNotebook app)
+                    outcome <-
+                        bounded
+                            ( execTry
+                                app
+                                (object ["code" .= ("putStrLn \"sabela-io-ran\"" :: Text)])
+                            )
+                    let v = toolOutcomeValue outcome
+                    toolOutcomeIsError outcome `shouldBe` False
+                    textField "route" v `shouldBe` Just "disposable_scratch"
+                    textField "outcome" v `shouldBe` Just "ok"
+                    textField "stdout" v
+                        `shouldSatisfy` maybe False (T.isInfixOf "sabela-io-ran")
+                    readNotebook (appNotebook app) `shouldReturn` before
+
+    it "reports a display builtin as a runnable trial, not an unavailable one" $ do
+        cabal <- findExecutable "cabal"
+        case cabal of
+            Nothing -> pendingWith "cabal not found on PATH"
+            Just _ ->
+                withSystemTempDirectory "sabela-try-display" $ \dir -> do
+                    overlay <- supportOverlay
+                    app <- newApp dir Set.empty Nothing Nothing overlay
+                    outcome <-
+                        bounded
+                            ( execTry
+                                app
+                                (object ["code" .= ("displaySvg \"<svg/>\"" :: Text)])
+                            )
+                    let v = toolOutcomeValue outcome
+                    textField "route" v `shouldBe` Just "disposable_scratch"
+                    textField "outcome" v `shouldSatisfy` (/= Just "unavailable")
+
+    it "autofixes a hidden-package import in the scratchpad, mechanically" $ do
+        cabal <- findExecutable "cabal"
+        case cabal of
+            Nothing -> pendingWith "cabal not found on PATH"
+            Just _ ->
+                withSystemTempDirectory "sabela-try-hidden" $ \dir -> do
+                    overlay <- supportOverlay
+                    app <- newApp dir Set.empty Nothing Nothing overlay
+                    outcome <-
+                        bounded (execTry app (object ["code" .= sineHiddenText]))
+                    let v = toolOutcomeValue outcome
+                    textField "stderr" v
+                        `shouldSatisfy` maybe True (not . T.isInfixOf "hidden package")
+                    -- R7.1: a machine rewrite must hand back committable
+                    -- source, or the gate rejects what the trial accepted.
+                    let autofix = textField "autofix" v
+                    autofix
+                        `shouldSatisfy` maybe
+                            False
+                            (T.isInfixOf "-- cabal: build-depends: text")
+                    autofix
+                        `shouldSatisfy` maybe False (T.isInfixOf "sineWaveSvg")
+
+    it "strips `main` mechanically instead of refusing the candidate" $ do
+        cabal <- findExecutable "cabal"
+        case cabal of
+            Nothing -> pendingWith "cabal not found on PATH"
+            Just _ ->
+                withSystemTempDirectory "sabela-try-main" $ \dir -> do
+                    overlay <- supportOverlay
+                    app <- newApp dir Set.empty Nothing Nothing overlay
+                    outcome <-
+                        bounded
+                            ( execTry
+                                app
+                                (object ["code" .= ("main = putStrLn \"from-main\"" :: Text)])
+                            )
+                    let v = toolOutcomeValue outcome
+                    textField "normalized" v
+                        `shouldSatisfy` maybe False (T.isInfixOf "main")
+                    textField "outcome" v `shouldBe` Just "ok"
+                    textField "stdout" v
+                        `shouldSatisfy` maybe False (T.isInfixOf "from-main")
+
+{- | The live_test6 turn-3 candidate verbatim: a hidden-package import and a
+@main@ binding in one payload, both mechanically fixable. The model spent the
+whole episode on it and never got a compile.
+-}
+sineHiddenText :: Text
+sineHiddenText =
+    T.unlines
+        [ "import Data.Text (Text)"
+        , "import qualified Data.Text as T"
+        , "import Data.List (intercalate)"
+        , ""
+        , "sineWaveSvg :: Text"
+        , "sineWaveSvg ="
+        , "  let width = 400"
+        , "      height = 200"
+        , "      nPoints = 1000"
+        , "      xs = [fromIntegral i / fromIntegral nPoints | i <- [0..nPoints]]"
+        , "      points = [(x, sin (2*pi*x)) | x <- xs]"
+        , "      scaled = map (\\(x,y) -> (x * fromIntegral width, \
+          \(1 - y)/2 * fromIntegral height)) points"
+        , "      pathData = intercalate \" L\" $ \
+          \map (\\(x,y)-> show x ++ \",\" ++ show y) scaled"
+        , "  in T.pack $ \"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" \
+          \viewBox=\\\"0 0 \"++show width++\" \"++show height++\"\\\">\
+          \<path d=\\\"M\"++pathData++\"\\\" stroke=\\\"black\\\" \
+          \fill=\\\"none\\\"/></svg>\""
+        , ""
+        , "main = putStrLn (T.unpack sineWaveSvg)"
+        ]
+
 bounded :: IO a -> IO a
 bounded action = do
     result <- timeout 180_000_000 action
@@ -126,5 +284,15 @@ intArrayField key value = case field key value of
     Just (Array values) ->
         [ round n
         | Number n <- foldr (:) [] values
+        ]
+    _ -> []
+
+-- | The cell ids inside the @skippedCells@ array of @{cellId, reason}@ objects.
+skippedCellIds :: Value -> [Int]
+skippedCellIds value = case field "skippedCells" value of
+    Just (Array values) ->
+        [ round n
+        | entry <- foldr (:) [] values
+        , Just (Number n) <- [field "cellId" entry]
         ]
     _ -> []

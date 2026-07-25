@@ -1,0 +1,31 @@
+# Ratcheted pins (experiment-log.md; never loosened). Columns are TAB-set:
+# task	arm	max_bytes	max_discover	max_disc_bw	max_facts_held	max_disc_after_goal
+# ("-" = no pin yet). barChart's R5.9 pin is discover-before-first-write
+# (disc_bw), not total. max_facts_held (R8-T4): discover calls after the
+# ledger held a call-ready fact and before the first write, <=2 per arm.
+# max_disc_after_goal (R9-T5): discover calls after the first clean
+# deliverable write (goal satisfied), <=2 per arm.
+jsonSum	off	5000	0	-	2	2
+jsonSum	on	5000	0	-	2	2
+symbolicRegression	off	27000	0	-	2	2
+symbolicRegression	on	27000	0	-	2	2
+barChart	off	25000	-	4	2	2
+barChart	on	25000	-	4	2	2
+revenuePipeline	off	23000	11	-	2	2
+revenuePipeline	on	23000	11	-	2	2
+revenueTotal	off	8665	1	-	2	2
+revenueTotal	on	19000	6	-	2	2
+topMonth	off	16601	1	-	2	2
+topMonth	on	23295	5	-	2	2
+dateDays	off	6365	0	-	2	2
+dateDays	on	6363	0	-	2	2
+revenueChart	off	18868	4	-	2	2
+revenueChart	on	18866	4	-	2	2
+topMonthOut	off	42588	6	-	2	2
+topMonthOut	on	42586	6	-	2	2
+loadInspect	off	16217	1	-	2	2
+loadInspect	on	16215	1	-	2	2
+nycTaxiStats	off	23856	9	-	2	2
+nycTaxiStats	on	23854	9	-	2	2
+movieLensClassify	off	26499	9	-	2	2
+movieLensClassify	on	26497	9	-	2	2

@@ -20,7 +20,9 @@ import Sabela.Session.Timeout (
     tcBuildUs,
     tcExecutionUs,
     tcResyncUs,
+    tcTryBuildUs,
     timedOutMessage,
+    tryBuildTimedOutMessage,
  )
 import Test.Hspec (
     Spec,
@@ -106,6 +108,8 @@ spec = do
             tcResyncUs defaultTimeoutConfig `shouldBe` 5_000_000
         it "bounds the off-lock build phase at 900s" $
             tcBuildUs defaultTimeoutConfig `shouldBe` 900_000_000
+        it "bounds the disposable try build phase at 120s, tighter than tcBuildUs" $
+            tcTryBuildUs defaultTimeoutConfig `shouldBe` 120_000_000
 
     describe "buildTimedOutMessage" $ do
         it "reports the configured build budget and how to raise it" $
@@ -114,3 +118,19 @@ spec = do
                            \out after 300 seconds; the kernel was reset. Check \
                            \the dependencies compile, or raise \
                            \SABELA_BUILD_TIMEOUT_SECONDS ***"
+
+    describe "tryBuildTimedOutMessage" $ do
+        it "names the heavy dependencies and the commit-deliberately alternative" $
+            tryBuildTimedOutMessage ["hasktorch"] 120_000_000
+                `shouldBe` "\n*** try build timed out after 120 seconds building \
+                           \hasktorch; this looks like a heavy dependency for a \
+                           \disposable trial. Commit it deliberately with a \
+                           \`-- cabal:` line in a real cell instead of retrying \
+                           \try ***"
+        it "falls back to generic wording when no dependency names are known" $
+            tryBuildTimedOutMessage [] 60_000_000
+                `shouldBe` "\n*** try build timed out after 60 seconds building \
+                           \the requested dependencies; this looks like a heavy \
+                           \dependency for a disposable trial. Commit it \
+                           \deliberately with a `-- cabal:` line in a real cell \
+                           \instead of retrying try ***"

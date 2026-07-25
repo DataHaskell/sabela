@@ -9,7 +9,7 @@ module Test.DepRepairSpec (spec) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.DepRepair (addBuildDepend, depFromResult)
+import Sabela.AI.DepRepair (addBuildDepend, depFromResult, newDependencies)
 import Sabela.AI.Types (ExecutionResult (..))
 import Test.Hspec
 
@@ -65,3 +65,25 @@ spec = describe "Sabela.AI.DepRepair" $ do
 
         it "is Nothing for an abort (Left)" $
             depFromResult (Left "Cancelled") `shouldBe` Nothing
+
+    -- G2 hard rule 1: the caller uses this to detect a dependency-ADD, so it
+    -- can downgrade the rewrite to a disclosed suggestion instead of applying
+    -- it automatically.
+    describe "newDependencies (G2's dependency-add detector)" $ do
+        it "is empty when the candidate declares nothing new" $
+            newDependencies
+                "-- cabal: build-depends: dataframe\nimport X"
+                "-- cabal: build-depends: dataframe\nimport X\ny = 1"
+                `shouldBe` []
+        it "names the one package a candidate adds" $
+            newDependencies
+                "import X"
+                "-- cabal: build-depends: http-conduit\nimport X"
+                `shouldBe` ["http-conduit"]
+        it "is empty when neither source declares a dependency" $
+            newDependencies "x = 1" "x = 2" `shouldBe` []
+        it "names only the packages priorSrc did not already have" $
+            newDependencies
+                "-- cabal: build-depends: dataframe\nimport X"
+                "-- cabal: build-depends: dataframe, vector\nimport X"
+                `shouldBe` ["vector"]

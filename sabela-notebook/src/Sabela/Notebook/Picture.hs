@@ -4,7 +4,7 @@ Description : Build pictures by snapping simple shapes together.
 
 A __picture__ is a drawing made of simple shapes — circles, rectangles, lines,
 text — that you combine, colour, and move around. Building a picture never draws
-anything; it just /describes/ a drawing. You see it with 'picture'.
+anything; it just /describes/ a drawing. You see it with 'displayPicture'.
 
 = The two ideas
 
@@ -15,32 +15,33 @@ anything; it just /describes/ a drawing. You see it with 'picture'.
 
 = A first picture
 
->>> picture (fill red (circle (150, 150) 60))      -- a red circle, shown in the cell
+>>> displayPicture (fill red (circle (150, 150) 60))      -- a red circle, shown in the cell
 
 Stack shapes with @'<>'@ (later ones draw on top):
 
->>> picture (fill blue (rectangle (50,50) 200 100) <> fill white (circle (150,100) 30))
+>>> displayPicture (fill blue (rectangle (50,50) 200 100) <> fill white (circle (150,100) 30))
 
 Move a shape without changing how it was built:
 
->>> picture (translate (100, 0) (fill green (circle (60, 60) 40)))
+>>> displayPicture (translate (100, 0) (fill green (circle (60, 60) 40)))
 
 = Colours
 
 Use a named colour ('red', 'green', 'blue', 'black', 'white', …) or mix your own
 with 'rgb'.
 
->>> picture (fill (rgb 255 140 0) (circle (150,150) 70))   -- orange
+>>> displayPicture (fill (rgb 255 140 0) (circle (150,150) 70))   -- orange
 
 = Coordinates
 
 The canvas is like a sheet of graph paper. @(0, 0)@ is the __top-left__ corner;
 @x@ grows to the right and @y@ grows __downward__ (the usual computer-screen
-convention). The default canvas is 300×300; use 'pictureOn' for a different size.
+convention). The default canvas is 300×300; use 'displayPictureOn' for a different size.
 -}
 module Sabela.Notebook.Picture (
     -- * The picture type
     Picture,
+    Point,
 
     -- * Shapes
     circle,
@@ -78,13 +79,14 @@ module Sabela.Notebook.Picture (
     group,
 
     -- * Charts (handy for data streams)
+    plot,
     lineChart,
 
     -- * Showing a picture
     Canvas (..),
     defaultCanvas,
-    picture,
-    pictureOn,
+    displayPicture,
+    displayPictureOn,
     renderSvg,
     svgBody,
 
@@ -162,7 +164,7 @@ yellow = Color "gold"
 {- | Fill a picture with a colour. If you fill an already-filled picture, the
 __inner__ fill wins — so you can set an overall colour and override parts of it.
 
->>> picture (fill blue (circle (80,150) 40 <> fill red (circle (220,150) 40)))
+>>> displayPicture (fill blue (circle (80,150) 40 <> fill red (circle (220,150) 40)))
 -- left circle blue, right circle red
 -}
 fill :: Color -> Picture -> Picture
@@ -217,19 +219,27 @@ lineChart (Canvas w h) pts
     scaled = [(sx x, sy y) | (x, y) <- pts]
     axes = line (m, m) (m, h - m) <> line (m, h - m) (w - m, h - m)
 
--- | The default 300×300 canvas used by 'picture'.
+{- | Plot @(x, y)@ points on the default canvas: 'lineChart' without the canvas
+argument, as 'displayPicture' is to 'displayPictureOn'.
+
+>>> displayPicture (plot [(x, sin x) | x <- [0,0.1..2*pi]])
+-}
+plot :: [(Double, Double)] -> Picture
+plot = lineChart defaultCanvas
+
+-- | The default 300×300 canvas used by 'displayPicture'.
 defaultCanvas :: Canvas
 defaultCanvas = Canvas 300 300
 
 {- | Show a picture in the notebook on the default 300×300 canvas.
 
->>> picture (fill red (circle (150,150) 80))
+>>> displayPicture (fill red (circle (150,150) 80))
 -}
-picture :: Picture -> IO ()
-picture = pictureOn defaultCanvas
+displayPicture :: Picture -> IO ()
+displayPicture = displayPictureOn defaultCanvas
 
 -- | Show a picture on a canvas of your chosen size.
-pictureOn :: Canvas -> Picture -> IO ()
-pictureOn cv p = do
+displayPictureOn :: Canvas -> Picture -> IO ()
+displayPictureOn cv p = do
     putStrLn "<!-- MIME:image/svg+xml -->"
     putStrLn (unSvg (renderSvg cv p))

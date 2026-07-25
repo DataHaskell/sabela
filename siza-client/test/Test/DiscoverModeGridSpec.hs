@@ -103,12 +103,27 @@ discoverModeGridSpec =
                         stateOf v `shouldBe` "found"
 
             it
-                "an imported-package miss answers write-and-observe first (section 8, round 7)"
+                "an imported-package miss answers try-and-observe first (section 8, round 7)"
                 $ do
                     v <- runCatArgs "Z.gustNope" (object [])
                     stateOf v `shouldBe` "not_found"
                     T.toLower (textField "next" v)
-                        `shouldSatisfy` ("write the cell" `T.isInfixOf`)
+                        `shouldSatisfy` ("try" `T.isInfixOf`)
+
+            -- live_test20: told "if `pictures` is real the compiler will accept
+            -- it — write the cell and observe; a red cell is one replace away",
+            -- the model wrote speculative cells and then guessed a package.
+            -- G1 makes a red cell unreachable, so the advice was also false.
+            it "never steers a miss at a speculative cell write" $ do
+                v <- runCatArgs "Z.gustNope" (object [])
+                let next = T.toLower (textField "next" v)
+                next `shouldNotSatisfy` ("write the cell" `T.isInfixOf`)
+                next `shouldNotSatisfy` ("red cell" `T.isInfixOf`)
+
+            it "points a miss at the inventory that would list what IS there" $ do
+                v <- runCatArgs "Z.gustNope" (object [])
+                T.toLower (textField "next" v)
+                    `shouldSatisfy` ("inventory" `T.isInfixOf`)
 
 {- | The dataframe-shaped synthetic package (structure only, no bench library
 names): a defining module, a re-exporting module, and a constrained typed twin

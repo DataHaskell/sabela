@@ -83,11 +83,11 @@ spec = describe "one acceptance law over every rewrite (section 9.3)" $ do
             normalizeInsert CodeCell danglingIn
                 `shouldSatisfy` \(_, cand, _) -> cand /= danglingIn
         it "the replace-path rewrite is gated identically" $
-            gatedRewrite danglingIn `shouldBe` danglingIn
+            fst (gatedRewrite danglingIn) `shouldBe` danglingIn
         it "a well-formed let rewrite is still kept on both paths" $ do
             let (_, src', _) = gatedNormalizeInsert CodeCell "let xs = [1,2,3]"
             src' `shouldBe` "xs = [1,2,3]"
-            gatedRewrite "let xs = [1,2,3]" `shouldBe` "xs = [1,2,3]"
+            fst (gatedRewrite "let xs = [1,2,3]") `shouldBe` "xs = [1,2,3]"
 
     describe "acceptance-law universality: the ONE cascade law, no second rule" $ do
         it "the gate's verdict IS acceptRepair over parse healths (whole grid)" $

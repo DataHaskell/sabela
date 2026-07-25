@@ -229,6 +229,34 @@ discoverInventorySpec = describe "inventory mode + demotion (R3-T3)" $ do
                 hitText "cabal" h
                     `shouldBe` "-- cabal: build-depends: http-client"
 
+    describe "a package row claims exact only on a whole-name match" $ do
+        -- live_test13: query `line` ranked the Hackage spam package
+        -- Facebook-Password-Hacker-Online-Latest-Version as EXACT, because
+        -- "online" contains "line". Package rows then crowd out real hits.
+        let pkgRows q pkgs =
+                boundEnvelope
+                    ( inventoryEnvelope
+                        emptyEnv
+                        (topicInterp q)
+                        emptyScope
+                        8
+                        [ okAnswer
+                            "hoogle"
+                            [ (genHit (p, InstAbsentKnown)){dhPackage = p}
+                            | p <- pkgs
+                            ]
+                        ]
+                        (HackageInfo True pkgs)
+                        []
+                    )
+            kindsOf v = [hitText "matchKind" h | h <- hitsOf v]
+        it "a token merely inside the package name is not exact" $
+            kindsOf (pkgRows "line" ["Facebook-Password-Hacker-Online-Latest-Version"])
+                `shouldSatisfy` notElem "exact"
+        it "a package whose name IS the query stays exact" $
+            kindsOf (pkgRows "conduit" ["conduit"])
+                `shouldSatisfy` elem "exact"
+
     describe "within-stratum internal demotion (R3.1-R3.3, R3.7)" $ do
         it "a public module outranks an internal one inside its stratum" $ do
             let public = subHit "Zephyr.Core.Extra"
@@ -238,6 +266,48 @@ discoverInventorySpec = describe "inventory mode + demotion (R3-T3)" $ do
             stratum env interp public `shouldBe` stratum env interp internal
             rankKey env interp public
                 `shouldSatisfy` (< rankKey env interp internal)
+        it "B2: an in-scope prefix hit outranks an unreachable exact hit" $ do
+            -- live_test11: query `line` spent four of five slots on exact
+            -- `line`s from ghc/conduit/prettyprinter while `lineChart`, same
+            -- module as the winning hit and installed, never showed.
+            let inScopePrefix =
+                    (subHit "Sabela.Notebook")
+                        { dhName = "lineChart"
+                        , dhKind = MkPrefix
+                        , dhInstall = InstInstalled
+                        }
+                unreachableExact h =
+                    (subHit "Prettyprinter")
+                        { dhName = "line"
+                        , dhKind = MkExact
+                        , dhPackage = "prettyprinter"
+                        , dhInstall = h
+                        }
+                env = emptyEnv
+                interp = topicInterp "line"
+            mapM_
+                ( \state ->
+                    rankKey env interp inScopePrefix
+                        `shouldSatisfy` (< rankKey env interp (unreachableExact state))
+                )
+                [InstHidden, InstAbsentKnown, InstAbsentUnknown]
+
+        it "B2: a reachable exact hit still leads an in-scope prefix hit" $ do
+            let prefixHit =
+                    (subHit "Sabela.Notebook")
+                        { dhName = "lineChart"
+                        , dhKind = MkPrefix
+                        }
+                exactHit =
+                    (subHit "Sabela.Notebook")
+                        { dhName = "line"
+                        , dhKind = MkExact
+                        }
+                env = emptyEnv
+                interp = topicInterp "line"
+            rankKey env interp exactHit
+                `shouldSatisfy` (< rankKey env interp prefixHit)
+
         it "an exact hit still outranks any public substring hit" $ do
             let exactNoise =
                     (subHit "Zephyr.Internal")

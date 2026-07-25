@@ -39,6 +39,7 @@ import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model (Notebook (..), NotebookEvent (..))
 import Sabela.Server (newApp)
+import Sabela.Session.Project (buildTimeSupportDir)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), broadcast, readNotebook)
 import Sabela.State.SessionManager (setHaskellSession)
@@ -84,7 +85,9 @@ inertBackend = do
 mkFixture :: IO (App, AIStore.AIStore)
 mkFixture = do
     mgr <- newManager defaultManagerSettings
-    app <- newApp "." Set.empty (Just mgr) Nothing []
+    -- G1's compile gate always reconstructs a disposable session, which
+    -- (like the live kernel) needs the sabela-notebook overlay to spawn.
+    app <- newApp "." Set.empty (Just mgr) Nothing [buildTimeSupportDir]
     backend <- inertBackend
     setHaskellSession (appSessions app) (Just backend)
     let cfg =

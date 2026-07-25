@@ -1,33 +1,40 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The compile-ready typed-hole candidate cell (search-api.md 8.1/8.3),
-synthesised from ledger-held facts ONLY: cabal line, import, and the consumer
-applied to its arguments — each literal-constructible slot filled with a
-canonical literal, each genuine gap left a @(_ :: T)@ hole the compiler
-enumerates producers for (R3.10); nothing invented.
+{- | The compile-ready candidate cell (search-api.md 8.1/8.3), synthesised
+from ledger-held facts ONLY: cabal line, import, and the consumer applied to
+its arguments — each slot filled either with a canonical literal or with a
+producer a harness hole probe established ("Sabela.AI.HoleProbe"). Nothing is
+invented, and (G3) nothing incomplete is ever handed back: a slot with no
+literal and no probed producer yields no candidate at all.
 
-The seed is re-ranked by proximity to the proposer (R9-T3): the model's own most
-recent writable draft when one is held (generator input, never a fact), else the
-held consumer minimising its genuine-gap count — the argument types no held fact
-produces (fewest holes wins, so 1-hole @bars@ beats an 8-hole record stub).
+The seed is re-ranked by proximity to the proposer (R9-T3): the model's own
+most recent writable draft when one is held (generator input, never a fact),
+else the held consumer minimising its genuine-gap count.
 -}
 module Siza.Agent.Discover.Candidate (
     candidateCell,
     candidateCellFrom,
     candidateClause,
+    candidateClauseAgainst,
     candidateClauseFrom,
+    candidateGaps,
     candidateNames,
     writableDraft,
 ) where
 
-import Data.List (minimumBy)
-import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
+import Data.List (minimumBy, nub)
+import Data.Maybe (isNothing, listToMaybe, mapMaybe, maybeToList)
 import Data.Ord (comparing)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.HoleProbe (probedProducer)
+import Sabela.AI.TypedHole (containsTypedHole)
+import Siza.Agent.Discover.Facts (installFactKey)
 import Siza.Agent.Discover.Goal (argTypesOf, genuineGaps, literalFill)
-import Siza.Agent.Discover.Ledger (installFactKey)
+import Siza.Agent.Discover.Ledger (normaliseSource)
 
 {- | A held consumer: name, signature, defining module, owning package —
 parsed from the fact shape 'Siza.Agent.Discover.Advice.harvestFacts' emits.
@@ -68,16 +75,16 @@ cabalFor pkg facts =
         , not (T.null rest)
         ]
 
-{- | A model draft is a usable candidate seed when it is non-blank: it is mined
-as generator input verbatim, never trusted as a fact, so the only vet the
-harness applies is that there is source to hand back.
+{- | A model draft is a usable candidate seed when it is non-blank AND
+hole-free: the harness answers holes ("Sabela.AI.HoleProbe"), it never hands
+one back to be transcribed.
 -}
 writableDraft :: Text -> Bool
-writableDraft = not . T.null . T.strip
+writableDraft d = not (T.null (T.strip d)) && not (containsTypedHole d)
 
 {- | The candidate source: the held cabal line (when one is held), the seed
-consumer's import, and the consumer applied to its arguments (literals filled,
-genuine gaps holed). 'Nothing' without a held consumer signature.
+consumer's import, and the consumer applied to its arguments. 'Nothing'
+without a held consumer signature, or when any argument slot is still a gap.
 -}
 candidateCell :: [Text] -> Maybe Text
 candidateCell = candidateCellFrom Nothing
@@ -89,8 +96,8 @@ candidateCellFrom :: Maybe Text -> [Text] -> Maybe Text
 candidateCellFrom (Just draft) _ | writableDraft draft = Just (T.stripEnd draft)
 candidateCellFrom _ facts = do
     (name, sig, m, pkg) <- seedConsumer facts
-    let args = map fillArg (argTypesOf sig)
-        importLine = ["import " <> m | not (T.null m)]
+    args <- traverse (fillArg facts) (argTypesOf sig)
+    let importLine = ["import " <> m | not (T.null m)]
         cabalLine = maybeToList (cabalFor pkg facts)
     pure
         ( T.intercalate
@@ -99,11 +106,24 @@ candidateCellFrom _ facts = do
         )
 
 {- | An argument slot: a canonical literal when the type is constructible from
-literals already writable in a cell, else a typed hole so the compiler
-enumerates that gap's producers (R3.10).
+literals already writable in a cell, else a producer a hole probe established.
+'Nothing' is a genuine gap — the harness must probe it before any candidate
+can be proposed (G3).
 -}
-fillArg :: Text -> Text
-fillArg t = fromMaybe ("(_ :: " <> t <> ")") (literalFill t)
+fillArg :: [Text] -> Text -> Maybe Text
+fillArg facts t = case literalFill t of
+    Just lit -> Just lit
+    Nothing -> probedProducer facts t
+
+{- | The distinct argument types the seed consumer still needs a producer
+for: what a harness hole probe must answer before this ledger can propose
+anything.
+-}
+candidateGaps :: [Text] -> [Text]
+candidateGaps facts = case seedConsumer facts of
+    Nothing -> []
+    Just (_, sig, _, _) ->
+        nub [t | t <- argTypesOf sig, isNothing (fillArg facts t)]
 
 {- | The names a synthesised candidate rests on (consumer, module, package):
 each must be discover-findable on the same catalogue (R7.6). A draft seed rests
@@ -120,16 +140,20 @@ candidateClause = candidateClauseFrom Nothing
 
 -- | 'candidateClause' with an optional model-draft seed (R9-T3).
 candidateClauseFrom :: Maybe Text -> [Text] -> Text
-candidateClauseFrom mDraft facts = case candidateCellFrom mDraft facts of
-    Nothing -> ""
-    Just src -> framing src <> src
+candidateClauseFrom = candidateClauseAgainst Set.empty
+
+{- | 'candidateClauseFrom' that retires a source the gate already rejected
+(G5.4): the compiler's verdict outranks the ledger, so a candidate it refused
+is never recommended again — live_test8 re-injected one after two failures.
+-}
+candidateClauseAgainst :: Set Text -> Maybe Text -> [Text] -> Text
+candidateClauseAgainst refuted mDraft facts =
+    case candidateCellFrom mDraft facts of
+        Just src
+            | normaliseSource src `Set.notMember` refuted -> framing <> src
+        _ -> ""
   where
-    -- A holed synthesis leans on the compiler's hole-fit reply; a hole-free
-    -- source (a draft, or an all-literal synthesis) is just re-submitted.
-    framing src
-        | "(_ :: " `T.isInfixOf` src =
-            "Write this candidate cell verbatim (insert_cell); the compiler's \
-            \hole-fit reply lists the producers of each `_ :: T` hole:\n"
-        | otherwise =
-            "Write this candidate cell verbatim (insert_cell) — it is the \
-            \closest source to the deliverable:\n"
+    framing =
+        "A candidate assembled from facts held this session. It has NOT been \
+        \compiled, so treat it as a proposal, not an answer: write it with \
+        \insert_cell if it fits the goal, and let the compiler decide.\n"

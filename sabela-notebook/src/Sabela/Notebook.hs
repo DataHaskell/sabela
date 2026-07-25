@@ -16,7 +16,7 @@ Everything is written for people new to programming, with a runnable example on
 every function. Start by reading 'Sabela.Notebook.Behavior' and
 'Sabela.Notebook.Picture'.
 
->>> picture (fill red (circle (150, 150) 80))   -- draw a red circle
+>>> displayPicture (fill red (circle (150, 150) 80))   -- draw a red circle
 -}
 module Sabela.Notebook (
     module Sabela.Notebook.Frp,

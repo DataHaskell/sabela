@@ -8,6 +8,7 @@ module Siza.Agent.Discover.HistoryGuard (
     closeSearchLedgerRanked,
     guardDiscover,
     heldCallReady,
+    recordProbeFacts,
     seedSearchLedger,
     setSearchPressure,
 ) where
@@ -27,6 +28,7 @@ import Siza.Agent.Discover (
     declaresDepsCall,
     executionSucceeded,
     isOwningTool,
+    refusedSource,
     toolCallSource,
  )
 import Siza.Agent.Discover.Dedup (ledgerShortcutStep)
@@ -51,6 +53,8 @@ import Siza.Agent.Discover.Ledger (
     SearchLedger (..),
     ledgerDeclare,
     ledgerInvalidateOrientation,
+    ledgerProbe,
+    ledgerRefute,
     orientationRecord,
     orientationShortcut,
  )
@@ -111,6 +115,12 @@ closeSearchLedgerRanked goal cells ref =
             (heldFacts led)
         )
 
+{- | Fold harness-probe conclusions (G3) into the ledger, so a hole answered
+once stays answered for every later nudge and close.
+-}
+recordProbeFacts :: IORef SearchLedger -> [Text] -> IO ()
+recordProbeFacts ref fs = atomicModifyIORef' ref (\l -> (ledgerProbe fs l, ()))
+
 -- | Does the ledger hold a call-ready (name + signature) fact (R5.6)?
 heldCallReady :: IORef SearchLedger -> IO Bool
 heldCallReady ref = not . null . callReadyFacts <$> readIORef ref
@@ -152,7 +162,10 @@ guardDiscover ref inner tc = case discoverKey (tcName tc) (tcArgs tc) of
                                     ledgerInvalidateOrientation
                                         (ledgerDeclare (declaredPackages (toolCallSource tc)) l1)
                                 | otherwise = l1
-                         in (l2, ())
+                            -- G5.4: a refusal commits nothing, so record the
+                            -- rejected source here or it is recommended again.
+                            l3 = maybe l2 (`ledgerRefute` l2) (refusedSource tc o)
+                         in (l3, ())
                     case provenOf tc o of
                         [] -> pure ()
                         ns -> atomicModifyIORef' ref (\l -> (ledgerResolve ns l, ()))

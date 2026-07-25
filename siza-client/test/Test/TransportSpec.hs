@@ -7,10 +7,16 @@ carried through 'SABELA_COOKIE'. This pins that the cookie is emitted when set,
 the session header is always present (the hub does NOT strip @X-Sabela-Session@),
 and the bearer token is still emitted for the localhost trust model.
 -}
-module Test.TransportSpec (transportSpec) where
+module Test.TransportSpec (transportSpec, toolTimeoutSpec) where
 
 import Control.Exception (bracket)
-import Siza.Transport (Env (..), aiHeaders, applyUrlOverride, resolveEnv)
+import Siza.Transport (
+    Env (..),
+    aiHeaders,
+    applyUrlOverride,
+    defaultToolTimeoutSecs,
+    resolveEnv,
+ )
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import Test.Hspec
 
@@ -79,3 +85,15 @@ transportSpec = describe "Siza.Transport.aiHeaders" $ do
                 applyUrlOverride (Just "http://flag:3000")
                 env <- resolveEnv
                 envSabelaUrl env `shouldBe` Just "http://flag:3000"
+
+{- | live_test8 #6: the client abandoned a request at 60s while the server's
+cell cap is 120s (+5s resync), so a slow-but-healthy cell read as a transport
+failure and took the session source down with it.
+-}
+toolTimeoutSpec :: Spec
+toolTimeoutSpec = describe "client tool timeout vs the server cell cap" $ do
+    it "outlives the server's 120s execution cap and its resync window" $
+        defaultToolTimeoutSecs `shouldSatisfy` (> 125)
+
+    it "leaves headroom rather than racing the cap exactly" $
+        defaultToolTimeoutSecs `shouldSatisfy` (>= 150)

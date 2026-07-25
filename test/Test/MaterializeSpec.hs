@@ -2,24 +2,26 @@
 
 module Test.MaterializeSpec (spec) where
 
+import Control.Exception (bracket_)
 import Data.Either (isLeft)
-import Data.List (isPrefixOf)
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import GHC.Clock (getMonotonicTimeNSec)
 import ScriptHs.Parser (CabalMeta (..))
-import System.Directory (doesFileExist, findExecutable, listDirectory)
+import System.Environment (setEnv, unsetEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Timeout (timeout)
 import Test.Hspec
 
-import Sabela.Model (Notebook (..))
+import Sabela.Model (Cell (..), Notebook (..))
 import Sabela.Reactivity (computeFullExecutionPlan, haskellCodeCells)
 import Sabela.Server (newApp)
 import Sabela.Session.Materialize
 import Sabela.Session.Project (buildTimeSupportDir)
+import Sabela.Session.TryCache (tryCacheRoot)
 import Sabela.State (App (..), Environment (..))
 import Sabela.State.BridgeStore (setBridgeValue)
 import Sabela.State.DependencyTracker (getHaskellDeps)
@@ -27,6 +29,15 @@ import qualified Sabela.State.EventBus as EventBus
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
 import Sabela.State.WidgetStore (setWidget)
+import Test.Materialize.Helpers (
+    listCacheBuckets,
+    newPackageCandidate,
+    nsToSeconds,
+    requireCompleted,
+    requireLiveIntegration,
+    requireSnapshot,
+    scratchDirectories,
+ )
 import Test.TopoSpec.Helpers (mkCell)
 
 spec :: Spec
@@ -58,6 +69,7 @@ spec = describe "disposable notebook materialization" $ do
                             ]
                     , candidateSetup = ""
                     , candidateExpression = Just "notebookValue"
+                    , candidateReplacesCellId = Nothing
                     }
             meta = candidateProjectMeta (Set.singleton "aeson") notebook candidate
         metaDeps meta `shouldMatchList` ["aeson", "bytestring", "containers", "text"]
@@ -65,6 +77,18 @@ spec = describe "disposable notebook materialization" $ do
             `shouldSatisfy` (\exts -> all (`elem` exts) ["LambdaCase", "TypeApplications"])
         metaGhcOptions meta `shouldBe` ["-Wno-unused-imports", "-O0"]
         metaPackages meta `shouldMatchList` ["./notebook-pkg", "./candidate-pkg"]
+
+    it "skips a red prefix cell from replay, disclosing it with its own reason" $ do
+        let green1 = mkCell 1 "seed = (40 :: Int)"
+            red =
+                (mkCell 2 "broken = notInScope")
+                    { cellError = Just "  Variable   not in scope: notInScope  "
+                    }
+            green2 = mkCell 3 "answer = seed + 2"
+            (skipped, toReplay) = partitionReplayCells [green1, red, green2]
+        map cellId toReplay `shouldBe` [1, 3]
+        map skippedCellId skipped `shouldBe` [2]
+        map skippedReason skipped `shouldBe` ["Variable not in scope: notInScope"]
 
     it "reports an unfaithful notebook plan before starting a scratch process" $ do
         let notebook =
@@ -145,6 +169,7 @@ spec = describe "disposable notebook materialization" $ do
                         , candidateExpression =
                             Just
                                 "bridgeSeed + read _bridge_fromNext + M.size (M.fromList [(1 :: Int, ())]) + 37"
+                        , candidateReplacesCellId = Nothing
                         }
             modifyNotebook (appNotebook app) (const notebook)
             notebookBefore <- readNotebook (appNotebook app)
@@ -173,27 +198,57 @@ spec = describe "disposable notebook materialization" $ do
             isNothing liveBefore `shouldBe` True
             scratchDirectories (envTmpDir (appEnv app)) `shouldReturn` scratchDirsBefore
 
-requireLiveIntegration :: Expectation
-requireLiveIntegration = do
-    cabal <- findExecutable "cabal"
-    case cabal of
-        Nothing -> pendingWith "cabal not found on PATH; skipping materialization integration"
-        Just _ -> pure ()
-    supportPresent <-
-        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if supportPresent
-        then pure ()
-        else
-            pendingWith
-                "sabela-notebook support source not on disk; skipping materialization integration"
+    it
+        "reuses a cached package environment so an identical retry skips the cabal build"
+        $ withSystemTempDirectory "sabela-materialize-cache-hit"
+        $ \workDir -> do
+            requireLiveIntegration
+            app <- newApp workDir Set.empty Nothing Nothing [buildTimeSupportDir]
+            let candidate = newPackageCandidate "split"
 
-scratchDirectories :: FilePath -> IO [FilePath]
-scratchDirectories root =
-    filter ("sabela-try" `isPrefixOf`) <$> listDirectory root
+            firstStart <- getMonotonicTimeNSec
+            first <- requireCompleted (runDisposableTry app candidate)
+            firstEnd <- getMonotonicTimeNSec
+            disposableFailure first `shouldBe` Nothing
+            first `shouldSatisfy` ((== DisposableOk) . disposableVerdict)
 
-requireSnapshot :: App -> IO MaterializeSnapshot
-requireSnapshot app = do
-    captured <- captureMaterializeSnapshot app
-    case captured of
-        Left message -> expectationFailure (T.unpack message) >> fail "unreachable"
-        Right snapshot -> pure snapshot
+            secondStart <- getMonotonicTimeNSec
+            second <- requireCompleted (runDisposableTry app candidate)
+            secondEnd <- getMonotonicTimeNSec
+            disposableFailure second `shouldBe` Nothing
+            second `shouldSatisfy` ((== DisposableOk) . disposableVerdict)
+
+            let firstSeconds = nsToSeconds (firstEnd - firstStart)
+                secondSeconds = nsToSeconds (secondEnd - secondStart)
+            -- The warm hit reuses the built dist-newstyle/store outright, so it
+            -- comfortably beats the plan's 10s warm-hit target and the cold build.
+            secondSeconds `shouldSatisfy` (< 10)
+            secondSeconds `shouldSatisfy` (< firstSeconds)
+
+    it
+        "breaches its build budget with actionable guidance and discards the cache"
+        $ withSystemTempDirectory "sabela-materialize-build-budget"
+        $ \workDir ->
+            bracket_
+                (setEnv "SABELA_TRY_BUILD_TIMEOUT_SECONDS" "1")
+                (unsetEnv "SABELA_TRY_BUILD_TIMEOUT_SECONDS")
+                $ do
+                    requireLiveIntegration
+                    app <- newApp workDir Set.empty Nothing Nothing [buildTimeSupportDir]
+                    liveBefore <- getHaskellSession (appSessions app)
+                    let candidate = newPackageCandidate "split"
+
+                    result <- requireCompleted (runDisposableTry app candidate)
+                    disposableVerdict result `shouldBe` DisposableTimedOut
+                    let message = maybe "" failureMessage (disposableFailure result)
+                    message `shouldSatisfy` T.isInfixOf "heavy dependency"
+                    message `shouldSatisfy` T.isInfixOf "-- cabal:"
+                    maybe StagePlan failureStage (disposableFailure result)
+                        `shouldBe` StageSession
+
+                    isNothing <$> getHaskellSession (appSessions app) `shouldReturn` True
+                    isNothing liveBefore `shouldBe` True
+
+                    let cacheRoot = tryCacheRoot (envTmpDir (appEnv app))
+                    buckets <- listCacheBuckets cacheRoot
+                    buckets `shouldBe` []

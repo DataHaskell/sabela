@@ -84,6 +84,10 @@ execFindFunction app input =
             pure (matchesOutcome q (searchCapabilities defaultSynonyms caps q))
     keywordSearch backend mods = do
         surfacing <- isJust <$> lookupEnv "SABELA_INSTANCE_SURFACING"
+        -- Always index the notebook's own vocabulary: the bare completion
+        -- list is alphabetical and truncated, so `Sabela.*` fell off the end
+        -- and no builtin was keyword-findable at all.
+        builtin <- filter interesting <$> sbQueryComplete backend "import Sabela"
         let baseMods = filter interesting mods
         -- ON: also index the submodules of the session's own namespaces (e.g.
         -- DataFrame.*), enumerated via prefixed :complete — the bare import-completion
@@ -96,7 +100,7 @@ execFindFunction app input =
                     extra <- namespaceSubmodules backend nss
                     pure (nub (baseMods ++ filter interesting extra))
                 else pure (take maxIndexModules baseMods)
-        caps <- buildIndex backend toBrowse
+        caps <- buildIndex backend (nub (builtin ++ toBrowse))
         pure (matchesOutcome q (searchCapabilities defaultSynonyms caps q))
     q =
         let qq = fieldText "query" input

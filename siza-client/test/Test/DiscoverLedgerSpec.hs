@@ -214,6 +214,46 @@ answerHashSpec = describe "answer-hash dedup: an unchanged answer is a one-line 
         textField "summary" stopped `shouldSatisfy` T.isInfixOf "blocker"
     it "has teeth over generated exact, answer-identical, and new sequences" $ do
         forM_ (replicateM 4 [ExactRepeat, AnswerRepeat, FreshAnswer]) checkTeeth
+    it
+        "B4/2026-07-21 specimen: ×8 query-varied asks of the same card stop \
+        \re-serving it well before the 8th"
+        $ do
+            ref <- newSearchLedger
+            calls <- newIORef (0 :: Int)
+            let dfCard =
+                    discoverEnvelope
+                        envT
+                        (interpret envT "col")
+                        8
+                        [okAnswer "session" hitsCol]
+                        hkT
+                inner _ = do
+                    modifyIORef' calls (+ 1)
+                    pure (Right (ToolOk dfCard))
+                ask q =
+                    guardDiscover ref inner (ToolCall "discover" (object ["query" .= q]))
+                phrasings =
+                    [ "how do I plot this dataframe"
+                    , "plot the dataframe"
+                    , "dataframe plotting"
+                    , "render dataframe as chart"
+                    , "chart the dataframe"
+                    , "visualize the dataframe"
+                    , "dataframe visualization"
+                    , "show the dataframe as a plot"
+                    ] ::
+                        [Text]
+            outs <- mapM ask phrasings
+            let ok (Right (ToolOk v)) = v
+                ok _ = object []
+                states = map (stateOf . ok) outs
+                lastOut = ok (last outs)
+            length (filter (== "found") states) `shouldBe` 1
+            stateOf lastOut `shouldBe` "duplicate"
+            textField "summary" lastOut `shouldSatisfy` T.isInfixOf "act"
+            textField "summary" lastOut `shouldSatisfy` T.isInfixOf "blocker"
+            dispatched <- readIORef calls
+            dispatched `shouldSatisfy` (< 8)
 
 data RepeatKind = ExactRepeat | AnswerRepeat | FreshAnswer deriving (Eq)
 

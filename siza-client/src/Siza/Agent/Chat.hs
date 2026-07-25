@@ -33,11 +33,14 @@ import Siza.Agent.Check (
     CheckResult (..),
     classifyCheck,
     counterexampleFor,
+    degenerateCheck,
     extractTestExpr,
+    feedbackContinuation,
     interpretConfirm,
     markerSrc,
     runMarkerWith,
  )
+import Siza.Agent.Check.Vet (vetProposal)
 import Siza.Agent.Discover (isOwningTool)
 import Siza.Agent.Loop (
     AgentRun (..),
@@ -98,7 +101,7 @@ runChat cfg mgr conn base = do
     runTurn prev line = do
         res <-
             try (timeout (ccRequestTimeoutSecs cfg * 1000000) (turn prev line)) ::
-                IO (Either AsyncException (Maybe [Value]))
+                IO (Either AsyncException (Maybe ([Value], Maybe Text)))
         case res of
             Left UserInterrupt ->
                 TIO.putStrLn "\n  (cancelled \8212 back to the prompt)" >> loop prev
@@ -110,11 +113,17 @@ runChat cfg mgr conn base = do
                         <> "s \8212 back to the prompt)"
                     )
                 loop prev
-            Right (Just prev') -> loop prev'
+            -- Check-prompt feedback becomes the next turn automatically: no
+            -- fresh prompt, no waiting on the user to retype it.
+            Right (Just (prev', Just feedback)) -> do
+                TIO.putStrLn ("\8250 " <> feedback)
+                runTurn prev' feedback
+            Right (Just (prev', Nothing)) -> loop prev'
     turn prev userText = do
         gateRef <- newIORef Nothing
         wroteRef <- newIORef False
         seenRef <- newIORef ([] :: [Text])
+        feedbackRef <- newIORef Nothing
         let chatFn msgs = do
                 progress "\183 thinking\8230"
                 chatSeeded True Nothing mgr model msgs cat
@@ -123,18 +132,20 @@ runChat cfg mgr conn base = do
                     { drvChat = chatFn
                     , drvDispatch = tracedDispatch wroteRef seenRef (dispatch conn base)
                     , drvNow = realToFrac <$> getPOSIXTime
-                    , drvVerify = verifyGate mgr conn base model gateRef wroteRef
+                    , drvVerify = verifyGate mgr conn base model gateRef wroteRef feedbackRef
                     }
             emit = if verbose then TIO.putStr else const (pure ())
         run <- runEpisodeSeeded prev emit GrammarOn budget driver userText maxTurns
         TIO.putStrLn ("\n" <> arFinal run)
         TIO.putStrLn
             ("  [" <> arStopped run <> ", " <> tshow (arToolCalls run) <> " tool calls]\n")
-        pure (arTranscript run)
+        pending <- readIORef feedbackRef
+        pure (arTranscript run, pending)
 
 {- | After a writing turn, gate acceptance on a covering check: propose one
 Haskell boolean, let the user confirm/edit/skip, and run it off-notebook. A
-non-writing turn passes straight through.
+non-writing turn passes straight through. Prose typed at the prompt is
+captured in 'feedbackRef' so it becomes the next turn automatically.
 -}
 verifyGate ::
     Manager ->
@@ -143,11 +154,12 @@ verifyGate ::
     Text ->
     IORef (Maybe Text) ->
     IORef Bool ->
+    IORef (Maybe Text) ->
     IO (CheckResult, Maybe Text)
-verifyGate mgr conn base model gateRef wroteRef = do
+verifyGate mgr conn base model gateRef wroteRef feedbackRef = do
     wrote <- readIORef wroteRef
     if not wrote
-        then pure (CheckPassed, Nothing)
+        then pure (CheckNotApplicable, Nothing)
         else do
             cached <- readIORef gateRef
             test <- case cached of
@@ -155,7 +167,8 @@ verifyGate mgr conn base model gateRef wroteRef = do
                 Nothing -> do
                     progress "\183 proposing a check\8230"
                     proposed <- proposeTest mgr conn base model
-                    t <- confirmTest proposed
+                    vetted <- vetProposal (callTool conn base) proposed
+                    t <- confirmTest feedbackRef vetted
                     writeIORef gateRef (Just t)
                     pure t
             runConfirmedTest conn base test
@@ -166,7 +179,13 @@ clean-running cells are accepted and the acceptance is disclosed.
 -}
 runConfirmedTest :: Conn -> Text -> Text -> IO (CheckResult, Maybe Text)
 runConfirmedTest conn base test
-    | T.null test = pure (CheckPassed, Nothing)
+    | T.null test = pure (CheckNotApplicable, Nothing)
+    -- A check reading nothing the notebook defines proves nothing; running it
+    -- reported "check passed: True" over an empty deliverable (live_test8 #4).
+    | degenerateCheck test = do
+        TIO.putStrLn
+            ("  \9888 no covering check \8212 reads no notebook binding: " <> test)
+        pure (CheckNotApplicable, Nothing)
     | otherwise = do
         (_, out) <- runMarkerWith (callTool conn base) (markerSrc test)
         case classifyCheck out of
@@ -182,7 +201,7 @@ runConfirmedTest conn base test
                     ("  \9888 cannot verify \8212 the check does not compile: " <> test)
                 TIO.putStrLn
                     "    accepting the clean-running cells; define a pure binding to check the value."
-                pure (CheckPassed, Nothing)
+                pure (CheckNotApplicable, Nothing)
 
 proposeTest :: Manager -> Conn -> Text -> Text -> IO Text
 proposeTest mgr conn base model = do
@@ -206,26 +225,24 @@ proposeSystem =
     \correct, over the bindings the cells define (e.g. `total == 600` or \
     \`length xs == 3`). Reply with ONLY the expression, no prose, no code fence."
 
--- | Prompt the user to accept, edit with a test, or skip; prose is feedback.
-confirmTest :: Text -> IO Text
-confirmTest proposed = do
+{- | Prompt the user to accept, edit with a test, or skip; prose is feedback,
+captured into 'feedbackRef' so the caller carries it into the next turn.
+-}
+confirmTest :: IORef (Maybe Text) -> Text -> IO Text
+confirmTest feedbackRef proposed = do
     TIO.putStrLn ("  proposed check: " <> proposed)
     TIO.putStr
         "  [Enter]=accept \183 type a test to edit \183 'skip'=no check \8250 "
     hFlush stdout
     eof <- isEOF
     input <- if eof then pure "skip" else TIO.getLine
-    let result = interpretConfirm proposed input
-    when (declinedAsProse input result) $
-        TIO.putStrLn
-            "  (read as feedback, not a test; skipping the check. Send it as a request at the prompt.)"
-    pure result
-
-declinedAsProse :: Text -> Text -> Bool
-declinedAsProse input result =
-    T.null result && not (T.null low) && low `notElem` ["skip", "no", "n"]
-  where
-    low = T.toLower (T.strip input)
+    case feedbackContinuation proposed input of
+        Just fb -> do
+            writeIORef feedbackRef (Just fb)
+            TIO.putStrLn
+                "  (read as feedback, not a test; continuing with it as your next request.)"
+        Nothing -> pure ()
+    pure (interpretConfirm proposed input)
 
 tracedDispatch ::
     IORef Bool ->

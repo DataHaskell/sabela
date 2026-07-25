@@ -6,6 +6,7 @@ interpreting the user's confirm\/edit\/skip input — split from
 -}
 module Siza.Agent.CheckExtract (
     extractTestExpr,
+    feedbackContinuation,
     interpretConfirm,
 ) where
 
@@ -44,6 +45,21 @@ interpretConfirm proposed input
     | T.null low || low `elem` ["y", "yes"] = proposed
     | looksLikeTest stripped = stripped
     | otherwise = ""
+  where
+    stripped = T.strip input
+    low = T.toLower stripped
+
+{- | Check-prompt input that is neither accepted/edited/skipped is feedback on
+the last deliverable, not a test — carry it forward verbatim as the next
+turn's request instead of making the user retype it.
+-}
+feedbackContinuation :: Text -> Text -> Maybe Text
+feedbackContinuation proposed input
+    | T.null (interpretConfirm proposed input)
+    , not (T.null low)
+    , low `notElem` ["skip", "no", "n"] =
+        Just stripped
+    | otherwise = Nothing
   where
     stripped = T.strip input
     low = T.toLower stripped

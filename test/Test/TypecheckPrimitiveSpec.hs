@@ -38,6 +38,26 @@ spec = describe "flagged no-add type-check feasibility prototype" $ do
             ]
             `shouldBe` replicate 5 OutsideValueSubset
 
+    -- live_test19 §30: `let p = …` followed by an expression was classified
+    -- ValueBindings and spliced whole into `(let { … } in ())`, so the `let`
+    -- keyword nested and the expression sat where only a binding is legal.
+    -- GHC then reported `parse error on input '}'` at a column past the end
+    -- of the submitted line — a diagnostic about text the model never wrote.
+    it "routes a binding/expression mix outside the subset instead of mangling it" $ do
+        classifyTypecheckInput "let p = [1 :: Int]\nprint p"
+            `shouldBe` OutsideValueSubset
+        classifyTypecheckInput "animate 0 (\\_ -> p)" `shouldBe` ValueExpression
+
+    it "reads a `let`-prefixed binding as the binding it is" $
+        classifyTypecheckInput "let candidate = 1 + 1" `shouldBe` ValueBindings
+
+    it "type-checks a `let`-prefixed binding group without nesting the keyword" $
+        withPrimitiveSession $ \sess -> do
+            _ <- runBlock sess "let liveSeed = [42 :: Int]"
+            good <- typecheckLetDeclarations sess "let candidate = head liveSeed + 1"
+            good `shouldSatisfy` tcSucceeded
+            tcDiagnostics good `shouldSatisfy` not . T.isInfixOf "parse error"
+
     it "checks good/bad declarations and leaves bindings byte-identical" $
         withPrimitiveSession $ \sess -> do
             _ <- runBlock sess "let liveSeed = [42 :: Int]"

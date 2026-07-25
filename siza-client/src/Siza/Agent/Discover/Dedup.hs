@@ -14,7 +14,7 @@ ledgerShortcutStep led q
     | Just out <- ledgerShortcut led q =
         let (led', hard) = discoverRepeat q led
          in ( led'
-            , case fmap (withCandidate (slFacts led')) hard of
+            , case fmap (withCandidate (slRefuted led') (slFacts led')) hard of
                 Just stop -> Just stop
                 Nothing -> Just out
             )

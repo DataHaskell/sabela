@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               sabela-notebook
-version:            0.1.0.0
+version:            0.2.0.0
 synopsis:           FRP, animation, and picture vocabulary for Sabela notebooks.
 description:
     The batteries every Sabela notebook depends on: a small, heavily documented

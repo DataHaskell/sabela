@@ -6,7 +6,9 @@ a lexically distant rename, and contrast a wrong name with the real candidates
 -}
 module Sabela.AI.SelfHeal (
     attachSelfHeal,
+    attachSelfHealSuggestions,
     contrastLine,
+    dependencySuggestionNote,
     plausibleRename,
     selfHealNote,
     sourceDelta,
@@ -104,3 +106,30 @@ attachSelfHeal :: Maybe Value -> Value -> Value
 attachSelfHeal (Just note) (Object o) =
     Object (KM.insert "self_heal" note o)
 attachSelfHeal _ v = v
+
+{- | The disclosure for a gate-verified dependency rewrite self_heal declined
+to apply (G2 hard rule 1): named, sourced, and pointed at the manual fix —
+never a silent drop, and never an automatic @-- cabal:@ line either.
+-}
+dependencySuggestionNote :: [Text] -> Text -> Value
+dependencySuggestionNote pkgs src =
+    object
+        [ "packages" .= toJSON pkgs
+        , "source" .= src
+        , "note"
+            .= ( "This would compile once `-- cabal: build-depends: "
+                    <> deps
+                    <> "` is added, but self_heal never adds a dependency "
+                    <> "automatically. Add that line yourself (replace_cell_source) "
+                    <> "if you want it."
+               )
+        ]
+  where
+    deps = T.intercalate ", " pkgs
+
+-- | Attach every gate-verified dependency suggestion; identity when none.
+attachSelfHealSuggestions :: [Value] -> Value -> Value
+attachSelfHealSuggestions [] v = v
+attachSelfHealSuggestions sugs (Object o) =
+    Object (KM.insert "self_heal_suggestions" (toJSON sugs) o)
+attachSelfHealSuggestions _ v = v

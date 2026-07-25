@@ -50,7 +50,7 @@ import Sabela.AI.HoogleProse (
     roundRobin,
  )
 import Sabela.AI.HoogleRank (ecosystemScore, rankHits)
-import Sabela.AI.ModuleResolve (isNoiseModule)
+import Sabela.AI.ModuleResolve (isNoiseModule, isOutOfScopePackage)
 
 {- | The best (package, module) for an exact-name match, or Nothing when no hit's
 name equals the query. A thin head-of-shortlist wrapper over 'rankResolveTopK'.
@@ -61,8 +61,11 @@ rankResolve name hits = case rankResolveTopK 1 name Nothing hits of
     [] -> Nothing
 
 {- | The top-K (package, module) exact-name candidates, ranked best-first and
-deduplicated. Noise modules ('isNoiseModule') are dropped. Without popularity
-data the order is (ecosystemScore, module length, package length, module): a
+deduplicated. Noise modules ('isNoiseModule') and the compiler's own
+toolchain packages ('isOutOfScopePackage', G2 hard rule 2 — the
+@unionfind-point@ regression) are dropped, never merely demoted: an
+out-of-scope lexical match is never generated at all. Without popularity data
+the order is (ecosystemScore, module length, package length, module): a
 well-known ecosystem package outranks a niche one, then shorter names win.
 -}
 rankResolveTopK :: Int -> Text -> Maybe Text -> [HoogleHit] -> [(Text, Text)]
@@ -71,7 +74,11 @@ rankResolveTopK k name mGoal hits =
   where
     exact =
         filter
-            (\h -> hhName h == name && not (isNoiseModule (hhModule h)))
+            ( \h ->
+                hhName h == name
+                    && not (isNoiseModule (hhModule h))
+                    && not (isOutOfScopePackage (hhPackage h))
+            )
             hits
     -- A goal-type result-head mismatch DEMOTES a hit below every matching
     -- one; the decline itself is the scratch vet's job, where the compiler —

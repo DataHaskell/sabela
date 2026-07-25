@@ -11,6 +11,7 @@ import Test.Hspec
 import Sabela.AI.Capabilities.Edit.Run (parseRepairBudget, repairTierOrder)
 import Sabela.AI.HoleRepair (holeFitRewrites)
 import Sabela.AI.Repair (firstJustM, interleave)
+import Sabela.AI.TypedHole (containsTypedHole)
 
 -- | Run 'firstJustM' over @xs@, returning its result and the candidates visited.
 traced :: (Int -> Maybe String) -> [Int] -> IO (Maybe (Int, String), [Int])
@@ -55,7 +56,8 @@ spec = describe "Sabela.AI.Repair (shared repair core)" $ do
         $ it
             "runs the compile-only speculative tier before the session-committing resolvers"
         $ repairTierOrder
-            `shouldBe` [ "firstFix"
+            `shouldBe` [ "mitigate"
+                       , "firstFix"
                        , "moduleDep"
                        , "speculative"
                        , "resolvers"
@@ -73,5 +75,22 @@ spec = describe "Sabela.AI.Repair (shared repair core)" $ do
                            ]
         it "is empty when no fit changes the source" $
             holeFitRewrites "getCol" "no fits here" "total = 1" `shouldBe` []
+
+    -- G2 hard rule 3: self_heal must never touch a cell holding a typed-hole
+    -- probe (`_ :: T`, the live_test4 specimen) — the diagnostic IS the
+    -- deliverable, not an error to repair.
+    describe "containsTypedHole (G2 hard rule 3 — the hole-probe guard)" $ do
+        it "detects the live_test4 probe verbatim" $
+            containsTypedHole
+                "import Sabela.Notebook\nline (_ :: Point) (_ :: Point)"
+                `shouldBe` True
+        it "detects a hole with no surrounding space" $
+            containsTypedHole "x = f (_::Int)" `shouldBe` True
+        it "is False for an ordinary wildcard pattern (not a hole)" $
+            containsTypedHole "f _ = 5" `shouldBe` False
+        it "is False for a cell with no hole at all" $
+            containsTypedHole "x = 1 + 2" `shouldBe` False
+        it "is False for an underscore inside a longer identifier" $
+            containsTypedHole "my_var :: Int\nmy_var = 5" `shouldBe` False
   where
     keep n = if n == 3 then Just ("hit-" ++ show n) else Nothing

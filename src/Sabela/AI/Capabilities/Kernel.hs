@@ -33,6 +33,7 @@ import Sabela.AI.Capabilities.KernelHealth (
     awaitIdleBudgetUsOf,
     noteSettled,
     resourceField,
+    runningHolder,
  )
 import Sabela.AI.KernelState (KernelState, kernelStateJSON, kernelStateOf)
 import Sabela.AI.KernelVocab (
@@ -143,9 +144,12 @@ the post-settled consistency window (R6.4); a timeout attaches the bounded
 -}
 execAwaitIdle :: App -> AIStore -> IO ToolOutcome
 execAwaitIdle app store = do
-    busy <- haskellKernelBusy app
-    building <- readIORef (appBuilding app)
-    if not (busy || building)
+    occupied <- haskellKernelOccupied app
+    -- Idle by the SAME evidence the admission bounce uses: a cascade releases
+    -- the run-lock between cells, so sbBusy alone reported idle while the next
+    -- write still bounced on a registered running write (live_test8).
+    holder <- runningHolder store
+    if not (occupied || isJust holder)
         then finishAwait tagIdle []
         else do
             budgetUs <- awaitIdleBudgetUsOf awaitIdleBudgetUs

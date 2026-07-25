@@ -21,7 +21,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Util (fieldBool, fieldInt, fieldText)
-import Sabela.AI.Doc (cellHash)
+import Sabela.AI.Doc (cellHash, defaultDocOpts, firstNonBlank, ndoFirstLineLen)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
 import Sabela.Model
@@ -47,7 +47,8 @@ truncated with a @truncated@ flag; the model fetches the rest with @read_cell@.
 listCellSourceCap :: Int
 listCellSourceCap = 4000
 
-{- | One @list_cells@ entry. Preview (@full=False@): metadata + @firstLine@ +
+{- | One @list_cells@ entry. Preview (@full=False@): metadata + @firstLine@ (the
+cell's first NON-blank line, so a cell like @print 5@ is never invisible) +
 @lineCount@, no source — compact, so the whole notebook fits one call. Full
 (@full=True@): adds @source@, capped to 'listCellSourceCap'. A pure projection.
 -}
@@ -65,11 +66,10 @@ cellListEntry full pos c =
         ]
             ++ if full
                 then ("source" .= source) : ["truncated" .= True | overCap]
-                else ["firstLine" .= firstLine, "lineCount" .= length ls]
+                else ["firstLine" .= firstLine, "lineCount" .= length (T.lines src)]
   where
     src = cellSource c
-    ls = T.lines src
-    firstLine = T.take 120 (case ls of (x : _) -> x; [] -> "")
+    firstLine = T.take (ndoFirstLineLen defaultDocOpts) (firstNonBlank src)
     overCap = T.length src > listCellSourceCap
     source
         | overCap =

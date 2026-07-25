@@ -22,7 +22,9 @@ import Test.Hspec
 
 import Sabela.AI.SelfHeal (
     attachSelfHeal,
+    attachSelfHealSuggestions,
     contrastLine,
+    dependencySuggestionNote,
     plausibleRename,
     selfHealNote,
     sourceDelta,
@@ -164,6 +166,30 @@ spec = describe "loud + conservative self-heal (intention)" $ do
             let note = object ["note" .= ("x" :: Text)]
             lookupKey "self_heal" (attachSelfHeal (Just note) cr)
                 `shouldBe` Just note
+
+    describe "dependencySuggestionNote (G2 hard rule 1 — disclosed, never applied)" $ do
+        it "names the package and the candidate source, and points at the manual fix" $ do
+            let v =
+                    dependencySuggestionNote
+                        ["http-conduit"]
+                        "-- cabal: build-depends: http-conduit\nx = 1"
+            lookupKey "packages" v `shouldBe` Just (toStrings ["http-conduit"])
+            lookupKey "source" v
+                `shouldBe` Just (String "-- cabal: build-depends: http-conduit\nx = 1")
+            case lookupKey "note" v of
+                Just (String n) -> do
+                    n `shouldSatisfy` T.isInfixOf "http-conduit"
+                    n `shouldSatisfy` T.isInfixOf "never adds a dependency automatically"
+                _ -> expectationFailure "no note text"
+
+    describe "attachSelfHealSuggestions" $ do
+        let cr = object ["ok" .= False]
+        it "passes the result through unchanged when there are no suggestions" $
+            attachSelfHealSuggestions [] cr `shouldBe` cr
+        it "adds every suggestion as self_heal_suggestions" $ do
+            let sug = dependencySuggestionNote ["time"] "x = 1"
+            lookupKey "self_heal_suggestions" (attachSelfHealSuggestions [sug] cr)
+                `shouldBe` Just (toJSON [sug])
 
 -- | Top-level field lookup on an object payload.
 lookupKey :: Text -> Value -> Maybe Value

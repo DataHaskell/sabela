@@ -41,7 +41,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
 import Siza.Agent.Discover.Closure (stripTried)
-import Siza.Agent.Discover.Ledger (installFactKey)
+import Siza.Agent.Discover.Facts (foldFacts, maxHeldFacts)
 
 -- | The one-line back-reference of R3.8 and the terse escalation cap.
 duplicateEnvelope :: Text -> Text -> Text -> Value
@@ -104,21 +104,9 @@ strongEvidence v =
     any ((== "exact") . topText "matchKind") (hitsOf v)
         || isJust (cardOf v)
 
-{- | Fold newly harvested facts into a bounded held-facts list (R5.6). A
-fresh install-state fact REPLACES the package's earlier one — one package
-never holds two install states at once.
--}
+-- | Fold an envelope's harvested facts into the bounded held list (R5.6).
 harvestInto :: Value -> [Text] -> [Text]
-harvestInto v facts = take maxHeldFacts (foldl addFact facts (harvestFacts v))
-  where
-    addFact acc f
-        | f `elem` acc || T.null f = acc
-        | Just p <- installFactKey f =
-            [g | g <- acc, installFactKey g /= Just p] ++ [f]
-        | otherwise = acc ++ [f]
-
-maxHeldFacts :: Int
-maxHeldFacts = 8
+harvestInto v = foldFacts (harvestFacts v)
 
 {- | Held facts worth keeping: install/cabal facts from EXACT hits only
 (11.1 strength), tagged with the name they provide so relevance stays

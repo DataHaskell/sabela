@@ -3,9 +3,13 @@
 module Siza.Agent.Messages (
     doneSignal,
     doneSignalMsg,
+    noCheckSignal,
+    noCheckSignalMsg,
     toolMsg,
     reenterMsg,
     reenterMessage,
+    reenterAlarmMsg,
+    reenterAlarmMessage,
     streakMsg,
     unconfirmedMessage,
     unconfirmedMsgWith,
@@ -52,6 +56,33 @@ reenterMessage reds =
            \replace_cell_source, and do not stop until every cell you wrote runs \
            \without error."
         <> T.concat ["\n" <> c | Just c <- map (contrastLine . snd) reds]
+
+{- | 'reenterMsg', with each red cell flagged for a compile-class ('Rejected')
+outcome — structurally impossible once G1 lands, so a flagged cell is an
+invariant alarm ('reenterAlarmMessage' leads with it), not a routine nudge.
+-}
+reenterAlarmMsg :: [(CellId, Text, Bool)] -> Value
+reenterAlarmMsg reds =
+    object
+        [ "role" .= ("tool" :: Text)
+        , "tool_name" .= ("health_gate" :: Text)
+        , "content" .= reenterAlarmMessage reds
+        ]
+
+reenterAlarmMessage :: [(CellId, Text, Bool)] -> Text
+reenterAlarmMessage reds
+    | null alarmed = reenterMessage pairs
+    | otherwise = alarmLine <> "\n" <> reenterMessage pairs
+  where
+    pairs = [(cid, diag) | (cid, diag, _) <- reds]
+    alarmed = [cid | (cid, _, True) <- reds]
+    alarmLine =
+        "INVARIANT ALARM: cell(s) "
+            <> T.pack (intercalate ", " (map show alarmed))
+            <> " committed with a compiler-rejected definition even though \
+               \compile-gated writes (G1) should make that impossible — this \
+               \is a bug in the write gate, not something a cell edit fixes. \
+               \Report it (state the blocker) once the immediate task is handled."
 
 {- | A mid-loop wrong-vs-real contrast, injected when the same red diagnostic
 persists ('Siza.Agent.Streak') — same rail identity as the re-enter gate.
@@ -143,6 +174,19 @@ doneSignal =
 -- | 'doneSignal' on the verify channel.
 doneSignalMsg :: Value
 doneSignalMsg = verifyChannel VerdictOk doneSignal
+
+{- | The stop line when the cells ran clean but no machine check applies — the
+user skipped it, or no proposal survived vetting. It rests the verdict on the
+committed artifact and never claims a check that did not run.
+-}
+noCheckSignal :: Text
+noCheckSignal =
+    "Cells ran clean and the deliverable is committed; no machine check \
+    \applies, so none was run. Reply with a one-line summary and stop."
+
+-- | 'noCheckSignal' on the verify channel.
+noCheckSignalMsg :: Value
+noCheckSignalMsg = verifyChannel VerdictOk noCheckSignal
 
 verifyMsg :: Value
 verifyMsg =

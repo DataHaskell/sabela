@@ -43,6 +43,8 @@ idx =
         "lineGraph"
         "[(Text, [(Double, Double)])] -> Plot -> Text"
     , Capability "Granite.Svg" "bars" "[(Text, Double)] -> Plot -> Text"
+    , Capability "Sabela.Notebook" "group" "[Picture] -> Picture"
+    , Capability "Sabela.Notebook" "displayPicture" "Picture -> IO ()"
     ]
 
 -- | The (module, name) of the top hit for a query, with the default synonyms.
@@ -58,6 +60,18 @@ via q = case searchCapabilities defaultSynonyms idx q of
 
 spec :: Spec
 spec = describe "Sabela.AI.Capability.searchCapabilities" $ do
+    {- live_test20: asked to superimpose a cosine, the model searched
+    `overlay` and `pictures`, found neither, and guessed the gloss package —
+    while `group` and the Semigroup instance were in scope throughout. -}
+    describe "composition vocabulary reaches the combining API" $ do
+        it "finds group for the words a caller actually uses" $
+            mapM_
+                (\q -> (q, fmap snd (top q)) `shouldBe` (q, Just "group"))
+                ["overlay", "superimpose", "combine", "compose"]
+
+        it "finds the picture API for a pluralised query" $
+            fmap fst (top "pictures") `shouldBe` Just "Sabela.Notebook"
+
     it "a name keyword finds the function (animate)" $ do
         top "animate" `shouldBe` Just ("Sabela.Notebook.Anim", "animate")
         via "animate" `shouldBe` Just ByName

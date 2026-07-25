@@ -15,6 +15,7 @@ module Sabela.AI.Health (
     improvesHealthFor,
     healthMsgsFor,
     normalizeMsg,
+    scopeSubject,
 ) where
 
 import Data.Maybe (listToMaybe, maybeToList)

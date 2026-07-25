@@ -106,8 +106,11 @@ inventoryRows merged interp lexical =
             (m : _) -> m
             [] -> "(package)"
     mods hs = [m | h <- hs, let m = dhModule h, not (T.null m), m /= "(not installed)"]
+    {- A package row is exact only when its name IS a topic token. Substring
+    matching here let a package be "exact" for any token buried in it (the
+    live_test13 spam-package row for `line`, via "online"). -}
     matchOf p =
-        if any (`T.isInfixOf` T.toLower p) (topicTokens interp)
+        if T.toLower p `elem` topicTokens interp
             then MkExact
             else MkSubstring
 

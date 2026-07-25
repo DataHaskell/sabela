@@ -103,6 +103,26 @@ spec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
             let card = browseCard "Tiny.Module" "one :: Int\ntwo :: Int"
             field "more" card `shouldBe` Nothing
             field "total" card `shouldBe` Just (Number 2)
+        -- live_test20: Sabela.Notebook's card showed 24 of 227 exports and
+        -- every one was a type declaration or a record continuation, because
+        -- `type Canvas :: *` contains " :: " and banded as a value signature.
+        -- `group`, `plot` and `animate` were all in the module and none showed.
+        it "ranks the verbs first when type declarations come first in :browse" $ do
+            let raw =
+                    T.unlines
+                        [ "type Canvas :: *"
+                        , "= Canvas {canvasWidth :: Double,"
+                        , "canvasHeight :: Double}"
+                        , "type Picture :: *"
+                        , "group :: [Picture] -> Picture"
+                        ]
+                card = browseCard "Sabela.Notebook" raw
+            case field "exports" card of
+                Just (Array a) ->
+                    head [s | String s <- foldr (:) [] a]
+                        `shouldBe` "group :: [Picture] -> Picture"
+                other -> expectationFailure ("no exports array: " <> show other)
+
         it "ranks value signatures above declarations, internals last" $ do
             let raw =
                     T.unlines

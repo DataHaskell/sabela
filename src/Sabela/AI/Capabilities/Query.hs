@@ -20,6 +20,7 @@ module Sabela.AI.Capabilities.Query (
     guidedOutcome,
     typeConstructors,
     recordDecl,
+    instanceClasses,
     withBackend,
 ) where
 
@@ -42,6 +43,7 @@ import Sabela.AI.Capabilities.Query.Explore (
     runExplore,
  )
 import Sabela.AI.Capabilities.Util (fieldInt, fieldText)
+import Sabela.AI.HoleFits (holeFitsJson)
 import Sabela.AI.LeakShape (leakyLine)
 import Sabela.AI.PeekData (peekData, peekResultJSON)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
@@ -118,7 +120,18 @@ dispatchCheckType backend expr
             then do
                 struct <- typeStructure backend ty
                 pure ("type", if T.null struct then ty else ty <> "\n\n" <> struct)
-            else (,) "info" . distillTypeAnswer <$> sbQueryInfo backend expr
+            else do
+                raw <- sbQueryInfo backend expr
+                pure ("info", withInstances raw (distillTypeAnswer raw))
+
+{- | Append the type's instances to an @:info@ answer. Without them the caller
+sees a type's shape but not what it can DO — the live_test20 failure, where
+@Picture@'s @Semigroup@ instance was the answer and never surfaced.
+-}
+withInstances :: Text -> Text -> Text
+withInstances raw answer = case instanceClasses raw of
+    [] -> answer
+    cs -> answer <> "\n\ninstances: " <> T.intercalate ", " cs
 
 {- | True when @:type@ actually resolved the query, so we keep its answer rather
 than falling back to @:info@. Matches GHC's "didn't resolve" forms
@@ -150,6 +163,26 @@ typeStructure backend = go . take 4 . candidates
     variants t =
         let bare = lastSeg t
          in if bare == t then [t] else [t, bare]
+
+{- | The classes a @:info@ dump says the type belongs to, in declaration order.
+A type's instances are its composition vocabulary — @Semigroup@ is how the
+caller learns that @<>@ joins two of these — and that is the one part of
+@:info@ 'recordDecl' deliberately drops.
+-}
+instanceClasses :: Text -> [Text]
+instanceClasses info =
+    nubKeep
+        [ cls
+        | l <- map T.strip (T.lines info)
+        , Just rest <- [T.stripPrefix "instance " l]
+        , cls : _ <- [T.words (dropContext (fst (T.breakOn "--" rest)))]
+        , maybe False (isUpper . fst) (T.uncons cls)
+        ]
+  where
+    dropContext r = case T.breakOn "=>" r of
+        (_, m) | not (T.null m) -> T.strip (T.drop 2 m)
+        _ -> r
+    nubKeep = foldr (\x acc -> x : filter (/= x) acc) []
 
 -- | Last dot-separated segment of a (possibly qualified) name.
 lastSeg :: Text -> Text
@@ -204,7 +237,25 @@ execFindByType app input = do
         else withBackend app $ \backend -> do
             let hole = if "_" `T.isPrefixOf` goal then goal else "_ :: " <> goal
             result <- sbQueryHoleFits backend hole
-            pure (guidedOutcome ["goal" .= goal] result)
+            let fits = holeFitsJson findByTypeCap result
+            pure
+                ( okOutcome
+                    ( object
+                        [ "goal" .= goal
+                        , "fits" .= fits
+                        , "shown" .= length fits
+                        , "probe" .= ("typecheck-only; nothing was committed" :: Text)
+                        ]
+                    )
+                )
+
+{- | How many fits @find_by_type@ ships. The probe is a SEARCH, so its answer
+is a short ranked list of names and where they come from — never GHC's raw
+hole-fit blob, whose instantiation and source-span clutter both misleads the
+reader and spends its context (live_test20).
+-}
+findByTypeCap :: Int
+findByTypeCap = 8
 
 -- | @describe_function@: the haddock documentation for a name (@:doc@ prose).
 execDescribeFunction :: App -> Value -> IO ToolOutcome

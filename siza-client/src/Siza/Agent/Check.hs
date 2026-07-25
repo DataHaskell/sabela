@@ -17,7 +17,9 @@ module Siza.Agent.Check (
     conjuncts,
     counterexampleLine,
     eqLhs,
+    degenerateCheck,
     extractTestExpr,
+    feedbackContinuation,
     interpretConfirm,
     markerSrc,
     parseCeIndex,
@@ -28,6 +30,7 @@ import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson as A
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
+import Data.Char (isAlphaNum, isLower)
 import Data.Foldable (toList)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -35,14 +38,27 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (ToolOk))
-import Siza.Agent.CheckExtract (extractTestExpr, interpretConfirm)
+import Siza.Agent.CheckExtract (
+    extractTestExpr,
+    feedbackContinuation,
+    interpretConfirm,
+ )
 import Siza.Agent.Tools (renderOutcome, withInsertDefaults)
 import Text.Read (readMaybe)
 
-{- | The three outcomes of a covering check, telling an invalid target (the check
-itself does not compile) apart from a genuinely failing one.
+{- | The outcomes of a covering check. An invalid target (the check itself does
+not compile) is distinct from a genuinely failing one, and both are distinct
+from 'CheckNotApplicable' — no check was run at all, because the user skipped
+it or no candidate survived vetting. Accepting the last as a pass told the
+model "the covering check passes" over a check that never compiled
+(live_test19); a deliverable with no applicable check rests on its artifact,
+and says so.
 -}
-data CheckResult = CheckPassed | CheckFailed | CheckUncheckable
+data CheckResult
+    = CheckPassed
+    | CheckFailed
+    | CheckUncheckable
+    | CheckNotApplicable
     deriving (Eq, Show)
 
 {- | Classify a covering-check marker's output: 'markerSrc' prints GRADE_PASS /
@@ -265,3 +281,15 @@ maxId (Array a) =
         (0 : [round s | Object c <- toList a, Just (Number s) <- [KM.lookup "id" c]])
 maxId (Object o) = maybe 0 maxId (KM.lookup "cells" o)
 maxId _ = 0
+
+{- | A check that reads nothing the notebook defines proves nothing: a literal
+runs, passes, and reports "check passed: True" over an empty deliverable
+(live_test8 #4). Degenerate iff it names no lower-case identifier.
+-}
+degenerateCheck :: Text -> Bool
+degenerateCheck t = null (identifiers t)
+  where
+    identifiers =
+        filter isName
+            . T.split (\c -> not (isAlphaNum c || c == '_' || c == '\''))
+    isName w = maybe False (\(c, _) -> isLower c || c == '_') (T.uncons w)

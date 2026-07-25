@@ -1,15 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Retry-futility guard: when a call byte-identical to an earlier one fails
-with the identical error, the response says so and directs the model away from
-payload rewriting — the second identical failure proves the payload is not the
-fault. A success clears the memory for that call.
+{- | Retry-futility guard: a call byte-identical to an earlier one that fails
+identically is annotated with the note its failure class earns — environmental
+('futilityNote') or deterministic ('sourceFaultNote', where the source IS the
+fault). A success clears the memory for that call.
 -}
 module Siza.Agent.Futility (
     FutilityGuard,
     newFutilityGuard,
     guardDispatch,
     futilityNote,
+    sourceFaultNote,
+    noteFor,
 ) where
 
 import Data.Aeson (Value (..), encode, object, (.=))
@@ -40,8 +42,34 @@ futilityNote =
     \check kernel_status / list_cells, use a different tool, or take a \
     \smaller step."
 
+{- | G5.7: for a DETERMINISTIC rejection the payload IS the fault, so the
+environmental advice is a lie that steers away from the fix. Names the source
+and never mentions a state-inspection tool.
+-}
+sourceFaultNote :: Text
+sourceFaultNote =
+    "This exact source was rejected before with the identical diagnostic. It \
+    \is deterministic: the fault is in the source, not the kernel or the \
+    \environment. Read the diagnostic above and change the source it names."
+
+{- | Which futility note this failure earns. A rejection carrying a compiler
+verdict is deterministic; anything else is treated as environmental.
+-}
+noteFor :: Either Text ToolOutcome -> Text
+noteFor out
+    | deterministicRejection out = sourceFaultNote
+    | otherwise = futilityNote
+
+-- | A refusal or diagnostic verdict: the compiler already judged this source.
+deterministicRejection :: Either Text ToolOutcome -> Bool
+deterministicRejection (Right (ToolErr (Object o))) =
+    KM.member (K.fromText "refusal") o
+        || KM.lookup (K.fromText "verdict") o == Just (String "diagnostic")
+        || KM.member (K.fromText "diagnostic") o
+deterministicRejection _ = False
+
 {- | Wrap a dispatch: pass outcomes through untouched, except that a repeat of
-an identically-failing identical call gains the 'futilityNote'.
+an identically-failing identical call gains the note its failure class earns.
 -}
 guardDispatch ::
     FutilityGuard ->
@@ -60,7 +88,7 @@ guardDispatch (FutilityGuard ref) dispatch call = do
                 atomicModifyIORef'
                     ref
                     (\m -> (Map.insert key ft m, Map.lookup key m))
-            pure (if prev == Just ft then annotate out else out)
+            pure (if prev == Just ft then annotate (noteFor out) out else out)
 
 callKey :: ToolCall -> (Text, Text)
 callKey (ToolCall n a) = (n, encodeText a)
@@ -70,16 +98,13 @@ failureText (Left e) = Just e
 failureText (Right (ToolErr v)) = Just (encodeText v)
 failureText (Right (ToolOk _)) = Nothing
 
-annotate :: Either Text ToolOutcome -> Either Text ToolOutcome
-annotate (Left e) = Left (e <> " " <> futilityNote)
-annotate (Right (ToolErr (Object o))) =
-    Right (ToolErr (Object (KM.insert (K.fromText "futility") note o)))
-annotate (Right (ToolErr v)) =
-    Right (ToolErr (object ["error" .= v, "futility" .= note]))
-annotate ok = ok
-
-note :: Value
-note = String futilityNote
+annotate :: Text -> Either Text ToolOutcome -> Either Text ToolOutcome
+annotate n (Left e) = Left (e <> " " <> n)
+annotate n (Right (ToolErr (Object o))) =
+    Right (ToolErr (Object (KM.insert (K.fromText "futility") (String n) o)))
+annotate n (Right (ToolErr v)) =
+    Right (ToolErr (object ["error" .= v, "futility" .= String n]))
+annotate _ ok = ok
 
 encodeText :: Value -> Text
 encodeText = TE.decodeUtf8With TEE.lenientDecode . LBS.toStrict . encode

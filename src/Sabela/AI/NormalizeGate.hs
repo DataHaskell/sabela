@@ -24,7 +24,7 @@ import Sabela.AI.Health (DiagnosticKey (..), Health (..), normalizeMsg)
 import Sabela.AI.RepairDispatch (acceptRepair)
 import Sabela.Model (CellType (..))
 import Sabela.Parse (unparseableChunks)
-import Sabela.Parse.Normalize (normalizeCode, normalizeInsert)
+import Sabela.Parse.Normalize (looksLikeHaskellCode, normalizeCode)
 
 {- | Parse health of a raw cell source: one diagnostic per unparseable
 GHCi-fragment chunk, keyed by the chunk's own (normalized) text so a rewrite
@@ -50,28 +50,34 @@ acceptsRewrite before after =
   where
     target = "candidate"
 
-{- | 'normalizeInsert' with its rewrite gated by 'acceptsRewrite': kept
-rewrites keep the generator's notes; a rejected rewrite returns the
-submission byte-identically with the attempt disclosed ('revertNote').
+{- | 'normalizeInsert' with its code-level rewrite gated by 'acceptsRewrite':
+the type reclassification (prose recognized as Haskell) is unconditional —
+'acceptsRewrite' judges parseability, not cell type — while the source text
+change goes through the same law 'gatedRewrite' applies on every other path.
 -}
 gatedNormalizeInsert :: CellType -> Text -> (CellType, Text, [Text])
-gatedNormalizeInsert ty src
-    | src' == src = (ty', src, notes)
-    | acceptsRewrite src src' = (ty', src', notes <> [currentSourceNote src'])
-    | otherwise = (ty', src, [revertNote src src'])
+gatedNormalizeInsert ty src = (ty', gatedSrc, reclassNotes <> gateNotes)
   where
-    (ty', src', notes) = normalizeInsert ty src
+    reclassified = ty == ProseCell && looksLikeHaskellCode src
+    ty' = if reclassified then CodeCell else ty
+    reclassNotes =
+        ["Inserted as a CodeCell — the source is Haskell, not prose." | reclassified]
+    (gatedSrc, gateNotes)
+        | ty' == CodeCell = gatedRewrite src
+        | otherwise = (src, [])
 
-{- | The replace-path form of the gate: the same 'normalizeCode' generator
-composition, kept iff the law admits it.
+{- | ONE gate over 'normalizeCode', shared by insert, replace, propose, and
+try: the composed rewrite is kept, with a note per fix, iff 'acceptsRewrite'
+admits it; otherwise the submission is preserved byte-identically and the
+attempt is disclosed as reverted ('revertNote').
 -}
-gatedRewrite :: Text -> Text
+gatedRewrite :: Text -> (Text, [Text])
 gatedRewrite src
-    | cand == src = src
-    | acceptsRewrite src cand = cand
-    | otherwise = src
+    | cand == src = (src, notes)
+    | acceptsRewrite src cand = (cand, notes <> [currentSourceNote cand])
+    | otherwise = (src, [revertNote src cand])
   where
-    cand = fst (normalizeCode src)
+    (cand, notes) = normalizeCode src
 
 {- | The kept-rewrite disclosure (R7.1): the note that announces a machine
 rewrite always carries the post-rewrite source it asks the caller to build on.

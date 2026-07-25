@@ -200,7 +200,7 @@ notebookTools =
         )
     , mkTool
         Try
-        "Try code against the current notebook without modifying it. This is the ONE speculative execution interface: it can use notebook bindings (a cell's `df`, etc.) and candidate-only `-- cabal:` dependencies. Sabela chooses the safe internal route—a read-only live fast path for eligible code, or a disposable re-materialized scratch environment when isolation or new packages are needed—and returns the value or diagnostic."
+        "Try candidate code without touching the notebook: it sees live bindings (a cell's `df`, etc.) and may declare a candidate-only `-- cabal:` dependency to test with. Always safe to call — nothing is added, changed, or removed. Returns the value or output on success, or a diagnostic saying why it could not run."
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"

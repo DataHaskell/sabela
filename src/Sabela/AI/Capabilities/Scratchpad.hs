@@ -36,11 +36,11 @@ import qualified System.IO as IO
 import System.IO.Temp (createTempDirectory)
 
 import Sabela.AI.Capabilities.Util (compactMaybeText, fieldText, parseCellLang)
+import Sabela.AI.NormalizeGate (gatedRewrite)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Api (errorJson)
-import Sabela.Parse.Normalize (rewriteTopLevelLet)
 
 -- 'ToolOutcome' (and its smart constructors) is re-exported from
 -- 'Sabela.AI.Types' via the open import above; no explicit list needed.
@@ -224,10 +224,10 @@ way a cell does, so the model isn't stuck retrying the same import.
 runScratchpadHealed ::
     App -> AIStore -> CellLang -> Text -> [Text] -> Int -> IO ToolOutcome
 runScratchpadHealed app store lang rawCode deps budget = do
-    -- Run the snippet through the same scripths preprocessing cells get (strips
-    -- top-level `let`, wraps multi-line defs, etc.) so the two agree.
+    -- G7: the same shared normalizer/gate every candidate-source path uses
+    -- (Sabela.AI.NormalizeGate), so this agrees with insert/replace/try.
     let code = case lang of
-            Haskell -> renderHaskellForGhci (rewriteTopLevelLet rawCode)
+            Haskell -> renderHaskellForGhci (fst (gatedRewrite rawCode))
             Python -> rawCode
     res <-
         try

@@ -10,6 +10,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
+import Sabela.AI.HoogleIntent (ActionClass (RenderAction), actionNeedQueries)
 import Sabela.AI.HoogleProse (
     hoogleQueryWith,
     isPackageRow,
@@ -56,7 +57,10 @@ noPkgRun _ q = pure $ case T.strip q of
     _ -> []
 
 spec :: Spec
-spec = describe "prose package-scoped rescue (run-085948 regression)" $ do
+spec = packageRescueSpec >> sineSpec
+
+packageRescueSpec :: Spec
+packageRescueSpec = describe "prose package-scoped rescue (run-085948 regression)" $ do
     it "a prose query naming a package keeps that package's rows" $ do
         hits <- hoogleQueryWith scriptedRun 8 "bar chart granite"
         map hhName hits `shouldContain` ["bars"]
@@ -87,3 +91,29 @@ spec = describe "prose package-scoped rescue (run-085948 regression)" $ do
         isPackageRow "granite" (pkgRow "granite") `shouldBe` True
         isPackageRow "granite" barsHit `shouldBe` False
         isPackageRow "chart" (pkgRow "granite") `shouldBe` False
+
+{- | The 2026-07-21 specimen (HANDOFF.md "exact-name-first is intent-blind"):
+"plot a sine wave" widened to the isolated noun "sine", exact-matching a
+synth oscillator instead of a chart library.
+-}
+sineSpec :: Spec
+sineSpec = describe "action-need stage (intent-blind regression)" $ do
+    it "a plotting request finds the chart library, never the isolated object noun" $ do
+        hits <- hoogleQueryWith sineRun 8 "plot a sine wave"
+        map hhPackage hits `shouldBe` ["chart-svg"]
+        map hhName hits `shouldNotContain` ["sine"]
+
+    it "the action-need queries actually tried are RenderAction's" $
+        actionNeedQueries RenderAction `shouldBe` ["chart library", "SVG rendering"]
+  where
+    chartLibHit = hit "linePlot" "chart-svg" "Chart.Line" "[Double] -> Svg"
+    sineOscillatorHit =
+        hit "sine" "tidal" "Sound.Tidal.Boot" "Time -> Signal Double"
+    -- Every phrase/keyword/bigram spelling of the sentence misses; only the
+    -- action-need query and the isolated noun (which must never be reached)
+    -- answer.
+    sineRun :: Int -> Text -> IO [HoogleHit]
+    sineRun _ q = pure $ case T.strip (T.toLower q) of
+        "chart library" -> [chartLibHit]
+        "sine" -> [sineOscillatorHit]
+        _ -> []
