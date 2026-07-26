@@ -34,12 +34,8 @@ extensionDiag =
     \    Suggested fix:\n\
     \      Perhaps you intended to use the \8216RankNTypes\8217 extension"
 
-{- | live_test58's lens cell, verbatim: ONE good hint (RankNTypes) beside a
-knock-on rename GHC only offered because the first error broke the block, so
-the cell's own `data Server` fell out of scope and `Setter` was the nearest
-name in the room. -}
-poisonedComposite :: Text
-poisonedComposite =
+mixedQuality :: Text
+mixedQuality =
     "<interactive>:241:16: error: [GHC-91510]\n\
     \    Illegal polymorphic type:\n\
     \    Suggested fix:\n\
@@ -58,14 +54,21 @@ definesServer =
 
 spec :: Spec
 spec = describe "gate-side repair candidates" $ do
-    describe "a knock-on rename never poisons the composite" $ do
-        it "does not rename a name the cell itself defines" $ do
-            let cs = repairCandidates poisonedComposite definesServer
-            concatMap snd cs `shouldNotSatisfy` any (T.isInfixOf "Server -> Setter")
+    describe "one doubtful hint sinks only the candidates carrying it" $ do
+        it "offers the fused fix first, for when both hints are sound" $ do
+            let (_, fixes) : _ = repairCandidates mixedQuality definesServer
+            fixes `shouldSatisfy` elem "enabled RankNTypes"
+            fixes `shouldSatisfy` any (T.isInfixOf "Server -> Setter")
 
-        it "still offers the extension fix that was beside it" $ do
-            let cs = repairCandidates poisonedComposite definesServer
-            concatMap snd cs `shouldSatisfy` elem "enabled RankNTypes"
+        it "also offers the extension alone, so the rename cannot sink it" $ do
+            let cs = repairCandidates mixedQuality definesServer
+            map snd cs `shouldSatisfy` elem ["enabled RankNTypes"]
+
+        it "and the rename alone, in case the extension was the doubtful one" $ do
+            let cs = repairCandidates mixedQuality definesServer
+            map snd cs
+                `shouldSatisfy` any
+                    (\fs -> length fs == 1 && any (T.isInfixOf "Server -> Setter") fs)
 
     it "fixes every rename hint in ONE composite, not one at a time" $ do
         let src = "xs = filtered odd [1,2,3]\nloc = location dc"

@@ -7,7 +7,7 @@ module Sabela.AI.Capabilities.Edit.GateRepair (
 ) where
 
 import Data.List (nub)
-import Data.Maybe (mapMaybe, isNothing)
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -66,51 +66,56 @@ diagnosticOf :: DisposableResult -> Text
 diagnosticOf result =
     maybe (disposableStderr result) failureMessage (disposableFailure result)
 
+data Scope = Scope {scopeBody :: Bool, scopeHeader :: Bool}
+
+scopes :: [Scope]
+scopes = [Scope True True, Scope False True, Scope True False]
+
 repairCandidates :: Text -> Text -> [(Text, [Text])]
 repairCandidates diagnostic src =
-    take proofCap (nub (mapMaybe composite [0 .. proofCap - 1]))
+    take proofCap (nub (mapMaybe candidate variations))
   where
+    variations = [(s, k) | s <- scopes, k <- [0 .. proofCap - 1]]
     hints = parseHints diagnostic
     renames = [(w, cs) | HintRename w cs <- hints, not (T.null w), not (null cs)]
     extensions = nub [e | HintExtension e <- hints]
     ambiguity = ambiguousOccurrence diagnostic
     hiddenPkg = hiddenPackage diagnostic
-    varied = [i | (i, (_, cs)) <- zip [0 ..] renames, length cs > 1]
-    composite k
-        | null renames && null extensions && isNothing ambiguity && isNothing hiddenPkg =
-            Nothing
-        | otherwise =
-            let picks =
-                    [ (w, pick j k cs)
-                    | (j, (w, cs)) <- zip [(0 :: Int) ..] renames
-                    ]
-                substituted =
-                    foldl
-                        (\acc (w, c) -> substituteNameInCode w (rcName c) acc)
-                        src
-                        picks
-                qualified = case ambiguity of
-                    Just (nm, cands@(_ : _)) ->
-                        substituteNameInCode nm (cands !! min k (length cands - 1)) substituted
-                    _ -> substituted
-                withExts = foldl (flip addExtension) qualified extensions
-                withDep = maybe withExts (`addBuildDepend` withExts) hiddenPkg
-                fixes =
-                    [ w <> " -> " <> rcName c <> provNote c
-                    | (w, c) <- picks
-                    , substituteNameInCode w (rcName c) src /= src
-                    ]
-                        <> ["qualified "
-                              <> nm <> " as " <> (cands !! min k (length cands - 1)) |
-                              qualified /= substituted, Just (nm, cands@(_ : _)) <- [ambiguity]]
-                        <> ["enabled " <> e | e <- extensions]
-                        <> ["declared build-depends: " <> p | Just p <- [hiddenPkg]]
-             in if withDep == src || null fixes
-                    then Nothing
-                    else Just (withDep, fixes)
+    varied = [i | (i, (_, cs)) <- zip [(0 :: Int) ..] renames, length cs > 1]
+
+    candidate (scope, k)
+        | null applied || repaired == src = Nothing
+        | otherwise = Just (repaired, applied)
+      where
+        picks
+            | scopeBody scope =
+                [(w, pick j k cs) | (j, (w, cs)) <- zip [(0 :: Int) ..] renames]
+            | otherwise = []
+        renamed =
+            foldl' (\acc (w, c) -> substituteNameInCode w (rcName c) acc) src picks
+        toQualify = if scopeBody scope then ambiguity else Nothing
+        qualified = case toQualify of
+            Just (nm, cands@(_ : _)) ->
+                substituteNameInCode nm (choose k cands) renamed
+            _ -> renamed
+        exts = if scopeHeader scope then extensions else []
+        dep = if scopeHeader scope then hiddenPkg else Nothing
+        repaired =
+            maybe id addBuildDepend dep (foldl' (flip addExtension) qualified exts)
+        applied =
+            [ w <> " -> " <> rcName c <> provNote c
+            | (w, c) <- picks
+            , substituteNameInCode w (rcName c) src /= src
+            ]
+                <> ["qualified " <> nm <> " as " <> choose k cands |
+                      qualified /= renamed, Just (nm, cands@(_ : _)) <- [toQualify]]
+                <> map ("enabled " <>) exts
+                <> map ("declared build-depends: " <>) (maybe [] pure dep)
+
+    choose k cs = cs !! min k (length cs - 1)
     pick j k cs = case varied of
-        (v : _) | j == v -> cs !! min k (length cs - 1)
-        _ -> head cs
+        (v : _) | j == v -> choose k cs
+        _ -> choose 0 cs
     provNote c
         | T.null (rcProvenance c) = ""
         | otherwise = " (" <> rcProvenance c <> ")"
