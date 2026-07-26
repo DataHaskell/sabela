@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The MCP stdio server's pure surface: JSON-RPC framing, the notification
-rule, the @input_schema@→@inputSchema@ projection (drift guard), tool-result
-mapping, and the client-side pre-flight gate that keeps a weak model from
-landing broken source. These run without network; 'Siza.Mcp.gateForMcp' invokes
-the real parser.
--}
 module Test.McpSpec (mcpSpec) where
 
 import Data.Aeson (Value (..), object, (.=))

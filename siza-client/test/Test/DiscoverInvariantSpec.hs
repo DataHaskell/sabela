@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | General search invariants over the controlled catalogue (testing-plan R3):
-findability (R3.1), exact-name-first (R3.2), union conservation (R3.3), and
-per-hit provenance (R3.5) — properties over every catalogue name, not sampled
-examples, plus the query-normalisation corner cases of R2.
--}
 module Test.DiscoverInvariantSpec (discoverInvariantSpec) where
 
 import Data.Aeson (Value (..))
@@ -27,7 +22,6 @@ import Siza.Agent.Discover.Types (
  )
 import Test.DiscoverFixtures
 
--- | The empty environment (real builtin seed, no notebook state).
 env0 :: NotebookEnv
 env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
@@ -163,14 +157,12 @@ discoverInvariantSpec =
                     b <- runCat "gust"
                     a `shouldBe` b
 
--- | Findability misses: the export's own name not in its top-3.
 findMiss :: Text -> IO [Text]
 findMiss n = do
     v <- runCat n
     let top3 = map (hitText "name") (take 3 (hitsOf v))
     pure [n | n `notElem` top3]
 
--- | Exact-first violations: a non-exact hit ranked before an exact one.
 exactFirstViolation :: Text -> IO [Text]
 exactFirstViolation n = do
     v <- runCat n
@@ -187,7 +179,6 @@ reconcileViolation q = do
                     == intField "total" v
     pure [q | not ok]
 
--- | Provenance violations: a rendered hit missing any of the four fields.
 provenanceViolation :: Text -> IO [Text]
 provenanceViolation q = do
     v <- runCat q

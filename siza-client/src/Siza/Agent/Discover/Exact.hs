@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Stage 0 of the discover ranking (docs/discover/search-api.md section 7):
-exact-name lookups DISTINCT from every fuzzy scan — the name looked up in the
-notebook's imported (loaded) modules via the session, and the hoogle
-exact-name query — so stratum membership is a lookup, not a ranking accident.
--}
 module Siza.Agent.Discover.Exact (stageZero) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -23,22 +18,12 @@ import Siza.Agent.Discover.Types (
     SourceAnswer (..),
  )
 
--- | Imported-module browses per name query, bounding the lookup fan-out.
 maxBrowses :: Int
 maxBrowses = 3
 
--- | Exact hoogle lookups one prose query may fan out to, bounding the cost.
 maxProseExact :: Int
 maxProseExact = 3
 
-{- | The stage-0 answers, by query shape. Name\/module\/package shapes run
-the exact hoogle lookup on the resolved token; PROSE runs one bounded exact
-lookup per usable term — the lexical hoogle tier is never shape-gated
-(section 2: a fuzzy-channel miss must not hide an exactly-named deliverable).
-Session hits are kept to the exact name only; hoogle hits to exact
-name\/module\/package matches, so a backend that ignores the exact flag
-cannot flood the merge with a fuzzy wall.
--}
 stageZero ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     NotebookEnv ->
@@ -50,8 +35,6 @@ stageZero call env interp = case iShape interp of
         hoo <- exactHoogle n
         pure (catMaybes sess ++ hoo)
     "module" -> do
-        -- The session's own browse of the module is stage-0 evidence too
-        -- (section 3.3): its card must resolve the name in EVERY mode.
         sess <- lookupModule n
         hoo <- exactHoogle n
         pure (maybeToList sess ++ hoo)
@@ -70,7 +53,6 @@ stageZero call env interp = case iShape interp of
     lookupModule m = do
         r <- callOk (call FindFunction (object ["query" .= m]))
         pure (moduleOnly . sessionAnswer interp . Just <$> r)
-    -- A module browse keeps its card and the module's own attributed hits.
     moduleOnly a =
         a{saHits = [h | h <- saHits a, dhModule h == n || dhName h == n]}
     exactHoogle t = do

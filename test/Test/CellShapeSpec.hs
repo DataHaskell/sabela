@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pre-GHC structural validator (C2): at the cell-mutation boundary it
-rejects obviously-wrong cell shapes — a top-level @let@ in a code cell and
-Haskell code pasted into a 'ProseCell' — before they reach the compiler,
-with a deterministic message (the @let@ one deduped against
-'Sabela.Diagnose.letParse').
--}
 module Test.CellShapeSpec (spec) where
 
 import qualified Data.Text as T

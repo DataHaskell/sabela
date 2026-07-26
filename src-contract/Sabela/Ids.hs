@@ -1,11 +1,3 @@
-{- | Typed identifiers shared by the AI subsystem and the 'NotebookEvent'
-SSE wire types. Lives in its own leaf module because 'Sabela.Model' can't
-depend on 'Sabela.AI.Types' (the dependency runs the other way), and the
-'EvChat*' constructors need these newtypes to stop masquerading as @Int@.
-
-The 'ToJSON' instances render bare integers / strings so the SSE wire
-format is unchanged from the pre-B1 @Int@/'Text' world.
--}
 module Sabela.Ids (
     TurnId (..),
     EditId (..),

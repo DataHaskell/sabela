@@ -39,10 +39,6 @@ import System.FilePath ((</>))
 import Test.Fixtures (retroSession, sampleEvent)
 import Test.Hspec
 
--- ---------------------------------------------------------------------------
--- Provenance: the append-only JSONL SessionEvent log
--- ---------------------------------------------------------------------------
-
 provenanceSpec :: Spec
 provenanceSpec = describe "provenance (client-seam SessionEvent log)" $ do
     it "round-trips a SessionEvent through JSON, preserving the typed fields" $
@@ -96,10 +92,6 @@ provenanceSpec = describe "provenance (client-seam SessionEvent log)" $ do
         recordEvent sampleEvent
         unsetEnv "XDG_STATE_HOME"
 
--- ---------------------------------------------------------------------------
--- Hash chain (opt-in tamper-evidence)
--- ---------------------------------------------------------------------------
-
 chainSpec :: Spec
 chainSpec = describe "provenance hash chain (opt-in)" $ do
     let evs =
@@ -120,8 +112,6 @@ chainSpec = describe "provenance hash chain (opt-in)" $ do
         verifyChain chained `shouldBe` True
 
     it "the default plain (unchained) log is not a valid 1+ chain" $
-        -- two unchained events both carry sePrev=Nothing, so the second
-        -- record's link does not match its predecessor's hash
         verifyChain evs `shouldBe` False
 
     it "editing any record after chaining breaks verification" $ do
@@ -134,10 +124,6 @@ chainSpec = describe "provenance hash chain (opt-in)" $ do
     it "an empty or single-event chain trivially verifies" $ do
         verifyChain [] `shouldBe` True
         verifyChain (chainEvents [sampleEvent]) `shouldBe` True
-
--- ---------------------------------------------------------------------------
--- Retro: session metrics from the JSONL log
--- ---------------------------------------------------------------------------
 
 retroSpec :: Spec
 retroSpec = describe "retro (session metrics from the log)" $ do

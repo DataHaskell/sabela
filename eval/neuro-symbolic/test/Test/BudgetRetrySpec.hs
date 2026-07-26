@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | N4 (read-discovery budget nudge) and N10 (bounded chat-error retry) in the
-agent episode loop. A scripted 'Driver' plays canned turns / chat errors so the
-loop's discipline is exercised without a live model or server.
--}
 module Test.BudgetRetrySpec (spec) where
 
 import Data.Aeson (object, (.=))
@@ -106,9 +102,6 @@ discoverTurn q =
         ""
         [ToolCall "discover" (object ["query" .= q])]
 
-{- | Answer discover with a found, exact, typed hit (a call-ready fact);
-everything else with the healthy write ack.
--}
 discoverAnswers :: ToolCall -> IO (Either Text ToolOutcome)
 discoverAnswers (ToolCall "discover" _) =
     pure . Right . ToolOk $

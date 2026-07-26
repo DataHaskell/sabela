@@ -1,8 +1,3 @@
-{- | Classify raw backend payloads into typed 'SourceAnswer's for the union
-merge: the notebook environment layer, the session (@find_function@ matches
-and browse cards), and the capability/hoogle channel. No payload shape ever
-reaches the model unparsed (R3.6).
--}
 module Siza.Agent.Discover.Classify (
     notebookAnswer,
     candidatePackages,
@@ -33,7 +28,6 @@ import Siza.Agent.Discover.Types (
  )
 import Siza.Agent.Discover.UnitName (scrubCardUnits)
 
--- | Package names whose upstream existence is worth checking for this query.
 candidatePackages :: Interpreted -> [SourceAnswer] -> [Text]
 candidatePackages interp answers =
     nub . filter (not . T.null) $
@@ -41,10 +35,6 @@ candidatePackages interp answers =
             ++ [dhPackage h | a <- answers, h <- saHits a]
             ++ [p | a <- answers, (p, _) <- saPkgModules a]
 
-{- | The notebook's own answer: builtins, cell-defined bindings, and modules
-the notebook itself imports are hits before any backend is consulted (R1.5,
-round 2 section 2) — a documented name or an imported module cannot be denied.
--}
 envAnswer :: NotebookEnv -> Interpreted -> SourceAnswer
 envAnswer env interp =
     okAnswer "notebook" (builtin ++ binding ++ dslModule ++ importedMod)
@@ -83,11 +73,9 @@ envAnswer env interp =
         | Just i <- [lookup n (neImportCells env)]
         ]
 
--- | An environment hit is an exact lookup: stratum 1, notebook provenance.
 envHit :: Text -> Text -> Text -> DHit
 envHit n m p = (baseHit n m p){dhKind = MkExact, dhOrigin = "notebook"}
 
--- | "imported by cell 0 as D; in scope" — the round 2 module answer.
 importedNote :: NotebookEnv -> Text -> Int -> Text
 importedNote env m i =
     "imported by cell " <> T.pack (show i) <> aliasPart <> "; in scope"
@@ -96,10 +84,6 @@ importedNote env m i =
         (a : _) -> " as " <> a
         [] -> ""
 
-{- | The session source: 'Nothing' means unreachable (kernel down or transport
-error), never absence. Matches, browse cards and did-you-mean suggestions all
-become hits or cards — no tier is ever discarded (R3.3).
--}
 sessionAnswer :: Interpreted -> Maybe Value -> SourceAnswer
 sessionAnswer _ Nothing =
     unavailableAnswer
@@ -112,10 +96,6 @@ sessionAnswer interp (Just v@(Object o))
     | otherwise = okAnswer "session" []
 sessionAnswer _ (Just _) = okAnswer "session" []
 
-{- | A browse-card payload by status: ok listing, hidden package, did-you-mean.
-The card is unit-scrubbed at this seam (R3.10/P6): a version-qualified GHC
-unit label never reaches the model through the card or its hits.
--}
 cardAnswer :: Interpreted -> Text -> Value -> SourceAnswer
 cardAnswer interp st v0 = case (st, scrubCardUnits v0) of
     ("ok", v@(Object _)) ->
@@ -153,7 +133,6 @@ cardAnswer interp st v0 = case (st, scrubCardUnits v0) of
         , String m <- toList ss
         ]
 
--- | The export lines of an ok listing card, as session-evidenced hits.
 exportHits :: Interpreted -> Value -> [DHit]
 exportHits interp (Object o) =
     [ (baseHit n modName "")
@@ -171,7 +150,6 @@ exportHits interp (Object o) =
     modName = textAt "module" o
 exportHits _ _ = []
 
--- | One @find_function@ match, kind decided against the resolved name.
 matchHit :: Interpreted -> Value -> DHit
 matchHit interp m =
     (baseHit n (textAt' "module" m) "")
@@ -193,10 +171,6 @@ matchHit interp m =
         | q `T.isInfixOf` n = MkSubstring
         | otherwise = MkSemantic
 
-{- | The capability/hoogle source: enriched per-package buckets (with their
-API functions) or flat symbol hits. 'Nothing' = channel unreachable — the
-lexical lookup runs on every arm (section 2); only SHIP enrichment is gated.
--}
 capabilityAnswer :: Interpreted -> Maybe Value -> SourceAnswer
 capabilityAnswer _ Nothing =
     unavailableAnswer "hoogle" "hoogle/capability channel unreachable"
@@ -207,7 +181,6 @@ capabilityAnswer interp (Just (Object o))
             }
 capabilityAnswer _ (Just _) = okAnswer "hoogle" []
 
--- | The hits of one bucket: the package itself plus its surfaced API.
 bucketHits :: Interpreted -> Value -> [DHit]
 bucketHits interp b@(Object o)
     | T.null pkg && not (T.null flatName) = [flatHit interp b]
@@ -243,7 +216,6 @@ bucketHits interp b@(Object o)
         ]
 bucketHits _ _ = []
 
--- | A flat @{name, type, module, package}@ symbol hit.
 flatHit :: Interpreted -> Value -> DHit
 flatHit interp h =
     (baseHit n (textAt' "module" h) (textAt' "package" h))
@@ -254,7 +226,6 @@ flatHit interp h =
   where
     n = textAt' "name" h
 
--- | The package -> modules map a bucket discloses (probe targets).
 bucketModules :: Value -> [(Text, [Text])]
 bucketModules (Object o) =
     [ (pkg, [m | String m <- toList ms])
@@ -264,7 +235,6 @@ bucketModules (Object o) =
     ]
 bucketModules _ = []
 
--- | Kind of a name against the resolved query and its prose terms.
 kindFor :: Interpreted -> Text -> MatchKind
 kindFor interp n
     | n == q = MkExact
@@ -276,7 +246,6 @@ kindFor interp n
   where
     q = iName interp
 
--- | A default hit skeleton shared by the classifiers.
 baseHit :: Text -> Text -> Text -> DHit
 baseHit n m p =
     DHit n "" m p "" InstAbsentUnknown MkSemantic "" Nothing Nothing
@@ -296,16 +265,6 @@ textAt' :: K.Key -> Value -> Text
 textAt' k (Object o) = textAt k o
 textAt' _ _ = ""
 
-{- | Cell-source matches as a discover source, so ONE search answers "where is
-this?" whether the answer is a notebook cell or a library.
-
-Routing that question to a separate notebook-search tool asks the caller to
-know the answer first: live_test37 asked its own empty notebook for
-@DataFrame@, @dataset@, @wine@, @Data.Csv@ and @mean@, took five misses as
-evidence, and hand-rolled the work. The tool even said "unlike discover, which
-searches installed LIBRARIES" — a disclaimer cannot fix a distinction the
-caller cannot make.
--}
 notebookAnswer :: Interpreted -> Maybe Value -> SourceAnswer
 notebookAnswer _ Nothing = okAnswer "notebook" []
 notebookAnswer interp (Just (Object o))
@@ -313,9 +272,6 @@ notebookAnswer interp (Just (Object o))
         okAnswer "notebook" (concatMap (cellHit interp) (toList ms))
 notebookAnswer _ (Just _) = okAnswer "notebook" []
 
-{- | One matched cell as a hit: the query names something the NOTEBOOK already
-has, and @use@ carries where, so the caller can go straight to the cell.
--}
 cellHit :: Interpreted -> Value -> [DHit]
 cellHit interp (Object m)
     | Just cid <- cellIdOf m =
@@ -328,7 +284,6 @@ cellHit interp (Object m)
         ]
 cellHit _ _ = []
 
--- | A match's cell id, however the payload spells it.
 cellIdOf :: KM.KeyMap Value -> Maybe Text
 cellIdOf m = case (KM.lookup "cellId" m, KM.lookup "cell_id" m) of
     (Just v, _) -> render v

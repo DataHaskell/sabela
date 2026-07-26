@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | General invariants over GENERATED module APIs (R3.10/R3.6/R3.9), not a
-granite reproduction: for functions, operators, record types with fields,
-classes, and mixed surfaces — every function export renders with a
-paste-valid signature, field fragments never displace functions, no
-package-version or internal-module token survives to the rendered surface,
-the card is one envelope shape, and the 2.5k budget reconciles
-shown/omitted/total over export lists of size 1..200.
--}
 module Test.GrammarCardSpec (grammarCardSpec) where
 
 import Control.Monad (forM_)
@@ -23,7 +15,6 @@ import Sabela.AI.Grammar.Synth (
     synthesizeGrammarProven,
  )
 
--- | One generated export: its name, full signature, and export class.
 data GenExport = GenExport
     { geName :: Text
     , geType :: Text
@@ -33,7 +24,6 @@ data GenExport = GenExport
 data ExportClass = FnExport | OpExport
     deriving (Eq)
 
--- | A generated module API: functions/operators plus record and class decls.
 data GenApi = GenApi
     { gaLabel :: Text
     , gaExports :: [GenExport]
@@ -83,9 +73,6 @@ genApis =
         [("Wet", [("soak", "a -> Rain")])]
     ]
 
-{- | Render an API as GHC-style @:browse@ text: wrapped signatures for long
-types, indented record fields and class methods.
--}
 renderBrowse :: GenApi -> Text
 renderBrowse api =
     T.intercalate "\n" (concatMap expLines (gaExports api) ++ decls)
@@ -114,7 +101,6 @@ renderBrowse api =
         ("class " <> cls <> " a where")
             : ["  " <> mn <> " :: " <> mt | (mn, mt) <- methods]
 
--- | The flattening leak variant: every line loses its leading whitespace.
 stripIndent :: Text -> Text
 stripIndent = T.unlines . map T.stripStart . T.lines
 

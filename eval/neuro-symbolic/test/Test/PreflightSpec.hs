@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure preflight classification: binary-missing vs unreachable vs ready, and
-that non-ready states carry an actionable message.
--}
 module Test.PreflightSpec (spec) where
 
 import Data.Maybe (isNothing)

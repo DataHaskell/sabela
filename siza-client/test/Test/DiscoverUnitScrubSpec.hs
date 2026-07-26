@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R3.10/P6: no card field may carry a version-qualified GHC unit label
-(@dataframe-core-2.0.0.0:internal@) — the run-20260720-195038 withholding
-defect. The scrub keys on the version-qualified evidence class, never a
-library name; plain package names and public sublib refs pass untouched.
--}
 module Test.DiscoverUnitScrubSpec (discoverUnitScrubSpec) where
 
 import Control.Monad (forM_)
@@ -27,7 +22,6 @@ import Siza.Agent.Discover.UnitName (scrubCardUnits, unitPackageName)
 interp :: Interpreted
 interp = Interpreted "col" "col" Nothing "name" "" []
 
--- | The exact card shape the withheld run's D.col envelope carried.
 leakCard :: Value
 leakCard =
     object
@@ -38,7 +32,6 @@ leakCard =
             .= ("-- cabal: build-depends: dataframe-core-2.0.0.0:internal" :: Text)
         ]
 
--- | The lint's predicate (Eval.TranscriptLint.versionQualified), re-stated.
 versionQualified :: Text -> Bool
 versionQualified w = case T.breakOn ":" w of
     (pre, post) -> not (T.null (T.drop 1 post)) && versioned pre
@@ -101,7 +94,6 @@ discoverUnitScrubSpec = describe "card unit-name scrub (R3.10/P6)" $ do
                     textField "package" scrubbed `shouldBe` p
                     forM_ (T.words (textField "cabal" scrubbed)) $ \w ->
                         w `shouldSatisfy` (not . versionQualified)
-                    -- A plain-name card is a fixed point of the scrub.
                     let plain =
                             object
                                 [ "status" .= ("hidden-package" :: Text)

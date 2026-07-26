@@ -1,18 +1,3 @@
-{- | The agent episode loop: a local model drives the siza tools until it stops
-calling them or hits the turn cap, re-entering while any owned cell is red within
-a repair-round budget @D@ ('ebMaxRepairs') and a wall-clock deadline.
-
-Under 'GrammarOn' the discover stage ('Siza.Agent.Discover') synthesises a grammar
-from live @:browse@: proactively over the notebook's imports at start, after an
-install, and as the step-4 seam re-browses a cell's modules on a not-in-scope
-error. The scaffold ('Siza.Agent.Scaffold') pre-commits the named data file's
-load as a disclosed, outcome-gated setup write; substitute-and-verify
-('Siza.Agent.Repair') repairs any red owned cell from GHC
-hole-fits, keeping the first fit that compiles.
-
-The loop takes the request as plain 'Text' and injects verification through the
-'Driver'; graders and the benchmark 'Task' stay in the eval harness that wraps it.
--}
 module Siza.Agent.Loop (
     AgentRun (..),
     StopDecision (..),
@@ -130,18 +115,9 @@ data AgentRun = AgentRun
     , arFinal :: Text
     , arStopped :: Text
     , arTranscript :: [Value]
-    -- ^ The episode's full message list, for 'Siza.Agent.Transcript.renderTranscript'.
     }
     deriving (Show)
 
-{- | The prompt is the notebook's premise plus the tool surface, and nothing
-else. The working rules it used to carry ("try, then commit", "one small
-definition at a time", "a write auto-runs, so read the result") restated in
-prose what a tool already says in its own description, and prose a small model
-forgets is worse than a description it reads at the moment it picks the tool.
-So the rule logic lives in the tool descriptions, and the surface block is
-GENERATED from the catalogue.
--}
 systemPrompt :: Text
 systemPrompt =
     T.unlines
@@ -166,49 +142,33 @@ systemPrompt =
             ]
         <> sabelaBuiltins
 
-{- | The episode's side effects, injectable so the loop is testable without a
-live model or server. Production wires Ollama @chat@ and the siza @dispatch@.
--}
+stopTagFor :: CheckResult -> Text
+stopTagFor CheckPassed = "done"
+stopTagFor _ = "done_unverified"
+
 data Driver = Driver
     { drvChat :: [Value] -> IO (Either Text Turn)
     , drvDispatch :: ToolCall -> IO (Either Text ToolOutcome)
     , drvNow :: IO Double
-    -- ^ Wall-clock reading in seconds, injectable so the deadline is testable.
     , drvVerify :: IO (CheckResult, Maybe Text)
-    {- ^ The three-valued covering-test verdict (R5-T5): 'CheckFailed' carries
-    the counterexample (a denial always has positive evidence); 'CheckUncheckable'
-    carries what-to-run guidance, never a failure claim. "done" = test greens.
-    -}
     }
 
-{- | What an episode is allowed to spend before it gives up. @D@ caps how many
-times the health gate may re-enter the loop; the deadline caps total time.
--}
 data EpisodeBudget = EpisodeBudget
     { ebMaxRepairs :: Int
     , ebDeadlineSecs :: Double
     }
     deriving (Show)
 
--- | The weak-model default: a few repair rounds inside a generous deadline.
 defaultBudget :: EpisodeBudget
 defaultBudget = EpisodeBudget{ebMaxRepairs = 4, ebDeadlineSecs = 600}
 
 runEpisodeWith :: EpisodeBudget -> Driver -> Text -> Int -> IO AgentRun
 runEpisodeWith = runEpisodeWith' GrammarOn
 
-{- | Run an episode under an explicit grammar mode. 'GrammarOn' synthesises the
-live-browse grammar (proactively at start, after installs, and on the re-discover
-seam); 'GrammarOff' is the raw-dump baseline the negative control measures.
--}
 runEpisodeWith' ::
     GrammarMode -> EpisodeBudget -> Driver -> Text -> Int -> IO AgentRun
 runEpisodeWith' = runEpisodeTraced (const (pure ()))
 
-{- | The episode loop with a trace sink: 'flush' streams each newly appended
-message via 'renderMessage', so 'runEpisodeWith'' and the live-audit debug path
-share one body. The sink sees the prompt, inputs, thinking, calls, and outcomes.
--}
 runEpisodeTraced ::
     (Text -> IO ()) ->
     GrammarMode ->
@@ -219,10 +179,6 @@ runEpisodeTraced ::
     IO AgentRun
 runEpisodeTraced = runEpisodeSeeded []
 
-{- | Like 'runEpisodeTraced' but seeded with a prior transcript: an empty seed
-starts fresh (prompt, scaffold, discovery); a non-empty one appends the new
-user turn only. The dispatch seam runs under the 'Siza.Agent.Futility' guard.
--}
 runEpisodeSeeded ::
     [Value] ->
     (Text -> IO ()) ->
@@ -236,10 +192,6 @@ runEpisodeSeeded seed emit mode budget driver0 prompt maxTurns = do
     futility <- newFutilityGuard
     ledger <- newSearchLedger
     emits <- newEmitLedger
-    -- R1.7: the arg envelope is unwrapped BEFORE the guards, so futility and
-    -- the history ledger see the same normalised keys the dispatcher resolves.
-    -- R9-T5: garbled names with a unique schema match are recovered at the
-    -- chat seam and stamped into turnRaw before anything reads the turn.
     let driver =
             driver0
                 { drvChat =
@@ -250,7 +202,6 @@ runEpisodeSeeded seed emit mode budget driver0 prompt maxTurns = do
                 }
     episodeCore ledger emits seed emit mode budget driver prompt maxTurns
 
--- | The episode body 'runEpisodeSeeded' runs under the guarded driver.
 episodeCore ::
     IORef SearchLedger ->
     IORef EmitLedger ->
@@ -279,18 +230,11 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
             then do
                 exemplars <- retrieveEx
                 pre <- runScaffoldStage (drvDispatch driver) prompt
-                -- Turn-0 assertion seeding (search-api.md section 11), after
-                -- the scaffold so its imports count as environment facts.
                 seedSearchLedger (drvDispatch driver) ledger
                 proactive <- proactiveDiscover mode (drvDispatch driver)
                 injected0 <- dedupInjected emits 0 (exemplars ++ pre ++ proactive)
                 pure (Map.empty, initial ++ injected0)
             else pure (Map.empty, seed ++ [userMsg])
-    {- The model's deadline starts at the model's FIRST turn. Harness-owned
-    setup — above all the scaffold's dependency build, which can run for
-    minutes — is not the model's to pay for: charging it left live_test24
-    with four tool calls and a "time budget is nearly spent" notice before
-    it had done anything. -}
     start <- drvNow driver
     let flush msgs = do
             n <- readIORef printed
@@ -298,13 +242,8 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 (\(i, m) -> emit (renderMessage i m <> "\n"))
                 (zip [n + 1 ..] (drop n msgs))
             writeIORef printed (length msgs)
-        -- The final routes through 'wrapUpFinal': an empty final is
-        -- unrepresentable under every stop reason (R8.3, R6-T3).
         finish owned turn nCalls final stopped msgs
             | stopped `elem` repairableGiveUpReasons = do
-                -- One last-ditch class-keyed cascade over the owned reds before a
-                -- give-up final (§9.5): heal the compiler-named cell rather than
-                -- report it red. Runs at most once per episode.
                 already <- readIORef lastDitch
                 (owned', fixes) <-
                     if already
@@ -339,7 +278,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                             stopped
                             msgs
                         )
-        -- R5.6 pressure + the once-per-episode last-turn wrap-up (R5.7).
         preTurn elapsed turn repairs owned = do
             setSearchPressure ledger (missRungFloor maxTurns (maxTurns - turn))
             wrap <-
@@ -370,9 +308,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
             res <- drvChat driver msgs
             case res of
                 Left e -> do
-                    -- N10: a chat error (e.g. malformed tool-args JSON) is a
-                    -- bounded retry of the same turn, not a silent terminal
-                    -- failure the next turn inherits as if progress was made.
                     r <- readIORef chatRetries
                     if r < maxChatRetries
                         then do
@@ -403,20 +338,18 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                             Stop -> do
                                 (result, mEv) <- drvVerify driver
                                 case result of
-                                    -- C3 still binds: an artifact is required
-                                    -- either way. A check that never ran is not
-                                    -- a passing check, but it does not deny a
-                                    -- committed deliverable either.
                                     r
                                         | r `elem` [CheckPassed, CheckNotApplicable]
                                         , hasArtifact owned -> do
                                             saveEx owned
-                                            finish owned (turn + 1) nCalls (turnContent t) "done" (msgs ++ [turnRaw t])
+                                            finish
+                                                owned
+                                                (turn + 1)
+                                                nCalls
+                                                (turnContent t)
+                                                (stopTagFor r)
+                                                (msgs ++ [turnRaw t])
                                     _ -> do
-                                        -- No-progress guard: model declared done, the check did
-                                        -- not confirm (or passed vacuously with no owned artifact
-                                        -- to back it — C3), nothing changed. A few in a row means
-                                        -- a bad or uncheckable check, so stop rather than spin.
                                         s <- readIORef stuck
                                         if s + 1 >= maxStuckVerifies
                                             then finish owned (turn + 1) nCalls stuckFinal "stuck" (msgs ++ [turnRaw t])
@@ -442,8 +375,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                         , not (ocHealthy oc)
                                         ]
                                     still = [c | (c, _, _) <- stillPairs]
-                                    -- No check ran on this path, so a failure
-                                    -- claim would be unevidenced (R5-T5).
                                     msg =
                                         if null still
                                             then unconfirmedDiagMsg Nothing owned'
@@ -454,9 +385,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                 writeIORef stuck 0
                                 rs <- readIORef reenterStuck
                                 seen <- readIORef seenRedSigs
-                                -- Reenter no-progress guard: a still-red signature
-                                -- seen before (stuck OR A/B/A/B oscillation) counts;
-                                -- maxStuckVerifies repeats stops the spin honestly.
                                 let (seen', repeated) = noProgressStep seen sig
                                 if not (null still) && repeated
                                     then
@@ -482,9 +410,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                         else do
                             results <- mapM (dispatchCall msgs) (turnCalls t)
                             let dispatched = [c | (c, Right _) <- results]
-                            -- R6.10: discovery attaches only to a successful
-                            -- install call, and the channel closes for good
-                            -- once a clean deliverable write has landed.
                             done0 <- readIORef delivered
                             discovered <-
                                 if done0
@@ -496,21 +421,9 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                             [(c, o) | (c, Right (Right o)) <- results]
                             when (any deliverableLanded results) $
                                 writeIORef delivered True
-                            -- R5-T5 done-signal: tools kept coming a full turn
-                            -- after a clean deliverable write — probe ONCE; only
-                            -- a passing recomputation emits the stop line.
                             signalMsgs <- doneSignalProbe signalled done0
                             unless (null signalMsgs) $
                                 writeIORef signalDone True
-                            {- The read-streak escalation is GONE. Both rungs
-                            asserted things the harness cannot know: "Searching
-                            further cannot help" assumes the search so far was
-                            sufficient, and "Repetition has not produced a
-                            write" reads a hard search as a loop. live_test31
-                            was told search could not help immediately before
-                            the next search returned the answer that solved the
-                            task. A read streak is evidence of not-writing, not
-                            of having-enough. -}
                             let nudge = []
                             let owned' =
                                     foldr recordOwned owned [(c, o) | (c, Right o) <- results]
@@ -518,9 +431,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                     [ toolMsg c (either id renderOutcome o)
                                     | (c, o) <- results
                                     ]
-                            -- Mid-loop contrast: a red diagnostic persisting
-                            -- streakThreshold turns gets the wrong-vs-real
-                            -- message NOW, not only at the stop rail.
                             hints <- streakHints streaks owned'
                             out <-
                                 emitTurn emits turn (turnRaw t) $
@@ -539,14 +449,9 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                 (msgs ++ out)
     go start 0 0 0 owned0 msgs0
   where
-    -- Only no-progress stops may spend one last repair. Hard turn, repair and
-    -- wall-clock budget boundaries perform no work after exhaustion.
     repairableGiveUpReasons :: [Text]
     repairableGiveUpReasons = ["stuck", "stuck_reenter"]
 
-    -- A harness-authored repair is represented as an assistant call followed by
-    -- its result, so the persisted transcript explains every state-changing
-    -- write and satisfies the same call/result cardinality law as model calls.
     auditedRepairMessages (tc, out) =
         [ object
             [ "role" .= ("assistant" :: Text)
@@ -562,22 +467,16 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
         , userMsg
         ]
     userMsg = object ["role" .= ("user" :: Text), "content" .= prompt]
-    -- The diagnostic verify re-prompt: name what is missing (no cell at all,
-    -- an undefined requested deliverable, or the failing counterexample).
     diagVerifyMsg mCe owned =
         verifyMsgWith
             (Map.size owned)
             (missingDeliverables prompt (map ocSource (Map.elems owned)))
             mCe
-    -- The uncheckable twin of diagVerifyMsg: same structural diagnosis, but
-    -- phrased as not-yet-confirmed — never as a failure claim (R5-T5).
     unconfirmedDiagMsg mEv owned =
         unconfirmedMsgWith
             (Map.size owned)
             (missingDeliverables prompt (map ocSource (Map.elems owned)))
             mEv
-    -- At most one contract probe per episode, and only after the model kept
-    -- going past a landed deliverable; only CheckPassed emits anything.
     doneSignalProbe signalled done0
         | not done0 = pure []
         | otherwise = do
@@ -591,15 +490,11 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                         CheckPassed -> [doneSignalMsg]
                         CheckNotApplicable -> [noCheckSignalMsg]
                         _ -> []
-    -- Learning loop ('Siza.Agent.Exemplars'), gated by SIZA_EXEMPLAR_STORE.
     retrieveEx = retrieveForPrompt prompt
     saveEx owned =
         saveVerified
             prompt
             [ocSource oc | oc <- Map.elems owned, ocHealthy oc]
-    -- Source comes from the tool-call args already repaired by parseTurn's
-    -- recovery layer. A cell write routes through rejection sampling when
-    -- SIZA_SAMPLE_K > 1; every other call dispatches once.
     dispatchCall msgs call = do
         k <- sampleK
         if k > 1 && callActs call && isJust (writeSource call)
@@ -609,8 +504,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
         outcome <- drvDispatch driver call
         case blockingCell outcome of
             Just n -> do
-                -- Heal the blocking cell with its own hole-fits FIRST, before
-                -- the red is handed back to the model to thrash on (§5.4/§9.5).
                 healed <- repairBlockingCell (drvDispatch driver) n
                 case healed of
                     Just (c, o) -> surfaceDisplay c o
@@ -623,25 +516,16 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                     _ -> pure (call, Right outcome)
             _ -> surfaceDisplay call outcome
 
-    -- A clean markup-producing write with no visible output gets one
-    -- type-directed, compile-and-output-vetted display repair. Failed proposals
-    -- are restored inside the generator and the original result is preserved.
     surfaceDisplay call outcome = do
         repaired <- repairDisplayContract prompt (drvDispatch driver) call outcome
         pure $ case repaired of
             Just (c, o) -> (c, Right o)
             Nothing -> (call, Right outcome)
 
-    -- Rejection-sample a cell write: on a red proposal, re-ask up to K-1 times and
-    -- keep the first that compiles, else restore the original. Verifies in the real
-    -- notebook (deps, data files) via 'Siza.Agent.Sample.sampleVerifyOne'.
     rejectionDispatch msgs k call = do
         o0 <- drvDispatch driver call
         case ownedCellOutcome call o0 of
             Just (cid, False) -> do
-                -- Ground the re-ask: answer the model's guessed API with the real
-                -- signatures from the live index, so re-samples are grounded, not
-                -- blind re-guesses of the same types. Computed once, reused per sample.
                 ground <- groundingMsgs (drvDispatch driver) (fromMaybe "" (writeSource call))
                 let msgs' = msgs ++ ground
                 winRef <- newIORef Nothing
@@ -656,10 +540,7 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 case mWin of
                     Just win -> pure win
                     Nothing -> restoreOriginal cid call o0
-            -- Already compiled, or not a cell-write outcome: nothing to sample.
             _ -> pure (call, Right o0)
-    -- Replace the cell with a candidate and keep it iff the run compiled; capture
-    -- the winning (call, outcome) so the caller records the real committed write.
     rolloutReplace winRef cid src
         | T.null (T.strip src) = pure False
         | otherwise = do
@@ -675,8 +556,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 (void . drvDispatch driver . replaceCall cid)
                 (writeSource call)
         pure (call, Right o0)
-    -- One more diverse proposal for the same step; temperature (env) makes each
-    -- re-ask differ. The first cell-writing call's source, if any.
     reAskSource msgs = do
         r <- drvChat driver msgs
         pure $ case r of
@@ -688,16 +567,11 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 (drvDispatch driver)
                 [(c, ocDiagnostic oc) | c <- reds, Just oc <- [Map.lookup c owned]]
         pure (foldr recordOwned owned fixes)
-    -- A clean write with no dep declaration: the deliverable landed (R6.10).
     deliverableLanded (c, Right o) =
         maybe False snd (ownedCellOutcome c o) && not (declaresDepsCall c)
     deliverableLanded _ = False
-    -- R7-T4: nudge and wrap-up close the ledger through the ranked selection.
     rankedFacts owned =
         closeSearchLedgerRanked prompt (map ocSource (Map.elems owned)) ledger
-    -- R8-T3 escalation in kind: rung 1 echoes facts, rung 2+ carries a
-    -- candidate ('Siza.Agent.Loop.Escalate'). G3: before that, the harness
-    -- probes its own open gaps and keeps only a candidate try accepted.
     reDiscover dref owned' reds = do
         done <- readIORef dref
         if done

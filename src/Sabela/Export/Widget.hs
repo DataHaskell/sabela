@@ -1,21 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Freeze widget binds in exported notebook source: a @x <- display
-(slider "n" def lo hi)@ becomes @x = <current value>@ (or the
-constructor's default if no live value is recorded), so the emitted
-file is a plain Haskell program. Composed or unrecognised widget
-expressions are left alone.
--}
 module Sabela.Export.Widget (
-    -- * Bind parsing
     WidgetBind (..),
     parseWidgetBind,
     widgetDefault,
-
-    -- * Freezing pipeline
     freezeWidgetSource,
-
-    -- * Pieces (exposed for testing)
     splitArgs,
 ) where
 
@@ -34,7 +23,6 @@ freezeWidgetSource vals = T.intercalate "\n" . map freezeLine . T.lines
   where
     freezeLine line = fromMaybe line (tryFreeze vals line)
 
--- | A parsed widget bind: @binder \<- display (ctor "name" args…)@.
 data WidgetBind = WidgetBind
     { wbBinder :: Text
     , wbCtor :: Text
@@ -43,10 +31,6 @@ data WidgetBind = WidgetBind
     }
     deriving (Eq, Show)
 
-{- | Parse a single-line widget bind. Recognizes
-@x \<- display (slider "n" def lo hi)@ and the other widget constructors,
-with or without the @display@ wrapper.
--}
 parseWidgetBind :: Text -> Maybe WidgetBind
 parseWidgetBind line = do
     let (lhs, arrowRhs) = T.breakOn "<-" line
@@ -59,7 +43,6 @@ parseWidgetBind line = do
             name <- argName args (if ctor == "button" then 1 else 0)
             pure WidgetBind{wbBinder = binder, wbCtor = ctor, wbName = name, wbArgs = args}
 
--- | The constructor's default-value argument, as Haskell source.
 widgetDefault :: WidgetBind -> Maybe Text
 widgetDefault wb = case wbCtor wb of
     "slider" -> argAt (wbArgs wb) 1
@@ -76,7 +59,6 @@ tryFreeze vals line = do
     let indent = T.takeWhile (== ' ') line
     pure (indent <> wbBinder wb <> " = " <> frozen)
 
--- | Strip a leading @display@ / @display $@ / @display ( … )@ wrapper.
 stripDisplay :: Text -> Text
 stripDisplay t0 =
     let t = T.strip t0
@@ -105,7 +87,6 @@ parenBalanced = go (0 :: Int) . T.unpack
         | c `elem` (")]" :: String) = d > 0 && go (d - 1) cs
         | otherwise = go d cs
 
--- | A widget constructor application: @ctor arg1 arg2 …@.
 parseCtor :: Text -> Maybe (Text, [Text])
 parseCtor t =
     let t' = T.stripStart t
@@ -152,15 +133,12 @@ freezeValue vals ctor args = case ctor of
         Just v | not (T.null (T.strip v)) -> Just (T.strip v)
         _ -> Nothing
 
--- | The i-th argument of a constructor application, if present.
 argAt :: [Text] -> Int -> Maybe Text
 argAt args i = if i >= 0 && i < length args then Just (args !! i) else Nothing
 
--- | The i-th argument, interpreted as a string literal, with quotes stripped.
 argName :: [Text] -> Int -> Maybe Text
 argName args i = argAt args i >>= (T.stripPrefix "\"" >=> T.stripSuffix "\"")
 
--- | Extract the type from a @( v :: T )@ annotation, if any.
 typeAnnOf :: Maybe Text -> Maybe Text
 typeAnnOf Nothing = Nothing
 typeAnnOf (Just d) =
@@ -175,9 +153,6 @@ annotate :: Text -> Maybe Text -> Text
 annotate v Nothing = v
 annotate v (Just ty) = "(" <> v <> " :: " <> ty <> ")"
 
-{- | Split a Haskell application's arguments on top-level whitespace, treating
-@(…)@, @[…]@, and string literals as atomic.
--}
 splitArgs :: Text -> [Text]
 splitArgs = map T.pack . goTop . T.unpack
   where

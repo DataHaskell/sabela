@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | File-not-found near-miss repair (C4-1): a wrong path GHC's runtime
-raised on IS a fact once a real file under the work dir near-misses it —
-these pin the parse, the retry, and the "ask the user" fallback.
--}
 module Test.PathRepairSpec (spec) where
 
 import Control.Monad (forM_)
@@ -51,9 +47,6 @@ spec = describe "Sabela.AI.PathRepair" $ do
         it "is Nothing for an unrelated does-not-exist-shaped line" $
             notFoundPath "the database does not exist" `shouldBe` Nothing
 
-        {- live_test33_wine: a getAddrInfo DNS failure also ends in "does not
-        exist", and reading the reason off the whole line surfaced the failed
-        host lookup as a missing file. -}
         it "is Nothing for a DNS failure that merely ends in does not exist" $
             notFoundPath dnsFailure `shouldBe` Nothing
 
@@ -148,9 +141,6 @@ spec = describe "Sabela.AI.PathRepair" $ do
                     (raising "Couldn't match expected type `Int'")
             got `shouldBe` Nothing
 
-    {- live_test35_wine: the cell called readFile on a URL. "No similar file
-    was found under the work dir. Ask the user for the correct path" is both
-    useless and wrong — the user never supplied a path. -}
     describe "a URL passed where a path was expected" $ do
         it "is reported as a URL, not as a missing file" $
             withSystemTempDirectory "path-repair" $ \root -> do
@@ -171,7 +161,6 @@ spec = describe "Sabela.AI.PathRepair" $ do
 wineUrl :: FilePath
 wineUrl = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine/wine.data"
 
--- | The getAddrInfo failure exactly as live_test33_wine received it.
 dnsFailure :: Text
 dnsFailure =
     "*** Exception: HttpExceptionRequest Request { host = \"archive.uci.edu\" } \

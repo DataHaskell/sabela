@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Per-episode measurement plumbing (R8.1-R8.3): the config header every saved
-transcript carries, byte-identical arm-pair VOID\/saturated flagging at write
-time, and the fresh-seed retry for infra-failed episodes. The report-withholding
-guard lives in "Eval.ReportGuard" (run-id scoped).
--}
 module Eval.Episode (
     EpisodeMeta (..),
     renderEpisodeMeta,
@@ -60,33 +55,22 @@ import Eval.Applicability (
  )
 import Siza.Agent.Transcript (renderTranscript)
 
--- | The full configuration an episode ran under (R8.1), written as a header.
 data EpisodeMeta = EpisodeMeta
     { emTask :: Text
     , emArm :: Text
     , emLevers :: [(Text, Text)]
     , emSeed :: Int
     , emSeedsTried :: [Int]
-    -- ^ Every seed the episode ran under, base first (R6.11 retries reroll).
     , emModel :: Text
     , emStopped :: Text
     , emFinal :: Text
     , emLint :: Text
-    -- ^ The R8.4 verdict from 'Eval.TranscriptLint.lintLine'.
     , emRunId :: Text
-    -- ^ The driver run this episode belongs to (fresh per launch, R8.3).
     , emCommit :: Text
-    -- ^ Working-tree HEAD at driver start; empty = unsound, report withheld.
     , emBuildTime :: Text
-    -- ^ Server-binary build stamp (ISO); a run predating it is stale.
     , emRunTime :: Text
-    -- ^ When this episode was saved (ISO).
     , emEndpoint :: Text
-    -- ^ The server base URL the episode actually drove.
     , emRelinkProbe :: Text
-    {- ^ Tree-state-vs-binary probe verdict ('Eval.Provenance.relinkProbe');
-    empty = never probed, an unsound measurement.
-    -}
     }
     deriving (Eq, Show)
 
@@ -116,7 +100,6 @@ renderEpisodeMeta m =
         , headerClose
         ]
 
--- | Header values are line-based; a multi-line final distils to one line.
 oneLine :: Text -> Text
 oneLine = T.take 200 . T.unwords . T.lines
 
@@ -157,12 +140,6 @@ transcriptName :: Text -> Int -> Text -> String
 transcriptName task seed arm =
     T.unpack task <> "-s" <> show seed <> "-" <> T.unpack arm <> ".md"
 
-{- | Write the episode transcript with its config header, then classify the
-(task, seed) pair once both arms exist: byte-identical arms are flagged
-@.SATURATED@ when the discover surface answered (lever fired) and @.VOID@ when
-it never did (lever dead); a search-free-on-both pair is @.NA@ (section 13);
-a sound pair clears any stale flag. Returns the flag path when one is set.
--}
 saveEpisodeIn :: FilePath -> EpisodeMeta -> [Value] -> IO (Maybe FilePath)
 saveEpisodeIn dir meta msgs = do
     createDirectoryIfMissing True dir
@@ -215,14 +192,9 @@ naFlagText =
     \lever cannot move — report the axis as not-applicable, never as a measurement \
     \or a VOID.\n"
 
--- | Attempt @n@'s seed: the base for the first run, fresh for each retry.
 rerollSeed :: Int -> Int -> Int
 rerollSeed base n = base + 1000003 * n
 
-{- | Retry a failing episode with a FRESH seed each time (R6.11): a seeded
-chat failure replayed bit-identically can never succeed. Returns the last run
-plus every seed tried, in order.
--}
 retryFreshSeed :: Int -> Int -> (a -> Bool) -> (Int -> IO a) -> IO (a, [Int])
 retryFreshSeed maxRetries base ok attempt = go 0 []
   where
@@ -234,10 +206,6 @@ retryFreshSeed maxRetries base ok attempt = go 0 []
             then pure (r, tried')
             else go (n + 1) tried'
 
-{- | Pin the client's per-call HTTP timeout generously (300s) when unset, so a
-dep-install or kernel restart does not blow the 60s default mid-episode (M7).
-Must run before @newConn@, which reads the var; returns the effective value.
--}
 defaultToolTimeout :: IO Int
 defaultToolTimeout = do
     m <- lookupEnv "SABELA_TOOL_TIMEOUT"

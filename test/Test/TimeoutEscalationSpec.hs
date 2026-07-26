@@ -1,13 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the staged kill ladder (P1 watchdog-respawn, stress cases 7–10,
-13, 17): 'escalateKill' walks INT → grace → TERM → grace → KILL through the
-portable group wrappers, so a SIGINT-responsive computation exits on the
-first rung while a signal-ignoring one is still reaped by the final KILL.
-The post-timeout notice tells the user the session was killed and the next
-run respawns, instead of the old opaque "session killed".
--}
 module Test.TimeoutEscalationSpec (spec) where
 
 import Control.Concurrent (threadDelay)

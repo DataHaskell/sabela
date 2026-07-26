@@ -1,10 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Mutating notebook tools (replace, propose-edit, insert, delete) plus
-the synchronous 'executeCell' / 'autoExecuteAfterMutation' helpers
-mutation tools call so their response carries fresh execution results.
--}
 module Sabela.AI.Capabilities.Edit (
     execReplaceCellSource,
     execProposeEdit,
@@ -13,10 +9,6 @@ module Sabela.AI.Capabilities.Edit (
     applyReplaceCellSource,
     proceedProposeEdit,
     conflictJson,
-
-    -- * Re-exports from the split "Sabela.AI.Capabilities.Edit.Run"
-
-    -- and "Sabela.AI.Capabilities.Edit.Propose"
     autoExecuteAfterMutation,
     execExecuteCell,
     executeCell,
@@ -35,7 +27,7 @@ import Sabela.AI.Capabilities.Edit.Admit (
     supersedesRedCell,
     violationJson,
  )
-import Sabela.AI.Capabilities.Edit.CompileGate (compileGateCheck)
+import Sabela.AI.Capabilities.Edit.GateRepair (gatedCandidate)
 import Sabela.AI.Capabilities.Edit.Propose (
     execProposeEdit,
     proceedProposeEdit,
@@ -102,40 +94,31 @@ execInsertCell app store rn cancelTok input = do
             case (mVeto, validateCellShape cellTp src') of
                 (Just veto, _) -> pure veto
                 (_, Just msg) | lang == Haskell -> pure (errOutcome (errorJson msg))
-                -- A bodiless top-level signature dams later inserts (topMonth):
-                -- answer as a `name = _` proposal, never commit the red cell.
                 _
                     | Just prop <- sigBodyProposalFor lang cellTp src' ->
                         pure (errOutcome prop)
                 _ -> do
                     nid <- freshCellId (appNotebook app)
                     let cell = Cell nid cellTp lang src' [] Nothing True
-                    -- A notebook already dammed by a pending error skips the
-                    -- gate, straight to the existing redirect-to-replace UX
-                    -- below, which re-detects it atomically and race-safely.
                     peek <- readNotebook (appNotebook app)
                     case pendingError peek of
                         Just _ ->
                             commitInsert app store rn cancelTok input cell src' notes
                         Nothing -> do
-                            gate <- compileGateCheck app Nothing lang cellTp src'
+                            gate <- gatedCandidate app Nothing lang cellTp src'
                             case gate of
                                 Left rejection -> pure (errOutcome rejection)
-                                Right () ->
+                                Right (src'', repairNotes) ->
                                     commitInsert
                                         app
                                         store
                                         rn
                                         cancelTok
                                         input
-                                        cell
-                                        src'
-                                        notes
+                                        cell{cellSource = src''}
+                                        src''
+                                        (notes <> repairNotes)
 
-{- | Commit a gate-passed (or pending-error-dammed) insert candidate: the
-existing checked-append + pending-error-redirect + auto-run behaviour,
-unchanged from before G1's compile gate was added in front of it.
--}
 commitInsert ::
     App ->
     AIStore ->
@@ -152,9 +135,6 @@ commitInsert app store rn cancelTok input cell src' notes = do
             Left v -> (nb, Left v)
             Right nb' -> (nb', Right ())
     case res of
-        -- An insert rewriting the red cell's definitions is a
-        -- fix attempt: apply it as a replace of that cell (the
-        -- cascade runs on it) instead of re-dumping the error.
         Left (VPendingError cid msg) -> do
             mRed <- lookupCell cid <$> readNotebook (appNotebook app)
             case mRed of
@@ -205,7 +185,3 @@ execDeleteCell app input = do
                 nb{nbCells = filter (\c -> cellId c /= cid) (nbCells nb)}
             broadcastNotebook app
             pure (okOutcome (object ["deleted" .= True, "cellId" .= cid]))
-
--- 'autoExecuteAfterMutation', 'execExecuteCell', and 'executeCell' moved
--- to "Sabela.AI.Capabilities.Edit.Run" so this module stays under the
--- 300-LOC cap. Re-exported above for back-compat.

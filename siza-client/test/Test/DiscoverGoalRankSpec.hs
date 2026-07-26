@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R8-T2 ranking and attachment (search-api.md 7.1, 8.3): goal-provenance
-producer ranking (the held consumer's package outranks lexical winners,
-non-producers rank below every true producer) and the same-envelope producer
-attachment. Keyed on ledger evidence, never a library name.
--}
 module Test.DiscoverGoalRankSpec (discoverGoalRankSpec) where
 
 import Control.Monad (forM_)
@@ -73,12 +68,6 @@ discoverGoalRankSpec = describe "goal-provenance ranking + producer attachment (
     provenanceLoopSpec
     attachmentSpec
 
--- Cross-package non-producer demotion (R5.6) ---------------------------------
-
-{- | Two non-producing hits at the same stratum, one from the target package,
-one foreign; the plain key orders the foreign one first (shorter package/name).
-Once a target is established, the target hit must lead the non-producer tail.
--}
 crossPackageDemoteSpec :: Spec
 crossPackageDemoteSpec =
     describe "cross-package non-producers demote below the target package (R5.6)" $ do
@@ -107,12 +96,6 @@ crossPackageDemoteSpec =
             length (nub [decide "targetpkg", decide "granite", decide "z-kit"])
                 `shouldBe` 1
 
--- Goal-provenance producer ranking (R3.2/R3.5) -------------------------------
-
-{- | The planted catalogue: the true consumer-package producer sits in the
-lexically LOSING module (Zzz.Deep), a foreign nullary producer wins lexically
-(Aaa.A), and a foreign prefix imposter produces nothing.
--}
 rankedNames :: Maybe StandingGoal -> (Text, Text) -> [Text]
 rankedNames mSG (cPkg, fPkg) = names v
   where
@@ -148,7 +131,6 @@ provenanceRankSpec = describe "the held consumer's package outranks lexical winn
     it "goal provenance beats the lexically winning foreign module" $ do
         let ns = rankedNames (sg "plume") ("plume", "chartx")
         rankBefore ns "zzzPlot" "aaaPlot"
-        -- Ahead of arity: the consumer package's unary producer, too.
         rankBefore ns "mkThing" "aaaPlot"
     it "without ledger provenance the foreign module wins lexically (control)" $ do
         let ns = rankedNames Nothing ("plume", "chartx")
@@ -163,12 +145,6 @@ provenanceRankSpec = describe "the held consumer's package outranks lexical winn
             decisions = [rankedNames (sg c) (c, f) | (c, f) <- spellings]
         length (nub decisions) `shouldBe` 1
 
--- The ledger-provenance loop (guard -> args -> rank) -------------------------
-
-{- | Two installed packages: the consumer package holds @bars@ and a nullary
-producer in a lexically losing module; the foreign package holds a lexically
-winning nullary producer and the prefix imposter.
--}
 provWorld :: SimWorld
 provWorld = SimWorld pkgs pkgs
   where
@@ -241,8 +217,6 @@ provenanceLoopSpec = describe "provenance flows from the ledger's held consumer 
         textField "next" (outs !! 2)
             `shouldNotSatisfy` T.isInfixOf "mode=\"construct\""
 
--- Same-envelope producer attachment (R3.3/R3.9) ------------------------------
-
 attachmentSpec :: Spec
 attachmentSpec = describe "an unconstructible argument's producers ride the SAME envelope" $ do
     it "the consumer's envelope carries the top 1-2 producers, nullary-first" $ do
@@ -252,7 +226,6 @@ attachmentSpec = describe "an unconstructible argument's producers ride the SAME
         take 1 (names v) `shouldBe` ["bars"]
         let uses = [hitText "use" h | h <- hitsOf v, hitText "name" h == "zzzPlot"]
         uses `shouldSatisfy` any (T.isInfixOf "produces Plot")
-        -- Producer-distance selection: nullary and unary in, binary out.
         let attached = [hitText "name" h | h <- hitsOf v, T.isInfixOf "produces " (hitText "use" h)]
         length attached `shouldSatisfy` (<= 2)
         attached `shouldSatisfy` elem "zzzPlot"
@@ -289,9 +262,6 @@ attachmentSpec = describe "an unconstructible argument's producers ride the SAME
                    ]
             )
 
-{- | The producers of the consumer's argument type live in a package the
-consumer's own query never surfaces — the no-surfaced-producer class.
--}
 attachWorld :: SimWorld
 attachWorld = SimWorld pkgs pkgs
   where
@@ -316,7 +286,6 @@ attachWorld = SimWorld pkgs pkgs
             ]
         ]
 
--- | A consumer whose only argument is literal-constructible: never a goal.
 literalWorld :: SimWorld
 literalWorld = SimWorld pkgs pkgs
   where
@@ -328,7 +297,6 @@ literalWorld = SimWorld pkgs pkgs
             [("Zzz.Deep", [("gust", "Int -> Wind"), ("zzzPlot", "Plot")])]
         ]
 
--- | A consumer whose argument type has no producer anywhere in the universe.
 bareWorld :: SimWorld
 bareWorld = SimWorld pkgs pkgs
   where

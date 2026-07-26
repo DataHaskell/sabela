@@ -51,10 +51,7 @@ data Grader
     | ByOutput
     | ByOutputHas [Text]
     | BySteps [Grader]
-    | {- | Recompute the reported expression's total squared error over the
-      sample; pass within the tolerance (a search-shaped task's covering check).
-      -}
-      ByFit [(Double, Double)] Double
+    | ByFit [(Double, Double)] Double
     | Untested
     deriving (Eq, Show)
 
@@ -96,10 +93,6 @@ proposeTest task =
 grade :: Conn -> Text -> Task -> IO (Verdict, Text)
 grade conn base task = gradeWith conn base task (taskGrader task)
 
-{- | The loop's three-valued verify verdict (R5-T5): ByValue carries a named
-counterexample, ByFit routes extraction misses to 'CheckUncheckable', and an
-'Untested' task must never fabricate a failure (run-20260720 spiral).
--}
 gradeVerify :: Conn -> Text -> Task -> IO (CheckResult, Maybe Text)
 gradeVerify conn base task = case taskGrader task of
     ByValue check -> checkVerdict3With (callTool conn base) check
@@ -109,10 +102,6 @@ gradeVerify conn base task = case taskGrader task of
         (v, _) <- grade conn base task
         pure (if v == Surfaced then CheckPassed else CheckFailed, Nothing)
 
-{- | Three-valued fit verify: a denial is emitted iff a recomputed nonzero
-error exists for a reported expression; an extraction miss says what to run
-and never leaks the sample's answer.
--}
 fitVerify :: [(Double, Double)] -> Double -> Text -> (CheckResult, Maybe Text)
 fitVerify points tol out = case fitOutcome points tol out of
     FitConfirmed _ _ -> (CheckPassed, Nothing)
@@ -137,7 +126,6 @@ fitVerify points tol out = case fitOutcome points tol out of
             )
         )
 
--- | Every scanned cell's rendered output, the text 'fitVerify' vets.
 notebookOutputs :: Conn -> Text -> IO Text
 notebookOutputs conn base = do
     ids <- take renderScanCap <$> codeCellIds conn base
@@ -179,17 +167,10 @@ gradeOutputHas conn base needles = do
     outs <- mapM (executeOutcome conn base) ids
     pure (outputHasVerdict needles outs)
 
-{- | Scan the notebook's cell outputs for the run's reported expression and
-recompute its total squared error over the sample: any expression fitting within
-the tolerance surfaces, so the check never overfits to one known answer string.
--}
 gradeFit :: Conn -> Text -> [(Double, Double)] -> Double -> IO (Verdict, Text)
 gradeFit conn base points tol =
     fitVerdict points tol <$> notebookOutputs conn base
 
-{- | Turn the recomputed three-valued fit outcome into a grading verdict: only
-a confirmed fit surfaces; refuted and unconfirmed are withheld with the reason.
--}
 fitVerdict :: [(Double, Double)] -> Double -> Text -> (Verdict, Text)
 fitVerdict points tol text = case fitOutcome points tol text of
     FitConfirmed err _ ->

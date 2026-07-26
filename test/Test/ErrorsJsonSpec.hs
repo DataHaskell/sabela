@@ -15,7 +15,6 @@ import Sabela.Errors.Json (
  )
 import Sabela.Model (CellError (..))
 
--- Real GHC 9.12 `-fdiagnostics-as-json` lines (captured from ghci).
 errLine :: Text
 errLine =
     "{\"version\":\"1.1\",\"ghcVersion\":\"ghc-9.12.2\",\"span\":{\"file\":\"sabela-cell-7\",\"start\":{\"line\":2,\"column\":7},\"end\":{\"line\":2,\"column\":17}},\"severity\":\"Error\",\"code\":83865,\"message\":[\"Couldn't match type `[Char]' with `Int'\",\"In the expression: \\\"x\\\"\"],\"hints\":[]}"

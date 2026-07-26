@@ -27,10 +27,6 @@ origSrc = "total = sum (getCol df)"
 goal :: Text
 goal = "Variable not in scope: getCol :: DataFrame -> [Double]"
 
-{- | A dispatch whose @replace_cell_source@ greens exactly when @greenIf@ accepts
-the proposed source, returning the real @execution.ok@ outcome shape so the
-verify step is exercised.
--}
 mockDispatch ::
     (Text -> Bool) -> IORef [ToolCall] -> ToolCall -> IO (Either Text ToolOutcome)
 mockDispatch greenIf ref tc@(ToolCall name args) = do

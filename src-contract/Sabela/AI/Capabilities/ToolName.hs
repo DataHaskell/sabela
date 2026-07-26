@@ -1,21 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The 'ToolName' ADT and the single source of truth for the wire-format
-strings the AI emits.
-
-Lives in its own module so both:
-
-* 'Sabela.AI.Capabilities' (the dispatcher) — for total pattern coverage.
-* 'Sabela.AI.Capabilities.Tools.*' (the catalogue) — so 'mkTool' takes a
-  'ToolName' and the schema sent to Anthropic can only spell tool names
-  that the dispatcher actually handles.
-
-Adding a tool: add a constructor here, add it to 'parseToolName' /
-'toolWireName' (the compiler enforces this via exhaustive matches once
-each is rewritten), add it to the chat catalogue with 'mkTool', and add
-an @exec*@ branch in the dispatcher.
--}
 module Sabela.AI.Capabilities.ToolName (
     ToolName (..),
     parseToolName,
@@ -44,8 +29,7 @@ data ToolName
     | DeleteCell
     | ExecuteCell
     | Try
-    | -- | Legacy, non-advertised entry points retained for old clients/transcripts.
-      Scratchpad
+    | Scratchpad
     | ListBindings
     | CheckType
     | FindByType
@@ -95,10 +79,6 @@ parseToolName = \case
     "eval_live" -> Just EvalLive
     _ -> Nothing
 
-{- | Resolve a possibly-malformed tool call to a typed name and args: a weak model
-bakes the argument into the name (@find_function "DataFrame"@), so split an
-unknown name at its first token and fold the rest into the primary argument.
--}
 resolveToolCall :: Text -> Value -> Maybe (ToolName, Value)
 resolveToolCall name args = case parseToolName name of
     Just tn -> Just (tn, args)
@@ -109,7 +89,6 @@ resolveToolCall name args = case parseToolName name of
   where
     dequote = T.dropAround (\c -> c == '"' || c == '\'' || c == ' ' || c == '`')
 
--- | Fold a name-baked argument into a tool's primary field, unless already set.
 foldInlineArg :: ToolName -> Text -> Value -> Value
 foldInlineArg tn inline args
     | T.null inline = args
@@ -121,10 +100,6 @@ foldInlineArg tn inline args
         | otherwise = Object (KM.insert k (String v) o)
     insertMissing k v _ = Object (KM.singleton k (String v))
 
-{- | The primary (sole query/name) argument field for the discovery and simple
-tools, so an argument baked into the name can be recovered into the right key.
-Tools with a structured or non-textual primary input have none.
--}
 primaryArgKey :: ToolName -> Maybe Text
 primaryArgKey = \case
     FindFunction -> Just "query"
@@ -139,10 +114,6 @@ primaryArgKey = \case
     EvalLive -> Just "expression"
     _ -> Nothing
 
-{- | Wire-format spelling of a 'ToolName'. The inverse of 'parseToolName':
-@parseToolName (toolWireName t) == Just t@ for every constructor. The
-exhaustive case keeps the two functions in sync at compile time.
--}
 toolWireName :: ToolName -> Text
 toolWireName = \case
     ListCells -> "list_cells"
@@ -173,19 +144,9 @@ toolWireName = \case
     SearchCapability -> "search_capability"
     EvalLive -> "eval_live"
 
-{- | Build a 'ToolDef' from a typed 'ToolName'. The wire-name string sent
-to Anthropic comes from 'toolWireName', the single source of truth that
-'parseToolName' is the inverse of — so the catalogue can only spell names
-the dispatcher actually handles.
--}
 mkTool :: ToolName -> Text -> Value -> ToolDef
 mkTool name desc schema = ToolDef (toolWireName name) desc schema Nothing
 
-{- | Whether a tool ACTS on the notebook (adds, edits, or runs a cell) versus
-read-only discovery. Used to bound consecutive discovery calls before nudging
-the model to act — keyed only on tool category, so it stays library- and
-task-agnostic.
--}
 actsOnNotebook :: ToolName -> Bool
 actsOnNotebook InsertCell = True
 actsOnNotebook ReplaceCellSource = True

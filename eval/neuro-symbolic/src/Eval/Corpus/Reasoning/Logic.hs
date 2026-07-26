@@ -1,19 +1,9 @@
-{- | Reasoning corpus — logic / deduction puzzles.
-
-Each puzzle is stated FULLY in the prompt and has a unique deterministic answer;
-the deliverable is that answer as a top-level binding and the 'ByValue' check is
-pinned to the LIVE-VALIDATED solution (uniqueness was confirmed by exhaustive
-search, see the haddock above each task). These probe deduction, not library
-use, so nothing renders and no package is named. See the validated values in the
-haddock above each task.
--}
 module Eval.Corpus.Reasoning.Logic (
     logicTasks,
 ) where
 
 import Eval.Task (Grader (..), Task (..))
 
--- | The logic reasoning tasks, in catalogue order.
 logicTasks :: [Task]
 logicTasks =
     [ knaveKnightTask
@@ -22,11 +12,6 @@ logicTasks =
     , seatingOrderTask
     ]
 
-{- | Knights (always truthful) and knaves (always lying). A says "We are both
-knaves." If A were a knight the statement would be true, forcing A to be a knave
-— a contradiction; so A is a knave, the statement is false, hence NOT both are
-knaves, so B is the knight. Validated unique answer: "B".
--}
 knaveKnightTask :: Task
 knaveKnightTask =
     Task
@@ -39,12 +24,6 @@ knaveKnightTask =
         \pure (no IO)."
         (ByValue "knightIs == \"B\"")
 
-{- | A three-house Zebra-style puzzle. Houses 1..3 left to right, each with a
-nationality (Brit, Swede, Dane), colour (red, green, white) and pet (dog, fish,
-bird). Clues: Brit↔red; Swede↔dog; green immediately left of white; Dane in the
-leftmost house; fish owner↔green house. Exhaustive search gives the unique
-solution where the Dane owns the fish. Validated unique answer: "Dane".
--}
 zebraFishTask :: Task
 zebraFishTask =
     Task
@@ -63,11 +42,6 @@ zebraFishTask =
         \owns the FISH. The reasoning is pure (no IO)."
         (ByValue "fishOwner == \"Dane\"")
 
-{- | Water-pouring (die-hard) puzzle: jugs of capacity 3 and 5, both empty;
-operations are fill a jug, empty a jug, or pour one into the other until the
-source empties or the destination fills. A breadth-first search reaches exactly
-4 litres in the minimum number of operations. Validated minimum: 6.
--}
 waterJugTask :: Task
 waterJugTask =
     Task
@@ -80,11 +54,6 @@ waterJugTask =
         \litres. The reasoning is pure (no IO)."
         (ByValue "minPours == 6")
 
-{- | Seating deduction over four people A, B, C, D in a left-to-right row.
-Constraints: A is left of B; C is immediately to the right of A; D sits at an
-end; B is not at an end. Exhaustive search yields the unique order
-["A","C","B","D"].
--}
 seatingOrderTask :: Task
 seatingOrderTask =
     Task

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R7-T3 (R5.8/R9.7): a card is useful-or-absent — emitted iff non-empty
-body AND verified names AND descriptive framing; the run-181440 empty shell
-and the "use ONLY these names" framing are both unrepresentable.
--}
 module Test.CardGateSpec (cardGateSpec) where
 
 import Control.Monad (forM_)
@@ -28,7 +24,6 @@ goodBody = "  bars :: [(Text, Double)] -> Plot -> Text\n"
 exclusiveTail :: Text
 exclusiveTail = "Use ONLY these names; nothing else is available.\n"
 
--- | The (body x verified x framing) emission grid.
 cardGrid :: [(Text, Text, Bool, Text, Bool)]
 cardGrid =
     [ ( T.intercalate "/" [bodyL, verifiedL, framingL]

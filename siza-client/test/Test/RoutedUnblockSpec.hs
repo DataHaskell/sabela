@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T4 routed unblock: a scripted caller whose insert is blocked by a
-planted red cell converges to replace_cell_source on that cell within one turn
-through the REAL 'runEpisodeSeeded' — the insert-retry loop (the topMonth
-turn-30 trap) is unrepresentable, the blocked source lands green on the named
-cell, and the routed retry is disclosed.
--}
 module Test.RoutedUnblockSpec (routedUnblockSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -34,9 +28,6 @@ blockedCellId = 9
 fixSource :: Text
 fixSource = "topMonth :: String\ntopMonth = \"Jul\""
 
-{- | The pending-error refusal an insert earns while cell 9 is red — the
-decodable write-ack refusal shape (@refusal@ + @cellId@) the client routes on.
--}
 pendingRefusal :: Value
 pendingRefusal =
     object
@@ -51,7 +42,6 @@ pendingRefusal =
         , "pendingErrorCell" .= blockedCellId
         ]
 
--- | Run the trapped caller: it inserts on turn 0, then declares done.
 runBlocked :: IO (AgentRun, [ToolCall])
 runBlocked = do
     seen <- newIORef ([] :: [ToolCall])
@@ -131,7 +121,6 @@ routedUnblockSpec = describe "routed unblock: blocked insert converges to replac
                     (arTranscript run)
         disclosed `shouldBe` True
 
--- | Read an int / text tool-call argument.
 argInt :: Text -> ToolCall -> Maybe Int
 argInt k tc = case tcArgs tc of
     Object o -> case KM.lookup (K.fromText k) o of

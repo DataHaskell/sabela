@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of @search_capability@: parsing the local hoogle @--json@
-blob into rich hits (name/type/module/package/docs) and the JSON shaping into
-@{query, hits:[...]}@. Empty/garbage input yields an OK outcome with no hits.
-The IO shell (the actual @hoogle@ shell-out) is exercised in the live smoke,
-not here; these pin the shaping decisions. No network.
--}
 module Test.CapabilitySearchSpec (spec) where
 
 import Data.Aeson (Value (..), object, toJSON, (.=))
@@ -40,9 +34,6 @@ import Sabela.AI.HoogleResolve (
 import Sabela.AI.Types (ToolOutcome (..), toolOutcomeValue)
 import Test.Hspec
 
-{- | A hoogle @search --json@ blob with a real value hit (type after @::@, HTML
-docs), a near hit in a different package, and an @.Internal@ hit to be dropped.
--}
 jsonBlob :: Text
 jsonBlob =
     T.concat
@@ -87,10 +78,6 @@ spec = describe "Sabela.AI.Capabilities.CapabilitySearch" $ do
             let ranked = rankHits (parseHoogleBlob jsonBlob)
             map hhModule ranked `shouldBe` ["Data.Text", "RIO.Text.Partial"]
 
-    {- B2: an out-of-scope EXACT name match never displaces an in-scope
-    alternative. The three live specimens are all the same shape — a plotting
-    request answered from a package the session has nothing to do with. Scope
-    is a fact about the session; there is no package block-list here. -}
     describe "scope-gated ranking (B2)" $ do
         let inScope = Set.fromList ["sabela-notebook"]
             plotHit =
@@ -114,7 +101,6 @@ spec = describe "Sabela.AI.Capabilities.CapabilitySearch" $ do
             let odd' = specimen "sine" "tidal" "Sound.Tidal.Boot"
             map hhPackage (rankHitsInScope inScope [odd', plotHit])
                 `shouldBe` ["sabela-notebook", "tidal"]
-            -- With nothing in scope, the ranking is unchanged from before.
             map hhPackage (rankHitsInScope Set.empty [odd', plotHit])
                 `shouldBe` map hhPackage (rankHits [odd', plotHit])
 

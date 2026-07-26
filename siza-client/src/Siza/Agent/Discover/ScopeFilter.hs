@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The post-union scope predicate (search-api.md section 3.3) and the
-bounded absent-known tail (section 7): filters run at the merge over each
-hit's ATTRIBUTED modules/packages, and every removal is disclosed.
--}
 module Siza.Agent.Discover.ScopeFilter (
     absentTailNote,
     attributedKeep,
@@ -20,10 +16,6 @@ import qualified Data.Text as T
 import Siza.Agent.Discover.Request (scopeActive, scopeText)
 import Siza.Agent.Discover.Types (DHit (..), InstallState (..), Scope (..))
 
-{- | Scope filters judged over a hit's ATTRIBUTED modules/packages (3.3): a
-name in a re-exporting and a defining module of ONE package satisfies a
-filter naming either; same-name hits in another package stay homonyms.
--}
 attributedKeep :: [DHit] -> Scope -> DHit -> Bool
 attributedKeep union (Scope m p) h =
     maybe True moduleOk m && maybe True packageOk p
@@ -39,15 +31,10 @@ attributedKeep union (Scope m p) h =
     moduleMatch f mo = mo == f || (f <> ".") `T.isPrefixOf` mo
     packageOk f = f `elem` (dhPackage h : map dhPackage siblings)
 
--- | The union hits a scope filter excludes (for conservation disclosure).
 removedByScope :: [DHit] -> Scope -> [DHit]
 removedByScope union scope =
     [h | h <- union, not (attributedKeep union scope h)]
 
-{- | The R3.3 disclosure of what a filter removed: count plus the removed
-hits' attributed modules — a scoped answer can never silently hide where the
-unscoped union's hits live.
--}
 scopeRemovedNote :: Scope -> [DHit] -> Maybe Text
 scopeRemovedNote scope removed
     | null removed || not (scopeActive scope) = Nothing
@@ -65,14 +52,9 @@ scopeRemovedNote scope removed
   where
     mods = nub [dhModule h | h <- removed, not (T.null (dhModule h))]
 
--- | At most this many not-installed packages contribute absent-known rows.
 maxAbsentShown :: Int
 maxAbsentShown = 2
 
-{- | The limit plus the CROSS-PACKAGE absent-known cap (section 7): rows from
-beyond the first 'maxAbsentShown' not-installed packages stay in @omitted@
-(counts reconcile); one absent package's own export list is not the wall.
--}
 capAbsentKnown :: Int -> [DHit] -> [DHit]
 capAbsentKnown limit kept = take limit (go [] kept)
   where
@@ -85,7 +67,6 @@ capAbsentKnown limit kept = take limit (go [] kept)
                 else h : go (dhPackage h : pkgs) rest
         | otherwise = h : go pkgs rest
 
--- | The counted-tail disclosure for absent-known rows the cap suppressed.
 absentTailNote :: [DHit] -> [DHit] -> Maybe Text
 absentTailNote kept shown
     | suppressed <= 0 = Nothing

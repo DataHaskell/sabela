@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The diagnostic interpreter: GHC error text in, structured 'Guidance' out.
-These pin the rules that let a weak model self-correct from a tool result
-instead of needing the recipe pre-loaded into its prompt.
--}
 module Test.DiagnoseSpec (diagnoseSpec) where
 
 import Data.Aeson (Value (..), toJSON)
@@ -168,13 +164,10 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
             resolvePackageToken "frobnicator" `shouldBe` Nothing
             resolvePackageToken "numpy" `shouldBe` Nothing
         it "keeps its keys consistent with the curated module table" $
-            -- every package the module table maps to must be a member of the
-            -- name index, so the two resolvers never disagree.
             map snd table `shouldSatisfy` all (`elem` packageNameIndex)
 
     describe "missing module (the plotting failure)" $ do
         it "foregrounds the dep from GHC's hidden-package wall, version stripped" $ do
-            -- the real GHC message, repeated as GHC repeats it
             let raw =
                     "<no location info>: error: [GHC-87110]\n\
                     \    Could not load module \8216Granite.Svg\8217.\n\
@@ -185,7 +178,6 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
             cats g `shouldBe` ["missing-dependency"]
             msgs g `shouldSatisfy` T.isInfixOf "build-depends: granite"
             msgs g `shouldSatisfy` T.isInfixOf "-- cabal:"
-            -- the version must be stripped: 'granite', never 'granite-0.7.3.0'
             msgs g `shouldNotSatisfy` T.isInfixOf "granite-0"
         it "resolves a truly-not-found module through the table" $ do
             let g = diagnose "Could not find module \8216DataFrame.Display.Web.Plot\8217"

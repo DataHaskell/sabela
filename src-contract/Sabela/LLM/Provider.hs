@@ -1,14 +1,3 @@
-{- | The model-provider port: a record-of-functions (like
-'Sabela.SessionTypes.SessionBackend') that the orchestration layer drives
-without knowing which provider is behind it. Adapters (Anthropic, Ollama) are
-the only code that speaks a provider's wire dialect.
-
-Streaming is one method, not a capability split: 'mpComplete' always takes a
-'ChunkSink'. A streaming adapter drives it incrementally; a non-streaming one
-(Ollama @stream:false@) simply never calls it and returns the whole
-'Completion'. Callers never fork; 'capStreaming' only tells the UI whether to
-promise token-by-token deltas.
--}
 module Sabela.LLM.Provider (
     ProviderCaps (..),
     ChunkSink (..),
@@ -30,14 +19,8 @@ data ProviderCaps = ProviderCaps
     }
     deriving (Eq, Show)
 
--- | Sink for streamed assistant text. Extended later (tool-arg deltas, etc.).
 newtype ChunkSink = ChunkSink {onTextDelta :: Text -> IO ()}
 
-{- | One completion request, in neutral terms. It carries NO model — the
-'ModelProvider' owns its model, so a caller cannot route a provider-specific
-model id to the wrong provider. @crSystem@ is plain prose (the adapter decides
-any prompt-cache marking); @crMaxTokens@ is a safety cap.
--}
 data CompletionRequest = CompletionRequest
     { crSystem :: [Text]
     , crMessages :: [Message]

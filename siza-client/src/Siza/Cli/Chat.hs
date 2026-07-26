@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @siza chat@ subcommand: parse its options and run the interactive
-local-model loop. Kept out of 'Siza.Cli' so the top-level dispatch stays small,
-mirroring the other @Siza.Cli.*@ subcommand modules.
--}
 module Siza.Cli.Chat (
     ChatOpts (..),
     chatOptsParser,
@@ -19,9 +15,6 @@ import Siza.Agent.Loop (EpisodeBudget (..), defaultBudget)
 import Siza.Agent.Preflight (ensureOllama)
 import Siza.Transport (Conn, applyUrlOverride, getHealth)
 
-{- | @siza chat@ options. The model and server URL default to the ollama tag and
-the discovered server; the limits are sized for interactive use, not eval.
--}
 data ChatOpts = ChatOpts
     { coModel :: Text
     , coUrl :: Maybe Text
@@ -31,10 +24,6 @@ data ChatOpts = ChatOpts
     }
     deriving (Show)
 
-{- | @siza chat [--model M] [--url U] [--timeout SECS] [--max-turns N] [--verbose]@:
-drive a local ollama model over the notebook. Defaults to @gpt-oss:20b@ and the
-discovered server; @--verbose@ streams the full audit, not the terse progress view.
--}
 chatOptsParser :: Parser ChatOpts
 chatOptsParser =
     ChatOpts
@@ -84,26 +73,16 @@ chatOptsParser =
                 <> help "Stream the full audit (system prompt, thinking, tool JSON)"
             )
 
-{- | Preflight ollama, resolve and reach the target server (@--url@ or discovered),
-then hand off to the interactive loop. The hard request cap sits above the loop's
-own deadline so the graceful stop wins.
--}
 runChatCommand ::
     ChatOpts ->
-    -- | Connect + guard hub auth (the caller's @withConn@).
     ((Conn -> IO ()) -> IO ()) ->
-    -- | Resolve the base URL (explicit @--url@ or the discovered server).
     (Conn -> Maybe Text -> (Text -> IO ()) -> IO ()) ->
-    -- | Warn when the target is non-localhost.
     (Text -> IO ()) ->
-    -- | Report no reachable server and exit.
     (String -> IO ()) ->
     IO ()
 runChatCommand opts withConn resolveBase warnNonLocal noServer = do
     mgr <- newTlsManager
     ensureOllama mgr
-    -- Before withConn: the hub-token attach keys on SABELA_URL, so a --url set
-    -- after the Conn is built would target the hub unauthenticated.
     applyUrlOverride (coUrl opts)
     withConn $ \conn ->
         resolveBase conn (coUrl opts) $ \base -> do

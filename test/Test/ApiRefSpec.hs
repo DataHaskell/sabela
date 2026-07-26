@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @api_reference@ merge core: given results from local Hoogle, live
-@:browse@, and typed-hole fits, 'mergeApiRef' merges the dynamic sources and
-returns an explicit no-result note when every source is empty/unusable.
-'argKind' routes a type-shaped arg to hole fits and a module/name arg to
-Hoogle + @:browse@.
--}
 module Test.ApiRefSpec (spec) where
 
 import Data.Aeson (Value (..))

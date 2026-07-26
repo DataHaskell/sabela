@@ -1,20 +1,9 @@
-{- | Reasoning corpus — open-ended design / implementation tasks.
-
-The deliverable is WORKING code (a data structure plus operations), graded by a
-'ByValue' BEHAVIOURAL smoke that threads a fixed sequence of operations and pins
-the observed results — so answer quality can be judged AND there is an objective
-correctness floor. Each task fixes the exact operation names and signatures the
-check threads, so the check is self-contained and decidable; whether the model
-hand-rolls or reaches for a package is irrelevant. Pure, no IO, no rendering. See
-the validated traces in the haddock above each task.
--}
 module Eval.Corpus.Reasoning.Design (
     designTasks,
 ) where
 
 import Eval.Task (Grader (..), Task (..))
 
--- | The design reasoning tasks, in catalogue order.
 designTasks :: [Task]
 designTasks =
     [ lruCacheTask
@@ -23,11 +12,6 @@ designTasks =
     , ringBufferTask
     ]
 
-{- | LRU cache, capacity 2. Validated trace over
-put 1 'a'; put 2 'b'; get 1 (Just 'a', promotes 1); put 3 'c' (evicts the LRU
-key 2); get 2 (Nothing); get 3 (Just 'c'); put 4 'd' (evicts 1); get 1 (Nothing)
-— the four gets give [Just 'a', Nothing, Just 'c', Nothing].
--}
 lruCacheTask :: Task
 lruCacheTask =
     Task
@@ -54,11 +38,6 @@ lruCacheTask =
             \in [g1, g2, g3, g4] == [Just 'a', Nothing, Just 'c', Nothing]"
         )
 
-{- | Token-bucket rate limiter. Capacity 5, refill 1 token per tick, starts full.
-Validated trace over (tick, cost) requests
-(0,3) allow ->2; (0,3) deny (only 2 left); (1,1) allow (refill to 3) ->2;
-(2,3) allow (refill to 3) ->0; (2,1) deny — giving [True,False,True,True,False].
--}
 tokenBucketTask :: Task
 tokenBucketTask =
     Task
@@ -82,12 +61,6 @@ tokenBucketTask =
             \in allows == [True, False, True, True, False]"
         )
 
-{- | Arithmetic expression evaluator with + - * / precedence and parentheses,
-left-associative, ignoring whitespace, non-negative integer/decimal literals,
-Nothing on malformed input. Validated:
-2 + 3 * 4 -> 14, (2 + 3) * 4 -> 20, 10 / 4 - 1 -> 1.5,
-2*(3+4)-5 -> 9, "2 +" -> Nothing.
--}
 exprEvalTask :: Task
 exprEvalTask =
     Task
@@ -110,11 +83,6 @@ exprEvalTask =
             \&& evalArith \"2 +\" == Nothing"
         )
 
-{- | Bounded FIFO ring buffer, capacity 3, rejecting pushes when full. Validated
-trace: push 1,2,3 (all True), push 4 (False, full), pop (Just 1), push 4 (True),
-pop,pop,pop (Just 2, Just 3, Just 4), pop (Nothing, empty) — push results
-[True,True,True,False,True] and pop results [Just 1,Just 2,Just 3,Just 4,Nothing].
--}
 ringBufferTask :: Task
 ringBufferTask =
     Task

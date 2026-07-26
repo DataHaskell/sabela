@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The curated gallery index: an ordered top-level feed of featured shares and
-collections, plus admin-assigned tags. Every slug reference is *soft* — ordering
-authority only, resolved against the 'ShareStore' cache at read time, so a
-deleted share drops from the feed without coupling to "Hub.Share". Data types and
-the disk layer live in "Hub.Gallery.Store"; this module is the operations.
--}
 module Hub.Gallery (
     GalleryStore,
     GalleryItem (..),
@@ -51,10 +45,6 @@ import System.FilePath ((</>))
 import Hub.Gallery.Store
 import Hub.OAuth (generateRandomToken)
 import Hub.Share (ShareStore, validSlug)
-
--- ---------------------------------------------------------------------------
--- Featured + collections (writes serialized through the store lock)
--- ---------------------------------------------------------------------------
 
 addFeatured :: GalleryStore -> Text -> IO ()
 addFeatured gs slug = withWrite gs $ do
@@ -123,28 +113,18 @@ setCollectionMembers gs ss cid members =
 listCollections :: GalleryStore -> IO [(Text, Collection)]
 listCollections gs = Map.toList <$> readTVarIO (gsCols gs)
 
--- | The featured share slugs in `index` order (admin picker view).
 featuredSlugs :: GalleryStore -> IO [Text]
 featuredSlugs gs = (\ix -> [s | IxShare s <- ix]) <$> readTVarIO (gsIndex gs)
 
--- | @(cid, member slugs)@ for every collection (admin picker view).
 collectionMembership :: GalleryStore -> IO [(Text, [Text])]
 collectionMembership gs = map (second colMembers) <$> listCollections gs
 
-{- | Every slug reachable by the public: featured top-level shares plus all
-collection members. The authorization set for Download (F2 — source access
-tracks visibility).
--}
 publicSlugs :: GalleryStore -> IO [Text]
 publicSlugs gs = do
     feat <- featuredSlugs gs
     mem <- collectionMembership gs
     pure (feat ++ concatMap snd mem)
 
-{- | Reorder the top-level feed by re-stating the whole ordered list of
-@(kind, id)@ (@kind@ ∈ @share@/@collection@). Only entries that already exist
-are reordered; anything unmentioned keeps its place at the end (never dropped).
--}
 setIndexOrder :: GalleryStore -> [(Text, Text)] -> IO ()
 setIndexOrder gs desired = withWrite gs $ do
     cur <- readTVarIO (gsIndex gs)
@@ -177,13 +157,6 @@ resolveCollection gs ss cid = do
                         , cvTags = tags
                         }
 
--- ---------------------------------------------------------------------------
--- Tags
--- ---------------------------------------------------------------------------
-
-{- | A tag is lowercase @[a-z0-9-]@, 1..32 chars — the 'validSlug'
-charset-allowlist pattern, so a tag is safe by construction in every sink.
--}
 validTag :: Text -> Bool
 validTag t =
     let n = T.length t
@@ -207,21 +180,15 @@ setTags gs tid tags
 getTags :: GalleryStore -> Text -> IO [Text]
 getTags gs tid = Map.findWithDefault [] tid <$> readTVarIO (gsTags gs)
 
--- | The author byline for a slug, if the curator set one.
 getAttribution :: GalleryStore -> Text -> IO (Maybe Text)
 getAttribution gs slug = Map.lookup slug <$> readTVarIO (gsAttr gs)
 
--- | Set (or clear, with @\"\"@) the author byline for a slug.
 setAttribution :: GalleryStore -> Text -> Text -> IO ()
 setAttribution gs slug name = withWrite gs $ do
     atomically $
         modifyTVar' (gsAttr gs) $
             if T.null name then Map.delete slug else Map.insert slug name
     persistAttr gs
-
--- ---------------------------------------------------------------------------
--- Read: resolve the feed and the admin dangling view
--- ---------------------------------------------------------------------------
 
 listGallery :: GalleryStore -> ShareStore -> IO [GalleryItem]
 listGallery gs ss = do
@@ -240,9 +207,6 @@ listGallery gs ss = do
             Just cv | not (null (cvMembers cv)) -> Just (GItemCollection cv)
             _ -> Nothing
 
-{- | Top-level featured slugs whose share no longer resolves, with their
-surviving tags — the admin "missing — re-link" view, before any prune.
--}
 danglingFeatured :: GalleryStore -> ShareStore -> IO [(Text, [Text])]
 danglingFeatured gs ss = do
     ix <- readTVarIO (gsIndex gs)

@@ -1,10 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | The @hackage@ source (docs/discover/search-api.md section 2): a
-membership lookup over the sorted package-name list @data/hackage-packages.txt@
-(built by @make search-cache@). A missing file is source-unavailability, never
-absence — the distinction the envelope discloses per source.
--}
 module Siza.Agent.Discover.Hackage (
     hackageNamesPath,
     loadHackageNames,
@@ -24,13 +19,11 @@ import System.FilePath ((</>))
 
 import Siza.Agent.Discover.Types (HackageInfo (..))
 
--- | @SABELA_HACKAGE_NAMES@ overrides the default repo-relative path.
 hackageNamesPath :: IO FilePath
 hackageNamesPath =
     fromMaybe ("data" </> "hackage-packages.txt")
         <$> lookupEnv "SABELA_HACKAGE_NAMES"
 
--- | The package-name set, or Nothing when the cache is unavailable.
 loadHackageNames :: IO (Maybe (S.Set Text))
 loadHackageNames = do
     path <- hackageNamesPath
@@ -47,12 +40,6 @@ loadHackageNames = do
                             (filter (not . T.null) (map T.strip (T.lines t)))
                         )
 
-{- | Which of the candidate package names exist upstream, plus availability.
-
-Matched case-insensitively but reported in the index's own spelling, so a
-caller who writes @frames@ is told about @Frames@ under the name a
-@-- cabal: build-depends:@ line actually needs.
--}
 hackageInfoFor :: [Text] -> IO HackageInfo
 hackageInfoFor candidates = do
     mNames <- loadHackageNames
@@ -65,13 +52,6 @@ hackageInfoFor candidates = do
         [] -> []
     eqIgnoreCase a b = T.toLower a == T.toLower b
 
-{- | Package names lexically matching any topic token (name substring, tokens
-under 3 chars ignored), capped — the inventory mode's upstream candidates.
-
-Both sides are lowercased. Lowercasing only the token tested @"frames"@
-against the raw @"Frames"@, so every capitalised package on Hackage —
-@Frames@, @Chart@, @HUnit@ — was unreachable by keyword.
--}
 hackageMatching :: Int -> [Text] -> IO [Text]
 hackageMatching cap tokens = do
     mNames <- loadHackageNames

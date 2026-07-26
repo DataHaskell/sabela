@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T2, second half (search-api.md sections 7.1 and 11): the worldChange
-note fires iff an install\/kernel-restart event landed (R1.4), and an
-established-target empty miss answers the goal-ranked producer card
-(R3.4\/R4.4). The goal-satisfaction half lives in "Test.GoalHonestySpec".
--}
 module Test.WorldCardSpec (worldCardSpec) where
 
 import Control.Monad (forM_)
@@ -39,9 +34,6 @@ worldCardSpec = describe "world change and the producer card (R9-T2)" $ do
     guardGateSpec
     producerCardSpec
 
--- The k=2 gate through the REAL guardDiscover seam ---------------------------
-
--- | A literal-minded caller: an exact consumer answer, then junk walls.
 gateDispatch :: ToolCall -> IO (Either Text ToolOutcome)
 gateDispatch tc = case tcName tc of
     "discover" ->
@@ -91,8 +83,6 @@ guardGateSpec = describe "satisfaction never withholds an answer through guardDi
         forM_ texts $ \t ->
             t `shouldSatisfy` (not . T.isInfixOf "satisfied by held facts")
 
--- worldChange legality (R1.4) ------------------------------------------------
-
 data Ev = SameDep | NewDep | Plain | Restart
     deriving (Eq, Show)
 
@@ -109,7 +99,6 @@ evCall Plain =
     ToolCall "insert_cell" (object ["source" .= ("x = 1" :: Text)])
 evCall Restart = ToolCall "kernel_restart" (object [])
 
--- | Minimal dispatcher: a seeded notebook already declaring dataframe.
 worldDispatch :: ToolCall -> IO (Either Text ToolOutcome)
 worldDispatch tc = case tcName tc of
     "list_cells" ->
@@ -164,8 +153,6 @@ worldChangeSpec = describe "worldChange fires iff an event landed (R1.4)" $
             ledger <- newSearchLedger
             seedSearchLedger worldDispatch ledger
             let disp = guardDiscover ledger worldDispatch
-            -- A prior recorded answer, so a subsequent event can legally
-            -- announce (R10-T4: the first search of a session never banners).
             _ <- disp (ToolCall "discover" (object ["query" .= ("gale" :: Text)]))
             forM_ events (disp . evCall)
             Right (ToolOk out) <-
@@ -173,12 +160,9 @@ worldChangeSpec = describe "worldChange fires iff an event landed (R1.4)" $
             let expected = any (`elem` [NewDep, Restart]) events
             (events, not (T.null (textField "worldChange" out)))
                 `shouldBe` (events, expected)
-            -- The note is announced once; an eventless follow-up is clean.
             Right (ToolOk out2) <-
                 disp (ToolCall "discover" (object ["query" .= ("lull" :: Text)]))
             (events, textField "worldChange" out2) `shouldBe` (events, "")
-
--- The established-target producer-card fallback (7.1) ------------------------
 
 producerCardSpec :: Spec
 producerCardSpec = describe "empty miss with established target answers producers" $ do
@@ -204,7 +188,6 @@ producerCardSpec = describe "empty miss with established target answers producer
                 totalN `shouldBe` length exports
                 shownN `shouldBe` min limit (length exports)
                 envelopeChars v `shouldSatisfy` (<= envelopeCharBudget)
-                -- Producer exports precede non-producers in the shown slice.
                 let shownLines = cardExports v
                     isProducer l = "Plot" `T.isSuffixOf` l
                     afterFirstFiller =

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @siza login@ transport guard: a token is only sent over HTTPS, or over
-plain HTTP when the hub is loopback (local dev). Pins 'isSecureHub' so a future
-change can't silently start shipping the token in cleartext.
--}
 module Test.LoginSpec (loginSpec) where
 
 import Siza.Login (isSecureHub)

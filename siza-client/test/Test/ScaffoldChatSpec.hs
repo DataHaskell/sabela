@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The scaffold as a disclosed, outcome-gated action in the shared loop that
-@siza chat@ runs (Chat.hs wires 'runEpisodeSeeded' directly): every scaffold
-write is disclosed in the transcript and to the trace sink, and the orienting
-note appears only after the scaffold cell verifiably ran clean (R7.4).
--}
 module Test.ScaffoldChatSpec (scaffoldChatSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -29,7 +24,6 @@ import Siza.Agent.Loop (
 import Siza.Agent.NoteLedger (assertedLive)
 import Siza.Agent.Scaffold (scaffoldFile, scaffoldNoteFor)
 
--- | A two-cell data-file request (the revenuePipeline shape).
 prompt :: Text
 prompt =
     "A CSV `revenue.csv` with columns `month` and `revenue` is in the working \
@@ -38,10 +32,6 @@ prompt =
 
 scaffoldChatSpec :: Spec
 scaffoldChatSpec = describe "scaffold in the shared chat loop (R7.4, M16)" $ do
-    {- G8 task 10 / C4 task 1: the harness's own scaffold write must obey the
-    path rules the model's writes do. Stripping `.` from BOTH ends turned the
-    user's relative path into an absolute one that does not exist, and both
-    live_test21 and live_test22 scaffolded against it. -}
     describe "scaffold-abs-path (live_test21)" $ do
         it "keeps a relative path's leading dot" $
             scaffoldFile "load ./examples/data/housing.csv into a dataframe"
@@ -109,7 +99,6 @@ failInsert c
     | tcName c == "insert_cell" = pure (Left "transport down")
     | otherwise = pure (Right (ToolOk (object [])))
 
--- | Run one scripted episode; the model immediately stops with no calls.
 runWith ::
     (ToolCall -> IO (Either Text ToolOutcome)) -> IO ([Value], Text)
 runWith disp = do
@@ -129,7 +118,6 @@ runWith disp = do
     out <- readIORef emitted
     pure (arTranscript run, out)
 
--- | Messages with role user, excluding the first (the task prompt itself).
 laterUserMsgs :: [Value] -> [Value]
 laterUserMsgs msgs = drop 1 [m | m <- msgs, roleOf m == "user"]
 

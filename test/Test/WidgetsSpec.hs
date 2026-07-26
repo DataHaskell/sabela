@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Tests for @Sabela.Output.Widgets@: the shared @sabela-widgets.js@ runtime is
-embedded, the prelude definitions emit @sabelaXxx(cfg)@ bootstraps, and — the
-key regression — they no longer build inline event handlers in HTML.
--}
 module Test.WidgetsSpec (spec) where
 
 import qualified Data.Text as T

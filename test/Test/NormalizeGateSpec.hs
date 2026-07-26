@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R5-T3: ONE acceptance law over every machine rewrite (search-api.md
-section 9.3). The pre-run normalizer is a candidate GENERATOR; its output is
-kept iff the same 'acceptRepair' law the repair cascade uses admits it at the
-parse stage — else the submission is preserved byte-identically and the
-attempt is disclosed as attempted-and-reverted.
--}
 module Test.NormalizeGateSpec (spec) where
 
 import Control.Monad (forM_, when)
@@ -25,13 +19,9 @@ import Sabela.AI.SelfHeal (selfHealNote)
 import Sabela.Model (CellType (..))
 import Sabela.Parse.Normalize (normalizeInsert)
 
--- | The run-085948 regression: a stripped let with its dangling @in@.
 danglingIn :: Text
 danglingIn = "let x = 5\nin x * 2"
 
-{- | Generated cell sources: let-forms x keyword binding names x well-formed
-x unparseable-before-AND-after. No library-specific case anywhere.
--}
 sourceGrid :: [Text]
 sourceGrid =
     [ "let xs = [1,2,3]"
@@ -61,8 +51,6 @@ spec = describe "one acceptance law over every rewrite (section 9.3)" $ do
                 let (_, src', notes) = gatedNormalizeInsert CodeCell src
                 if src' == src
                     then do
-                        -- Preserved byte-identically; an attempted rewrite is
-                        -- disclosed as reverted, never silently dropped.
                         let (_, cand, _) = normalizeInsert CodeCell src
                         when (cand /= src) $
                             notes
@@ -79,7 +67,6 @@ spec = describe "one acceptance law over every rewrite (section 9.3)" $ do
             src' `shouldBe` danglingIn
             notes `shouldSatisfy` any (T.isInfixOf "reverted")
         it "the ungated generator would have shipped the parse error (red pin)" $
-            -- The generator's raw output IS broken; only the gate saves it.
             normalizeInsert CodeCell danglingIn
                 `shouldSatisfy` \(_, cand, _) -> cand /= danglingIn
         it "the replace-path rewrite is gated identically" $
@@ -129,15 +116,11 @@ spec = describe "one acceptance law over every rewrite (section 9.3)" $ do
                     (_, cand, _) = normalizeInsert CodeCell src
                 if src' /= src
                     then do
-                        -- Kept: the notes name the rewrite; the heal note
-                        -- attaches the ACTUAL post-edit source.
                         notes `shouldSatisfy` (not . null)
                         case selfHealNote src src' of
                             Nothing -> expectationFailure "kept rewrite lost its note"
                             Just _ -> pure ()
                     else do
-                        -- Reverted or untouched: no self-heal note can exist
-                        -- (pre == post), so no note attaches to a failed op.
                         selfHealNote src src' `shouldBe` Nothing
                         when (cand == src) $
                             notes

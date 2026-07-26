@@ -1,21 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for the DIAGNOSTIC verify re-prompt.
-
-Gemma sometimes stops well under budget and gives up on an error. Today the
-re-prompt is one fixed sentence (\"the check does not pass yet\") with no
-diagnostics — the model repeats itself and the loop ends @stuck@. The re-prompt
-must say what is actually missing: no cell written at all, or the requested
-deliverable binding absent.
-
-Proposed API:
-
-  requestedNames      :: Text -> [Text]           -- prompt -> deliverable names
-  missingDeliverables :: Text -> [Text] -> [Text] -- prompt -> cell sources -> absent
-    (Siza.Agent.Deliverable)
-  verifyMessage'      :: Int -> [Text] -> Maybe Text -> Text  -- owned/missing/counterexample
-    (Siza.Agent.Messages)
--}
 module Test.VerifyDiagSpec (verifyDiagSpec) where
 
 import Data.Text (Text)
@@ -25,7 +9,6 @@ import Test.Hspec
 import Siza.Agent.Deliverable (missingDeliverables, requestedNames)
 import Siza.Agent.Messages (doneSignal, unconfirmedMessage, verifyMessage')
 
--- | The real evalExpr gate task prompt (abridged).
 taskPrompt :: Text
 taskPrompt =
     "Write a recursive-descent parser for arithmetic expressions. Use a \

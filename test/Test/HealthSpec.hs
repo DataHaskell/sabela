@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The diagnostic-set health model that decides whether a repair candidate is
-kept. Pins the rule that comparing sets, not error counts, rejects a candidate
-that trades one error for another.
--}
 module Test.HealthSpec (spec) where
 
 import qualified Data.Set as Set
@@ -39,9 +35,6 @@ spec = describe "Sabela.AI.Health" $ do
             let h = healthOfResult (result Nothing [])
             isClean h `shouldBe` True
         it "keys on the structured errors, not the volatile joined blob" $ do
-            -- The holistic message is the JOIN of the structured errors, so it
-            -- shifts whenever any sibling's inferred type shifts — it must not
-            -- be its own diagnostic key when structured errors exist.
             let er = ExecutionResult [] (Just "boom") [cellErr "a", cellErr "b"] [cellErr "w"]
                 h = healthOfResult (Right er)
             healthCompileOk h `shouldBe` False
@@ -78,10 +71,6 @@ spec = describe "Sabela.AI.Health" $ do
                 `shouldBe` False
 
     describe "inference-volatile diagnostics key on the stable part" $ do
-        -- Fixing one name rewrites the TYPES GHC prints inside a SIBLING
-        -- not-in-scope error (measured: chainl1's goal referenced Ghci20.Parser
-        -- and shifted per run). The sibling must read as the SAME fact, or
-        -- every partial heal is rejected as "a new diagnostic appeared".
         let chainl1V1 =
                 cellErr
                     "Variable not in scope:\n  chainl1\n    :: (Text -> Either Text Term)\n       -> Ghci20.Parser (Double -> Double -> Double) -> Parser Double"
@@ -113,11 +102,6 @@ spec = describe "Sabela.AI.Health" $ do
                 `shouldBe` True
 
     describe "phase-ordered acceptance — a reveal is not a regression" $ do
-        -- Healing a scope error lets its declaration groups reach the TYPE
-        -- CHECKER for the first time, surfacing latent errors that were always
-        -- in the code. Advancing the scope frontier is progress even when it
-        -- reveals type errors; an unchanged frontier falls back to the strict
-        -- subset rule.
         let nsA = cellErr "Variable not in scope: takeWhile1 :: X"
             nsB = cellErr "Variable not in scope:\n  chainl1\n    :: Y"
             latent1 = cellErr "No instance for `Fractional Integer' arising from a use of `/'"
@@ -143,9 +127,6 @@ spec = describe "Sabela.AI.Health" $ do
                 `shouldBe` False
 
     describe "knock-on scope noise — cell-defined names are excluded" $ do
-        -- Not-in-scope errors for names the CELL ITSELF defines flap with
-        -- which declaration groups happened to compile; the failing group's
-        -- own diagnostic is always separately present, so these are noise.
         let defined =
                 Set.fromList
                     [ "parseTerm"
@@ -160,8 +141,6 @@ spec = describe "Sabela.AI.Health" $ do
             latent1 = cellErr "No instance for `Fractional Integer' arising from a use of `/'"
             latent2 = cellErr "No instance for `Monoid Integer' arising from a use of `mempty'"
         it "accepts an external scope heal despite cell-defined knock-ons flapping" $
-            -- Pinned from the gemma evalExpr verify dump: healing chainl1 made
-            -- knock-ons for operatorAddSub/operatorMulDiv/parens REAPPEAR.
             improvesHealthFor
                 defined
                 ( healthOfResult

@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Cold-start purge: an OOD install task must measure a genuinely cold
-store every episode, and the purge must never touch neighbouring packages.
--}
 module Test.ColdStartSpec (spec) where
 
 import qualified Data.Text as T
@@ -69,7 +66,6 @@ spec = describe "Eval.ColdStart" $ do
             removed <- purgeStoreIn "/nonexistent/store/root" "hgg"
             removed `shouldBe` []
 
--- | A throwaway store shaped like ~/.cabal/store: ghc dir + build dirs + db.
 freshFakeStore :: IO FilePath
 freshFakeStore = do
     tmp <- getTemporaryDirectory

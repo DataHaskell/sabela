@@ -35,21 +35,12 @@ import qualified Sabela.Topo as Topo
 
 data ExecutionPlan = ExecutionPlan
     { epCellsToRun :: [Cell]
-    -- ^ Interpreted cells in dependency order that should be executed.
     , epCompileCells :: [Cell]
-    {- ^ Affected compiled cells, in notebook order (module decls are
-    order-independent; notebook order keeps generated files diff-stable).
-    -}
     , epCompilePlan :: CompilePlan
-    -- ^ Module sources + violations, reused by the compile-phase executor.
     , epCycleIds :: S.Set Int
-    -- ^ Cell IDs that are part of circular dependencies (should get error).
     , epRedefErrors :: M.Map Int [Text]
-    -- ^ Cell ID → list of names that conflict with earlier definitions.
     , epDefMap :: M.Map Text Int
-    -- ^ Name → cell ID of the first definition (for error messages).
     , epCellPositions :: M.Map Int Int
-    -- ^ Cell ID → 1-based position in the notebook (for error messages).
     }
 
 computeExecutionPlan :: Int -> [Cell] -> Notebook -> ExecutionPlan
@@ -58,41 +49,21 @@ computeExecutionPlan editedCid = computePlanCore (Just (S.singleton editedCid))
 computeFullExecutionPlan :: [Cell] -> Notebook -> ExecutionPlan
 computeFullExecutionPlan = computePlanCore Nothing
 
--- | Stale = edited since its last run, or its last run errored.
 cellStale :: Cell -> Bool
 cellStale c = cellDirty c || isJust (cellError c)
 
-{- | Whether a run-all must actually execute. It is a no-op when a session
-build/restart is already in flight (so repeated run-all clicks can't stack
-restarts and back the kernel up) or when the session is ready and no cell is
-stale (the notebook is already current). A not-ready session always runs (it
-needs the cold-start). Keeps an accidental double-press from re-executing an
-unchanged notebook.
--}
 runAllNeedsRun :: Bool -> Bool -> [Cell] -> Notebook -> Bool
 runAllNeedsRun building ready allCode nb
     | building = False
     | not ready = True
     | otherwise = not (null (epCellsToRun (computeStaleExecutionPlan allCode nb)))
 
-{- | Plan for an incremental run-all: only stale cells and their
-transitive dependents run, in dependency order; clean cells keep their
-outputs. An all-clean notebook yields an empty plan.
--}
 computeStaleExecutionPlan :: [Cell] -> Notebook -> ExecutionPlan
 computeStaleExecutionPlan allCode =
     computePlanCore
         (Just (S.fromList (map cellId (filter cellStale allCode))))
         allCode
 
-{- | Shared plan core. @Nothing@ roots = run everything. Compiled cells are
-planned via 'planCompiledModules'; same-module dependency edges are pruned
-(declaration order inside a module is irrelevant, so same-module mutual
-recursion is not a cycle); and when an affected cell belongs to a compiled
-module, every cell of that module and of the modules importing it joins the
-roots — one module reload invalidates prompt bindings downstream of all of
-them.
--}
 computePlanCore :: Maybe (S.Set Int) -> [Cell] -> Notebook -> ExecutionPlan
 computePlanCore mRoots allCode nb =
     let posMap = cellPositionMap nb
@@ -140,21 +111,11 @@ computePlanCore mRoots allCode nb =
             , epCellPositions = posMap
             }
 
-{- | Mark every code cell dirty. After a kernel restart the fresh GHCi has none
-of the notebook's bindings, but the cells still read clean, so a run-plan would
-compute "nothing to run" and leave the session empty (downstream work then hangs
-waiting on bindings that never get rebuilt). Marking all dirty forces the
-restart's run to re-evaluate the whole notebook back to a consistent state.
--}
 markAllDirty :: Notebook -> Notebook
 markAllDirty nb = nb{nbCells = map dirty (nbCells nb)}
   where
     dirty c = c{cellDirty = True}
 
-{- | Mark every cell transitively downstream of @cid@ dirty, so graph
-staleness survives a later solo run of the root (which clears only the
-root's own flag).
--}
 markDependentsDirty :: Int -> Notebook -> Notebook
 markDependentsDirty cid nb =
     let code = haskellCodeCells nb
@@ -167,10 +128,6 @@ markDependentsDirty cid nb =
             | otherwise = c
      in nb{nbCells = map upd (nbCells nb)}
 
-{- | After a compile-phase reload wiped the GHCi prompt context, every
-interpreted cell's bindings are gone: mark them all dirty so staleness
-stays truthful even if the recovery run is interrupted.
--}
 markAllInterpretedDirty :: Notebook -> Notebook
 markAllInterpretedDirty nb =
     let code = haskellCodeCells nb
@@ -186,9 +143,6 @@ markAllInterpretedDirty nb =
             | otherwise = c
      in nb{nbCells = map upd (nbCells nb)}
 
-{- | The recovery run set after a reload: every interpreted cell in
-dependency order, exactly what a full plan would run.
--}
 escalatedCellsToRun :: Notebook -> [Cell]
 escalatedCellsToRun nb =
     epCellsToRun (computeFullExecutionPlan (haskellCodeCells nb) nb)
@@ -202,13 +156,9 @@ cellPositionMap nb =
     M.fromList (zip (map cellId (nbCells nb)) [1 ..])
 
 redefinitionErrorMsg ::
-    -- | defMap: name → first-defining cell ID
     M.Map Text Int ->
-    -- | posMap: cell ID → 1-based position
     M.Map Int Int ->
-    -- | cell ID with the redefinition
     Int ->
-    -- | names that are redefined
     [Text] ->
     Text
 redefinitionErrorMsg defMap posMap _cid names =
@@ -227,15 +177,6 @@ redefinitionErrorMsg defMap posMap _cid names =
             <> T.intercalate "; " msgs
             <> ". Remove the duplicate to resolve this conflict."
 
-{- | Human-readable explanation of a detected cycle. The message names both the
-cells involved (by 1-based position) AND the specific variables that create
-the mutual references, so the agent can jump straight to the offending
-identifiers instead of inspecting every line.
-
-If @cells@ / @defMap@ are passed, the variable list is included; otherwise
-the fallback message only lists cell positions. The positional fallback is
-kept for any older call sites that haven't been updated yet.
--}
 cycleErrorMsg ::
     M.Map Int Int ->
     S.Set Int ->
@@ -266,10 +207,6 @@ cycleErrorMsg posMap cycleIds cells defMap =
             <> " Tokens inside string literals / comments are NOT counted, so"
             <> " this is a real reference loop in the code."
 
-{- | Identify the set of variable names that connect cells in a cycle. A name
-@x@ is "cycle-forming" if it is defined in one cycle cell and used by another
-cycle cell. Order in output is lexicographic for determinism.
--}
 cycleVariables :: S.Set Int -> [Cell] -> M.Map Text Int -> [Text]
 cycleVariables cycleIds cells defMap =
     let cellById = M.fromList [(cellId c, c) | c <- cells]

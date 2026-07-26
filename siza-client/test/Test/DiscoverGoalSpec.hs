@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R8-T2 (search-api.md section 8.3): goal satisfaction is the verdict. The
-standing goal derives from held consumer evidence, EVERY query spelling is
-judged against it, and a found answer whose hits all fail the goal advances
-the SAME miss-cluster ladder state as a not_found for the same cluster.
--}
 module Test.DiscoverGoalSpec (discoverGoalSpec) where
 
 import Control.Monad (forM_, when)
@@ -29,8 +24,6 @@ import Siza.Agent.Discover.History (
  )
 import Siza.Agent.Discover.Types (StandingGoal (..))
 import Test.DiscoverFixtures (field, stateOf, textField)
-
--- Envelope builders ----------------------------------------------------------
 
 hitJ :: Text -> Text -> Text -> Text -> Text -> Value
 hitJ n ty m p kind =
@@ -59,11 +52,9 @@ foundEnv q hits =
         , "next" .= ("act on the hits" :: Text)
         ]
 
--- | The held consumer evidence: an exact typed hit the ledger harvests.
 consumerFound :: (Text, Text, Text, Text) -> Value
 consumerFound (n, sig, m, p) = foundEnv n [hitJ n sig m p "exact"]
 
--- | The barChart wall: a found answer carrying only foreign prefix junk.
 junkFound :: Text -> Value
 junkFound q =
     foundEnv
@@ -80,10 +71,6 @@ missEnv q =
         , "total" .= (0 :: Int)
         ]
 
-{- | The zephyr\/stratus\/cumulus consumer grid: (name, signature, module,
-package) with the goal the signature derives — an unproduced nominal argument
-type, or Nothing when every argument is literal-constructible or self-produced.
--}
 consumerGrid :: [((Text, Text, Text, Text), Maybe Text)]
 consumerGrid =
     [
@@ -95,7 +82,6 @@ consumerGrid =
     , (("lull", "Wind -> Wind", "Stratus.Air", "stratus"), Nothing)
     ]
 
--- | The judged spellings: producer-prefix, bare word, unrelated token.
 spellingsOf :: Text -> [Text]
 spellingsOf goal = ["default" <> goal, "default", "unrelatedTok"]
 
@@ -127,8 +113,6 @@ discoverGoalSpec = describe "goal satisfaction is the verdict (R8-T2, section 8.
     disclosureSpec
     barChartSpec
 
--- The evidence-derived standing goal ----------------------------------------
-
 derivationSpec :: Spec
 derivationSpec = describe "the standing goal derives from held consumer evidence" $ do
     it "derives the unproduced nominal argument type, with provenance" $
@@ -139,8 +123,6 @@ derivationSpec = describe "the standing goal derives from held consumer evidence
     it "derives no goal from an empty ledger" $
         standingGoal (heldFacts emptyLedger) `shouldBe` Nothing
 
--- Satisfaction legality: ladder-state equality (R1.1 dual / R5.6) -----------
-
 ladderEqualitySpec :: Spec
 ladderEqualitySpec = describe "a goal-miss advances the SAME ladder state as a not_found" $ do
     it "walks rung-for-rung equal over the (consumer x goal x spelling) grid" $
@@ -150,19 +132,15 @@ ladderEqualitySpec = describe "a goal-miss advances the SAME ladder state as a n
                 (ledA, outsA) = walk led0 [(q, junkFound q) | q <- qs]
                 (ledB, outsB) = walk led0 [(q, missEnv q) | q <- qs]
             ladderState ledA `shouldBe` ladderState ledB
-            -- Rung parity at every step, not just at the end.
             forM_ [1 .. length qs] $ \n -> do
                 let (lA, _) = walk led0 [(q, junkFound q) | q <- take n qs]
                     (lB, _) = walk led0 [(q, missEnv q) | q <- take n qs]
                 ladderState lA `shouldBe` ladderState lB
-            -- Rung markers land on the same calls in both arms.
             forM_ (zip outsA outsB) $ \(a, b) ->
                 forM_ ["Already held"] $ \marker ->
                     (marker `T.isInfixOf` adviceOf a)
                         `shouldBe` (marker `T.isInfixOf` adviceOf b)
             adviceOf (outsA !! 1) `shouldSatisfy` T.isInfixOf "Already held"
-            -- Retired k=2 gate: the third call is ANSWERED like every other;
-            -- nothing is replaced by a held-facts citation.
             adviceOf (outsA !! 2)
                 `shouldSatisfy` (not . T.isInfixOf "satisfied by held facts")
     it "dedup: a repeat of a goal-missed query short-circuits like a not_found's" $
@@ -190,8 +168,6 @@ ladderEqualitySpec = describe "a goal-miss advances the SAME ladder state as a n
             adviceOf outA `shouldSatisfy` T.isInfixOf "Already held"
             adviceOf outB `shouldSatisfy` T.isInfixOf "Already held"
 
--- Spelling independence: no query shape escapes the standing goal -----------
-
 spellingSpec :: Spec
 spellingSpec = describe "the standing goal outlives the query's spelling" $ do
     it "producer-prefix, bare word and unrelated token are ALL judged" $
@@ -204,8 +180,6 @@ spellingSpec = describe "the standing goal outlives the query's spelling" $ do
         forM_ [(c, g) | (c, Just g) <- consumerGrid] $ \(c, g) -> do
             let (led, _) = walk (seedConsumer c) [(q, junkFound q) | q <- spellingsOf g]
                 (misses, _, _, _) = ladderState led
-            -- One cluster, one miss per spelling: the retired k=2 gate used
-            -- to stop counting (and answering) after the second.
             map snd misses `shouldBe` [length (spellingsOf g)]
     it "no held consumer evidence: a plain word derives no goal, search unchanged" $ do
         let (led, out) = ledgerRecord "default" (junkFound "default") emptyLedger
@@ -231,9 +205,6 @@ spellingSpec = describe "the standing goal outlives the query's spelling" $ do
             (misses, _, _, _) = ladderState led2
         goalSat out `shouldBe` Just (Bool True)
         misses `shouldBe` []
-    {- live_test33_wine: goal FilePath (from readCsv) went satisfied on a
-    query for `summary` because a hit was named `summary`, and the armed gate
-    then collapsed the next three searches to duplicates. -}
     it "an exact hit on a FOREIGN target does not satisfy the goal" $ do
         let led =
                 seedConsumer
@@ -241,8 +212,6 @@ spellingSpec = describe "the standing goal outlives the query's spelling" $ do
             v = foundEnv "lull" [hitJ "lull" "Wind -> Wind" "Stratus.Air" "stratus" "exact"]
             (_, out) = ledgerRecord "lull" v led
         goalSat out `shouldBe` Just (Bool False)
-
--- The one-envelope disclosure (R3.6) ----------------------------------------
 
 disclosureSpec :: Spec
 disclosureSpec = describe "the goal field rides the ONE declared envelope shape" $ do
@@ -271,8 +240,6 @@ disclosureSpec = describe "the goal field rides the ONE declared envelope shape"
         note `shouldSatisfy` T.isInfixOf "Plot"
         note `shouldSatisfy` T.isInfixOf "defaultPlotLineStyle"
 
--- The barChart run-181440 fixture (secondary evidence) -----------------------
-
 barChartSpec :: Spec
 barChartSpec = describe "barChart: six default-spelling walls can no longer starve the ladder" $
     it "every wall is judged, the ladder closes, repeats dedup" $ do
@@ -287,16 +254,11 @@ barChartSpec = describe "barChart: six default-spelling walls can no longer star
             (_, outs) = foldl' step (seedConsumer bars, []) spellings
             freshOuts = [o | (_, o, True) <- outs]
             judgedOuts = [o | o <- freshOuts, stateOf o `elem` ["found", "not_found"]]
-        -- Every pre-cap fresh answer is judged unsatisfied in-band; past the
-        -- give-up rung the terse duplicate reference caps the cluster.
         forM_ judgedOuts $ \o -> goalSat o `shouldBe` Just (Bool False)
         forM_ [o | o <- freshOuts, stateOf o `notElem` ["found", "not_found"]] $
             \o -> stateOf o `shouldBe` "duplicate"
-        -- Retired gate: every fresh wall stays a judged answer; only true
-        -- byte-repeats dedup.
         any (T.isInfixOf "satisfied by held facts" . adviceOf) freshOuts
             `shouldBe` False
-        -- The repeated spelling dedups instead of re-walling.
         let dups = [o | (q, o, False) <- outs, q == "default"]
         when (null dups) $
             expectationFailure "expected the repeated spelling to dedup"

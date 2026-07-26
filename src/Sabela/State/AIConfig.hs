@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Runtime AI configuration: apply partial updates to the workspace's provider
-+ knobs, (re)build the backend the agentic loop drives, and persist the result.
-Split from "Sabela.State", which re-exports it.
--}
 module Sabela.State.AIConfig (
     AIConfigUpdate (..),
     configureAI,
@@ -44,24 +40,16 @@ data AIConfigUpdate = AIConfigUpdate
     { aicuApiKey :: Maybe Text
     , aicuModel :: Maybe Text
     , aicuProvider :: Maybe Text
-    -- ^ @"anthropic"@ | @"ollama"@; 'Nothing' keeps the current provider.
     , aicuNumCtx :: Maybe Int
-    -- ^ Ollama @num_ctx@; 'Nothing' keeps the current value.
     , aicuToolLimit :: Maybe Int
-    -- ^ Per-turn tool-call round cap; 'Nothing' keeps the current value.
     }
 
--- | The configured Ollama @num_ctx@ for this workspace.
 getAINumCtx :: App -> IO Int
 getAINumCtx = readIORef . appAINumCtx
 
--- | The configured per-turn tool-call round cap for this workspace.
 getAIToolLimit :: App -> IO Int
 getAIToolLimit = readIORef . appAIToolLimit
 
-{- | Configure AI with an API key at runtime (legacy single-field path).
-Writes the key to <workdir>/.sabela/config.json and initializes the AIStore.
--}
 configureAI :: App -> Text -> IO (Either Text ())
 configureAI app apiKey =
     updateAIConfig
@@ -74,11 +62,6 @@ configureAI app apiKey =
             , aicuToolLimit = Nothing
             }
 
-{- | Apply partial updates to the AI config, then (re)select the matching
-provider so the agentic loop drives the right backend. Anthropic requires an API
-key for first-time setup; Ollama does not. Key + model + provider persist to
-<workdir>/.sabela/config.json, so the choice survives a restart.
--}
 updateAIConfig :: App -> AIConfigUpdate -> IO (Either Text ())
 updateAIConfig app upd = case appHttpMgr app of
     Nothing -> pure (Left "No HTTP manager available")
@@ -114,8 +97,6 @@ updateAIConfig app upd = case appHttpMgr app of
         setAIProvider store (buildProvider mgr provider newCfg numCtx)
         persistConfig app newKey newModel provider numCtx limit
         pure (Right ())
-    -- Resolve the two knobs from the update (falling back to the current
-    -- workspace values) and write them back so the loop + next rebuild see them.
     applyKnobs = do
         curNumCtx <- readIORef (appAINumCtx app)
         curLimit <- readIORef (appAIToolLimit app)
@@ -134,7 +115,6 @@ updateAIConfig app upd = case appHttpMgr app of
         | p == ollamaProviderId = defaultOllamaModel
         | otherwise = envAnthropicModel (appEnv app)
 
--- | Write the workspace's AI config to @<workdir>/.sabela/config.json@.
 persistConfig :: App -> Text -> Text -> Text -> Int -> Int -> IO ()
 persistConfig app key model provider numCtx toolLimit = do
     let configDir = envWorkDir (appEnv app) </> ".sabela"

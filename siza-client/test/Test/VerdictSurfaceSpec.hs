@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T4 verdict totality on the verify channel (search-api.md section 5.3):
-every verify-channel producer renders a decodable member of the closed verdict
-vocabulary, matched to its outcome class — silence is undecodable, so a
-marker-less answer is a lint issue, and a transport-swallowed marker-run
-answer decodes as the no-verdict infra class, never a pass.
--}
 module Test.VerdictSurfaceSpec (verdictSurfaceSpec) where
 
 import Data.Aeson (Value (..))
@@ -36,10 +30,6 @@ content _ = ""
 
 verdictSurfaceSpec :: Spec
 verdictSurfaceSpec = describe "verify-channel verdict totality (section 5.3)" $ do
-    {- C2.7: one verdict, correctly named. live_test8 reported "✓ check
-    passed: True" to the user while the verify channel said the check still
-    failed — and what had actually gone wrong was that no cell existed,
-    which is not a check failure at all. -}
     describe "check-verdict-contradiction (live_test8)" $ do
         it "classifies a no-cell state as a precondition, not a check failure" $
             verifyFailureOf 0 [] `shouldBe` NoDeliverable

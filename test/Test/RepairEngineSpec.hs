@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The shared repair-search core both the product and eval paths adapt to:
-first-verified backtracking ('firstJustM') and hole-fit candidate generation.
--}
 module Test.RepairEngineSpec (spec) where
 
 import Data.IORef (modifyIORef', newIORef, readIORef)
@@ -13,7 +10,6 @@ import Sabela.AI.HoleRepair (holeFitRewrites)
 import Sabela.AI.Repair (firstJustM, interleave)
 import Sabela.AI.TypedHole (containsTypedHole)
 
--- | Run 'firstJustM' over @xs@, returning its result and the candidates visited.
 traced :: (Int -> Maybe String) -> [Int] -> IO (Maybe (Int, String), [Int])
 traced f xs = do
     seen <- newIORef []
@@ -33,9 +29,6 @@ spec = describe "Sabela.AI.Repair (shared repair core)" $ do
             traced keep [] `shouldReturn` (Nothing, [])
 
     describe "interleave — candidate diversity under a small execution cap" $ do
-        -- The cap must sample across GROUPS (names, tiers) before trying a
-        -- second variant of the same one: three executions should cover three
-        -- different problems, not three spellings of one.
         it "round-robins across groups" $
             interleave [["a1", "a2", "a3"], ["b1"], ["c1", "c2"]]
                 `shouldBe` ["a1", "b1", "c1", "a2", "c2", "a3"]
@@ -76,9 +69,6 @@ spec = describe "Sabela.AI.Repair (shared repair core)" $ do
         it "is empty when no fit changes the source" $
             holeFitRewrites "getCol" "no fits here" "total = 1" `shouldBe` []
 
-    -- G2 hard rule 3: self_heal must never touch a cell holding a typed-hole
-    -- probe (`_ :: T`, the live_test4 specimen) — the diagnostic IS the
-    -- deliverable, not an error to repair.
     describe "containsTypedHole (G2 hard rule 3 — the hole-probe guard)" $ do
         it "detects the live_test4 probe verbatim" $
             containsTypedHole

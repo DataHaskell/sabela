@@ -1,8 +1,3 @@
-{- | Query normalisation for discover (docs/discover/search-api.md section 4):
-strip decoration to the bare name (R2.1), resolve qualification through the
-notebook's own aliases (R1.6, R2.2), classify the query shape, and build the
-notebook environment from a full cell listing.
--}
 module Siza.Agent.Discover.Interpret (
     interpret,
     constructGoal,
@@ -27,7 +22,6 @@ import Siza.Agent.Discover.Types (
     seededBuiltins,
  )
 
--- | Normalise a query against the notebook environment.
 interpret :: NotebookEnv -> Text -> Interpreted
 interpret env raw
     | Just ty <- constructGoal raw =
@@ -46,11 +40,6 @@ interpret env raw
     prose = length (T.words stripped) > 1
     terms = map T.toLower (T.words stripped)
 
-{- | The type a "how do I construct a value of T" question names (section
-7.1): "value of type T", "make a T", "default T", "a T value". 'Nothing'
-when the query is not a constructibility question. The goal is the type token
-following the phrase (upper-head, a data\/record type name).
--}
 constructGoal :: Text -> Maybe Text
 constructGoal raw = firstJust (map afterPhrase phrases)
   where
@@ -80,10 +69,6 @@ constructGoal raw = firstJust (map afterPhrase phrases)
     orElse (Just x) _ = Just x
     orElse Nothing y = y
 
-{- | Reduce a decorated name to its bare identifier: drop backtick/quote
-wrappers, type applications (@col \@T.Text@) and applied literal arguments
-(@col "revenue"@). Operators in parens survive verbatim (R2.3).
--}
 stripDecoration :: Text -> Text
 stripDecoration raw
     | "(" `T.isPrefixOf` t && ")" `T.isSuffixOf` t && not (T.any (== ' ') t) = t
@@ -91,8 +76,6 @@ stripDecoration raw
         (h : rest) | not (null rest), all decoration rest, identLike h -> h
         _ -> t
   where
-    -- Quote wrappers unwrap only as PAIRS (R2.1): a bare trailing prime is
-    -- part of the identifier (the foldl'\/data' class), never decoration.
     t = unwrapQuotes (T.strip raw)
     unwrapQuotes s = case (T.uncons s, T.unsnoc s) of
         (Just (o, _), Just (_, c))
@@ -113,10 +96,6 @@ stripDecoration raw
             || T.all isDigit w
     identLike w = maybe False (\(c, _) -> isAlpha c || c == '_') (T.uncons w)
 
-{- | Resolve a qualified name: an alias the notebook imports wins (@D.col@ ->
-@col@ in @DataFrame@); a dotted or imported qualifier scopes by module; an
-unknown qualifier falls back to the bare name and says so.
--}
 resolveQualified ::
     NotebookEnv -> Text -> (Text, Maybe Text, Text)
 resolveQualified env t
@@ -139,9 +118,6 @@ resolveQualified env t
                     )
     | otherwise = (t, Nothing, "")
 
-{- | Split @Qual.name@ at the last dot when the head is a module-shaped
-qualifier and the tail is a value name; module paths return Nothing.
--}
 splitQualified :: Text -> Maybe (Text, Text)
 splitQualified t
     | T.any (== '.') t
@@ -160,14 +136,12 @@ splitQualified t
 upperHead :: Text -> Bool
 upperHead s = maybe False (isUpper . fst) (T.uncons s)
 
--- | The shape of a resolved single-token query.
 shapeOf :: Text -> Text
 shapeOf nm
     | upperHead nm = "module"
     | T.any (== '-') nm = "package"
     | otherwise = "name"
 
--- | @dataframe-0.7.0.0@ reduces to @dataframe@ (R2.5).
 stripVersion :: Text -> Text
 stripVersion u
     | null kept = u
@@ -177,9 +151,6 @@ stripVersion u
     kept = reverse (dropWhile isVer (reverse parts))
     isVer p = not (T.null p) && T.all (\c -> isDigit c || c == '.') p
 
-{- | Build the environment from (source, defines) cell pairs: alias imports,
-imported modules, cell-defined names — builtins seeded from the prompt source.
--}
 envFromCells :: [(Text, [Text])] -> NotebookEnv
 envFromCells cells =
     seededBuiltins
@@ -206,7 +177,6 @@ envFromCells cells =
         , Just (m, _) <- [importParts l]
         ]
 
--- | The (module, alias) of a one-line @import [qualified] M [as A]@.
 importParts :: Text -> Maybe (Text, Maybe Text)
 importParts line = case T.words (T.strip line) of
     ("import" : rest) -> case dropWhile (== "qualified") rest of
@@ -219,7 +189,6 @@ importParts line = case T.words (T.strip line) of
         ("as" : a : _) -> Just a
         _ -> Nothing
 
--- | The (source, defines) pairs of a @list_cells@ result.
 parseCells :: Value -> [(Text, [Text])]
 parseCells v = case v of
     Object o | Just cells <- KM.lookup "cells" o -> fromArray cells

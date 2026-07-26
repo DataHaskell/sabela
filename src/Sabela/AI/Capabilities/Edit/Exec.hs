@@ -1,10 +1,6 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The single-cell execution primitive the repair cascade drives: dispatch a
-forced run, await its @EvCellResult@ broadcast, and classify aborts. Split from
-"Sabela.AI.Capabilities.Edit.Run" to keep both under the module-size cap.
--}
 module Sabela.AI.Capabilities.Edit.Exec (
     executeCell,
     abortCancelled,
@@ -57,15 +53,11 @@ executeCell app rn cid cancelTok = do
             Nothing -> pure (Left abortTimedOut)
             Just r -> pure (Right r)
 
-{- | The three @executeCell@ @Left@ strings, named so 'Sabela.AI.CellResult'
-and its tests map the real producer output, not a re-typed literal.
--}
 abortCancelled, abortSuperseded, abortTimedOut :: Text
 abortCancelled = "Cancelled"
 abortSuperseded = "Request superseded by a kernel interrupt"
 abortTimedOut = "Cell execution timed out"
 
--- | Did the Haskell kernel interrupt after this request was stamped?
 requestStale :: App -> UTCTime -> IO Bool
 requestStale app reqTime =
     getHaskellSession (appSessions app)

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Write-boundary normalizer GENERATORS (R6-T1), keyed on diagnostic class,
-never on a library name; pure proposers vetted by the ONE acceptance law in
-'Sabela.AI.NormalizeGate' before any output is kept.
--}
 module Sabela.AI.NormalizeProposals (
     bindingKeywords,
     confusableHyphens,
@@ -17,11 +13,9 @@ import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Text as T
 
--- | The Unicode hyphen confusables of the task class: U+2010..U+2015, U+2212.
 confusableHyphens :: [Char]
 confusableHyphens = ['\x2010' .. '\x2015'] ++ ['\x2212']
 
--- | Reserved words that cannot name a binding (@let@ has its own generator).
 bindingKeywords :: [Text]
 bindingKeywords =
     [ "case"
@@ -47,14 +41,9 @@ bindingKeywords =
     , "where"
     ]
 
--- | The rename a keyword-binding proposal offers: the primed identifier.
 proposedRename :: Text -> Text
 proposedRename kw = kw <> "'"
 
-{- | Fold every @-- cabal:@ comment line: confusable hyphens to ASCII and a
-build-depends-class key misspelling to the canonical key. Non-cabal lines are
-untouched (the fold is scoped to the cabal-comment diagnostic class).
--}
 foldCabalComments :: Text -> (Text, [Text])
 foldCabalComments src
     | null noteList = (src, [])
@@ -73,17 +62,14 @@ foldCabalComments src
     cabalNote old new =
         "Rewrote the cabal comment `" <> old <> "` to `" <> new <> "`."
 
--- | Confusable hyphens to ASCII @-@.
 foldHyphens :: Text -> Text
 foldHyphens = T.map (\c -> if c `elem` confusableHyphens then '-' else c)
 
--- | Reassemble edited lines, preserving the original trailing newline.
 rebuildLines :: Text -> [Text] -> Text
 rebuildLines src ls =
     T.intercalate "\n" ls
         <> (if "\n" `T.isSuffixOf` src then "\n" else "")
 
--- | A comment line whose content is a @cabal:@ directive.
 isCabalComment :: Text -> Bool
 isCabalComment l =
     "--" `T.isPrefixOf` s
@@ -91,10 +77,6 @@ isCabalComment l =
   where
     s = T.stripStart l
 
-{- | Canonicalise a @-- cabal:@ line's single-token key when it falls in the
-build-depends misspelling class (@build-dep*@ modulo hyphens); the values are
-preserved verbatim — the fold can correct a key, never a package name.
--}
 canonicalKey :: Text -> Text
 canonicalKey l = case T.breakOn "cabal:" l of
     (before, rest)
@@ -111,15 +93,10 @@ canonicalKey l = case T.breakOn "cabal:" l of
                     else l
     _ -> l
 
--- | The misspelling class: @build-dep@-stemmed keys, hyphens ignored.
 isBuildDependsClass :: Text -> Bool
 isBuildDependsClass key =
     "builddep" `T.isPrefixOf` T.filter (/= '-') (T.toLower key)
 
-{- | Rename every reserved word used in binding position (@kw =@ \/ @kw ::@
-at column 0) to its primed proposal, across the cell's code — strings and
-comments untouched. No binding-position keyword: the source is unchanged.
--}
 renameKeywordBindings :: Text -> (Text, [Text])
 renameKeywordBindings src
     | null kws = (src, [])
@@ -138,7 +115,6 @@ renameKeywordBindings src
             <> k
             <> "` is a reserved word and cannot name a binding."
 
--- | The keyword a column-0 @kw =@ \/ @kw ::@ line tries to bind, if any.
 boundKeyword :: Text -> Maybe Text
 boundKeyword l = case T.words l of
     (w : op : _)
@@ -152,9 +128,6 @@ boundKeyword l = case T.words l of
         Just (c, _) -> c == ' ' || c == '\t'
         Nothing -> True
 
-{- | Rename identifier occurrences of the keywords in ONE line's code:
-string literals verbatim, everything after a code-position @--@ verbatim.
--}
 renameLine :: [Text] -> Text -> Text
 renameLine kws = go
   where

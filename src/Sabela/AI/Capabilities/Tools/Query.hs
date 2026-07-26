@@ -1,22 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Tool schemas for live GHCi introspection and result drill-down.
-Sibling of "Sabela.AI.Capabilities.Tools.Notebook".
-
-DEPRECATION IN PROGRESS. @find_function@, @api_reference@,
-@search_capability@, @find_by_type@, @find_example_cell@ and
-@describe_function@ are the seven-way discovery surface that @discover@ folds
-into one call, and an agent cannot route between them: choosing needs the
-answer. @siza chat@ and the MCP server already offer @discover@ instead, and
-stopped advertising these.
-
-They stay here until @discover@ is available SERVER-side, because it currently
-lives in @Siza.Agent.DiscoverTool@ and the product chat would otherwise be
-left with no discovery at all. They must also stay as ENDPOINTS forever:
-@discover@ aggregates by calling @find_function@ and @search_capability@
-through this same dispatch, so de-advertising is the whole change — deleting
-them breaks the tool that replaces them.
--}
 module Sabela.AI.Capabilities.Tools.Query (queryTools) where
 
 import Data.Aeson (Value, object, (.=))
@@ -160,11 +143,9 @@ queryTools =
         (queryArg "A description, a type signature, or a name.")
     ]
 
--- | Schema for a tool that takes no arguments.
 noArgs :: Value
 noArgs = object ["type" .= ("object" :: Text), "properties" .= object []]
 
--- | Schema for a tool taking one required free-text field of the given name.
 oneArg :: Text -> Text -> Value
 oneArg name desc =
     object
@@ -177,6 +158,5 @@ oneArg name desc =
         , "required" .= ([name] :: [Text])
         ]
 
--- | Schema for a tool that takes one required free-text @query@ string.
 queryArg :: Text -> Value
 queryArg = oneArg "query"

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T1 / R3.2 / R3.1: same-package name-variant dedup in the rank path,
-pinned against the run-20260720-130012 bars-at-limit-5 defect over a
-synthetic catalogue at EVERY limit >= 1, with conservation re-asserted.
--}
 module Test.DiscoverVariantDedupSpec (discoverVariantDedupSpec) where
 
 import Control.Monad (forM_)
@@ -38,10 +34,6 @@ intField k v = case field k v of
     Just (Number n) -> round n
     _ -> -1
 
-{- | The run-130012 shape under a synthetic package: one exact hit with a
-signature, three exact signatureless package\/name-variant stubs, and two
-semantic hits — the one with the signature ranked below the installed one.
--}
 run130012Hits :: [DHit]
 run130012Hits =
     [ (mkHit "Chart" "Zephyr.Spec" "zephyr")
@@ -70,9 +62,6 @@ runMerge :: Int -> [DHit] -> Value
 runMerge limit hits =
     discoverEnvelope env0 proseInterp limit [okAnswer "hoogle" hits] hk0
 
-{- | Same-package name-variant stub: signatureless, name is a case\/hyphen
-variant of its own package.
--}
 isVariantStubRow :: Value -> Bool
 isVariantStubRow h =
     T.null (hitText "type" h)

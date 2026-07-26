@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | User-role store specs: bootstrap admin seeding, identity normalization
-at the lookup boundary, grant/revoke, disk reload, and hydrate hardening.
--}
 module Test.UsersSpec (spec) where
 
 import Control.Exception (SomeException, finally, try)
@@ -26,7 +23,6 @@ import System.Directory (
 import System.FilePath ((</>))
 import Test.Hspec
 
--- | Run with a per-test temp dir, removed afterwards (parallel-safe).
 withUsersDir :: (FilePath -> IO a) -> IO a
 withUsersDir act = do
     base <- getTemporaryDirectory

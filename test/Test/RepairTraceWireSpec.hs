@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The repair-counter JSONL shape. Pinned because the kill criterion is read
-off these lines after a bench run: if the keys drift, a null result becomes
-uninterpretable again.
--}
 module Test.RepairTraceWireSpec (spec) where
 
 import Data.Aeson (Value (..), decode, encode)

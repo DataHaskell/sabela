@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The two-arm bench driver: fresh server per episode, provenance-stamped
-transcript persistence (R8.1/R8.3), and a loud abort when a spawned server
-never turns healthy (M8). Reporting lives in "Eval.BenchReport" (re-exported).
--}
 module Eval.Bench (
     BenchConfig (..),
     runArm,
@@ -69,9 +65,7 @@ data BenchConfig = BenchConfig
     , bcBinary :: FilePath
     , bcBasePort :: Int
     , bcTranscriptDir :: FilePath
-    -- ^ Where to write one transcript per run; @""@ disables it.
     , bcProvenance :: RunProvenance
-    -- ^ Captured once at driver start; stamped into every header (R8.3).
     }
 
 runArm :: BenchConfig -> Text -> GrammarMode -> Int -> Task -> IO RunStat
@@ -91,10 +85,6 @@ runArm cfg base mode seed task = do
     (v, _) <- grade (bcConn cfg) base task
     pure (RunStat (v == Surfaced) (arTurns run) (arToolCalls run))
 
-{- | Persist the run with its full config header (R8.1) — including the run's
-provenance and the endpoint it drove — and VOID-flag a byte-identical arm
-pair at write time (R8.2); @""@ disables.
--}
 saveTranscript ::
     BenchConfig -> Text -> Task -> Int -> GrammarMode -> AgentRun -> IO ()
 saveTranscript cfg base task seed mode run = case bcTranscriptDir cfg of
@@ -132,10 +122,6 @@ modeTag :: GrammarMode -> String
 modeTag GrammarOff = "off"
 modeTag GrammarOn = "on"
 
-{- | Run every (task, seed, mode) episode and return each with its seed, so a
-report can drop the (task, seed) pairs the applicability/VOID flags exclude
-('Eval.Applicability.excludeFlagged').
--}
 runBench ::
     BenchConfig -> [Task] -> [Int] -> IO [(Text, Int, GrammarMode, RunStat)]
 runBench cfg tasks seeds =
@@ -159,11 +145,6 @@ runBench cfg tasks seeds =
 withFreshServer :: BenchConfig -> Int -> (Text -> IO a) -> IO a
 withFreshServer cfg port = withFreshServerEnv cfg port []
 
-{- | As 'withFreshServer' but appends @extra@ to the spawned server's environment
-(inheriting the parent env first). The gate uses this to set the search lever
-flag on the ON arm only. Aborts loudly when the server never reports healthy:
-running an episode anyway would measure whatever answers on that port.
--}
 withFreshServerEnv ::
     BenchConfig -> Int -> [(String, String)] -> (Text -> IO a) -> IO a
 withFreshServerEnv cfg port extra action = do
@@ -194,16 +175,11 @@ withFreshServerEnv cfg port extra action = do
         Right () ->
             action base `finally` (terminateProcess ph >> hClose devnull)
 
--- | 'waitHealthN' with the production budget; throws on an unhealthy server.
 waitHealth :: Conn -> Text -> IO ()
 waitHealth conn base = do
     r <- waitHealthN 90 conn base
     either (ioError . userError . T.unpack) pure r
 
-{- | Poll @/api/ai/health@ up to @n@ times (1s apart). 'Left' names the
-endpoint and says the episode must NOT run; a foreign process answering the
-port never satisfies it, so a dead arm cannot masquerade as measured (M8).
--}
 waitHealthN :: Int -> Conn -> Text -> IO (Either Text ())
 waitHealthN n0 conn base = go n0
   where

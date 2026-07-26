@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R3.10 whole-card property (R6-T1): no version-qualified and no
-@ghc-internal@ token in ANY rendered browse card — over generated APIs and
-over the run-20260720-130012 @Data.Data@ leak reproduced verbatim.
--}
 module Test.BrowseCardSanitizeSpec (spec) where
 
 import Control.Monad (forM_)
@@ -17,13 +13,9 @@ import Test.Hspec
 
 import Sabela.AI.Capabilities.BrowseCard (browseCard)
 
--- | Serialised card text, for whole-card token scans.
 cardText :: Value -> Text
 cardText = TE.decodeUtf8 . LBS.toStrict . encode
 
-{- | A version-qualified token (@pkg-1.2.3:Rest@) anywhere in the text: the
-R3.10 forbidden shape, checked structurally rather than by any package name.
--}
 hasVersionQualified :: Text -> Bool
 hasVersionQualified t = any versionColon (T.words (T.map depunct t))
   where
@@ -35,7 +27,6 @@ hasVersionQualified t = any versionColon (T.words (T.map depunct t))
             not (T.null v) && T.all (\c -> isDigit c || c == '.') v
         _ -> False
 
--- | Synthetic unit-qualified browse output for one (package, version).
 generatedApi :: Text -> Text -> Text
 generatedApi pkg ver =
     T.unlines
@@ -56,7 +47,6 @@ generatedApi pkg ver =
   where
     u n = pkg <> "-" <> ver <> ":" <> n
 
--- | The run-20260720-130012 leak, verbatim raw lines from the transcript.
 run130012Fixture :: Text
 run130012Fixture =
     T.unlines

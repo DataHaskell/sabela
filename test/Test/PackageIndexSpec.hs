@@ -1,15 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @ghc-pkg dump@ parser behind the installed-package module index.
-Fixtures are the real shapes the store emits: wrapped @exposed-modules@ lists
-and re-exports carrying a @from pkg:Module@ origin.
--}
 module Test.PackageIndexSpec (spec) where
 
-import Data.Aeson (object, (.=))
+import Data.Aeson (Value (..), object, toJSON, (.=))
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 import Test.Hspec
 
+import Sabela.AI.Capabilities.ModuleCard (candidateModules, packageCardOf)
 import Sabela.AI.Capabilities.ModuleSearch (usableCard)
 import Sabela.AI.ModuleResolve (closestModules)
 import Sabela.AI.PackageIndex (
@@ -20,12 +19,6 @@ import Sabela.AI.PackageIndex (
     parsePackageDump,
  )
 
-{- | Three records as @ghc-pkg dump@ writes them, @---@ separated — BOTH
-separator forms: comma-with-origins (dataframe) and plain space-separated
-(hspec). The space form's whole module list was once dropped, so
-@Test.Hspec@ missed exact match and near-spelling "corrected" it to a module
-of a different package.
--}
 dump :: Text
 dump =
     "name:                 dataframe\n\
@@ -52,9 +45,36 @@ dump =
 
 spec :: Spec
 spec = do
+    packageCardSpec
     usableCardSpec
     nearSpellingSpec
+    componentSpec
     indexSpec
+
+componentSpec :: Spec
+componentSpec = describe "a module component resolves to its module" $ do
+    let pool =
+            [ "Graphics.Hgg"
+            , "Graphics.Hgg.DAG"
+            , "Graphics.Hgg.DAG.Internal.Sugiyama"
+            , "Granite.Svg"
+            , "DataFrame"
+            , "DataFrame.Internal.Statistics"
+            , "DataFrame.Operations.Statistics"
+            ]
+    it "resolves Hgg to Graphics.Hgg" $
+        candidateModules 1 "Hgg" pool `shouldBe` ["Graphics.Hgg"]
+    it "prefers the module NAMED by the component over one merely carrying it" $
+        candidateModules 1 "Svg" pool `shouldBe` ["Granite.Svg"]
+    it "ranks a public component match ahead of an Internal one" $
+        take 1 (candidateModules 3 "Statistics" pool)
+            `shouldBe` ["DataFrame.Operations.Statistics"]
+    it "still resolves a near spelling when no component matches" $
+        candidateModules 1 "Data.Frame" pool `shouldBe` ["DataFrame"]
+    it "invents nothing for an unrelated name" $
+        candidateModules 1 "Zzznope" pool `shouldBe` []
+    it "a dotted query is judged whole, never by its last component" $
+        candidateModules 1 "Zzz.Svg" pool `shouldBe` []
 
 indexSpec :: Spec
 indexSpec = describe "Sabela.AI.PackageIndex" $ do
@@ -103,8 +123,6 @@ indexSpec = describe "Sabela.AI.PackageIndex" $ do
             map peName (packagesExposingModule (parsePackageDump dump) "Granite.Svg")
                 `shouldBe` ["granite"]
 
-        {- live_test33_wine: `statistics` had to reach the hidden dataframe
-        package's stats module without the model first committing to install. -}
         it "matches a module by keyword, case-insensitively" $
             map fst (modulesMatching (parsePackageDump dump) "statistics")
                 `shouldBe` ["DataFrame.Operations.Statistics"]
@@ -116,18 +134,12 @@ indexSpec = describe "Sabela.AI.PackageIndex" $ do
         it "an empty query matches nothing, rather than everything" $
             modulesMatching (parsePackageDump dump) "  " `shouldBe` []
 
-{- | live_test32_wine queried `Data.Frame` — one dot from the real
-`DataFrame` — and was told nothing exists, so it hand-rolled the work. Exact
-module matching cannot answer a one-character miss.
--}
 nearSpellingSpec :: Spec
 nearSpellingSpec = describe "a module name resolves by near spelling" $ do
     let mods = ["DataFrame", "DataFrame.Operations.Statistics", "Granite.Svg"]
         near q = closestModules 1 0.4 q mods
     it "resolves Data.Frame to DataFrame" $
         near "Data.Frame" `shouldBe` ["DataFrame"]
-    -- The exact name is resolved before this runs (closestModules is the
-    -- did-you-mean path and never returns the query itself).
     it "never returns the query itself" $
         near "Granite.Svg" `shouldBe` []
     it "resolves a dropped dot the other way too" $
@@ -135,12 +147,6 @@ nearSpellingSpec = describe "a module name resolves by near spelling" $ do
     it "does not invent a match for an unrelated name" $
         near "Zzznope" `shouldBe` []
 
-{- | live_test38 asked discover for `DataFrame` and got a four-field card with
-no exports: the session cannot browse a hidden package, and its
-`status: hidden-package` card counted as a usable ANSWER, so the store lookup
-that does list the exports was never reached. A card that reports why the
-query could not be answered here is not an answer.
--}
 usableCardSpec :: Spec
 usableCardSpec = describe "a card answers, or it falls through" $ do
     let card st = object ["module" .= ("DataFrame" :: Text), "status" .= (st :: Text)]
@@ -152,3 +158,29 @@ usableCardSpec = describe "a card answers, or it falls through" $ do
         usableCard (card "error") `shouldBe` False
     it "a statusless value is not a card" $
         usableCard (object ["module" .= ("DataFrame" :: Text)]) `shouldBe` False
+
+field :: Text -> Value -> Maybe Value
+field k (Object o) = KM.lookup (Key.fromText k) o
+field _ _ = Nothing
+
+str :: Text -> Value -> Maybe Text
+str k v = case field k v of
+    Just (String t) -> Just t
+    _ -> Nothing
+
+packageCardSpec :: Spec
+packageCardSpec = describe "an installed-but-hidden package is not absent" $ do
+    let pkgs = parsePackageDump dump
+        cardFor n = packageCardOf pkgs n "A synopsis"
+    it "names the package the store has" $
+        fmap (str "package") (cardFor "granite") `shouldBe` Just (Just "granite")
+    it "reports hidden-package, which is the state the classifier reads" $
+        fmap (str "status") (cardFor "granite") `shouldBe` Just (Just "hidden-package")
+    it "carries the cabal line that exposes it" $
+        fmap (str "cabal") (cardFor "granite")
+            `shouldBe` Just (Just "-- cabal: build-depends: granite")
+    it "lists the modules, so the caller knows what to import" $
+        fmap (field "modules") (cardFor "granite")
+            `shouldBe` Just (Just (toJSON (["Granite.Svg"] :: [Text])))
+    it "a package the store does not have stays absent" $
+        cardFor "nosuchpkg" `shouldBe` Nothing

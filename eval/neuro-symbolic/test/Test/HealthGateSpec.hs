@@ -155,8 +155,6 @@ spec = describe "B2 health gate" $ do
             arStopped run `shouldBe` "done"
 
         it "re-enters a healthy-but-unverified deliverable, bounded by the budget" $ do
-            -- owned cells compile (alwaysHealthy) yet drvVerify = False, so Stop
-            -- must not finish; it re-enters until the repair budget is spent.
             driver <- scriptedDriverV alwaysHealthy (replicate 20 doneTurn) False
             run <- runEpisodeWith tightBudget driver (taskPrompt dummyTask) 50
             arStopped run `shouldBe` "repair_budget"

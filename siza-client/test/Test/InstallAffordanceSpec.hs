@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | There is no install tool (C4-3): a garbled or nonexistent call shaped
-like "install X" should steer to the real @-- cabal: build-depends:@ idiom
-through the SAME message-construction path the unknown-tool/garbled-name
-recovery already uses, not a parallel special case.
--}
 module Test.InstallAffordanceSpec (installAffordanceSpec) where
 
 import qualified Data.Text as T

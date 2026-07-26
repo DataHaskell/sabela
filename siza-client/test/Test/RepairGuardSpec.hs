@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T4 repair guard: 'goalFromErrorInCell' never yields a (name, goal) pair
-when the not-in-scope name is one the submitted cell declares a signature for
-without an equation — the topMonth false-goal, killed as a generated property,
-not a replay. 'selfDeclaredSigs' supplies the names from the real parser.
--}
 module Test.RepairGuardSpec (repairGuardSpec) where
 
 import Control.Monad (forM_)

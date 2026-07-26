@@ -1,12 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G8: lock ownership is real and nameable. A busy verdict may cite a cell
-id only for a cell the notebook actually contains; every other holder — a
-dependency install, a write whose cell never committed — is named as the
-operation it is. Companion to 'Test.KernelStateIntegritySpec' (C6): the same
-family of bug, interpreter state diverging from what a tool claims.
--}
 module Test.KernelState.HolderSpec (spec) where
 
 import Control.Monad (forM_)
@@ -36,7 +30,6 @@ import Sabela.State.NotebookStore (modifyNotebook)
 
 import Test.WriteAckFixture (mkFixture)
 
--- | A committed code cell, as the notebook would hold it.
 cell :: Int -> Cell
 cell cid = Cell cid CodeCell ST.Haskell "x = 1" [] Nothing False
 
@@ -44,7 +37,6 @@ field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
--- | Register a running write under @cid@ and ask who holds the lock.
 holderFor :: [Cell] -> Int -> IO (Maybe Holding)
 holderFor cells cid = do
     (app, store) <- mkFixture
@@ -114,8 +106,6 @@ spec = describe "lock ownership (G8)" $ do
             let v = toolOutcomeValue (restartOutcome False)
             field "restarted" v `shouldBe` Just (Bool False)
             field "detail" v `shouldSatisfy` isJust
-            -- live_test10 read `restartInitiated: true` as a working kernel.
-            -- Initiation alone may never be the whole verdict again.
             case field "detail" v of
                 Just (String d) -> T.isInfixOf "cold" d `shouldBe` True
                 _ -> expectationFailure "expected a failure detail"

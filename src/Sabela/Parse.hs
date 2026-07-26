@@ -2,36 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | AST-based extraction of top-level definitions and free identifier uses
-from a notebook cell's Haskell source.
-
-This replaces the textual heuristic that lived in @Sabela.Topo@. We parse
-each cell with @ghc-lib-parser@ (independent of the host GHC version) and
-walk the resulting 'GHC.Hs.HsModule' to compute:
-
-* @defs@ — top-level names introduced by the cell. Pulled from the LHS of
-  every top-level declaration: function/value bindings, data/newtype/type
-  /class names plus their data-constructors and class methods.
-
-* @uses@ — every identifier referenced by the cell that is not bound
-  somewhere within the cell itself. Computed as
-  @(all 'HsVar' references) \\ (every binding-position name)@. This is a
-  scope-conservative approximation: if the same name is bound locally
-  (in a @where@, @let@, lambda, do-bind, list-comp generator, etc.) and
-  /also/ used at top level, we treat it as bound and produce no
-  dependency edge. Trade is intentional — it eliminates the cross-cell
-  parameter-collision bug that the previous heuristic produced and that
-  motivated this rewrite.
-
-Cell sources are GHCi-style fragments, not modules. The pre-processor
-strips @:set@ / @:type@ directives, drops @-- cabal:@ metadata lines, and
-rewrites statement-form @let x = e@ and monadic @x \<- e@ into bare
-declarations so the GHC parser will accept the result. The whole thing
-is then wrapped in a synthetic @module M where { ... }@ and parsed with
-'parseModule'. If that fails (incomplete code mid-edit), each chunk is
-retried with 'parseDeclaration' and 'parseExpression' independently and
-the parseable subset still contributes to @defs@/@uses@.
--}
 module Sabela.Parse (
     CellSymbols (..),
     cellNames,
@@ -73,29 +43,13 @@ import Sabela.Parse.Ast (
  )
 import Sabela.Parse.Preprocess (noTopLevelIn, preprocess)
 
--- ---------------------------------------------------------------------------
--- Public API
--- ---------------------------------------------------------------------------
-
-{- | Extract @(defs, uses)@ from a cell's Haskell source. A thin projection
-of 'cellSymbols' for the many callers that only need those two sets.
--}
 cellNames :: Text -> (Set Text, Set Text)
 cellNames src = let s = cellSymbols src in (csDefs s, csUses s)
 
-{- | Top-level names the OLD cell source defined that the NEW source no longer
-does. GHCi cannot un-define a binding, so a @replace_cell_source@ leaves these
-lingering in the session as ghosts; surfacing them lets the model see they are
-stale rather than current (the "surface, don't drop" reconciliation).
--}
 staleBindings :: Text -> Text -> [Text]
 staleBindings oldSrc newSrc =
     S.toAscList (fst (cellNames oldSrc) `S.difference` fst (cellNames newSrc))
 
-{- | Full symbol extraction for a cell: defs, uses, instance-provided method
-names, and class-declared method names. See 'CellSymbols' for how the
-extra channels feed typeclass reactivity.
--}
 cellSymbols :: Text -> CellSymbols
 cellSymbols src =
     case parseCellModule src of
@@ -109,7 +63,6 @@ cellSymbols src =
                     , csClassMethods = S.empty
                     }
 
--- | Parse a cell as a synthetic module; 'Nothing' on any parse failure.
 parseCellModule :: Text -> Maybe (Hs.HsModule Hs.GhcPs)
 parseCellModule src =
     let moduleSrc =
@@ -119,10 +72,6 @@ parseCellModule src =
             POk _ (L _ hsMod) -> Just hsMod
             PFailed _ -> Nothing
 
-{- | The chunks that parse as none of a declaration, an expression, or
-module-level content (imports, headers), after 'cellSymbols'-style fragment
-preprocessing — the parse-health evidence 'Sabela.AI.NormalizeGate' compares.
--}
 unparseableChunks :: Text -> [Text]
 unparseableChunks src =
     [ chunk
@@ -138,21 +87,6 @@ unparseableChunks src =
         POk _ _ -> True
         PFailed _ -> False
 
--- ---------------------------------------------------------------------------
--- Pre-GHC structural validator (C2)
--- ---------------------------------------------------------------------------
-
-{- | Reject obviously-wrong cell shapes before they reach the compiler, using
-the same @ghc-lib-parser@ path as 'cellSymbols'. Returns @Just message@ for a
-rejected shape (a deterministic, actionable string), @Nothing@ when the cell
-is well-formed for its 'CellType'.
-
-Two shapes are caught at the mutation boundary:
-
-* a code cell whose first statement is a top-level @let@ binding (the
-  message is deduped with the post-GHC 'Sabela.Diagnose.letParse' rule);
-* a prose cell that actually contains Haskell top-level definitions.
--}
 validateCellShape :: CellType -> Text -> Maybe Text
 validateCellShape CodeCell src
     | hasTopLevelLet src = Just topLevelLetMessage
@@ -168,27 +102,12 @@ proseCodeMessage =
     \ executable code in a CodeCell instead, or keep the prose free of\
     \ top-level bindings."
 
-{- | True if any line is a statement-form top-level @let@ (a column-0 @let x = e@
-that is not part of a @let ... in ...@ expression). Only column-0 counts: an
-indented @let@ is nested in a @do@/@where@/expression and is valid, so we must
-not flag it. Mirrors the rewrite predicate in 'preprocess'.
--}
 hasTopLevelLet :: Text -> Bool
 hasTopLevelLet = any isStmtLet . T.lines
   where
     isStmtLet raw =
         maybe False noTopLevelIn (T.stripPrefix "let " raw)
 
--- ---------------------------------------------------------------------------
--- Fallback: parse each chunk independently when full-module parse fails
--- ---------------------------------------------------------------------------
-
-{- | If the synthesized module fails to parse, try each non-empty chunk
-through 'parseDeclaration' and 'parseExpression' and union the results.
-On chunk-level parse failure, retry with just the first line — handles
-cases like @"let x = 1\\n  let y = 2"@ where a malformed indented
-continuation would otherwise drop the whole chunk's contribution.
--}
 fallbackPerChunk :: [Text] -> (Set Text, Set Text)
 fallbackPerChunk lns =
     let chunks = splitChunks lns
@@ -238,13 +157,6 @@ splitChunks = go []
         Just (c, _) -> c /= ' ' && c /= '\t'
         Nothing -> False
 
--- ---------------------------------------------------------------------------
--- DynFlags
--- ---------------------------------------------------------------------------
-
-{- | Parser settings: enable extensions that real Sabela notebooks rely on
-so the parser never refuses input the running GHCi would happily accept.
--}
 dynFlags :: DynFlags
 dynFlags =
     let base = defaultDynFlags fakeSettings

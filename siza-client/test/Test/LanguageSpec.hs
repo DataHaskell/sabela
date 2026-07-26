@@ -32,10 +32,6 @@ import Siza.Security (Capability (..), scanSource)
 import Test.Fixtures (foundCaps, stubQuery, unsigned)
 import Test.Hspec
 
--- ---------------------------------------------------------------------------
--- Pre-flight parse
--- ---------------------------------------------------------------------------
-
 parseSpec :: Spec
 parseSpec = describe "pre-flight parse (the Vetted seam)" $ do
     it "rejects a syntactically broken cell with a located diagnostic" $ do
@@ -59,10 +55,6 @@ parseSpec = describe "pre-flight parse (the Vetted seam)" $ do
 
     it "langParse accepts a well-formed binding" $
         parseHaskell "x = 1 + 2" `shouldBe` Right ()
-
--- ---------------------------------------------------------------------------
--- Security capability scan
--- ---------------------------------------------------------------------------
 
 securitySpec :: Spec
 securitySpec = describe "security capability scan (over the AST)" $ do
@@ -165,10 +157,6 @@ securitySpec = describe "security capability scan (over the AST)" $ do
         let cs = foundCaps "import System.Process\nz = system \"ls\""
          in S.fromList cs `shouldBe` S.fromList [ProcessExec]
 
--- ---------------------------------------------------------------------------
--- Annotate: pull inferred types for unsigned binds
--- ---------------------------------------------------------------------------
-
 annotateSpec :: Spec
 annotateSpec = describe "annotate (inferred-type pull)" $ do
     it "finds an unsigned top-level bind" $
@@ -216,10 +204,6 @@ annotateSpec = describe "annotate (inferred-type pull)" $ do
         ("a :: Int" `T.isInfixOf` out) `shouldBe` True
         (src `T.isInfixOf` out) `shouldBe` True
         ("b ::" `T.isInfixOf` out) `shouldBe` False
-
--- ---------------------------------------------------------------------------
--- Shared contract wire shapes
--- ---------------------------------------------------------------------------
 
 contractSpec :: Spec
 contractSpec = do

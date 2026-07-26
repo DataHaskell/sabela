@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the @cellResult@ SSE event wire shape. The frontend ('04-sse.js'
-→ 'applyErrorMarkers'\/'applyWarningMarkers') and the AI listener
-('Sabela.AI.Capabilities.Edit.Run.executeCell') both consume these exact keys,
-so @errors@ and @warnings@ are a contract: a 'CellError' list each, carrying
-@ceLine@\/@ceCol@\/@ceMessage@.
--}
 module Test.EvCellResultWireSpec (spec) where
 
 import Data.Aeson (Value (..), toJSON)

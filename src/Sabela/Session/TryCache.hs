@@ -1,14 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Size-bounded, on-disk cache of built disposable package environments for
-'Sabela.Session.Materialize.runDisposableTry'. A trial's Cabal metadata
-(deps/extensions/options/repos + resolved GHC version) fully determines the
-built @dist-newstyle@/store — the candidate code itself never enters the
-Cabal project, only the interactive session — so two trials with the same
-metadata can share one build. A cache hit reuses that build; the scratch
-GHCi process spawned on top of it is still fresh every call.
--}
 module Sabela.Session.TryCache (
     CacheKey,
     cacheKeyText,
@@ -48,16 +40,9 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Process (readProcessWithExitCode)
 
--- | A canonical, order-independent encoding of a disposable build environment.
 newtype CacheKey = CacheKey Text
     deriving (Eq, Show)
 
-{- | The dependency-relevant slice of 'CabalMeta' plus the resolved GHC
-version. Local package /content/ and notebook cell source are deliberately
-excluded: the candidate and notebook cells reach the scratch session over
-the interactive protocol, never through the Cabal project, so they cannot
-affect what gets built.
--}
 cacheKeyText :: CabalMeta -> Text -> CacheKey
 cacheKeyText meta ghcVersion =
     CacheKey . T.intercalate "\n" $
@@ -86,16 +71,9 @@ data CacheEntry = CacheEntry
     }
     deriving (Eq, Show)
 
-{- | Bound the cache to a handful of built environments. One exploratory
-session tries a small number of distinct dependency ideas, not dozens, and
-each built environment (store + dist-newstyle) can run to hundreds of
-megabytes; six caps worst-case disk use while comfortably covering a
-session's working set.
--}
 tryCacheMaxEntries :: Int
 tryCacheMaxEntries = 6
 
--- | The cache root, under the caller's temp area, never under the work dir.
 tryCacheRoot :: FilePath -> FilePath
 tryCacheRoot tmpDir = tmpDir </> "try-cache"
 
@@ -107,12 +85,6 @@ bucketDirFor :: FilePath -> CacheKey -> FilePath
 bucketDirFor root (CacheKey k) =
     root </> ("env-" <> showHex (fromIntegral (hash k) :: Word) "")
 
-{- | Look up a build for 'key' under 'root'. A hit only counts when the
-bucket is marked complete (a prior build actually finished) and its stored
-key matches exactly — collisions in the directory-naming hash degrade to a
-miss rather than silently serving the wrong environment. A miss clears any
-stale/partial contents so the caller starts a genuinely fresh build.
--}
 acquireCacheEntry :: FilePath -> CacheKey -> IO CacheEntry
 acquireCacheEntry root key@(CacheKey keyText) = do
     createDirectoryIfMissing True root
@@ -136,13 +108,6 @@ isValidHit dir keyText = do
             stored <- try (TIO.readFile (keyFile dir)) :: IO (Either SomeException Text)
             pure (either (const False) (== keyText) stored)
 
-{- | Clear a bucket for a fresh attempt while PRESERVING its cabal store.
-The store is content-addressed, so a partly-built dependency set is real
-progress the next attempt resumes from. Wiping it made a dependency too
-heavy for one budget window impossible to install at all: every attempt
-restarted from empty and re-breached the same budget, which is why
-@dataframe@ never landed in live_test21-23.
--}
 resetBucket :: FilePath -> IO ()
 resetBucket dir = do
     exists <- doesDirectoryExist dir
@@ -167,30 +132,14 @@ removeTreeQuietly d = do
 touchComplete :: FilePath -> IO ()
 touchComplete dir = TIO.writeFile (completeMarker dir) ""
 
-{- | Mark a build as successfully finished (the LRU touch for this entry) and
-evict buckets beyond 'maxEntries', oldest access first. Call only after the
-scratch session actually spawned on top of the build — never on a build
-that timed out or threw, so a broken build can never masquerade as a hit.
--}
 commitCacheEntry :: FilePath -> FilePath -> Int -> IO ()
 commitCacheEntry root dir maxEntries = do
     touchComplete dir
     evictOldest root maxEntries
 
-{- | Tear a bucket down entirely, store included. For a build that THREW:
-its store may be inconsistent, so the next attempt starts clean. A build
-that merely ran out of budget uses 'shelveCacheEntry' instead — see there
-for why the distinction matters.
--}
 discardCacheEntry :: FilePath -> IO ()
 discardCacheEntry = removeTreeQuietly
 
-{- | Set a budget-breached build aside: drop the completion marker so it can
-never be served as a hit, but KEEP the cabal store so the next attempt
-resumes where this one stopped. Without this a heavy dependency is not slow,
-it is unreachable — each attempt rebuilds from empty and breaches the same
-ceiling forever.
--}
 shelveCacheEntry :: FilePath -> IO ()
 shelveCacheEntry dir = do
     exists <- doesDirectoryExist dir
@@ -220,10 +169,6 @@ listCompletedBuckets root = do
             then Just . (,) dir <$> getModificationTime (completeMarker dir)
             else pure Nothing
 
-{- | @ghc --numeric-version@, honouring the same @GHC@ override as the
-session spawner; "unknown" on any failure keeps caching safe (a bad
-version string just changes the cache key, it never crashes the trial).
--}
 resolvedGhcVersion :: IO Text
 resolvedGhcVersion = do
     ghc <- fromMaybe "ghc" <$> lookupEnv "GHC"

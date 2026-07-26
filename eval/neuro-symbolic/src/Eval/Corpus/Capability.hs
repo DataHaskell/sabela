@@ -1,19 +1,9 @@
-{- | Capability-discovery fold: layperson, outcome-only prompts. Each describes
-a desired RESULT in plain language and names no library, module, function or
-format — so to solve it the model must DISCOVER the right niche Hackage package
-(the @search_capability@ tool is the lever under test). Five tasks are genuinely
-un-hand-rollable, so the model routes to search; one (the control) is trivially
-hand-rollable, so it should NOT search. Each check is a deterministic boolean
-pinned to a value live-validated against the intended package on GHC 9.12.2; see
-docs/neuro-symbolic-corpus.md.
--}
 module Eval.Corpus.Capability (
     capabilityTasks,
 ) where
 
 import Eval.Task (Grader (..), Task (..))
 
--- | The capability-discovery tasks, in catalogue order (five discovery, one control).
 capabilityTasks :: [Task]
 capabilityTasks =
     [ imageInfoTask
@@ -24,14 +14,6 @@ capabilityTasks =
     , wordFreqTask
     ]
 
-{- | A real PNG picture is supplied as base64 text in the prompt; the model must
-DECODE it to report its size and a pixel's colour. The check is a plain tuple
-(value-based, NOT a codec-specific pixel type), so it is not coupled to any one
-library — but decoding a real PNG cannot be hand-rolled, so it forces an image
-codec (JuicyPixels @decodePng@/@pixelAt@). The base64 below was synthesized with
-JuicyPixels and the expected tuple live-validated by decoding it back: a 3×3
-image whose pixel at column 1, row 1 is red 100, green 100, blue 80.
--}
 imageInfoTask :: Task
 imageInfoTask =
     Task

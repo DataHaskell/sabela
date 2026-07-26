@@ -1,9 +1,3 @@
-{- | The typed @siza@ command surface, parsed with optparse-applicative.
-
-A 'Command' is a sum type, so an unknown subcommand or a bad tool name is a
-parse failure rather than a string compared at runtime. 'runCommand' is the
-dispatch the executable's @main@ wraps.
--}
 module Siza.Cli (
     Command (..),
     parseCommand,
@@ -53,16 +47,9 @@ import Siza.Transport (Conn, Env (..), callTool, connEnv, getHealth, newConn)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hPutStrLn, stderr)
 
-{- | Where @check@ reads its source: @-@ (or absent) is stdin, otherwise a
-file path.
--}
 data Source = Stdin | FromFile FilePath
     deriving (Show)
 
-{- | The typed subcommand surface. 'Tool' carries a validated 'ToolName'
-and the raw JSON input it forwards (typed inputs converge in a later phase).
-'Check' runs the pre-flight parse on a cell source.
--}
 data Command
     = Discover
     | Health
@@ -78,7 +65,6 @@ data Command
     | Chat ChatOpts
     deriving (Show)
 
--- | The full parser, with @--help@ and per-subcommand help.
 parseCommand :: ParserInfo Command
 parseCommand =
     info
@@ -93,7 +79,6 @@ commandParser = hsubparser (foldMap cmd subcommands)
   where
     cmd (name, parser, desc) = command name (info parser (progDesc desc))
 
--- | The subcommand table: name, parser, one-line description.
 subcommands :: [(String, Parser Command, String)]
 subcommands =
     [ ("discover", pure Discover, "List live Sabela servers as JSON.")
@@ -118,9 +103,6 @@ subcommands =
         )
     ]
 
-{- | @siza login [HUB_URL]@: run the browser-approved device flow against the
-hub and save a short-lived token. The URL defaults to @SABELA_URL@.
--}
 loginParser :: Parser Command
 loginParser =
     Login
@@ -133,10 +115,6 @@ loginParser =
                     )
             )
 
-{- | @siza annotate CELL_ID [--source]@: read the cell, infer types for its
-unsigned top-level binds from the live session, and print a report (or, with
-@--source@, the annotated source).
--}
 annotateParser :: Parser Command
 annotateParser =
     Annotate
@@ -157,9 +135,6 @@ checkParser =
             )
         <*> policyFlag
 
-{- | @--strict@ selects 'Block' mode: a denied capability fails the check.
-The default is advisory — findings are surfaced as warnings, exit stays zero.
--}
 policyFlag :: Parser Policy
 policyFlag =
     flag
@@ -194,9 +169,6 @@ readJson = eitherReader $ \s ->
         Right
         (eitherDecodeStrict (BS8.pack s))
 
-{- | Resolve a connection, dispatch the command, and print JSON. Exits
-non-zero when a tool returns @isError@ or when no live server is found.
--}
 runCommand :: Command -> IO ()
 runCommand = \case
     Check src policy -> runCheck src policy
@@ -231,22 +203,16 @@ runCommand = \case
             logToolCall conn srv name input mpf res
             either fatal emitOutcome res
 
--- | The chat target: an explicit @--url@, else the first discovered server.
 resolveChatBase :: Conn -> Maybe Text -> (Text -> IO ()) -> IO ()
 resolveChatBase _ (Just u) k = k u
 resolveChatBase conn Nothing k = withFirst conn k
 
-{- | A connection for the data commands: fails fast with a clear message when
-the saved hub token for the target has expired, rather than sending an
-unauthenticated request that the hub answers with the login page.
--}
 withConn :: (Conn -> IO ()) -> IO ()
 withConn k = do
     conn <- newConn
     guardHubAuth (connEnv conn)
     k conn
 
--- | A connection with no expiry guard, for @login@/@logout@ themselves.
 rawConn :: (Conn -> IO ()) -> IO ()
 rawConn k = newConn >>= k
 
@@ -264,15 +230,6 @@ guardHubAuth env
             _ -> pure ()
     | otherwise = pure ()
 
-{- | Run the 'preflight' parse + security gate over a mutation tool's source
-before the call leaves the client, so the agent-facing @siza tool@ surface
-exercises the same gate the typed 'Siza.Preflight' API enforces by
-construction. A syntax error always blocks; a denied capability blocks only
-under @--strict@ (advisory findings are surfaced and the call proceeds).
-Returns the 'Preflight' verdict for the provenance log — the one thing the
-server never sees. Non-mutation tools and a malformed @source@ field pass
-straight through with no verdict.
--}
 gateMutation :: Policy -> ToolName -> Value -> IO (Maybe Preflight)
 gateMutation policy name input
     | name `elem` [ReplaceCellSource, InsertCell, ProposeEdit]
@@ -291,7 +248,6 @@ gateMutation policy name input
   where
     advisories v = either id (const []) (scanSource policy (vettedSource v))
 
--- | The @source@ string of a tool input, if present.
 sourceField :: Value -> Maybe Text
 sourceField = \case
     A.Object o -> case KM.lookup "source" o of
@@ -299,11 +255,6 @@ sourceField = \case
         _ -> Nothing
     _ -> Nothing
 
-{- | @siza check@: read a cell source, run the pre-flight parse and the
-security scan, print every diagnostic, and exit non-zero when there is any
-error — a syntax error, or (under @--strict@) a denied capability. Advisory
-warnings are printed but keep the exit zero. No server needed.
--}
 runCheck :: Source -> Policy -> IO ()
 runCheck src policy = do
     txt <- case src of
@@ -361,6 +312,5 @@ fatal e = hPutStrLn stderr ("siza: " <> T.unpack e) >> exitFailure
 printJson :: Value -> IO ()
 printJson = LBS8.putStrLn . A.encode
 
--- | Parse argv and run.
 main :: IO ()
 main = execParser parseCommand >>= runCommand

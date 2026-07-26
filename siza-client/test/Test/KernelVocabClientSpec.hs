@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R1.7 for the kernel-state surface: the client catalogue's kernel tool
-descriptions advertise exactly the closed vocabulary the server emits
-("Sabela.AI.KernelVocab") — every await tag and kernel state a caller can
-receive is named, so no state string ever arrives undocumented (M14).
--}
 module Test.KernelVocabClientSpec (kernelVocabClientSpec) where
 
 import Data.Aeson (Value (..))
@@ -25,7 +20,6 @@ import Sabela.AI.KernelVocab (
 import Siza.Agent.Tools (catalogue)
 import Test.Hspec
 
--- | The description of the named tool in the live catalogue.
 descriptionOf :: Text -> IO Text
 descriptionOf name = do
     cat <- catalogue

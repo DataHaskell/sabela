@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G3 tasks 2 and 3: the harness asks the compiler, the model is never
-asked to write a hole. A scripted dispatch stands in for the server's
-typecheck-only @try@ route; the fixtures assert the conclusions reach the
-fact ledger with provenance, that NO notebook mutation is ever attempted,
-that a two-hole candidate resolves inside the round cap, and that an
-unanswerable gap yields a plain statement rather than a dangling
-recommendation.
--}
 module Test.HoleProbeSpec (holeProbeSpec) where
 
 import Data.Aeson (Value, object)
@@ -34,19 +26,14 @@ import Siza.Agent.Discover.HoleProbe (
 import Siza.Agent.Discover.Ledger (SearchLedger (..))
 import Test.ProbeFixtures (probeCode, probeFactFor, scriptedTryOutcome)
 
--- | The live_test4 target: a consumer whose two argument slots are `Point`.
 lineFact :: Text
 lineFact =
     "`line` :: Point -> Point -> Picture — found in Sabela.Notebook (sabela-notebook)"
 
--- | A two-gap consumer over two DIFFERENT types, for the K-round fixture.
 segmentFact :: Text
 segmentFact =
     "`segment` :: Anchor -> Extent -> Picture — found in Fixture.Draw (fixture)"
 
-{- | A dispatch that answers probes from a table and records every call, so a
-fixture can assert what the harness did — and what it never did.
--}
 scriptedDispatch :: [(Text, [Text])] -> IO (IORef [ToolCall], ProbeDispatch)
 scriptedDispatch table = do
     calls <- newIORef []
@@ -66,10 +53,6 @@ mutatingCalls cs =
         `elem` ["insert_cell", "replace_cell_source", "propose_edit", "run_cell"]
     ]
 
-{- | live_test9's ungrounded target: @Frequency@ was conjured from the query
-token @Sine@ (an ALUT constructor, for a plotting request). Nothing in scope
-produces it, so it must never be probed at all.
--}
 plotFact :: Text
 plotFact =
     "`plot` :: [(Double, Double)] -> Picture \
@@ -81,8 +64,6 @@ holeProbeSpec = describe "G3 harness-side hole probing and bounded synthesis" $ 
         it "runs ZERO probes and adds zero facts for an ungrounded type" $ do
             (calls, dispatch) <- scriptedDispatch []
             facts <- probeGroundedType dispatch [plotFact] "Frequency"
-            -- Assert on the PROBE COUNT, not just the ledger: a probe that
-            -- runs and is discarded still fails this.
             readIORef calls `shouldReturn` []
             facts `shouldBe` []
 
@@ -95,7 +76,6 @@ holeProbeSpec = describe "G3 harness-side hole probing and bounded synthesis" $ 
             facts `shouldNotBe` []
 
         it "grounds on the producer test, not on lexical association" $ do
-            -- `plot` merely MENTIONS Double; it produces Picture.
             groundedTarget [plotFact] "Picture" `shouldBe` True
             groundedTarget [plotFact] "Frequency" `shouldBe` False
             groundedTarget [plotFact] "Double" `shouldBe` False
@@ -103,8 +83,6 @@ holeProbeSpec = describe "G3 harness-side hole probing and bounded synthesis" $ 
 
     describe "signature-synthesis: a held signature needs no hole" $ do
         it "builds a compiling application from the confirmed signature" $ do
-            -- The exact live_test9 state: `plot`'s signature confirmed at
-            -- turn 11, no hole anywhere, twenty turns spent saying "write".
             candidateGaps [plotFact] `shouldBe` []
             case candidateCell [plotFact] of
                 Nothing -> expectationFailure "expected a synthesised candidate"
@@ -127,7 +105,6 @@ holeProbeSpec = describe "G3 harness-side hole probing and bounded synthesis" $ 
             _ <- resolveCandidate dispatch Nothing [lineFact]
             recorded <- readIORef calls
             mutatingCalls recorded `shouldBe` []
-            -- every call the harness made was the read-only trial route
             map tcName recorded `shouldSatisfy` all (== "try")
 
         it "lands in the ledger through the same bounded fold as any fact" $ do

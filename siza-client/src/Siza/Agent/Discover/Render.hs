@@ -1,7 +1,3 @@
-{- | Envelope sub-renderers shared by the discover merge (search-api.md
-section 5): interpreted echo, per-source consulted rows, hackage row.
-Split from "Siza.Agent.Discover.Merge" for the module-size cap.
--}
 module Siza.Agent.Discover.Render (
     consultedJson,
     dedupSources,
@@ -20,9 +16,6 @@ import Siza.Agent.Discover.Types (
     SourceAnswer (..),
  )
 
-{- | One consulted row per backend: stage-0 and fuzzy passes share a source,
-so a source is ok when ANY of its passes answered (first non-empty note wins).
--}
 dedupSources :: [SourceAnswer] -> [SourceAnswer]
 dedupSources = foldl mergeIn []
   where

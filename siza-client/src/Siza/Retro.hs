@@ -1,12 +1,3 @@
-{- | @siza retro@: read a session's append-only JSONL provenance log and fold
-it into the adaptation-loop metrics (redesign 7.5).
-
-The metrics fall straight out of the log because each line is a typed
-'SessionEvent': per-tool call counts, the error rate, the security-scan hit
-rate, and the count of pre-flight blocks. This is the read side of Part 7 — the
-write side is 'Siza.Provenance'. It computes; the CLI ('Siza.Cli.Retro') reads
-the file and prints.
--}
 module Siza.Retro (
     RetroMetrics (..),
     computeMetrics,
@@ -26,10 +17,6 @@ import Siza.Provenance (
     SessionEvent (..),
  )
 
-{- | The session metrics, derived from one JSONL log. @rmErrors@ /
-@rmTotal@ is the error rate; @rmScanHits@ / @rmTotal@ is the security-scan hit
-rate; @rmBlocks@ counts pre-flight blocks (an unvetted mutation).
--}
 data RetroMetrics = RetroMetrics
     { rmTotal :: Int
     , rmPerTool :: [(ToolName, Int)]
@@ -39,9 +26,6 @@ data RetroMetrics = RetroMetrics
     }
     deriving (Eq, Show)
 
-{- | Decode a JSONL log into its events, skipping blank lines. A line that
-fails to decode is dropped, so a partially written tail never aborts the read.
--}
 decodeSession :: LBS8.ByteString -> [SessionEvent]
 decodeSession raw =
     [ ev
@@ -50,7 +34,6 @@ decodeSession raw =
     , Just ev <- [A.decode ln]
     ]
 
--- | Fold a session's events into the metric counts.
 computeMetrics :: [SessionEvent] -> RetroMetrics
 computeMetrics evs =
     RetroMetrics
@@ -66,9 +49,6 @@ computeMetrics evs =
     hasFinding e = maybe False (not . null . pfFindings) (sePreflight e)
     isBlocked e = maybe False (not . pfVetted) (sePreflight e)
 
-{- | Per-tool call counts, keyed on the wire name (the only 'Ord' handle on a
-'ToolName'), recovering the typed 'ToolName' from each tool's first event.
--}
 perTool :: [SessionEvent] -> [(ToolName, Int)]
 perTool evs =
     [ (t, M.findWithDefault 0 (toolWireName t) counts)
@@ -85,7 +65,6 @@ perTool evs =
           where
             w = toolWireName t
 
--- | A small JSON summary for the CLI to print.
 metricsValue :: RetroMetrics -> Value
 metricsValue m =
     object

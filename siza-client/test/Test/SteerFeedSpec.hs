@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The found-but-goal-type-unsatisfied steer feed (R7-T2): a found answer
-whose hits ALL fail the goal-type/name-shape check counts in the miss
-cluster and fires the construct steer; the not_found path is unregressed.
--}
 module Test.SteerFeedSpec (steerFeedSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -14,7 +10,6 @@ import Test.Hspec
 import Siza.Agent.Discover.History (SearchLedger, emptyLedger, ledgerRecord)
 import Test.DiscoverFixtures (field, stateOf, textField)
 
--- | A found envelope for @q@ whose hits are the given (name, type) pairs.
 foundWith :: Text -> [(Text, Text)] -> Value
 foundWith q hits =
     object
@@ -46,9 +41,6 @@ missFor n =
         , "total" .= (0 :: Int)
         ]
 
-{- | The defaultPlotLineStyle class: generated value-of-type hunts, none of
-whose found hits name the target or produce its goal type.
--}
 unsatisfiedCases :: [(Text, [(Text, Text)])]
 unsatisfiedCases =
     [ ("defaultPlotLineStyle", [("defaultStyle", "Style"), ("lineWidth", "Double")])
@@ -61,8 +53,6 @@ record = ledgerRecord
 
 steerFeedSpec :: Spec
 steerFeedSpec = describe "found-but-unsatisfied miss feed (R7-T2)" $ do
-    -- R8-T2: an unsatisfied found walks the SAME ladder as a not_found. That
-    -- ladder used to steer to mode="construct" by rung 2; it now only records.
     it "no rung of an unsatisfied cluster steers" $ do
         let failures =
                 [ q
@@ -89,8 +79,6 @@ steerFeedSpec = describe "found-but-unsatisfied miss feed (R7-T2)" $ do
             (l1, _) = record q (foundWith q hits) emptyLedger
             (l2, _) = record q (foundWith q hits) l1
             (_, out3) = record q (missFor q) l2
-        -- Two unsatisfied founds then a miss: the cluster reaches the rung
-        -- that hands back the held hit rather than a bare denial.
         T.toLower (textField "next" out3 <> textField "summary" out3)
             `shouldSatisfy` ("already held" `T.isInfixOf`)
 

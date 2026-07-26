@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R4-T2 world-change grid (search-api.md R1.3/R1.4): the end-to-end
-three-install-state x two-event property. An in-session install event
-(dep-declaring write Succeeded, or kernel restart) routes through the ledger's
-world-change invalidation, so every subsequent hit's install state matches the
-post-install catalogue ground truth, and no pre-install fact is denied without
-an announced change.
--}
 module Test.DiscoverWorldChangeSpec (discoverWorldChangeSpec) where
 
 import Control.Monad (forM_)
@@ -32,17 +25,14 @@ import Test.DiscoverFixtures (
     textField,
  )
 
--- | Post-install world: everything the universe knows is session-visible.
 postWorld :: SimWorld
 postWorld = SimWorld (map unhide synHoogle) (map unhide synHoogle)
   where
     unhide p = p{spHidden = False}
 
--- | Pre-install: nimbus uninstalled, cumulus hidden (per 'synHoogle').
 preWorld :: SimWorld
 preWorld = SimWorld [p | p <- synHoogle, spName p /= "nimbus"] synHoogle
 
--- | Dispatch: discover runs against the current world; events flip it.
 worldDispatch :: IORef SimWorld -> ToolCall -> IO (Either Text ToolOutcome)
 worldDispatch ref tc = case tcName tc of
     "discover" -> do
@@ -58,7 +48,6 @@ worldDispatch ref tc = case tcName tc of
         pure (Right (ToolOk (object ["execution" .= object ["ok" .= True]])))
     n -> pure (Left ("unexpected tool " <> n))
 
--- | The install event of each flavour (dep-declaring write, restart).
 events :: [(String, ToolCall)]
 events =
     [
@@ -70,7 +59,6 @@ events =
     , ("restart", ToolCall "kernel_restart" (object []))
     ]
 
--- | (query, pre-event ground truth) per install state of the catalogue.
 stateGrid :: [(Text, Text)]
 stateGrid =
     [ ("gust", "installed")

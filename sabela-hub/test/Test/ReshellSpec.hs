@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The dashboard re-shell: lifting the @__SABELA_STATIC__@ object literal (and
-the optional render-mode\/markdown strings) out of an old export and splicing
-them into the current template's @\/*__SABELA_INJECT__*\/@ placeholder. Pins the
-brace\/string scanner across nesting, in-string braces, and escapes.
--}
 module Test.ReshellSpec (spec) where
 
 import qualified Data.Text as T

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Gate report rendering, split from "Eval.Gate" (module size cap): the
-A/B summary over 'SearchMode', per-task splits, and the calls-to-green cost
-table. "Eval.Gate" re-exports everything here.
--}
 module Eval.GateReport (
     summariseGate,
     gateByTask,
@@ -29,7 +25,6 @@ import Eval.Bench (
  )
 import Eval.GateResult (SearchMode (..))
 
--- | Aggregate (mode, passed) outcomes; SearchOff is arm A, SearchOn arm B.
 summariseGate :: [(SearchMode, Bool)] -> Comparison
 summariseGate outcomes =
     Comparison a b (passRate b - passRate a) (twoProportionZ a b)
@@ -47,7 +42,6 @@ gateByTask outcomes =
     | tid <- nub [t | (t, _, _) <- outcomes]
     ]
 
--- | The full gate report: per-task pass split, overall z, and calls-to-green cost.
 renderGate :: [(Text, SearchMode, RunStat)] -> Text
 renderGate outcomes =
     T.unlines

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The post-union scope predicate (search-api.md 3.3, R3.3/R2.7): filters
-apply over ATTRIBUTED modules at the merge, never pre-query; scoped-empty
-while the unscoped union is non-empty always discloses what was removed.
--}
 module Test.DiscoverScopeConserveSpec (discoverScopeConserveSpec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -36,9 +32,6 @@ env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
-{- | The re-export shape: one name evidenced in a re-exporting module
-(session) and in its defining internal module (hoogle).
--}
 reExportHits :: [DHit]
 reExportHits =
     [ (mkHit "colList" "Frame" ""){dhOrigin = "session"}
@@ -90,11 +83,6 @@ discoverScopeConserveSpec = do
                 stateOf v `shouldBe` "found"
                 length (hitsOf v) `shouldBe` 2
 
-{- | live_test36: `module=Data.Csv query=!?` answered with a card listing
-Data.ByteString's exports, because the install-state probe browses the top
-hit's module. A card for a module the caller did not scope to reads as an
-answer about the module it asked for.
--}
 scopedCardSpec :: Spec
 scopedCardSpec = describe "a scoped request never carries a foreign card" $ do
     let cardFor m =
@@ -127,13 +115,6 @@ scopedCardSpec = describe "a scoped request never carries a foreign card" $ do
             (field "card" (envWith (Scope Nothing Nothing) (cardFor "Data.ByteString")))
             `shouldBe` Just "Data.ByteString"
 
-{- | Refinement: a search RANKS by what the session has already established
-(the held facts' packages), so successive searches narrow instead of starting
-blind. live_test33: every prior call had been about dataframe, then `summary`
-ranked blaze-html's attribute top. Order only — never a filter, never a
-suppression: the goal gate already showed what ledger memory does when it
-withholds results (honeycomb).
--}
 refinementSpec :: Spec
 refinementSpec = describe "a search refines what the session established" $ do
     let hit n p =
@@ -141,9 +122,6 @@ refinementSpec = describe "a search refines what the session established" $ do
                 { dhType = "X -> Y"
                 , dhInstall = InstHidden
                 }
-        -- The established package's hit LOSES every static tie-break (later
-        -- name, same-length package), so a flipped order can only be the
-        -- footprint band.
         answers = [okAnswer "hoogle" [hit "colAaa" "strange", hit "colZzz" "session"]]
         rankedWith recent =
             map
@@ -166,7 +144,6 @@ refinementSpec = describe "a search refines what the session established" $ do
     it "refinement never drops the stranger" $
         length (rankedWith ["session"]) `shouldBe` 2
 
--- | 'factPackages': the packages held facts establish, from both fact shapes.
 factPackagesSpec :: Spec
 factPackagesSpec = describe "the session footprint from held facts" $ do
     it "reads an install fact's package" $

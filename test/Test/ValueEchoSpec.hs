@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Evidence-backed value echo (search-api.md §9.2, testing-plan M14): a
-nullary pure binding echoes its value within the pinned size\/time bounds,
-elision states the exceeded bound, @= _@ is unrepresentable in the rewritten
-listing, and the listing stays within the R3.9 budget.
--}
 module Test.ValueEchoSpec (spec) where
 
 import Data.Text (Text)
@@ -22,9 +17,6 @@ import Sabela.AI.ValueEcho (
     nullaryPureType,
  )
 
-{- | Generated nullary pure bindings: names crossed with value lengths at,
-below, and beyond the size bound, plus the unevaluated (timeout) case.
--}
 generatedBindings :: [(Text, Int)]
 generatedBindings =
     [ (name, len)
@@ -89,8 +81,6 @@ spec = describe "value echo (§9.2 evidence-backed claims)" $ do
             echoListing (const (Just "boom")) "f :: Int -> Int = _"
                 `shouldBe` "f :: Int -> Int\n"
         it "never evaluates a non-nullary binding" $
-            -- The echo callback is never consulted for a function binding:
-            -- an always-failing callback still yields the clean type line.
             echoListing (\n -> error ("evaluated " <> T.unpack n)) "g :: IO () = _"
                 `shouldBe` "g :: IO ()\n"
 
@@ -125,7 +115,6 @@ spec = describe "value echo (§9.2 evidence-backed claims)" $ do
         it "a cell defining nothing echoes nothing" $
             definedListing [] session `shouldBe` ""
 
--- | Binding-line shapes for the unrepresentability grid.
 listingShapes :: [[(Text, Text, Bool)]]
 listingShapes =
     [ [("a", "Int", True)]
@@ -134,7 +123,6 @@ listingShapes =
     , []
     ]
 
--- | Render one binding line; a hole when the Bool says so.
 bindingLine :: (Text, Text, Bool) -> Text
 bindingLine (n, ty, hole) =
     n <> " :: " <> ty <> (if hole then " = _" else " = [1,2]")

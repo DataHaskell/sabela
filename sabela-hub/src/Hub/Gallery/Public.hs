@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Public gallery HTTP handlers: the @\/gallery@ feed (with @?tag=@), the
-@\/c\/<cid>@ collection landing + @\/c\/<cid>\/<n>@ reader, and the
-@feed.xml@ / @sitemap.xml@ surfaces. All resolve the curated index against the
-live 'ShareStore' (soft refs) and render via the pure "Hub.Gallery.Render".
--}
 module Hub.Gallery.Public (
     chromeFrom,
     galleryHeaders,
@@ -49,7 +44,6 @@ import Hub.Share (
  )
 import Hub.Types (HubConfig (..))
 
--- | Build the render chrome (origin / contact / repo) from config.
 chromeFrom :: HubConfig -> GalleryChrome
 chromeFrom cfg =
     GalleryChrome
@@ -60,10 +54,6 @@ chromeFrom cfg =
   where
     originOf uri = T.intercalate "/" (take 3 (T.splitOn "/" uri))
 
-{- | Anti-framing + html headers for the gallery's own pages, so a third-party
-site can't frame the gallery (only the share→reader same-origin framing is
-intended).
--}
 galleryHeaders :: [Header]
 galleryHeaders =
     [ ("Content-Type", "text/html; charset=utf-8")
@@ -153,10 +143,6 @@ serveSitemap cfg gallery shares respond = do
             [("Content-Type", "application/xml; charset=utf-8")]
             (renderSitemap (chromeFrom cfg) items)
 
-{- | Download: serve a notebook's source markdown as an attachment. A share is
-already public-by-URL at @\/s\/<slug>@, so the only gate is that a stored source
-exists — an unknown slug or a legacy share without @source.md@ 404s.
--}
 serveSource ::
     ShareStore ->
     Text ->
@@ -181,9 +167,6 @@ serveSource shares slug respond =
                         (BL.fromStrict src)
                 Nothing -> notFound
 
-{- | A download filename from a notebook title: lowercased, non-alphanumerics
-collapsed to hyphens, capped, @.md@ appended (falls back to @sabela-notebook@).
--}
 downloadName :: Text -> Text
 downloadName title =
     let mapped =

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Mode/filter-agnostic truthfulness (search-api.md 3.3, R1.1/R3.7): a name
-resolvable under ANY (mode, filter) tuple is never not_found under another
-— the full-grid false-denial ledger, determinism, and the topMonth fixture.
--}
 module Test.DiscoverModeGridSpec (discoverModeGridSpec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -13,14 +9,9 @@ import Test.Hspec
 
 import Test.DiscoverFixtures
 
--- | The three renderings of the one index (section 3.3).
 gridModes :: [Text]
 gridModes = ["search", "inventory", "construct"]
 
-{- | The (name, module filter, package filter) rows of the grid: exports under
-their defining module and package, modules and packages under themselves,
-plus notebook binding, alias spelling and builtin (filter-less rows).
--}
 gridRows :: [(Text, Maybe Text, Maybe Text)]
 gridRows =
     [ (n, Just m, Just (spName p))
@@ -32,7 +23,6 @@ gridRows =
         ++ [(spName p, Nothing, Just (spName p)) | p <- synHoogle]
         ++ [(n, Nothing, Nothing) | n <- ["gustTotal", "Z.gust", "displayHtml"]]
 
--- | Every (query, mode, filter) tuple of one grid row: no filter, module, package.
 rowTuples :: (Text, Maybe Text, Maybe Text) -> [(Text, Text, Value)]
 rowTuples (n, m, p) =
     [ (n, mode, args)
@@ -46,7 +36,6 @@ rowTuples (n, m, p) =
 gridTuples :: [(Text, Text, Value)]
 gridTuples = concatMap rowTuples gridRows
 
--- | One full evaluation of the grid, independently constructed per call.
 evalGrid :: IO [((Text, Text, Value), Value)]
 evalGrid =
     mapM (\t@(q, _, args) -> (,) t <$> runCatArgs q args) gridTuples
@@ -110,10 +99,6 @@ discoverModeGridSpec =
                     T.toLower (textField "next" v)
                         `shouldSatisfy` ("try" `T.isInfixOf`)
 
-            -- live_test20: told "if `pictures` is real the compiler will accept
-            -- it — write the cell and observe; a red cell is one replace away",
-            -- the model wrote speculative cells and then guessed a package.
-            -- G1 makes a red cell unreachable, so the advice was also false.
             it "never steers a miss at a speculative cell write" $ do
                 v <- runCatArgs "Z.gustNope" (object [])
                 let next = T.toLower (textField "next" v)
@@ -125,10 +110,6 @@ discoverModeGridSpec =
                 T.toLower (textField "next" v)
                     `shouldSatisfy` ("inventory" `T.isInfixOf`)
 
-{- | The dataframe-shaped synthetic package (structure only, no bench library
-names): a defining module, a re-exporting module, and a constrained typed twin
-— the topMonth-off attribution/mode shapes.
--}
 framePkgs :: [SynPkg]
 framePkgs =
     [ SynPkg

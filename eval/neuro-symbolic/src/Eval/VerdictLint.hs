@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Section 5.3 verdict totality as an R8.4 lint rule: every verifier-surface
-answer must decode a member of the closed verdict vocabulary
-('Sabela.AI.Verdict.parseVerdict'); silence is undecodable and flagged. Split
-from "Eval.TranscriptLint" (module size cap), which wires it into
-@lintMessages@.
--}
 module Eval.VerdictLint (
     verdictProblems,
     verifierChannels,
@@ -20,14 +14,9 @@ import qualified Data.Text as T
 
 import Sabela.AI.Verdict (parseVerdict)
 
-{- | Verifier surfaces: the harness verify channel, unified @try@ tool, and
-legacy @scratchpad@ alias. @verify@ counts only when harness-injected, never
-a model call answer of the same name.
--}
 verifierChannels :: [Text]
 verifierChannels = ["verify", "try", "scratchpad"]
 
--- | Each verdict-free verifier answer as a @(rule, detail)@ pair.
 verdictProblems :: [Value] -> [(Text, Text)]
 verdictProblems = go []
   where

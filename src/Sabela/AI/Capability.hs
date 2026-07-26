@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | A local, Hoogle-style search over the session's installed modules: each
-exposed function is a 'Capability' (module, name, type), and 'searchCapabilities'
-ranks the index (built from @:browse@) against a free-text query.
--}
 module Sabela.AI.Capability (
     Capability (..),
     Match (..),
@@ -26,7 +22,6 @@ import qualified Data.Text as T
 
 import Sabela.AI.Similarity (trigramSimilarity)
 
--- | One exposed function: the unit of search, parsed from a @:browse@ line.
 data Capability = Capability
     { capModule :: Text
     , capName :: Text
@@ -34,7 +29,6 @@ data Capability = Capability
     }
     deriving (Eq, Show)
 
--- | Why a capability matched (the scoring signal that won).
 data Match = ByName | ByType | BySynonym | ByModule
     deriving (Eq, Show)
 
@@ -45,12 +39,8 @@ data Hit = Hit
     }
     deriving (Eq, Show)
 
--- | Query-vocabulary → API-vocabulary bridges, all lower-case.
 type Synonyms = [(Text, [Text])]
 
-{- | Query-word → API-word bridges for cases substring matching misses
-(e.g. "classification" → "logistic").
--}
 defaultSynonyms :: Synonyms
 defaultSynonyms =
     [ ("animation", ["anim"])
@@ -66,10 +56,7 @@ defaultSynonyms =
     , ("regression", ["linear", "fit"])
     , ("reactive", ["frp", "behavior", "event"])
     , ("frp", ["behavior", "event"])
-    , -- Composition: how two pictures become one. A caller reaches for
-      -- "overlay" or "superimpose"; the API calls it group/<>/mconcat
-      -- (live_test20 guessed the gloss package instead).
-      ("overlay", ["group", "mconcat"])
+    , ("overlay", ["group", "mconcat"])
     , ("superimpose", ["group", "mconcat"])
     , ("combine", ["group", "mconcat"])
     , ("compose", ["group", "mconcat"])
@@ -77,15 +64,6 @@ defaultSynonyms =
     , ("pictures", ["picture"])
     ]
 
-{- | Rank an index against a free-text query; best matches first, FOCUSED: an
-EXACT name match silences the rest, and the list is capped well below a wall
-— low-confidence walls are negative information for a small model. A prefix
-match does not silence anything: it is a guess, and letting one bury the
-tail is how @chartAgrees@ hid @lineChart@ from @find_function "chart"@.
-Ties break toward the SHORTER module path (the public umbrella API, not deep
-internals); duplicates of the same function — an umbrella module
-re-exporting it — collapse to one row.
--}
 searchCapabilities :: Synonyms -> [Capability] -> Text -> [Hit]
 searchCapabilities syns idx query =
     focus $
@@ -94,16 +72,13 @@ searchCapabilities syns idx query =
                 [Hit c s v | c <- idx, Just (s, v) <- [scoreCap syns ql qToks c]]
   where
     ql = lexQuery (T.toLower (T.strip query))
+    qRaw = lexQuery (T.strip query)
     qToks = tokens ql
-    rank h = (Down (hitScore h), T.length (capModule (hitCap h)))
+    rank h = (Down (hitScore h), caseRank h, T.length (capModule (hitCap h)))
+    caseRank h = if capName (hitCap h) == qRaw then 0 else 1 :: Int
     nubByNameType =
         nubBy (\a b -> sameKey (hitCap a) (hitCap b))
     sameKey x y = capName x == capName y && capType x == capType y
-    {- Only an EXACT name match silences the tail, which is what this rule
-    always claimed to do. Silencing on a mere prefix (80) let one
-    same-prefix name bury the rest of the notebook's vocabulary: adding
-    `chartAgrees` made `find_function "chart"` stop returning `lineChart`,
-    undoing the live_test13 fix. A prefix is a guess, not an answer. -}
     focus hits = case hits of
         (h : _)
             | hitScore h >= exactScore ->
@@ -111,20 +86,11 @@ searchCapabilities syns idx query =
         _ -> take 8 hits
     exactScore = 100
 
-{- | One capability's relevance to a free-text query, on the same tier scale
-'searchCapabilities' ranks with — so a card ordering its exports and a search
-ranking its hits can never disagree about what "relevant" means. 0 when
-nothing matches.
--}
 relevanceScore :: Synonyms -> Text -> Capability -> Int
 relevanceScore syns query c = maybe 0 fst (scoreCap syns ql (tokens ql) c)
   where
     ql = lexQuery (T.toLower (T.strip query))
 
-{- | Strip Haskell surface syntax a name index can never match — type
-applications (@\@Type@) and string-literal arguments — so a query written the
-way code is written still lands on the exact tier.
--}
 lexQuery :: Text -> Text
 lexQuery q =
     T.unwords
@@ -141,10 +107,6 @@ lexQuery q =
     go False ('"' : cs) = go True cs
     go False (c : cs) = c : go False cs
 
-{- | The highest-scoring signal a capability matches on, or Nothing — ordered
-strongest first (exact > prefix > substring > type-shaped type > token >
-type > near-spelling > synonym > module), so 'listToMaybe' takes the winner.
--}
 scoreCap :: Synonyms -> Text -> [Text] -> Capability -> Maybe (Int, Match)
 scoreCap syns ql qToks c =
     listToMaybe $
@@ -165,62 +127,65 @@ scoreCap syns ql qToks c =
     tokenInName t = T.length t >= 3 && t `T.isInfixOf` nameL
     typeMatch = length qToks >= 2 && all (`T.isInfixOf` typeL) qToks
     synMatch = any (`T.isInfixOf` nameL) (synonymsFor syns ql)
-    {- Every substring tier misses a name that DIVERGES rather than extends:
-    "summary" is neither a prefix nor an infix of "summarize", so the one
-    function the query was after scored nothing at all and blaze-html's
-    `summary` attribute filled the answer (live_test33_wine). -}
     nearSpelling =
         T.length ql >= minFuzzyQuery
             && trigramSimilarity ql nameL >= fuzzyNameThreshold
-    {- An arrow is an unambiguous type question, so a complete type match
-    outranks a weak name substring: without this rung `Double -> Picture`
-    resolves to `displayPicture` on the token `picture` and reports ByName.
-    Lexical resolution beating type-directed resolution is the live_test20
-    pathology, here inside the ranker. -}
     typeShaped = "->" `T.isInfixOf` ql
 
-{- | Trigram-similarity floor for a near-spelling name match. 0.4 keeps
-@summary@\/@summarize@ (0.5) and @describe@\/@describes@ while rejecting the
-long tail of coincidental trigram overlap.
--}
 fuzzyNameThreshold :: Double
 fuzzyNameThreshold = 0.4
 
--- | Shortest query worth fuzzy-matching; below this trigrams are all noise.
 minFuzzyQuery :: Int
 minFuzzyQuery = 4
 
-{- | Synonym expansions whose key occurs as a WHOLE token of the query — a
-substring match let a key inside a longer domain word bridge to an unrelated
-vocabulary, and the wrong-domain "hit" then blocked the discover fallthrough.
--}
 synonymsFor :: Synonyms -> Text -> [Text]
 synonymsFor syns ql = concat [vs | (k, vs) <- syns, k `elem` toks]
   where
     toks = tokens ql
 
--- | Alphanumeric tokens: "double -> picture" → ["double","picture"].
 tokens :: Text -> [Text]
 tokens = filter (not . T.null) . T.split (not . isAlphaNum)
 
-{- | Parse @:browse M@ output into capabilities, handling its two quirks:
-fully-qualified names (stripped) and signatures wrapped across indented
-continuation lines (coalesced). Skips type/data/class declarations.
--}
 parseCapabilities :: Text -> Text -> [Capability]
 parseCapabilities modName raw =
     concat
         [ case valueBinding ent of
             Just (nm, ty) -> [Capability modName (unqualify nm) (cleanType ty)]
-            Nothing -> recordSelectors modName ent ++ classMethods modName ent
+            Nothing ->
+                typeDeclaration modName ent
+                    ++ recordSelectors modName ent
+                    ++ classMethods modName ent
         | ent <- coalesce (T.lines raw)
         ]
 
-{- | Class methods from a coalesced @class C ... where m :: T@ declaration, so
-@find_function@ finds a polymorphic verb like @fit@ / @predict@ — buried inside
-the @class@ block, not a top-level binding. The method type is prefixed with the
-class context so the model sees what it ranges over. Empty for non-class lines.
--}
+typeDeclaration :: Text -> Text -> [Capability]
+typeDeclaration modName ent =
+    [ Capability modName (unqualify nm) (cleanType head_)
+    | Just kw <- [keywordOf ent]
+    , let head_ = declHead kw
+          nm = T.takeWhile (\c -> c /= ' ' && c /= ':') head_
+    , not (" :: " `T.isInfixOf` head_)
+    , not (T.null nm)
+    , isUpper (T.head (unqualify nm))
+    ]
+  where
+    keywordOf l =
+        listToMaybe
+            [ k
+            | k <- ["type ", "data ", "newtype ", "class "]
+            , k `T.isPrefixOf` l
+            ]
+    declHead kw =
+        T.strip
+            . T.takeWhile (\c -> c /= '=' && c /= '{')
+            . fst
+            . T.breakOn " where "
+            . snd
+            . T.breakOnEnd " => "
+            . T.strip
+            . T.drop (T.length kw)
+            $ T.strip ent
+
 classMethods :: Text -> Text -> [Capability]
 classMethods modName line
     | "class " `T.isPrefixOf` line
@@ -231,15 +196,10 @@ classMethods modName line
         ]
     | otherwise = []
   where
-    -- The class head ("Fit cfg input model") becomes the method's constraint.
     classHead = T.strip (T.takeWhile (/= '|') (afterClass (fst (T.breakOn " where " line))))
     ctx = "(" <> cleanType classHead <> ") => "
     afterClass l = fromMaybe l (T.stripPrefix "class " l)
 
-{- | Split a class body's @m1 :: T1 m2 :: T2@ run into @(name, type)@ pairs. The
-token just before each @::@ is the next method name; the rest is the prior
-method's type (GHCi prints one method per line, coalesced to one run here).
--}
 methodSigs :: Text -> [(Text, Text)]
 methodSigs body = case T.splitOn " :: " body of
     (n0 : rest) -> pair n0 rest
@@ -252,11 +212,6 @@ methodSigs body = case T.splitOn " :: " body of
             : pair (lastWord chunk) more
     lastWord = T.takeWhileEnd (/= ' ')
 
-{- | Record field selectors from a coalesced @data@/@newtype@ declaration —
-@field :: Record -> FieldType@ — so @find_function@ finds a field by name
-(e.g. @maxTreeDepth@) even though @:browse@ buries it inside the data block,
-not as a top-level binding. Empty for non-record declarations.
--}
 recordSelectors :: Text -> Text -> [Capability]
 recordSelectors modName line
     | isData
@@ -279,16 +234,11 @@ recordSelectors modName line
         | Just r <- T.stripPrefix "newtype " l = r
         | otherwise = l
 
--- | The text between the first @{@ and the next @}@, if any.
 betweenBraces :: Text -> Maybe Text
 betweenBraces t = case T.breakOn "{" t of
     (_, r) | not (T.null r) -> Just (T.takeWhile (/= '}') (T.drop 1 r))
     _ -> Nothing
 
-{- | Regroup brace pieces split on @", "@ so a field type carrying its own comma
-(e.g. @[(Text, Text)]@) stays whole: a piece without @::@ continues the field
-before it rather than starting a new one.
--}
 groupFields :: [Text] -> [Text]
 groupFields = reverse . foldl step []
   where
@@ -298,7 +248,6 @@ groupFields = reverse . foldl step []
             (cur : rest) -> (cur <> ", " <> p) : rest
             [] -> [p]
 
--- | Join indented continuation lines into the entry they continue.
 coalesce :: [Text] -> [Text]
 coalesce [] = []
 coalesce (l : ls) = go l ls
@@ -311,7 +260,6 @@ coalesce (l : ls) = go l ls
         Just (h, _) -> h == ' ' || h == '\t'
         Nothing -> False
 
--- | A @name :: type@ value binding (not a type/data/class/instance decl).
 valueBinding :: Text -> Maybe (Text, Text)
 valueBinding ent
     | any (`T.isPrefixOf` ent) declKeywords = Nothing
@@ -324,12 +272,6 @@ valueBinding ent
 declKeywords :: [Text]
 declKeywords = ["type ", "data ", "newtype ", "class ", "instance ", "pattern "]
 
-{- | The unqualified name, by stripping leading MODULE components — never by
-splitting at the last dot. An operator's own name may contain dots:
-@(DataFrame..&&.)@ split at its last dot left @&&)@ and bare @)@ in the
-DataFrame card, and the one time the exports reached a live model they led
-with twelve lines of that soup (live_test40).
--}
 unqualify :: Text -> Text
 unqualify t
     | "(" `T.isPrefixOf` t
@@ -337,17 +279,11 @@ unqualify t
         "(" <> dropQualifier (dropUnit (T.init (T.drop 1 t))) <> ")"
     | otherwise = dropQualifier (dropUnit t)
 
-{- | Drop a @pkg-1.2.3:@ unit prefix: @:browse@ qualifies a re-export with its
-defining unit, which is not part of any name a caller can write.
--}
 dropUnit :: Text -> Text
 dropUnit t = case T.breakOnEnd ":" t of
     (pre, rest) | not (T.null pre) -> rest
     _ -> t
 
-{- | Drop @Upper.@-headed module components from the front, leaving the name —
-alphanumeric or operator — intact.
--}
 dropQualifier :: Text -> Text
 dropQualifier t = case T.uncons t of
     Just (c, _)
@@ -358,10 +294,6 @@ dropQualifier t = case T.uncons t of
             dropQualifier (T.drop 1 rest)
     _ -> t
 
-{- | Render a qualified signature readably: drop @pkg-version:@ prefixes and
-module qualifiers, keeping each name's last component (so
-@sabela-notebook-…:…Picture.Internal.Picture@ becomes @Picture@).
--}
 cleanType :: Text -> Text
 cleanType = T.concat . map reduce . chunk
   where

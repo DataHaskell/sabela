@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R7-T4 (R3.9/R5.6/R5.7): held facts reach the nudge as a ranked selection
-keyed on evidence shape, never a package block-list; monotone under
-irrelevant additions and bounded in count and bytes.
--}
 module Test.FactSelectSpec (factSelectSpec) where
 
 import Control.Monad (forM_)
@@ -22,7 +18,6 @@ import Siza.Agent.Discover.FactSelect (
  )
 import Siza.Agent.Discover.Facts (compilerFact, isCompilerFact)
 
--- | The run-181440 revenueTotal deliverable context: goal + drafted cell.
 ctx181440 :: FactContext
 ctx181440 =
     factContext
@@ -30,14 +25,9 @@ ctx181440 =
         ["total = D.sum (D.col \"revenue\") df"]
         ["col"]
 
--- | The call-ready signature fact the nudge exists to echo.
 sigFact :: Text
 sigFact = "`col` :: Text -> Expr a — found in DataFrame (dataframe)"
 
-{- | live_test9's two facts about the name @plot@: the one GHC confirmed at
-turn 11, and the lexical card that merely shares the name. The ledger held
-the second and never the first.
--}
 confirmedPlot :: Text
 confirmedPlot =
     compilerFact "Sabela.Notebook.plot" "[(Double, Double)] -> Picture"
@@ -45,15 +35,11 @@ confirmedPlot =
 lexicalPlot :: Text
 lexicalPlot = "`plot` :: Frame -> IO () — found in DataFrame.Viz (dataframe-viz)"
 
--- | The cluster-referenced actionable survivor: hidden package + cabal line.
 survivorFact :: Text
 survivorFact =
     "dataframe-core (hidden): -- cabal: build-depends: dataframe-core \
     \— provides `col`"
 
-{- | The run-181440 noise rows: absent-known packages surfaced by stray
-queries (toTyped on a revenue task; maxBy/max pollution on topMonth).
--}
 noiseFacts :: [Text]
 noiseFacts =
     [ "yesod-core (absent-known): -- cabal: build-depends: yesod-core \
@@ -74,8 +60,6 @@ relevantFacts = [sigFact, survivorFact]
 
 factSelectSpec :: Spec
 factSelectSpec = describe "held-facts ranked selection (R7-T4)" $ do
-    {- G5.6: the compiler outranks the lexical index — the prompt's own rule,
-    which the harness must obey too. -}
     describe "unadmitted-signature (live_test9)" $ do
         it "ranks a compiler-confirmed fact above a lexical namesake" $
             forM_ [id, reverse] $ \order -> do

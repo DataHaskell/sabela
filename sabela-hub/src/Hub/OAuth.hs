@@ -22,7 +22,6 @@ import qualified Network.HTTP.Client as HC
 import Network.HTTP.Types (urlEncode)
 import qualified System.IO
 
--- | Build the Google OAuth authorization URL.
 googleAuthUrl :: HubConfig -> Text -> Text
 googleAuthUrl cfg state =
     "https://accounts.google.com/o/oauth2/v2/auth?"
@@ -36,7 +35,6 @@ googleAuthUrl cfg state =
         <> state
         <> "&prompt=select_account"
 
--- | Exchange an authorization code for the user's email.
 exchangeCodeForEmail :: HC.Manager -> HubConfig -> Text -> IO (Either Text Text)
 exchangeCodeForEmail mgr cfg code = do
     let body =
@@ -64,10 +62,6 @@ exchangeCodeForEmail mgr cfg code = do
         _ ->
             pure $ Left ("Token exchange failed: " <> TE.decodeUtf8 (BL.toStrict respBody))
 
-{- | Extract the email from a JWT ID token payload, requiring a boolean-true
-@email_verified@ claim (OIDC Core §5.1: the claim is trustworthy only when
-verified). No signature check: the token comes straight from Google over HTTPS.
--}
 extractVerifiedEmailFromJwt :: Text -> Either Text Text
 extractVerifiedEmailFromJwt jwt =
     case T.splitOn "." jwt of
@@ -84,14 +78,11 @@ extractVerifiedEmailFromJwt jwt =
                         _ -> Left "No email in ID token"
         _ -> Left "Invalid JWT format"
 
--- | Decode base64url (JWT uses URL-safe base64 without padding).
 decodeBase64Url :: BS.ByteString -> Maybe BS.ByteString
 decodeBase64Url input =
     let
-        -- Add padding
         padLen = (4 - BS.length input `mod` 4) `mod` 4
         padded = input <> B8.replicate padLen '='
-        -- Replace URL-safe chars
         standard =
             BS.map (\c -> if c == 0x2D then 0x2B else if c == 0x5F then 0x2F else c) padded
      in
@@ -102,9 +93,7 @@ b64decode input =
     let alphabet = B8.pack "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
         indexOf c = fromMaybe 0 (B8.elemIndex c alphabet)
         clean = B8.filter (/= '=') input
-        -- Convert each base64 char to 6 bits
         sextets = map (indexOf . toEnum . fromIntegral) (BS.unpack clean)
-        -- Group into 4-sextet blocks → 3 bytes each
         bytes = go sextets
      in BS.pack (map fromIntegral bytes)
   where
@@ -122,7 +111,6 @@ b64decode input =
          in [(n `div` 65536) `mod` 256]
     go _ = []
 
--- | Generate a random hex token for session IDs and CSRF state.
 generateRandomToken :: IO Text
 generateRandomToken = do
     h <- System.IO.openBinaryFile "/dev/urandom" System.IO.ReadMode

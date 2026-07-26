@@ -1,10 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Live-process session tests split out of 'Test.SessionLoopSpec' (the
-module-size cap): the spawned process group is reachable and reaped, and a
-running cell can be interrupted while the session stays usable.
--}
 module Test.SessionLiveSpec (spec) where
 
 import Control.Concurrent (
@@ -174,9 +170,6 @@ spec = do
                     setupReplProject BareRepl [] dir emptyMeta
                     cfg <- mkSessionConfig dir dir
                     sess <- withTimeout 60_000_000 (newSession cfg)
-                    -- mirror a dataframe cell's default-extensions so the prelude
-                    -- is type-checked under OverloadedStrings (catches ambiguous
-                    -- IsString literals that a bare session would let through)
                     _ <-
                         withTimeout 10_000_000 $
                             runBlock
@@ -204,7 +197,6 @@ spec = do
                     htmlOut `shouldSatisfy` T.isInfixOf "text/html"
                     htmlOut `shouldSatisfy` T.isInfixOf "<canvas"
                     htmlOut `shouldSatisfy` T.isInfixOf "parent.postMessage"
-                    -- granite-style options thread into the canvas: title + color-by data
                     optOut `shouldSatisfy` T.isInfixOf "MyTitle"
                     optOut `shouldSatisfy` T.isInfixOf "cval:[1.0,2.0,3.0"
 

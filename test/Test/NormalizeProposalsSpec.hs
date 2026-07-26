@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T1: write-boundary normalizer generators through the ONE acceptance
-law, specified over a GENERATED grid (confusable hyphens x cabal-key
-misspellings x keyword bindings x library substitution; no bench library).
--}
 module Test.NormalizeProposalsSpec (spec) where
 
 import Control.Monad (forM_)
@@ -27,11 +23,9 @@ import Sabela.AI.RepairDispatch (acceptRepair)
 import Sabela.Model (CellType (..))
 import Sabela.Parse.Normalize (normalizeInsert)
 
--- | The confusable-hyphen grid of the task spec: U+2010..U+2015 and U+2212.
 hyphenGrid :: [Char]
 hyphenGrid = ['\x2010' .. '\x2015'] ++ ['\x2212']
 
--- | The build-depends key-misspelling class (never a package name).
 keyGrid :: [Text]
 keyGrid =
     [ "build-depends"
@@ -41,13 +35,9 @@ keyGrid =
     , "build-deps"
     ]
 
-{- | Synthetic library names — substitution across these must not change any
-decision (bitter-lesson invariance; no bench library anywhere).
--}
 libGrid :: [Text]
 libGrid = ["zephyr", "stratus", "cumulus"]
 
--- | A corrupted cabal line: the key's ASCII hyphens replaced by @h@.
 corruptLine :: Char -> Text -> Text -> Text
 corruptLine h key lib =
     "-- cabal: " <> T.map swap key <> ": " <> lib
@@ -55,7 +45,6 @@ corruptLine h key lib =
     swap '-' = h
     swap c = c
 
--- | A barChart-shaped cell body under any library name.
 cellWith :: Text -> Text -> Text
 cellWith cabal lib =
     cabal <> "\nimport " <> T.toTitle lib <> ".Core\nx = 1"
@@ -178,7 +167,6 @@ spec = describe "write-boundary normalizer proposals (R6-T1)" $ do
                     then kept `shouldBe` src
                     else kept `shouldBe` (if lawVerdict then cand else src)
 
--- | The ungated generator composition (what the gate is asked to vet).
 normalizeCandidate :: Text -> Text
 normalizeCandidate src = cand
   where

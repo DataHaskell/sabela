@@ -1,7 +1,3 @@
-{- | The pre\/post state fingerprint 'Sabela.AI.Capabilities.Try' compares
-around every trial to prove it left no trace — split out for the
-module-size cap.
--}
 module Sabela.AI.Capabilities.Try.Snapshot (
     AppSnapshot (..),
     snapshotApp,

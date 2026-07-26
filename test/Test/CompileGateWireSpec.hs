@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the G1 compile-gate rejection envelope
-('Sabela.AI.Capabilities.Edit.CompileGate.rejectionJson'): the
-verdict/stage/diagnostic/hole-fit/source-echo shape every gated AI mutation
-returns instead of committing. Built directly from a fabricated
-'DisposableResult' — no live GHCi or cabal build — mirroring
-'Test.TryOutcomeWireSpec'. A field rename here is a wire break.
--}
 module Test.CompileGateWireSpec (spec) where
 
 import Data.Aeson (Value (..))

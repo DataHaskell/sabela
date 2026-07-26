@@ -1,28 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for REFINEMENT hole-fit repair (evalExpr deep-dive,
-finding 6 — the general form of the argument-insertion move).
-
-The session already queries hole fits with @-frefinement-level-hole-fits=2@,
-and for the original @takeWhile1@ goal GHC's refinement fits propose exactly
-@takeWhileP (_ :: Maybe String)@ — the compiler names BOTH the right function
-and the missing argument's type, with no error-prose parsing. Today the fit
-parser drops refinement fits (it reads plain identifiers only), so the tier
-substitutes bare @takeWhileP@ — the exact arity failure the gate measured.
-
-Scope split this pins: refinement fits can only see IN-SCOPE names, so this
-path heals @takeWhile1@ → @takeWhileP Nothing@ (megaparsec imported) but can
-never propose the unimported @chainl1@ — that stays with the import/hoogle
-tier.
-
-Proposed API:
-
-  refinementFits :: Text -> [(Text, Text)]     -- blob -> [(fn, subHoleType)]
-    (Sabela.AI.HoleFits)
-  holeQueryFor :: Text -> Text                 -- goal -> parseable "_ :: …"
-    (sanitizes package-qualified noise; today the raw goal makes the
-     query itself unparseable, silently zeroing the tier on these errors)
--}
 module Test.RefinementFitSpec (spec) where
 
 import qualified Data.Text as T
@@ -36,7 +13,6 @@ import Sabela.AI.HoleRepair (
  )
 import Sabela.AI.SelfHeal (plausibleRename)
 
--- | The real GHC 9.12 refinement-fit shape for the takeWhile1 goal.
 refinementBlob :: T.Text
 refinementBlob =
     T.unlines
@@ -46,7 +22,6 @@ refinementBlob =
         , "    pure (_ :: (Char -> Bool) -> ParsecT Void String Identity String)"
         ]
 
--- | The real gemma goal, package-qualified noise included.
 gemmaGoal :: T.Text
 gemmaGoal =
     "(Char -> Bool) -> ParsecT Void String ghc-internal-9.1202.0:GHC.Internal.Data.Functor.Identity.Identity String"
@@ -77,10 +52,6 @@ spec = describe "refinement hole-fit repair (intention)" $ do
                 )
                 `shouldBe` [("foldl1", "Integer -> Integer -> Integer")]
         it "reads a package-qualified sub-hole type, parens balanced" $
-            -- The sub-hole type must be captured to ITS closing paren, not the
-            -- first one — a qualified name inside Maybe (…) breaks a naive
-            -- break-on-paren parse. Preserved verbatim; the query layer
-            -- sanitizes.
             refinementFits
                 ( T.unlines
                     [ "  Valid refinement hole fits include"
@@ -108,9 +79,6 @@ spec = describe "refinement hole-fit repair (intention)" $ do
                 `shouldBe` Just "    numStr <- (takeWhileP Nothing) (\\c -> isDigit c)"
 
     describe "substituteNameAtAll — one candidate heals EVERY site of the name" $ do
-        -- A name failing at two sites yields one identical diagnostic in the
-        -- message-set health, so a single-site fix shows no improvement and
-        -- reverts; the candidate must rewrite all sites at once.
         let src =
                 T.unlines
                     [ "float = f (takeWhile1 p)"

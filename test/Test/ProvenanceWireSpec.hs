@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the Part 7 server-side provenance record. Two guarantees:
-
-* A 'SessionEvent' round-trips through @toJSON@/@fromJSON@ preserving the
-  reused contract values (the typed 'ToolName', the 'ToolOutcome' isError
-  axis, the 'KernelState' tag), the @(session, gen)@ correlation key, and the
-  actor tag.
-* Driving the REAL @aiToolH@ appends one JSONL record AND leaves the
-  @{isError,result}@ response byte-identical whether or not a log dir is set.
--}
 module Test.ProvenanceWireSpec (spec) where
 
 import Data.Aeson (Value (..), decode, encode, object, (.=))
@@ -64,7 +55,6 @@ field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
--- | An inert backend so 'aiToolH' can run a read-only tool with no kernel.
 inertBackend :: IO ST.SessionBackend
 inertBackend = do
     uid <- newUnique
@@ -100,9 +90,6 @@ mkApp workDir = do
     setHaskellSession (appSessions app) (Just backend)
     pure app
 
-{- | @export_notebook@ needs no kernel and never errors, so the response is a
-stable target for the byte-identity assertion.
--}
 callExport :: App -> Maybe Text -> IO Value
 callExport app mSession = do
     let body = object ["name" .= ("export_notebook" :: Text), "input" .= object []]
@@ -161,8 +148,6 @@ spec = describe "server-side provenance (Part 7)" $ do
                 setEnv "XDG_STATE_HOME" tmp
                 app1 <- mkApp "."
                 vWithLog <- callExport app1 (Just "with-log-home")
-                -- Point XDG at a regular FILE so the log dir cannot be created:
-                -- recordEvent must swallow the IO failure and leave the wire intact.
                 let blocker = tmp </> "blocker"
                 writeFile blocker ""
                 setEnv "XDG_STATE_HOME" blocker
@@ -176,8 +161,6 @@ spec = describe "server-side provenance (Part 7)" $ do
         it "tags actor=InBrowserChat under the browser-session sentinel" $
             withSystemTempDirectory "siza-prov" $ \tmp -> do
                 setEnv "XDG_STATE_HOME" tmp
-                -- The chat path passes Nothing for the session (no
-                -- X-Sabela-Session header), so the log defaults to "browser".
                 recordToolCall
                     "."
                     Nothing

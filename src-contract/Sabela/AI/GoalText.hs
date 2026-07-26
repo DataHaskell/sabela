@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure text utilities over GHC-printed GOAL types. GHC prints goals with
-package-qualified names (@ghc-internal-9.1202.0:GHC.Internal.…Identity@) that
-are not valid Haskell source; the extraction layer preserves them verbatim and
-this module is the QUERY layer that rewrites them into something GHCi can
-parse. Pinned by @Test.QualifiedNameSpec@.
--}
 module Sabela.AI.GoalText (
     holeQueryFor,
     sanitizeGoal,
@@ -16,18 +10,9 @@ import Data.Char (isUpper)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-{- | The typed-hole query for a goal, parseable by GHCi: a raw goal containing
-a package-qualified name is a parse error, which silently zeroes the hole-fit
-tier on exactly the errors that matter.
--}
 holeQueryFor :: Text -> Text
 holeQueryFor goal = "_ :: " <> sanitizeGoal goal
 
-{- | Make GHC's printed goal parseable inside a @::@ annotation: a package- or
-module-qualified type name (out of scope in the querying session) becomes a
-type VARIABLE named after its last component — the check weakens to
-shape-unification on those positions instead of false-declining everything.
--}
 sanitizeGoal :: Text -> Text
 sanitizeGoal = T.unwords . map fixWord . T.words
   where
@@ -47,9 +32,6 @@ sanitizeGoal = T.unwords . map fixWord . T.words
         (x : _) -> x
         [] -> ""
 
-{- | Split a type into its TOP-LEVEL @->@ segments (paren/bracket-aware),
-dropping any leading class context.
--}
 splitArrows :: Text -> [Text]
 splitArrows t =
     map T.strip (splitOnTop "->" (0 :: Int) "" afterContext)

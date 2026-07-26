@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6.5 kernel truth for @list_bindings@: GHCi keeps replaced cells'
-bindings alive, but only what a CURRENT cell defines (Repair.snapshot's own
-source) may report live; the rest is flagged stale, never current state.
--}
 module Test.BindingsLiveSpec (spec) where
 
 import qualified Data.Set as Set
@@ -13,7 +9,6 @@ import Test.Hspec
 
 import Sabela.AI.ValueEcho (liveBindingsReport, partitionLive, staleNote)
 
--- | One notebook mutation in the generated histories.
 data Op = InsertCell [Text] | ReplaceLast [Text] | DeleteLast
     deriving (Show)
 
@@ -26,16 +21,12 @@ opPool =
     , DeleteLast
     ]
 
--- | Every op sequence up to length 3 over the pool (deterministic, 156 cases).
 histories :: [[Op]]
 histories = concat [sequencesOf n | n <- [0 .. 3 :: Int]]
   where
     sequencesOf 0 = [[]]
     sequencesOf n = [op : rest | op <- opPool, rest <- sequencesOf (n - 1)]
 
-{- | Interpret a history: the current cells' define-sets plus every name the
-session ever saw (GHCi keeps replaced cells' bindings alive).
--}
 runHistory :: [Op] -> ([[Text]], Set.Set Text)
 runHistory = foldl step ([], Set.empty)
   where
@@ -92,7 +83,6 @@ spec = describe "list_bindings live-vs-stale truth (R6.5)" $ do
             report `shouldSatisfy` T.isInfixOf "best :: (String, Double)"
             report `shouldSatisfy` T.isInfixOf "stale"
             report `shouldSatisfy` T.isInfixOf "resultText"
-            -- Stale names never appear as a plain binding line.
             filter ("resultText ::" `T.isInfixOf`) (T.lines report) `shouldBe` []
             filter ("resultMarkdown ::" `T.isInfixOf`) (T.lines report)
                 `shouldBe` []

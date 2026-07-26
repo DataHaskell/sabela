@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The R3.6 general invariant: the write-ack envelope decodes against ONE
-declared shape ('Sabela.AI.WriteAck.parseAckEnvelope') across the full
-outcome-class grid — queued / executing / completed-ok / completed-error /
-busy — generated over outcome combinations, with serialisation-in-string
-execution fields rejected outright. The same decoder is then held against
-the REAL @executeTool@ producers, so the declared shape cannot drift from
-what the server actually emits.
--}
 module Test.WriteAckShapeSpec (spec) where
 
 import Control.Concurrent (newEmptyMVar, putMVar)
@@ -36,9 +28,6 @@ import Test.WriteAckFixture (
     withAckEnv,
  )
 
-{- | The generated outcome-class grid: every status with its execution class,
-crossed with the duplicate flag and note presence.
--}
 writeGrid :: [WriteAck]
 writeGrid =
     [ WriteAck cid status hash execution dup note
@@ -81,12 +70,10 @@ spec = describe "write-ack declared shape (R3.6)" $ do
         it "the real executeTool producers emit only the declared shape" $ do
             (app, store) <- mkFixture
             let rn = fastRn app
-            -- Completed inline (fast write).
             done <- insertSrc app store rn "x = 1"
             case parseAckEnvelope done of
                 Just (EnvWrite wa) -> waStatus wa `shouldBe` AckCompleted
                 other -> expectationFailure ("undecodable ack: " <> show other)
-            -- Executing ack, then its duplicate, then the own-write bounce.
             (app2, store2) <- mkFixture
             barrier <- newEmptyMVar
             let rn2 = slowRn app2 barrier

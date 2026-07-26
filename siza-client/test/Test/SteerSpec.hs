@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Name-shape goal classification, and the guard that the miss record stays
-a record.
-
-This spec used to pin construct-facet steering: by miss 2 the ladder told the
-caller to re-query with @mode="construct"@, and by the give-up rung to stop
-searching and act. Both rest on the harness inferring that the search so far
-was sufficient and the question malformed — an inference it cannot make, and
-one that is wrong exactly when the hunt is hard. 'goalTypeOf' survives
-because goal detection is still real; the advice it fed does not.
--}
 module Test.SteerSpec (
     steerSpec,
     foundHidden,
@@ -45,15 +35,12 @@ import Siza.Agent.Discover.Types (
 import Test.CatalogueSim (SimWorld (..), producerPkgs)
 import Test.DiscoverFixtures (SynPkg (..), textField)
 
--- Fixtures -------------------------------------------------------------------
-
 envP :: NotebookEnv
 envP = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
--- | A miss envelope for a query (no source held an answer).
 missEnvOf :: Text -> Value
 missEnvOf q =
     discoverEnvelope
@@ -63,7 +50,6 @@ missEnvOf q =
         [okAnswer "session" [], okAnswer "hoogle" []]
         hk0
 
--- | A found hidden-package answer: a cabal-line fact, NOT call-ready (no sig).
 foundHidden :: Value
 foundHidden =
     discoverEnvelope
@@ -79,7 +65,6 @@ foundHidden =
             , dhCabal = Just "-- cabal: build-depends: cumulus"
             }
 
--- | The scripted literal-minded ledger walk: shortcut else record, in order.
 scriptLedger :: [(Text, Value)] -> (SearchLedger, [Value])
 scriptLedger = foldl step (emptyLedger, [])
   where
@@ -92,7 +77,6 @@ scriptLedger = foldl step (emptyLedger, [])
 adviceOf :: Value -> Text
 adviceOf v = textField "next" v <> " " <> textField "summary" v
 
--- | The producer catalogue world (session sees the exposed packages).
 world :: SimWorld
 world = SimWorld [p | p <- pkgs, not (spHidden p)] pkgs
   where
@@ -102,8 +86,6 @@ steerSpec :: Spec
 steerSpec = describe "goal shape classification and the miss record" $ do
     shapeSpec
     recordSpec
-
--- Shape classification (never a library name) --------------------------------
 
 shapeSpec :: Spec
 shapeSpec = describe "goalTypeOf classifies by name shape alone" $ do
@@ -137,9 +119,6 @@ shapeSpec = describe "goalTypeOf classifies by name shape alone" $ do
             ]
         $ \n -> (n, goalTypeOf n) `shouldBe` (n, Nothing)
 
--- The record carries facts; it never instructs ------------------------------
-
--- | Every imperative the ladder used to escalate into.
 bannedAdvice :: [Text]
 bannedAdvice =
     [ "mode=\"construct\""

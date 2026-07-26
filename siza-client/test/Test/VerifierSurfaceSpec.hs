@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R7-T3 (R3.6/R3.9/R3.10): over the (signature x trailing-blob x tool)
-grid the distilled answer is exactly the writable line plus a closed verdict,
-validator-clean and budgeted; list_bindings is writable-or-one-statement.
--}
 module Test.VerifierSurfaceSpec (verifierSurfaceSpec) where
 
 import Control.Monad (forM_)
@@ -26,7 +22,6 @@ import Sabela.AI.VerifierDistill (
  )
 import Siza.Agent.Discover.Envelope (stringViols)
 
--- | Generated signature grid: plain, constrained, operator and qualified.
 sigGrid :: [(Text, Text)]
 sigGrid =
     [ ("revenueTotal", "Double")
@@ -35,9 +30,6 @@ sigGrid =
     , ("(<>)", "Semigroup a => a -> a -> a")
     ]
 
-{- | The four trailing-blob leak classes of the run-181440 grid: double-
-encoded GHC JSON, a raw @:info@ dump, a package-hash atom, control chars.
--}
 blobGrid :: [(Text, Text)]
 blobGrid =
     [
@@ -59,7 +51,6 @@ blobGrid =
     , ("control-chars", "\SOH\STX stale probe \ETX")
     ]
 
--- | The run-181440 revenueTotal fixture: correct signature + raw GHC JSON.
 run181440CheckType :: Text
 run181440CheckType =
     "D.sum :: (D.Columnable a, Num a) => D.Expr a -> D.DataFrame -> a\n\n"

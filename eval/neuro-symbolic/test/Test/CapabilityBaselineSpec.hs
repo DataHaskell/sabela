@@ -1,19 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for the capability BASELINE in non-capability gates
-(evalExpr deep-dive finding 5).
-
-In the fixed-lever ResolverLever gate, @SABELA_CAPABILITY_SEARCH@ was simply
-inherited-unset, so @discover@'s prose route silently degraded to keyword-only
-in BOTH arms — the capability backend was off even though it was not the lever
-under test. A knob that is not the lever should sit at its production baseline
-(ON); only 'CapabilityLever' itself may vary it between arms.
-
-Proposed API (extends Eval.Gate; 'setCapabilityEnv' applies it):
-
-  capabilityEnvFor :: GateLever -> SearchMode -> Maybe String
-    -- Just "1" = set, Nothing = unset in the gate process
--}
 module Test.CapabilityBaselineSpec (spec) where
 
 import Test.Hspec

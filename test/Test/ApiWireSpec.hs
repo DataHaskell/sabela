@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Wire-format pinning for 'Sabela.Api' DTOs whose JSON shape is consumed
-by the frontend (and is therefore part of our external contract). The
-Generic-derived shapes use the record selector names (@cfPath@,
-@icAfter@, …); when we hand-roll an instance to support an ADT migration
-the renamed keys silently break the frontend, and there is no other test
-that catches it.
--}
 module Test.ApiWireSpec (spec) where
 
 import Data.Aeson (Value (..), decode, encode, object, (.=))

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | General envelope invariants (testing-plan R3.6, R3.8-R3.10, R1.7): every
-render path stays under the 2,500-char budget by construction, decodes against
-ONE declared schema with no serialisation-inside-a-string and no package-hash
-names, and the tool description is generated from that same schema.
--}
 module Test.DiscoverEnvelopeSpec (discoverEnvelopeSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -54,7 +49,6 @@ env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
--- | A worst-legal hit: every optional field present and long.
 wideHit :: Int -> DHit
 wideHit i =
     (mkHit "col" ("Extremely.Deep.Module.Path.Number" <> tShow i) pkg)
@@ -69,7 +63,6 @@ wideHit i =
 tShow :: Int -> Text
 tShow = T.pack . show
 
--- | A worst-legal browse card: 60 long export lines.
 wideCard :: Value
 wideCard =
     object
@@ -115,10 +108,6 @@ discoverEnvelopeSpec =
                     length (hitsOf v) `shouldBe` intField "shown" v
                     intField "shown" v + intField "omitted" v
                         `shouldBe` intField "total" v
-                {- raw probe: shedding exports FIRST emptied the card
-                (exports: [], moreExports: 60) while worst-ranked hits
-                survived — and the export list is the evidence a caller
-                decides from. Hits shed first; exports keep a floor. -}
                 it "sheds hits before card exports, and floors the exports" $ do
                     let v =
                             boundEnvelope
@@ -255,7 +244,6 @@ discoverEnvelopeSpec =
                     discoverGrammarBlock
                         `shouldSatisfy` T.isInfixOf "what was consulted"
 
--- | The card's exports array, empty when absent.
 exportsOf :: Value -> [Value]
 exportsOf v = case field "card" v of
     Just (Object c) -> case KM.lookup "exports" c of

@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Shared live-integration harness for G6's diagnostic-mitigation specs,
-against a REAL GHCi kernel, mirroring "Test.RepairGateSpec".
--}
 module Test.DiagnosticMitigationFixtures (
     requireLiveIntegration,
     field,
@@ -40,9 +37,6 @@ import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State (App (..), atomicEditNotebook, freshCellId, readNotebook)
 
-{- | Skip a spec (rather than fail) when there is no real GHC toolchain to
-gate-check against — this whole module exercises a live kernel.
--}
 requireLiveIntegration :: IO ()
 requireLiveIntegration = do
     cabal <- findExecutable "cabal"
@@ -88,10 +82,6 @@ insertSrc :: App -> AIStore.AIStore -> ReactiveNotebook -> Text -> IO Value
 insertSrc app store rn src =
     callTool app store rn "insert_cell" (object ["source" .= src])
 
-{- | Land a cell WITHOUT G1's compile gate — simulates a cell that already
-compiled and is now failing at real execution, so 'Sabela.AI.Capabilities.Edit.Cascade.executeWithRepair'
-(via the tools below) can be driven directly and in isolation.
--}
 bypassInsert :: App -> Text -> IO Int
 bypassInsert app src = do
     nid <- freshCellId (appNotebook app)
@@ -107,9 +97,6 @@ bypassInsert app src = do
 cellSourceOf :: App -> Int -> IO (Maybe Text)
 cellSourceOf app cid = fmap cellSource . lookupCell cid <$> readNotebook (appNotebook app)
 
-{- | Poll @await_idle@ (bounded) until the given cell's write settles, and
-return its @execution@ value.
--}
 settledExecutionFor ::
     App ->
     AIStore.AIStore ->
@@ -129,10 +116,6 @@ settledExecutionFor app store rn n mCid = do
     matches cid w = field "cellId" w == cid
     findMaybe p = foldr (\x acc -> if p x then Just x else acc) Nothing
 
-{- | Land @src@ bypassing G1, drive the mitigation cascade once, and return
-whether the cell settled clean, the mitigations disclosure (if the cascade's
-mitigate tier ever fired), and the final cell source.
--}
 mitigate :: FilePath -> Text -> IO (Bool, Maybe Value, Maybe Text)
 mitigate dir src = do
     (app, store, rn) <- newFixture dir
@@ -143,7 +126,6 @@ mitigate dir src = do
     post <- cellSourceOf app cid
     pure (isClean (healthOfResult result), mitigations, post)
 
--- | The @class@ of every applied fix in a mitigations disclosure, in order.
 classesOf :: Value -> [Text]
 classesOf v = case field "appliedInOrder" v of
     Just (Array xs) -> [c | fixV <- foldr (:) [] xs, Just c <- [field "class" fixV >>= asText]]

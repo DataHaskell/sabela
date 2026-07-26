@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Embedded HTML pages and small WAI response builders. This is a leaf module
-(no @Hub.*@ dependencies): putting the response builders here lets both
-'Hub.Auth' and 'Hub.Shares.Api' share them without a cycle. The pages share the
-Warm Paper palette and fonts used by the gallery ("Hub.Gallery.Style") so the
-whole site reads as one product.
--}
 module Hub.Pages (
     loginHtml,
     loginPage,
@@ -52,10 +46,6 @@ startingPage =
         [(hContentType, "text/html; charset=utf-8")]
         (BL.fromStrict (TE.encodeUtf8 startingHtml))
 
-{- | Shared Warm Paper base: the gallery font import, palette tokens, page
-ground (warm radial gradient), and the brand mark. Goes first in every
-@<style>@ so its @\@import@ is the leading rule.
--}
 themeStyle :: Text
 themeStyle =
     T.concat

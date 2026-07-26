@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the §1.8 'ToolOutcome' mapping by driving the REAL @aiToolH@ /
-@executeTool@ dispatch (not a reconstructed Aeson value). A cell that fails
-to compile is a *successful tool call reporting a failed cell*, so the
-envelope is 'ToolOk' (@isError: false@); a tool-mechanics failure (Busy,
-bad arguments, unknown tool) is 'ToolErr' (@isError: true@). This guards the
-backwards-boolean regression the envelope exists to kill.
--}
 module Test.ToolOutcomeWireSpec (spec) where
 
 import Control.Concurrent (forkIO, threadDelay)
@@ -46,7 +39,6 @@ import Sabela.State.SessionManager (setHaskellSession)
 import Test.Hspec
 import Test.TopoSpec.Helpers (mkCell)
 
--- | A fake backend with a fixed busy flag; everything else is inert.
 fakeBackend :: Bool -> IO ST.SessionBackend
 fakeBackend busy = do
     uid <- newUnique
@@ -74,9 +66,6 @@ fakeBackend busy = do
                 }
     pure backend
 
-{- | App with a real HTTP manager (so 'ensureAIStoreForTools' builds a store)
-and a fake Haskell session of the given busy state.
--}
 mkApp :: Bool -> IO App
 mkApp busy = do
     mgr <- newManager defaultManagerSettings
@@ -87,7 +76,6 @@ mkApp busy = do
         nb{nbCells = [mkCell 1 "x = 1", mkCell 2 "y = 2"]}
     pure app
 
--- | A throwaway 'AIStore' for driving 'executeTool' directly.
 mkStore :: IO AIStore.AIStore
 mkStore = do
     mgr <- newManager defaultManagerSettings
@@ -99,11 +87,6 @@ mkStore = do
                 }
     AIStore.newAIStore cfg mgr
 
-{- | A 'ReactiveNotebook' whose run broadcasts a compile-error 'EvCellResult'
-for the given cell. The broadcast is delayed so 'executeCell' has subscribed
-to the bus before the result lands. @execute_cell@ drives @rnRunCellForced@,
-so both run fields share the broadcaster.
--}
 compileErrorRn :: App -> CellError -> ReactiveNotebook
 compileErrorRn app err =
     ReactiveNotebook
@@ -124,7 +107,6 @@ field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
--- | Run the real REST bridge handler and pull out the @isError@ wire field.
 toolWire :: App -> ReactiveNotebook -> Text -> Value -> IO Value
 toolWire app rn name input = do
     let body = object ["name" .= name, "input" .= input]

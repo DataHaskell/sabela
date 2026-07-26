@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure checks on 'rtsGhcOptions'. Two invariants: the nursery is a total
-budget divided across capabilities (never per-capability, which scaled with
-core count and cost 7.4GB idle on a 14-core box), and the kernel always
-carries a max-heap cap so a runaway cell cannot OOM the box.
--}
 module Test.RtsGhcOptionsSpec (spec) where
 
 import Data.Char (isDigit)
@@ -12,24 +7,18 @@ import Data.List (isInfixOf, isPrefixOf)
 import Sabela.Session.Process (rtsGhcOptions)
 import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 
-{- | The intended total allocation area in MB, pinned here independently of
-the implementation so a change to the budget has to be a deliberate edit.
--}
 nurseryTotalMb :: Int
 nurseryTotalMb = 512
 
--- | The per-capability floor in MB, below which @-A@ is never driven.
 nurseryFloorMb :: Int
 nurseryFloorMb = 16
 
--- | The @-A@ size, in MB, parsed back out of a rendered flag string.
 areaMbOf :: String -> Int
 areaMbOf rendered =
     case [w | w <- words rendered, "-A" `isPrefixOf` w] of
         (w : _) -> read (takeWhile isDigit (drop 2 w))
         [] -> error ("no -A flag in: " ++ rendered)
 
--- | Capability counts spanning the floor crossover at 32.
 capCases :: [Int]
 capCases = [1, 2, 4, 8, 14, 64]
 
@@ -70,9 +59,6 @@ spec = describe "rtsGhcOptions" $ do
             rtsGhcOptions 8 Nothing
                 `shouldBe` "+RTS -N8 -A64m -n4m -H1G -M8g -RTS"
 
-{- | The budget holds outright below the floor crossover; at and above it the
-floor wins, and the total is allowed to grow to @caps * floor@.
--}
 boundedTotal :: Int -> IO ()
 boundedTotal caps =
     (caps * areaMbOf (rtsGhcOptions caps Nothing))

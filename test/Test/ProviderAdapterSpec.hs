@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the Anthropic 'ModelProvider' adapter's anti-corruption layer:
-'buildRequest' must reproduce the prompt-cache policy that used to live in the
-notebook loop (the billing guard), and 'responseToCompletion' must map wire
-content/stop/usage onto the neutral kernel.
--}
 module Test.ProviderAdapterSpec (spec) where
 
 import Data.Aeson (ToJSON, Value (..), decode, encode, object, (.=))

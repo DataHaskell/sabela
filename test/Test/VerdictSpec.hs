@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T4 verdict totality (search-api.md section 5.3): every verifier-surface
-outcome class renders a member of the CLOSED verdict vocabulary, silence is
-undecodable, and a transport-swallowed answer decodes as the no-verdict infra
-class — never an implicit pass.
--}
 module Test.VerdictSpec (spec) where
 
 import qualified Data.Text as T

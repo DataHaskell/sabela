@@ -1,19 +1,9 @@
-{- | Reasoning corpus — programming-competition tasks.
-
-Answer-QUALITY tasks: each has a single deterministic answer over inline input
-and a pure 'ByValue' check pinned to a LIVE-VALIDATED value. These probe the
-model's reasoning, not library discovery — whether it hand-rolls or reaches for a
-package is irrelevant, so no task names a library and none renders. Deliverables
-are top-level bindings (notebooks have no @main@). See the validated values in
-the haddock above each task.
--}
 module Eval.Corpus.Reasoning.Competition (
     competitionTasks,
 ) where
 
 import Eval.Task (Grader (..), Task (..))
 
--- | The competition reasoning tasks, in catalogue order.
 competitionTasks :: [Task]
 competitionTasks =
     [ maxSubarrayTask
@@ -24,10 +14,6 @@ competitionTasks =
     , gridPathsTask
     ]
 
-{- | Kadane's maximum-subarray sum. Validated: the answer for
-[-2,1,-3,4,-1,2,1,-5,4] is 6 (the run [4,-1,2,1]) and for the all-negative
-[-3,-1,-2] is -1 (the largest single element).
--}
 maxSubarrayTask :: Task
 maxSubarrayTask =
     Task
@@ -44,9 +30,6 @@ maxSubarrayTask =
             \&& maxSubarray [5] == 5"
         )
 
-{- | Count of primes strictly below n. Validated: there are 25 primes below 100
-and 4 primes below 10 (2,3,5,7).
--}
 countPrimesTask :: Task
 countPrimesTask =
     Task
@@ -60,9 +43,6 @@ countPrimesTask =
             \&& countPrimes 2 == 0 && countPrimes 0 == 0"
         )
 
-{- | Longest strictly-increasing-subsequence length. Validated:
-[10,9,2,5,3,7,101,18] -> 4, [0,1,0,3,2,3] -> 4, repeated elements -> 1, [] -> 0.
--}
 lisLengthTask :: Task
 lisLengthTask =
     Task
@@ -78,10 +58,6 @@ lisLengthTask =
             \&& lisLength [7,7,7] == 1 && lisLength [] == 0"
         )
 
-{- | Minimal-coin change over unlimited denominations. Validated:
-minCoins [1,2,5] 11 == Just 3 (5+5+1), minCoins [2] 3 == Nothing,
-minCoins _ 0 == Just 0.
--}
 coinChangeTask :: Task
 coinChangeTask =
     Task
@@ -96,9 +72,6 @@ coinChangeTask =
             \&& minCoins [1,2,5] 0 == Just 0 && minCoins [1,5,10,25] 30 == Just 2"
         )
 
-{- | N-queens solution count. Validated: queens 6 == 4, queens 8 == 92,
-queens 1 == 1, queens 4 == 2 (the classic counts).
--}
 nQueensTask :: Task
 nQueensTask =
     Task
@@ -111,10 +84,6 @@ nQueensTask =
             "queens 6 == 4 && queens 8 == 92 && queens 1 == 1 && queens 4 == 2"
         )
 
-{- | Lattice-path DP: monotone right/down paths across an m×n grid of cells (the
-binomial coefficient). Validated: gridPaths 3 3 == 20, gridPaths 2 3 == 10,
-gridPaths 0 5 == 1.
--}
 gridPathsTask :: Task
 gridPathsTask =
     Task

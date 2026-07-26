@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The Ollama 'ModelProvider' adapter: the anti-corruption layer between the
-neutral kernel and Ollama's native @/api/chat@ wire. Outbound it renders the
-neutral request (system prose, 'Message's, 'ToolSpec's) into Ollama's JSON;
-inbound it maps a recovered 'Turn' into a 'Completion'. Ollama is non-streaming
-(@stream:false@) and emits no tool-call ids or stop reason, so the sink is never
-called, ids are synthesised, and the stop condition is derived.
--}
 module Sabela.LLM.Ollama (
     ollamaProvider,
     ollamaParseRetries,
@@ -41,9 +34,6 @@ import Sabela.LLM.Provider (
  )
 import Sabela.LLM.Tool (ToolSpec (..))
 
-{- | An Ollama-backed provider. @model@ is the Ollama model tag (e.g.
-@gpt-oss:20b@); @numCtx@ is the context window sent as @num_ctx@.
--}
 ollamaProvider :: Manager -> Text -> Int -> ModelProvider
 ollamaProvider mgr model numCtx =
     ModelProvider
@@ -76,7 +66,6 @@ ollamaProvider mgr model numCtx =
                         tools
             _ -> pure result
 
--- | One initial request plus two parse-class retries; never an unbounded loop.
 ollamaParseRetries :: Int
 ollamaParseRetries = 2
 
@@ -87,7 +76,6 @@ parseFailureMessage failure =
         , "content" .= C.pfReprompt failure
         ]
 
--- | System prose becomes one @role:system@ message (empty prose → none).
 renderSystem :: [Text] -> [Value]
 renderSystem blocks
     | T.null joined = []
@@ -95,11 +83,6 @@ renderSystem blocks
   where
     joined = T.intercalate "\n\n" (filter (not . T.null) blocks)
 
-{- | One neutral 'Message' → the Ollama message(s) it expands to. Ollama needs a
-separate @role:tool@ message per tool result, so a message is fanned out: its
-text (if any) plus one @role:tool@ message per 'ToolResultPart'. Assistant tool
-calls ride in the @tool_calls@ field of the single assistant message.
--}
 renderMessage :: Message -> [Value]
 renderMessage (Message role parts) = case role of
     System -> [roleMsg "system" (textOf parts)]
@@ -131,7 +114,6 @@ renderMessage (Message role parts) = case role of
 textOf :: [ContentPart] -> Text
 textOf parts = T.intercalate "\n" [t | TextPart t <- parts]
 
--- | A neutral 'ToolSpec' → Ollama's @{type:function, function:{…}}@ envelope.
 renderTool :: ToolSpec -> Value
 renderTool spec =
     object
@@ -144,10 +126,6 @@ renderTool spec =
                 ]
         ]
 
-{- | An Ollama 'Turn' → a neutral 'Completion': content → a text part, tool calls
-→ 'ToolCallPart's with positionally-synthesised ids, stop condition derived from
-whether any tool was called, and no token usage (the client reports none).
--}
 turnToCompletion :: C.Turn -> Completion
 turnToCompletion t =
     Completion
@@ -167,11 +145,6 @@ turnToCompletion t =
         | (i, c) <- zip [0 :: Int ..] (C.turnCalls t)
         ]
 
-{- | Render a tool outcome as Ollama message content. Ollama's @role:tool@
-message has no @is_error@ field, so the failure is signalled by a @TOOL ERROR:@
-prefix (as the eval harness did); the body is truncated so a large result cannot
-blow @num_ctx@.
--}
 outcomeText :: ToolOutcome -> Text
 outcomeText o = prefix <> T.take outcomeCap (valueText (toolOutcomeValue o))
   where

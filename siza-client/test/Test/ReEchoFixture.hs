@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The run-20260720-085948 symbolicRegression-off re-echo fixture: one ~1.6k
-cell source transmitted verbatim ten times across model echoes plus the
-self_heal/read_cell/list_cells injected surfaces, as a 26-message sequence.
--}
 module Test.ReEchoFixture (
     Role (..),
     fixtureMsgs,
@@ -24,11 +20,9 @@ import Siza.Agent.Tools (renderOutcome)
 data Role = System | User | Assistant | Tool
     deriving (Eq, Show)
 
--- | The episode's evolving cell source, final pre-heal version (msg 17).
 srcPreHeal :: Text
 srcPreHeal = srcWithSig "(resultExpr, resultError) :: (String, Double)"
 
--- | The post-heal source echoed by self_heal, read_cell, and list_cells.
 srcPostHeal :: Text
 srcPostHeal = srcWithSig "(resultText, resultError) :: (String, Double)"
 
@@ -92,7 +86,6 @@ srcWithSig sig =
 toolOk :: Value -> Text
 toolOk = renderOutcome . Right . ToolOk
 
--- | An assistant turn carrying a replace_cell_source call, as raw JSON.
 assistantWrite :: Text -> Text
 assistantWrite src =
     TE.decodeUtf8 . LBS.toStrict . encode $
@@ -194,9 +187,6 @@ smallOutcome diag =
             ]
         )
 
-{- | The 26-message sequence with the run's roles: assistants at the odd
-positions 3..25 (12 chat calls), the injected tool surfaces between them.
--}
 fixtureMsgs :: [(Role, Text)]
 fixtureMsgs =
     [ (System, T.replicate 50 "system prompt line; ")

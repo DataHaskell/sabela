@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Tests for 'cellNames' — what defs/uses the parser extracts.
 module Test.TopoSpec.Names (spec) where
 
 import qualified Data.Set as S
@@ -54,7 +53,6 @@ spec = do
             let (defs, uses) = cellNames "x' = x + 1"
             S.member "x'" defs `shouldBe` True
             S.member "x" uses `shouldBe` True
-            -- x' and x are separate
             S.member "x" defs `shouldBe` False
 
     describe "cellNames — literals and comments are not scanned" $ do
@@ -63,7 +61,6 @@ spec = do
             S.member "foo" uses `shouldBe` False
             S.member "bar" uses `shouldBe` False
             S.member "baz" uses `shouldBe` False
-            -- real use of putStrLn IS picked up
             S.member "putStrLn" uses `shouldBe` True
 
         it "does NOT pick up identifiers inside line comments" $ do
@@ -93,8 +90,6 @@ spec = do
                 (defs, uses) = cellNames src
             S.member "template" defs `shouldBe` True
             S.member "realDef" defs `shouldBe` True
-            -- The 'defA' and 'defB' tokens inside the string must not
-            -- become uses of real identifiers.
             S.member "defA" uses `shouldBe` False
             S.member "defB" uses `shouldBe` False
 
@@ -111,15 +106,10 @@ spec = do
                         <> "  | otherwise = all (\\d -> n `mod` d /= 0) [2..n-1]"
                 (defs, uses) = cellNames src
             S.member "isPrime" defs `shouldBe` True
-            -- n is the function parameter; it should not be recorded as a
-            -- top-level use of something defined elsewhere.
             S.member "n" uses `shouldBe` False
-            -- Real uses (from the body) are preserved.
             S.member "all" uses `shouldBe` True
 
         it "a FREE mention of `x` outside any binding is still a use" $ do
-            -- 'double x = ...' binds x locally. 'main = print (double x)'
-            -- uses x at the top level — it must remain in uses.
             let src =
                     "double x = x * 2\n"
                         <> "main = print (double x)"

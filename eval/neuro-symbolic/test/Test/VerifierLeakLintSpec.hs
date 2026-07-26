@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R7-T3 x R8.4: verifier-surface leak lint — the run-181440 check_type
-shape fails, the distilled shape passes; non-verifier channels and
-model-authored text are exempt.
--}
 module Test.VerifierLeakLintSpec (spec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -25,7 +21,6 @@ rules = map liRule . lintMessages
 verifierRules :: [Value] -> [Text]
 verifierRules = filter ("verifier-" `T.isPrefixOf`) . rules
 
--- | The run-181440 revenueTotal check_type content: sig + double-encoded blob.
 blobCheckType :: Text
 blobCheckType =
     "{\"expr\":\"D.sum\",\"result\":\"D.sum :: (D.Columnable a, \

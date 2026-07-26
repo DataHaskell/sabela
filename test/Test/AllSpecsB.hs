@@ -28,7 +28,9 @@ import qualified Test.DepsRepairSpec as DepsRepairSpec
 import qualified Test.DiscoveryToolsPreSessionSpec as DiscoveryToolsPreSessionSpec
 import qualified Test.EvCellResultWireSpec as EvCellResultWireSpec
 import qualified Test.ExportGoldenSpec as ExportGoldenSpec
+import qualified Test.GateRepairSpec as GateRepairSpec
 import qualified Test.GenerationSpec as GenerationSpec
+import qualified Test.HintsSpec as HintsSpec
 import Test.Hspec (Spec)
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
 import qualified Test.KernelState.HolderSpec as KernelStateHolderSpec
@@ -68,6 +70,7 @@ import qualified Test.ScratchpadSilenceSpec as ScratchpadSilenceSpec
 import qualified Test.SessionGenSpec as SessionGenSpec
 import qualified Test.SizaContractWireSpec as SizaContractWireSpec
 import qualified Test.SourceNormalizeSpec as SourceNormalizeSpec
+import qualified Test.StderrFailureSpec as StderrFailureSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
 import qualified Test.ToolOutcomeWireSpec as ToolOutcomeWireSpec
 import qualified Test.ToolParseSpec as ToolParseSpec
@@ -91,6 +94,9 @@ allSpecsB = do
     DeclaredSpec.spec
     PackageIndexSpec.spec
     PathRepairSpec.spec
+    GateRepairSpec.spec
+    HintsSpec.spec
+    StderrFailureSpec.spec
     PeekDataSpec.spec
     CellShapeSpec.spec
     WriteBoundarySpec.spec

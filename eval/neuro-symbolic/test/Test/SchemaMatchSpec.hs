@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T5 schema-match tool-call recovery, as a corpus property over the
-live garble classes (topMonth's thinking-fused suffix, both live_test.md
-punctuation shapes, truncation, near-miss) x every offered tool's valid
-payload: a UNIQUE schema match recovers exactly one call stamped into
-'turnRaw'; ambiguity reprompts naming the parse failure; nothing is
-silently swallowed; recovery is invariant to task content.
--}
 module Test.SchemaMatchSpec (spec) where
 
 import Control.Monad (forM_)
@@ -98,10 +91,6 @@ spec = describe "schema-match name recovery (R9-T5 corpus property)" $ do
                     Right t' -> map tcName (turnCalls t') `shouldBe` ["insert_cell"]
                     Left e -> expectationFailure ("unexpected Left: " <> show e)
 
-{- | The R9-T5 garble corpus: the classes measured live (topMonth's
-thinking-fused suffix; both live_test.md punctuation shapes) plus the
-truncation and near-miss families, applied to every offered name.
--}
 garbleClasses :: [(String, Text -> Text)]
 garbleClasses =
     [ ("thinking-fused suffix", (<> "?We"))
@@ -111,7 +100,6 @@ garbleClasses =
     , ("near-miss name", \n -> T.dropEnd 1 n <> "z")
     ]
 
--- | A full-props argument payload for one offered tool, values keyed by name.
 payloadFor :: Text -> Value
 payloadFor tool =
     object
@@ -127,10 +115,6 @@ valFor "full" = Bool True
 valFor "limit" = Number 5
 valFor k = String ("task content for " <> k)
 
-{- | Test-side mirror of the schema-fingerprint law (testing-plan R5.9 spec
-wording): every given key among the tool's properties, every required key
-given; empty args fingerprint nothing.
--}
 schemaFits :: Value -> [Text]
 schemaFits (Object o) =
     [ t
@@ -143,10 +127,6 @@ schemaFits (Object o) =
     keys = map K.toText (KM.keys o)
 schemaFits _ = []
 
-{- | Expected unique recovery: name-evidence classes (suffix, truncation,
-near-miss, built from @real@) recover @real@; letterless classes recover
-exactly the unique schema match, else nothing (reprompt).
--}
 expectedRecovery :: String -> Text -> Value -> Maybe Text
 expectedRecovery cls real args
     | cls `elem` ["pure punctuation", "unicode-ellipsis garble"] =
@@ -155,7 +135,6 @@ expectedRecovery cls real args
             _ -> Nothing
     | otherwise = Just real
 
--- | One corpus member: recovery is stamped, or the call reprompts unswallowed.
 checkCorpusMember :: String -> Text -> Text -> Value -> Expectation
 checkCorpusMember cls garbled real args =
     case parseTurn (encode (chatBody [callObjA garbled args])) of
@@ -183,7 +162,6 @@ checkCorpusMember cls garbled real args =
                                 (cls <> ": ambiguous garble dispatched as discover")
                         _ -> pure ()
 
--- | A native tool_call entry with an explicit argument object.
 callObjA :: Text -> Value -> Value
 callObjA name args =
     object ["function" .= object ["name" .= name, "arguments" .= args]]
@@ -199,7 +177,6 @@ chatBody calls =
                 ]
         ]
 
--- | The function names under @tool_calls@ in a recorded raw message.
 rawCallNames :: Value -> [Text]
 rawCallNames raw = case fieldOf "tool_calls" raw of
     Just (Array a) ->

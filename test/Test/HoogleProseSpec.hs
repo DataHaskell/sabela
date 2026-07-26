@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The prose ladder's package-scoped rescue (search-api.md section 4 step
-4): a free-text query naming a package can never silently lose the package
-term to a widening stage — the run-085948 zero-granite-rows regression.
--}
 module Test.HoogleProseSpec (spec) where
 
 import Data.Text (Text)
@@ -18,11 +14,9 @@ import Sabela.AI.HoogleProse (
  )
 import Sabela.AI.HoogleResolve (HoogleHit (..))
 
--- | A symbol hit in the named package's module.
 hit :: Text -> Text -> Text -> Text -> HoogleHit
 hit n p m ty = HoogleHit n p m ty ""
 
--- | The hoogle row shape for @package NAME@ (empty module, no signature).
 pkgRow :: Text -> HoogleHit
 pkgRow p = HoogleHit p p "" "" ""
 
@@ -38,10 +32,6 @@ foreignWall =
     , hit "Bar" "plotlyhs" "Graphics.Plotly" "TraceType"
     ]
 
-{- | The run-085948 world: the full phrase misses, the bigram windows only
-reach foreign packages, and the named package's rows exist solely under the
-package-scoped spellings.
--}
 scriptedRun :: Int -> Text -> IO [HoogleHit]
 scriptedRun _ q = pure $ case T.strip q of
     "granite" -> [pkgRow "granite", hit "Granite" "granite" "Granite" ""]
@@ -50,7 +40,6 @@ scriptedRun _ q = pure $ case T.strip q of
     "+granite chart" -> [chartHit]
     _ -> []
 
--- | A world where no query term names a package: the ladder is unchanged.
 noPkgRun :: Int -> Text -> IO [HoogleHit]
 noPkgRun _ q = pure $ case T.strip q of
     "bar chart" -> foreignWall
@@ -68,8 +57,6 @@ packageRescueSpec = describe "prose package-scoped rescue (run-085948 regression
 
     it "the scoped stage outranks the foreign-package bigram wall" $ do
         hits <- hoogleQueryWith scriptedRun 8 "bar chart granite"
-        -- Every scoped-rescue row honours the named package; the bigram
-        -- wall that lost the term must not be the answer.
         map hhPackage hits `shouldSatisfy` all (== "granite")
 
     it "without a package-named term the ladder is unchanged" $ do
@@ -92,10 +79,6 @@ packageRescueSpec = describe "prose package-scoped rescue (run-085948 regression
         isPackageRow "granite" barsHit `shouldBe` False
         isPackageRow "chart" (pkgRow "granite") `shouldBe` False
 
-{- | The 2026-07-21 specimen (HANDOFF.md "exact-name-first is intent-blind"):
-"plot a sine wave" widened to the isolated noun "sine", exact-matching a
-synth oscillator instead of a chart library.
--}
 sineSpec :: Spec
 sineSpec = describe "action-need stage (intent-blind regression)" $ do
     it "a plotting request finds the chart library, never the isolated object noun" $ do
@@ -109,9 +92,6 @@ sineSpec = describe "action-need stage (intent-blind regression)" $ do
     chartLibHit = hit "linePlot" "chart-svg" "Chart.Line" "[Double] -> Svg"
     sineOscillatorHit =
         hit "sine" "tidal" "Sound.Tidal.Boot" "Time -> Signal Double"
-    -- Every phrase/keyword/bigram spelling of the sentence misses; only the
-    -- action-need query and the isolated noun (which must never be reached)
-    -- answer.
     sineRun :: Int -> Text -> IO [HoogleHit]
     sineRun _ q = pure $ case T.strip (T.toLower q) of
         "chart library" -> [chartLibHit]

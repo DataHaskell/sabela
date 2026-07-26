@@ -24,24 +24,20 @@ import Siza.Provenance (
  )
 import Siza.Security (Capability (..), scanFindings)
 
--- | The capabilities the scan finds in a snippet, by parse+scan over the AST.
 foundCaps :: Text -> [Capability]
 foundCaps src = case Hs.parseModuleE src of
     Left ds -> error ("parse failed: " <> show ds)
     Right m -> map (\(c, _, _) -> c) (scanFindings m)
 
--- | The unsigned top-level binds of a snippet, parsed then extracted.
 unsigned :: Text -> [Text]
 unsigned src = case Hs.parseModuleE src of
     Left ds -> error ("parse failed: " <> show ds)
     Right m -> unsignedTopLevelBinds m
 
--- | A stubbed type query: look the name up in a fixed table, else fail.
 stubQuery :: [(Text, Text)] -> Text -> IO (Either Text Text)
 stubQuery table name =
     pure (maybe (Left "no type inferred (cold session)") Right (lookup name table))
 
--- | A reference event: a vetted mutation that came back as an error.
 sampleEvent :: SessionEvent
 sampleEvent =
     SessionEvent
@@ -59,10 +55,9 @@ sampleEvent =
         , sePrev = Nothing
         }
 
--- | A sample session: 4 calls — 2 errors, 1 security finding, 1 block.
 retroSession :: [SessionEvent]
 retroSession =
-    [ sampleEvent -- ReplaceCellSource, ToolErr, clean preflight
+    [ sampleEvent
     , sampleEvent
         { seCall = ExecuteCell
         , seOutcome = ToolOk (object [])

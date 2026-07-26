@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Assertion-ledger truthfulness (search-api.md sections 10/11, R1.4, R3.8):
-monotonicity over GENERATED assert\/deny\/world sequences — a fact once
-asserted (or seeded at turn 0) is never later denied absent an announced
-install\/restart — and answer-hash dedup: a DIFFERENT query whose ranked
-answer is byte-identical returns a one-line duplicate reference.
--}
 module Test.DiscoverLedgerSpec (discoverLedgerSpec) where
 
 import Control.Monad (forM_, replicateM)
@@ -75,8 +69,6 @@ missFor q =
         [okAnswer "session" [], okAnswer "hoogle" []]
         hkT
 
--- Monotonicity over generated sequences (R1.4) ------------------------------
-
 data Ev = Assert Text | Deny Text | World
 
 evAlphabet :: [Ev]
@@ -97,9 +89,6 @@ seededFacts = Set.fromList (map T.toLower ("gamma" : builtinNames))
 clusterName :: Text -> Text
 clusterName = T.toLower . T.takeWhile (/= ' ') . stripDecoration
 
-{- | Replay a generated event sequence through the guard discipline
-(shortcut, else record); return the protected facts that got denied.
--}
 replay :: [Ev] -> [Text]
 replay evs = viols
   where
@@ -159,8 +148,6 @@ ledgerMonotonicitySpec = describe "ledger monotonicity (R1.4): asserted facts ar
                        ]
                 ]
     seedDispatch _ = pure (Left "unsupported")
-
--- Answer-hash dedup (R3.8 extension, section 10) ----------------------------
 
 answerHashSpec :: Spec
 answerHashSpec = describe "answer-hash dedup: an unchanged answer is a one-line reference" $ do

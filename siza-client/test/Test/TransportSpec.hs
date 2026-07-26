@@ -1,13 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The request headers siza sends to @/api/ai/*@. The hub gates proxied
-requests on the @_sabela_session@ OAuth cookie and strips @Authorization@
-before forwarding, so driving a hub-hosted notebook needs a @Cookie:@ header
-carried through 'SABELA_COOKIE'. This pins that the cookie is emitted when set,
-the session header is always present (the hub does NOT strip @X-Sabela-Session@),
-and the bearer token is still emitted for the localhost trust model.
--}
 module Test.TransportSpec (transportSpec, toolTimeoutSpec) where
 
 import Control.Exception (bracket)
@@ -22,7 +15,6 @@ import Siza.Transport (
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import Test.Hspec
 
--- | Run an env-mutating test, restoring @SABELA_URL@ afterwards.
 withSabelaUrl :: IO a -> IO a
 withSabelaUrl =
     bracket (lookupEnv "SABELA_URL") restore . const
@@ -88,10 +80,6 @@ transportSpec = describe "Siza.Transport.aiHeaders" $ do
                 env <- resolveEnv
                 envSabelaUrl env `shouldBe` Just "http://flag:3000"
 
-{- | live_test8 #6: the client abandoned a request at 60s while the server's
-cell cap is 120s (+5s resync), so a slow-but-healthy cell read as a transport
-failure and took the session source down with it.
--}
 toolTimeoutSpec :: Spec
 toolTimeoutSpec = describe "client tool timeout vs the server ceilings" $ do
     it "outlives the server's execution cap and its resync window" $ do
@@ -99,11 +87,6 @@ toolTimeoutSpec = describe "client tool timeout vs the server ceilings" $ do
         defaultToolTimeoutSecs
             `shouldSatisfy` (> ((tcExecutionUs tc + tcResyncUs tc) `div` 1_000_000))
 
-    {- G8 task 6, the live_test22 regression. Asserting only the CELL cap let
-    this pass while the real invariant was broken: the compile gate budgets a
-    deliberate dependency commit at the BUILD ceiling, so a 900s build met a
-    180s client cap and the write became "may have landed". The bound is
-    computed from the server's own config, so it cannot drift again. -}
     it "transport-cap-drift: outlives a dependency build plus its cell run" $ do
         let tc = defaultTimeoutConfig
             ceilingSecs =
@@ -111,7 +94,6 @@ toolTimeoutSpec = describe "client tool timeout vs the server ceilings" $ do
         defaultToolTimeoutSecs `shouldSatisfy` (> ceilingSecs)
 
     it "is derived from the config, not a constant that can drift" $ do
-        -- If someone raises the build ceiling, this moves with it.
         let tc = defaultTimeoutConfig
         defaultToolTimeoutSecs
             `shouldSatisfy` (> (tcBuildUs tc `div` 1_000_000))

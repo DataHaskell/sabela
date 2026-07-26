@@ -1,8 +1,3 @@
-{- | Provider-neutral token accounting. The two cache counters are optional so a
-provider that does not report prompt caching (Ollama) leaves them 'Nothing'
-while one that does (Anthropic) fills them. The 'Monoid' folds per-turn usage
-into a session total, replacing the ad-hoc merge that lived in the loop.
--}
 module Sabela.LLM.Usage (TokenUsage (..)) where
 
 import Data.Maybe (fromMaybe)

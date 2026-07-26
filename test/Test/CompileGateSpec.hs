@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G1: nothing that does not compile ever enters the notebook by an AI
-mutation. Against a REAL GHCi kernel and the real reactive pipeline
-(mirrors 'Test.WriteAckLiveSpec'): a candidate is gate-compiled in a
-disposable reconstruction before @insert_cell@\/@replace_cell_source@ may
-commit it — green runs exactly as before; not green rejects the write
-outright and leaves the notebook, generation, and live session untouched.
-Skipped when cabal is not on PATH.
--}
 module Test.CompileGateSpec (spec) where
 
 import Control.Exception (bracket, bracket_)
@@ -55,10 +47,6 @@ import Sabela.State.SessionManager (
     getHaskellSession,
  )
 
-{- | Every fixture here builds a real disposable\/live session, which always
-needs both cabal and the sabela-notebook overlay the repl project template
-depends on (whether or not the candidate itself imports @Sabela.Notebook@).
--}
 requireLiveIntegration :: IO ()
 requireLiveIntegration = do
     cabal <- findExecutable "cabal"
@@ -80,10 +68,6 @@ textField k v = case field k v of
     Just (String s) -> Just s
     _ -> Nothing
 
-{- | Run one test against a fresh fixture in its own temp dir, releasing the
-kernel afterwards: a leaked GHCi holds its whole nursery for the rest of the
-suite, and the live specs together used to hold several at once.
--}
 withFixture ::
     String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a
 withFixture label action =
@@ -93,9 +77,6 @@ withFixture label action =
 releaseFixture :: (App, AIStore.AIStore, ReactiveNotebook) -> IO ()
 releaseFixture (app, _, _) = forceResetAllSessions (appSessions app)
 
-{- | Every live build here — the gate's disposable route included — needs the
-sabela-notebook overlay the repl project template always depends on.
--}
 newFixture :: FilePath -> IO (App, AIStore.AIStore, ReactiveNotebook)
 newFixture dir = do
     mgr <- newManager defaultManagerSettings
@@ -126,17 +107,10 @@ cellCount app = length . nbCells <$> readNotebook (appNotebook app)
 generationOf :: App -> IO Int
 generationOf app = readIORef (ebGeneration (appEvents app))
 
--- | The live session's identity, or 'Nothing' when no kernel has spawned.
 sessionIdentity :: App -> IO (Maybe Int)
 sessionIdentity app =
     fmap (hashUnique . ST.sbSessionId) <$> getHaskellSession (appSessions app)
 
-{- | Squeeze the budget the GATE actually uses. A gate compile is a
-deliberate commit, so it reads the live build ceiling
-(@SABELA_BUILD_TIMEOUT_SECONDS@), not the disposable-trial one — see
-'Sabela.Session.Materialize.buildBudgetFor'. Both are set so the fixture
-holds whichever budget a future change routes the gate through.
--}
 withBuildTimeout :: String -> IO a -> IO a
 withBuildTimeout secs =
     bracket_
@@ -149,17 +123,6 @@ withBuildTimeout secs =
 
 spec :: Spec
 spec = describe "G1 compile-gated notebook writes" $ do
-    {- live_test21: the gate refused a `-- cabal: build-depends: dataframe`
-    cell because the disposable-trial budget expired, and its own message
-    told the model to commit that same cell deliberately. The model did,
-    twice, and was refused each time. A gate compile IS the deliberate
-    commit, so it gets the live build ceiling. -}
-    {- live_test24 removed Safe Haskell from the GATE, because a typecheck-only
-    gate must predict the live compile and the live session imposes no such
-    rule. live_test33_wine removed it from the speculative TRIAL for the same
-    reason in a different place: most of Hackage is neither Safe nor
-    Trustworthy, so a trial could import no library at all. Containment is the
-    disposable process plus the non-IO admission proof, not the flag. -}
     describe "gate-safe-haskell (live_test24, live_test33_wine)" $ do
         it "a deliberate commit is not judged under -XSafe" $ do
             let p = candidateSafetyPrelude (compileGateSpec Nothing "x = 1")
@@ -195,14 +158,11 @@ spec = describe "G1 compile-gated notebook writes" $ do
         $ do
             requireLiveIntegration
             withFixture "sabela-compilegate-red" $ \(app, store, rn) -> do
-                -- Warm the kernel so a live session exists to prove untouched.
                 _ <- insertSrc app store rn "sabelaWarmup = (1 :: Int)"
                 countBefore <- cellCount app
                 genBefore <- generationOf app
                 sessionBefore <- sessionIdentity app
 
-                -- The leading import puts this outside the live Path-2
-                -- value-subset veto, so the rejection under test is G1's gate.
                 let brokenSrc = "import Data.Maybe (fromJust)\nbroken = 1 +"
                 ack <- insertSrc app store rn brokenSrc
 
@@ -248,10 +208,6 @@ spec = describe "G1 compile-gated notebook writes" $ do
         $ do
             requireLiveIntegration
             withFixture "sabela-compilegate-dep-red" $ \(app, store, rn) -> do
-                -- Any kernel-needing tool call warms a bare, dep-less base
-                -- session before dispatch (pre-existing, unrelated to G1) — the
-                -- invariant under test is narrower: the NEW dependency this
-                -- candidate declares is never installed into it.
                 depsBefore <- getHaskellDeps (appDeps app)
 
                 ack <-
@@ -266,8 +222,6 @@ spec = describe "G1 compile-gated notebook writes" $ do
                 textField "refusal" ack `shouldBe` Just "compile-gate"
                 textField "verdict" ack `shouldBe` Just "diagnostic"
 
-                -- The gate's disposable build never touches the LIVE session: no
-                -- install, no restart pays for the dependency this write declared.
                 depsAfter <- getHaskellDeps (appDeps app)
                 depsAfter `shouldBe` depsBefore
                 Set.member "containers" depsAfter `shouldBe` False
@@ -318,11 +272,6 @@ spec = describe "G1 compile-gated notebook writes" $ do
                 countAfterProbe <- cellCount app
                 countAfterProbe `shouldBe` 1
 
-                -- G2: self_heal must never touch the probe at all — the gate
-                -- rejects it outright, before self_heal's post-commit cascade
-                -- ever runs, so the rejection carries neither a self_heal
-                -- rewrite nor a dependency suggestion, and the compiler's real
-                -- hole-fit diagnostic (not a sabotaged one) is what comes back.
                 field "self_heal" probeAck `shouldBe` Nothing
                 field "self_heal_suggestions" probeAck `shouldBe` Nothing
                 textField "diagnostic" probeAck
@@ -330,12 +279,6 @@ spec = describe "G1 compile-gated notebook writes" $ do
                 textField "source" probeAck
                     `shouldBe` Just "import Sabela.Notebook\nline (_ :: Point) (_ :: Point)"
 
-                -- G3 task 5: the rejection still answers the hole. `Point` is now
-                -- re-exported by the umbrella `Sabela.Notebook` (as the synonym
-                -- `type Point = (Double, Double)`), so the hole `(_ :: Point)`
-                -- typechecks its goal and the probe fires — and answers honestly
-                -- that a bare tuple synonym has no producer in scope, with
-                -- hole-probe provenance.
                 textField "diagnostic" probeAck
                     `shouldSatisfy` maybe False (T.isInfixOf "Point")
                 (field "holeProbe" probeAck >>= field "provenance")
@@ -376,7 +319,6 @@ spec = describe "G1 compile-gated notebook writes" $ do
             (field "holeProbe" ack >>= field "provenance")
                 `shouldBe` Just (String "via: hole-probe")
 
-            -- and the notebook is byte-identical: the answer cost no state
             countAfter <- cellCount app
             genAfter <- generationOf app
             countAfter `shouldBe` countBefore

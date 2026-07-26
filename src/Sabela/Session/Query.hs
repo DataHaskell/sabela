@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Cheap GHCi introspection (:type, :info, …) over the live session.
-Queries are bounded; an abandoned query's stale output self-heals via
-the numbered-marker discard in the next drain.
--}
 module Sabela.Session.Query (
     queryComplete,
     queryType,
@@ -76,13 +72,6 @@ data EvalDeadline = EvalDeadline
     , evalDeadlineBudgetUs :: Int
     }
 
-{- | GHCi @:complete repl@ defaults to ~250 matches returned ALPHABETICALLY, so
-for the bare @import @ prefix the discovery-relevant namespaces (@DataFrame.*@,
-@Granite.*@) sort past the cap and never appear — leaving @find_function@ unable
-to discover a re-exported verb like @fit@. With @SABELA_INSTANCE_SURFACING@ set we
-ask for the full list (high count); unset keeps the default cap (the baseline the
-A/B's OFF arm measures against). No module names are hardcoded.
--}
 queryComplete :: Session -> Text -> IO [Text]
 queryComplete sess prefix = do
     surfacing <- isJust <$> lookupEnv "SABELA_INSTANCE_SURFACING"
@@ -114,41 +103,24 @@ queryBrowse sess mname = runQueryCommand sess (QueryBrowse mname)
 queryDoc :: Session -> Text -> IO Text
 queryDoc sess name = runQueryCommand sess (QueryDoc name)
 
-{- | Ask GHC which in-scope names fit a concrete goal type. The goal must be a
-typed hole expression, e.g. @_ :: [Int] -> Int@; GHC reports the fits in its
-error blob, which 'Sabela.AI.Capabilities.Query.parseHoleFits' parses.
--}
 queryHoleFits :: Session -> Text -> IO Text
 queryHoleFits sess goal = runQueryCommand sess (QueryHoleFits goal)
 
-{- | List the session's interactive bindings, scrubbed of the prelude-injected
-ones, so only what the notebook defined remains (@:show bindings@).
--}
 queryBindings :: Session -> IO Text
 queryBindings sess = do
     raw <- runQueryCommand sess QueryBindings
     baseline <- readIORef (sessBaselineBindings sess)
     pure (scrubBindings baseline raw)
 
-{- | Result from the deliberately limited Path-2 feasibility prototype.
-This is not the general primitive: GHCi's @:type@ accepts only expression-
-local value bindings, not imports or type/class/instance declarations.
--}
 data TypecheckResult = TypecheckResult
     { tcSucceeded :: Bool
     , tcDiagnostics :: Text
     }
     deriving (Eq, Show)
 
--- | The honest routing boundary of GHCi's no-add @:type@ mechanism.
 data TypecheckInput = ValueExpression | ValueBindings | OutsideValueSubset
     deriving (Eq, Show)
 
-{- | A group is 'ValueBindings' only when EVERY meaningful line binds. A mix of
-bindings and expressions has no sound rendering — an expression is not legal
-inside the @let { … }@ group 'typecheckValueWith' builds — so it routes out of
-the subset rather than being wrapped into source the caller never wrote.
--}
 classifyTypecheckInput :: Text -> TypecheckInput
 classifyTypecheckInput source
     | null ls = ValueExpression
@@ -183,28 +155,15 @@ classifyTypecheckInput source
 meaningfulLines :: Text -> [Text]
 meaningfulLines = filter (not . T.null) . map T.strip . T.lines
 
-{- | Drop a cell-style @let@ prefix so the binding reads as the declaration it
-is. The wrapper below supplies its own @let@; leaving this one in place nested
-the keyword and made the group unparseable.
--}
 stripLet :: Text -> Text
 stripLet line = maybe line T.stripStart (T.stripPrefix "let " (T.stripStart line))
 
-{- | Type-check a value-binding group against the live interactive scope
-without committing it. Disabled unless @SABELA_TYPECHECK_PRIMITIVE@ is set.
-Newlines are rendered as explicit-let semicolons because GHCi commands occupy
-one protocol line. The caller must not use this subset as a whole-cell gate.
--}
 typecheckLetDeclarations :: Session -> Text -> IO TypecheckResult
 typecheckLetDeclarations sess =
     typecheckValueWith
         (runQueryCommand sess . QueryType)
         (runQueryCommand sess QueryBindings)
 
-{- | Run the proven Path-2 subset through any live-session backend. It snapshots
-bindings itself: every query both enforces and reports the no-pollution
-invariant instead of relying on callers to remember the check.
--}
 typecheckValueWith :: (Text -> IO Text) -> IO Text -> Text -> IO TypecheckResult
 typecheckValueWith askType askBindings source = do
     started <- getMonotonicTimeNSec
@@ -256,10 +215,6 @@ primitiveEnabled = do
     value <- lookupEnv "SABELA_TYPECHECK_PRIMITIVE"
     pure $ maybe True ((`notElem` ["0", "off", "false", "no"]) . map toLower) value
 
-{- | Atomically prove and evaluate one non-@IO@ expression against the live
-scope. Both session locks stay held from the generation check through the
-before/after fingerprints, so nothing can slip between admission and execution.
--}
 evalPureLive :: Session -> PureEvalRequest -> IO PureEvalResult
 evalPureLive sess req
     | T.null expr = pure (rejected "expression required")
@@ -275,9 +230,6 @@ evalPureLive sess req
                             `finally` writeIORef (sessErrBuf sess) savedErr
                     case attempted of
                         Left e -> do
-                            -- A catch-all result must not leave a computation
-                            -- or half-framed protocol alive behind a truthful
-                            -- 'PureEvalKernelDestroyed' recovery tag.
                             destroySession (sessProcSess sess)
                             pure $
                                 (baseResult PureEvalUnavailable (pureEvalExpectedGeneration req))
@@ -434,8 +386,6 @@ fingerprintCommand deadline sess = do
                 lockedCommand (max 1 (min queryTimeoutUs budgetUs)) sess ":show bindings"
             pure (False, out, err)
         Nothing -> do
-            -- The semantic deadline owns all candidate work.  This one bounded
-            -- grace command only proves post-timeout state before returning.
             (out, err) <- lockedCommand fingerprintRecoveryGraceUs sess ":show bindings"
             pure (True, out, err)
 
@@ -569,25 +519,14 @@ itFingerprint =
         . map T.strip
         . groupEntries
 
-{- | Snapshot the prelude-injected bindings as the baseline scrubbed from later
-'queryBindings' results. Call once, right after prelude injection.
--}
 captureBindingsBaseline :: Session -> IO ()
 captureBindingsBaseline sess = do
     raw <- runQueryCommand sess QueryBindings
     writeIORef (sessBaselineBindings sess) (groupEntries raw)
 
-{- | Drop the prelude-injected bindings (those in the baseline), GHCi's @it@, and
-the internal @_sabela*@ refs from @:show bindings@ output, leaving the notebook's
-own bindings.
--}
 scrubBindings :: [Text] -> Text -> Text
 scrubBindings baseline = renderScrubbedBindings baseline id
 
-{- | Same scrub as 'scrubBindings', but drops each entry's shown value: forcing
-a lazy binding during a pure candidate changes @_@ to a result without
-changing its identity, and the fingerprint invariant compares shapes only.
--}
 scrubBindingShapes :: [Text] -> Text -> Text
 scrubBindingShapes baseline = renderScrubbedBindings baseline bindingSignature
 
@@ -596,23 +535,17 @@ renderScrubbedBindings baseline norm current =
     T.intercalate "\n" (map norm (filter keep (groupEntries current)))
   where
     keep e = e `notElem` baseline && not (isHidden (T.strip e))
-    -- @instance@ lines carry GHCi's @GhciN.@ counter, which bumps as cells run,
-    -- so they drift from the baseline; drop them (they are not value bindings).
     isHidden s =
         any
             (`T.isPrefixOf` s)
             ["it ::", "it =", "_sab", "instance "]
 
--- | Strip a @:show bindings@ entry's shown value, keeping just @name :: type@.
 bindingSignature :: Text -> Text
 bindingSignature entry =
     case T.breakOn " = " entry of
         (sig, rest) | not (T.null rest) -> T.stripEnd sig
         _ -> entry
 
-{- | Split @:show bindings@ output into entries: an entry starts on a
-non-indented line and absorbs the indented continuation lines that follow it.
--}
 groupEntries :: Text -> [Text]
 groupEntries = map (T.intercalate "\n") . collect . T.lines
   where
@@ -623,11 +556,6 @@ groupEntries = map (T.intercalate "\n") . collect . T.lines
     starts x = not (T.null x) && not (isSpace (T.head x))
     continues x = not (T.null x) && isSpace (T.head x)
 
-{- | Serialise on 'sessQueryLock', not the cell run-lock: a query then
-never blocks at the lock level behind a draining cell (the busy gate stays
-admission control). The query lock still prevents query/query interleave,
-which would corrupt GHCi's shared stdin/stdout stream (case 20).
--}
 runQueryCommand :: Session -> QueryCommand -> IO Text
 runQueryCommand sess cmd = withMVar (sessQueryLock sess) $ \_ -> do
     resetErrorBuffer sess

@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The constructibility facet (docs/discover/search-api.md section 7.1): a
-"value of type T" question answered by PRODUCERS of T, ranked nullary-first
-(a ready-made value), goal provenance ahead of arity (the held consumer's own
-package outranks foreign lexical winners), non-producers demoted below every
-true producer — never dropped — and the section 8.3 same-envelope attachment
-of an unconstructible argument type's producers. Keyed by diagnostic class,
-never a library name.
--}
 module Siza.Agent.Discover.Construct (
     attachProducers,
     constructAnswers,
@@ -48,10 +40,6 @@ import Siza.Agent.Discover.Types (
     okAnswer,
  )
 
-{- | Consult the two producer sources for the goal type: the session's hole
-fits of @_ :: T@ (installed producers, in scope now) and the hoogle
-result-type search (@:: T@), unioned — a miss in one never discards the other.
--}
 constructAnswers ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     Interpreted ->
@@ -65,7 +53,6 @@ constructAnswers call interp = do
   where
     goal = iName interp
 
--- | The session's installed producers of @goal@, parsed from a hole-fit blob.
 sessionProducers :: Text -> Text -> SourceAnswer
 sessionProducers goal blob =
     okAnswer
@@ -74,7 +61,6 @@ sessionProducers goal blob =
   where
     fits = [f | f <- parseHoleFits blob, not (hfRefined f)]
 
--- | One producer as an installed, session-provenanced hit.
 producerHit :: Text -> HoleFit -> DHit
 producerHit goal f =
     DHit
@@ -89,10 +75,6 @@ producerHit goal f =
         Nothing
         Nothing
 
-{- | Render the facet's envelope: true producers ranked producer-distance
-first (goal provenance, nullary, constructors, arity), then every
-non-producing hit below them — demoted, never dropped (sections 7.1, 8.3).
--}
 constructEnvelope ::
     Maybe StandingGoal ->
     NotebookEnv ->
@@ -112,11 +94,6 @@ constructEnvelope mSG env interp scope limit answers hk =
         sortOn (producerKey mSG env interp goal) producers
             ++ sortOn (otherKey mSG env interp) others
 
-{- | The non-producer ordering (R5.6): once a target package is established by
-ledger evidence (the standing goal's derivation), a hit from that package leads
-the non-producer tail and every cross-package hit demotes below it — provenance
-evidence keyed, never a package name. Falls back to the plain key with no goal.
--}
 otherKey ::
     Maybe StandingGoal ->
     NotebookEnv ->
@@ -132,11 +109,6 @@ otherKey mSG env interp h = (targetBand, rankKey env interp h)
                 0
         _ -> 1
 
-{- | Producer ordering (section 7.1): goal provenance first — a producer from
-the package of the cluster's held consumer signature outranks every foreign
-package (ledger evidence, never a package name) — then nullary bindings,
-record constructors, arity, exact-goal result, and the deterministic key.
--}
 producerKey ::
     Maybe StandingGoal ->
     NotebookEnv ->
@@ -160,19 +132,12 @@ producerKey mSG env interp goal h =
                 0
         _ -> 1
 
--- | An upper-head name is a data constructor (a producer by construction).
 isConstructor :: Text -> Bool
 isConstructor n = maybe False (isUpper . fst) (T.uncons n)
 
--- | Top-level argument arrows in a signature.
 argCount :: Text -> Int
 argCount ty = length (T.splitOn "->" (T.unwords (T.words ty))) - 1
 
-{- | Same-envelope producer attachment (section 8.3): when the query's own
-call-ready exact hit needs an argument type with no surfaced producer, the
-top 1-2 producers of that type join the SAME envelope — the consumer and how
-to build its arguments in one call. Diagnostic-class keyed, never a library.
--}
 attachProducers ::
     Maybe StandingGoal ->
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
@@ -208,7 +173,6 @@ attachProducers mSG call env interp answers = case neededType of
         [t | t <- argTypesOf sig, nominalArgType t, not (surfaced t)]
     surfaced t = any (producesGoal t . dhType) hits
 
--- | One row per producer name: the best-ranked source copy represents it.
 nubOnName :: [DHit] -> [DHit]
 nubOnName = go []
   where
@@ -217,7 +181,6 @@ nubOnName = go []
         | dhName h `elem` seen = go seen hs
         | otherwise = h : go (dhName h : seen) hs
 
--- | An attached producer never outranks the query's own exact hits (R3.2).
 tagProducer :: Text -> Text -> DHit -> DHit
 tagProducer consumer ty h =
     h

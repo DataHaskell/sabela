@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The notebook's own vocabulary must be keyword-findable. Against a REAL
-kernel: @find_function@ indexes the bare import-completion list, which is
-alphabetical and truncated, so @Sabela.*@ fell off the end and no builtin was
-reachable by keyword — live_test13's model hand-rolled SVG because @plot@,
-@lineChart@ and @displayPicture@ returned nothing for any natural query.
--}
 module Test.BuiltinSearchLiveSpec (spec) where
 
 import Control.Exception (bracket)
@@ -71,7 +65,6 @@ callTool app store rn name input = do
     ct <- newCancelToken
     toolOutcomeValue <$> executeTool app store rn ct name input
 
--- | The names @find_function@ returned, whatever the wire calls the array.
 matchNames :: Value -> [Text]
 matchNames v =
     [ n
@@ -86,10 +79,6 @@ matchNames v =
 
 spec :: Spec
 spec = describe "the notebook's own vocabulary is keyword-findable" $ do
-    {- G9.3: the prompt is the fast path, search is the fallback the model
-    reaches for when the prompt is thin. In live_test9 both were empty, and
-    the model spent its whole budget hunting a Picture -> String conversion
-    the builtins do not provide. -}
     it "picture-undisplayable: Picture's display route is findable" $ do
         requireLiveIntegration
         withFixture "sabela-picture-route" $ \(app, store, rn) -> do
@@ -103,15 +92,12 @@ spec = describe "the notebook's own vocabulary is keyword-findable" $ do
             let findFn q =
                     matchNames
                         <$> callTool app store rn "find_function" (object ["query" .= (q :: Text)])
-            -- Each is a query the live_test9 model actually ran and got
-            -- nothing for; every one must reach the display route.
             names <- concat <$> mapM findFn ["Picture", "render", "svg", "display"]
             (names `elem'` "displayPicture") `shouldBe` True
 
     it "surfaces lineChart/plot/animate for a plain keyword (live_test13)" $ do
         requireLiveIntegration
         withFixture "sabela-builtin-search" $ \(app, store, rn) -> do
-            -- Any kernel-needing call warms GHCi; the index needs a session.
             _ <-
                 callTool
                     app
@@ -122,8 +108,6 @@ spec = describe "the notebook's own vocabulary is keyword-findable" $ do
             let findFn q =
                     matchNames
                         <$> callTool app store rn "find_function" (object ["query" .= (q :: Text)])
-            -- "chart" matches no Sabela name exactly; before the fix it
-            -- returned nothing at all.
             findFn "chart" `shouldReturn'` "lineChart"
             findFn "plot" `shouldReturn'` "plot"
             findFn "animate" `shouldReturn'` "animate"

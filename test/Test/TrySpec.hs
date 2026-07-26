@@ -103,8 +103,6 @@ spec = describe "unified try operation" $ do
                         overlay <- supportOverlay
                         app <- newApp dir Set.empty Nothing Nothing overlay
                         let greenCell = codeCell 1 "baseline = (100 :: Int)"
-                            -- The live_test4 cell 4: a genuinely-red cell whose
-                            -- Point-kind error must not become the candidate's.
                             redCell =
                                 (codeCell 4 "import Sabela.Notebook\nline (_ :: Point) (_ :: Point)")
                                     { cellError =
@@ -189,8 +187,6 @@ spec = describe "unified try operation" $ do
                     let v = toolOutcomeValue outcome
                     textField "stderr" v
                         `shouldSatisfy` maybe True (not . T.isInfixOf "hidden package")
-                    -- R7.1: a machine rewrite must hand back committable
-                    -- source, or the gate rejects what the trial accepted.
                     let autofix = textField "autofix" v
                     autofix
                         `shouldSatisfy` maybe
@@ -198,9 +194,6 @@ spec = describe "unified try operation" $ do
                             (T.isInfixOf "-- cabal: build-depends: text")
                     autofix
                         `shouldSatisfy` maybe False (T.isInfixOf "sineWaveSvg")
-                    -- G7.5: an `ok` whose bytes the gate would reject is the
-                    -- live_test8 impasse. A trial that declared a dependency
-                    -- the source does not name must say so, never answer bare.
                     autofix `shouldNotBe` Nothing
 
     it "strips `main` mechanically instead of refusing the candidate" $ do
@@ -224,10 +217,6 @@ spec = describe "unified try operation" $ do
                     textField "stdout" v
                         `shouldSatisfy` maybe False (T.isInfixOf "from-main")
 
-{- | The live_test6 turn-3 candidate verbatim: a hidden-package import and a
-@main@ binding in one payload, both mechanically fixable. The model spent the
-whole episode on it and never got a compile.
--}
 sineHiddenText :: Text
 sineHiddenText =
     T.unlines
@@ -291,7 +280,6 @@ intArrayField key value = case field key value of
         ]
     _ -> []
 
--- | The cell ids inside the @skippedCells@ array of @{cellId, reason}@ objects.
 skippedCellIds :: Value -> [Int]
 skippedCellIds value = case field "skippedCells" value of
     Just (Array values) ->

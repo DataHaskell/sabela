@@ -1,16 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Deterministic transcript tripwires printed next to the gate's pass-rate, so
-a confounded run is visible without reading the transcripts. Two signals, both
-computed from the @SIZA_GATE_TRANSCRIPTS@ files:
-
-* __lever-effect rate__ — the fraction of @(task, seed)@ pairs whose @off@ and
-  @on@ transcripts DIFFER. A server-side lever that never alters a trajectory
-  leaves the two arms byte-identical; if the effect rate is 0 the pass-rate
-  delta is sampling noise, not the lever.
-* __discovery-empty rate__ — @find_*@ tool calls that returned nothing. A high
-  rate is the discovery-blindness that dominates weak-model flail.
--}
 module Eval.GateMetrics (renderGateMetrics) where
 
 import Control.Exception (SomeException, try)
@@ -56,10 +45,6 @@ renderGateMetrics dir rs = do
                 <> " repair announcements in tool responses"
             ]
 
-{- | 'Just True' when a pair's off/on transcript BODIES differ (the
-episode-config header names the arm, so it always differs), 'Just False' when
-they are byte-identical (lever inert), 'Nothing' when either arm is missing.
--}
 leverEffect :: FilePath -> (Text, Int) -> IO (Maybe Bool)
 leverEffect dir (task, seed) = do
     off <- readMaybe (transcriptPath dir task seed SearchOff)
@@ -68,7 +53,6 @@ leverEffect dir (task, seed) = do
   where
     differ a b = not (voidPair (TE.decodeUtf8 a) (TE.decodeUtf8 b))
 
--- | Total and empty @find_*@ discovery calls across every arm's transcript.
 discoveryEmpty :: FilePath -> [GateResult] -> IO (Int, Int, Int)
 discoveryEmpty dir rs = do
     let paths = nub [transcriptPath dir (grTask g) (grSeed g) (grMode g) | g <- rs]
@@ -88,7 +72,6 @@ transcriptPath :: FilePath -> Text -> Int -> SearchMode -> FilePath
 transcriptPath dir task seed mode =
     dir </> T.unpack (task <> "-s" <> tshow seed <> "-" <> modeText mode <> ".md")
 
--- | Read a file's bytes, or 'Nothing' if it is absent/unreadable.
 readMaybe :: FilePath -> IO (Maybe BS.ByteString)
 readMaybe p = do
     exists <- doesFileExist p

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The deterministic sanitizers that meet a weak model's natural (imperfect)
-tool inputs where they are: liberal enum parsing, top-level @let@ rewriting, and
-detecting a tool call the model wrote as text.
--}
 module Test.ToolInputRewriteSpec (spec) where
 
 import Test.Hspec

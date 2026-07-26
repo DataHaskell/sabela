@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure analysis behind the @peek_data@ tool: from raw delimited-file text,
-infer the delimiter, decide whether the first row is a header, take the first
-N data rows, and guess a column type for each field. The tool boundary in
-"Sabela.AI.Capabilities.Query" reads the file (path-checked) and hands the
-text here; everything in this module is total and testable without IO.
--}
 module Sabela.AI.PeekData (
     PeekResult (..),
     ColType (..),
@@ -22,9 +16,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
 
-{- | The four column shapes the guesser distinguishes. 'ColText' is the
-fallthrough for anything that is not uniformly numeric or boolean.
--}
 data ColType = ColInt | ColDouble | ColBool | ColText
     deriving (Eq, Show)
 
@@ -34,7 +25,6 @@ colTypeName ColDouble = "Double"
 colTypeName ColBool = "Bool"
 colTypeName ColText = "Text"
 
--- | The structured result the @peek_data@ tool reports.
 data PeekResult = PeekResult
     { peekDelimiter :: Text
     , peekHasHeader :: Bool
@@ -44,15 +34,9 @@ data PeekResult = PeekResult
     }
     deriving (Eq, Show)
 
--- | Candidate delimiters, tried in priority order on a tie.
 candidateDelims :: [Text]
 candidateDelims = [",", "\t", ";", "|"]
 
-{- | Analyse the first lines of a delimited file: pick the delimiter that
-splits the rows most consistently, decide whether row one is a header (it is
-when at least one column is numeric in the body but not in row one), take the
-first @n@ data rows, and guess each column's type from the body.
--}
 peekData :: Int -> Text -> PeekResult
 peekData n raw =
     PeekResult
@@ -79,14 +63,9 @@ peekData n raw =
     body = bodyRows
     colTypes = [guessColType (columnAt i body) | i <- [0 .. width - 1]]
 
--- | Cells in column @i@ across all rows (missing cells skipped).
 columnAt :: Int -> [[Text]] -> [Text]
 columnAt i = concatMap (take 1 . drop i)
 
-{- | The delimiter whose split gives the most consistent, widest rows.
-Score each candidate by how many rows share the most common field count,
-weighted by that count; ties break by 'candidateDelims' order.
--}
 inferDelimiter :: [Text] -> Text
 inferDelimiter [] = ","
 inferDelimiter ls = fst (maximumBy (comparing snd) scored)
@@ -97,14 +76,10 @@ inferDelimiter ls = fst (maximumBy (comparing snd) scored)
             modeCount = mode counts
          in modeCount * length (filter (== modeCount) counts)
 
--- | The most frequent value in a non-empty list (0 for empty).
 mode :: (Eq a) => [a] -> a
 mode [] = error "mode: empty list"
 mode xs = snd (maximumBy (comparing fst) [(length (filter (== x) xs), x) | x <- xs])
 
-{- | Row one is a header when at least one column parses as numeric in the
-body rows but not in row one. A single-row file has no header.
--}
 looksLikeHeader :: [[Text]] -> Bool
 looksLikeHeader (h : body@(_ : _)) =
     or
@@ -114,7 +89,6 @@ looksLikeHeader (h : body@(_ : _)) =
         ]
 looksLikeHeader _ = False
 
--- | A field that parses cleanly as an integer or a decimal.
 isNumericCell :: Text -> Bool
 isNumericCell = (`elem` [ColInt, ColDouble]) . classifyCell
 
@@ -124,10 +98,6 @@ guessColType cells =
         [] -> ColText
         nonBlank -> foldr1 unify (map classifyCell nonBlank)
 
-{- | Combine two cell classifications into the column's type: any 'ColText'
-poisons the column, an 'Int' beside a 'Double' widens to 'Double', a mix of
-otherwise-incompatible kinds falls back to 'ColText'.
--}
 unify :: ColType -> ColType -> ColType
 unify a b
     | a == b = a

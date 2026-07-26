@@ -1,4 +1,3 @@
--- | siza-bench: Runs an unseen-package task set
 module Main (main) where
 
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -123,17 +122,12 @@ main = do
         corpusPool <$> lookupEnv "SIZA_BENCH_CORPUS" <*> lookupEnv "SIZA_BENCH_FOLD"
     tasks <- selectTasks pool <$> lookupEnv "SIZA_BENCH_TASKS"
     bin <- fromMaybe defaultBin <$> lookupEnv "SABELA_BIN"
-    -- R8.3: provenance is captured once; an unset transcript dir defaults to
-    -- a FRESH per-run-id directory, so an old directory self-identifies.
-    -- The relink probe (round-6 finding 5) aborts on a stale server OR a
-    -- stale driver binary; both labeled verdicts land in every header.
     prov <- captureProvenanceCheckedSelf bin
     transcripts <-
         fromMaybe (freshRunDirUnder "/tmp/siza-bench-transcripts" prov)
             <$> lookupEnv "SIZA_BENCH_TRANSCRIPTS"
     mgr <- newTlsManager
     ensureOllama mgr
-    -- M7: pin the client tool timeout (300s default) BEFORE newConn reads it.
     toolTimeout <- defaultToolTimeout
     conn <- newConn
     let cfg =
@@ -153,9 +147,6 @@ main = do
     voids <- readVoidFlags transcripts
     nas <- readNaFlags transcripts
     sats <- readSaturatedFlags transcripts
-    -- R8.2: VOID pairs appear in no row; NA and saturated pairs are graded
-    -- per-arm but excluded from every lever number; all are named. The guard
-    -- withholds on THIS run's defects only (sibling runs demote to a warning).
     report <-
         guardReportDirFor transcripts (rpRunId prov) $
             voidNote voids
@@ -164,32 +155,21 @@ main = do
                 <> renderReportFlagged voids nas sats rows
     TIO.putStr report
 
--- | The Sabela server binary each run spawns; override with @SABELA_BIN@.
 defaultBin :: FilePath
 defaultBin =
     "dist-newstyle/build/aarch64-osx/ghc-9.12.2/sabela-0.1.0.0/x/sabela/build/sabela/sabela"
 
--- | Seeds from @SIZA_BENCH_SEEDS@ (comma list), defaulting to three.
 parseSeeds :: Maybe String -> [Int]
 parseSeeds = maybe dflt (orDefault dflt . mapMaybe (readMaybe . trim) . splitComma)
   where
     dflt = [1, 2, 3]
 
-{- | Choose the task pool: @SIZA_BENCH_CORPUS=hard@ swaps in the Phase-0.1 hard
-corpus (filtered by @SIZA_BENCH_FOLD=in-index|held-out|all@ via 'Corpus.selectFold');
-@SIZA_BENCH_CORPUS=reasoning@ swaps in the reasoning corpus (filtered by
-@SIZA_BENCH_FOLD@ with a category name via 'Reasoning.selectReasoning');
-anything else keeps the original 'benchTasks'.
--}
 corpusPool :: Maybe String -> Maybe String -> [Task]
 corpusPool (Just "hard") fold = Corpus.selectFold (T.pack . trim <$> fold)
 corpusPool (Just "reasoning") fold =
     Reasoning.selectReasoning (T.pack . trim <$> fold)
 corpusPool _ _ = benchTasks
 
-{- | Tasks selected by id from @SIZA_BENCH_TASKS@ (comma list), defaulting to the
-whole pool.
--}
 selectTasks :: [Task] -> Maybe String -> [Task]
 selectTasks pool Nothing = pool
 selectTasks pool (Just s) =

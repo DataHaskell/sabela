@@ -1,11 +1,5 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-{- | Typed HTTP transport to a running Sabela server's @/api/ai/*@ surface.
-
-Speaks the same wire shape the bash @siza-tool.sh@ did — @POST /api/ai/tool@
-with body @{name, input}@ and a typed decode of @{isError, result}@ into
-'Sabela.AI.Types.ToolOutcome' — but in typed Haskell over http-client.
--}
 module Siza.Transport (
     defaultToolTimeoutSecs,
     Conn (..),
@@ -56,7 +50,6 @@ import Siza.Transport.Failure (
 import System.Environment (lookupEnv, setEnv)
 import Text.Read (readMaybe)
 
--- | Process-level configuration read once from the environment.
 data Env = Env
     { envSabelaUrl :: Maybe Text
     , envToken :: Maybe Text
@@ -66,18 +59,11 @@ data Env = Env
     }
     deriving (Show)
 
--- | A live connection: the shared TLS manager plus the resolved 'Env'.
 data Conn = Conn
     { connManager :: Manager
     , connEnv :: Env
     }
 
-{- | Read @SABELA_URL@/@SABELA_AI_TOKEN@/@SABELA_SESSION@/@SABELA_COOKIE@.
-The session defaults to a stable per-terminal id. @SABELA_COOKIE@ carries the
-hub's @_sabela_session@ OAuth cookie for driving a notebook hosted behind the
-hub (e.g. sabela.datahaskell.com), where the bearer token never reaches the
-backend.
--}
 resolveEnv :: IO Env
 resolveEnv = do
     murl <- nonEmpty <$> lookupEnv "SABELA_URL"
@@ -99,17 +85,6 @@ resolveEnv = do
   where
     nonEmpty = fmap T.pack . (>>= \s -> if null s then Nothing else Just s)
 
-{- | Client-side per-tool wall clock, DERIVED from the server's own ceilings
-rather than guessed, so the invariant cannot drift: it must exceed the
-longest a single tool call can legitimately take. A hardcoded 180s satisfied
-the old cell cap and then silently broke when the compile gate began
-budgeting a deliberate dependency commit at the live build ceiling —
-live_test22 lost the housing probe to "no response within 180s ... a write
-may have landed", which is precisely the ambiguity G8 task 6 forbids.
-
-The longest legitimate call is a dependency build followed by the cell's own
-execution and resync, so the budget is their sum plus a margin for transport.
--}
 defaultToolTimeoutSecs :: Int
 defaultToolTimeoutSecs = serverCeilingSecs + transportMarginSecs
   where
@@ -118,14 +93,9 @@ defaultToolTimeoutSecs = serverCeilingSecs + transportMarginSecs
         usToSecs (tcBuildUs tc + tcExecutionUs tc + tcResyncUs tc)
     usToSecs us = (us + 999_999) `div` 1_000_000
 
--- | Headroom over the server ceiling for connection setup and response read.
 transportMarginSecs :: Int
 transportMarginSecs = 60
 
-{- | Make an explicit @--url@ the process @SABELA_URL@, so flag and env are ONE
-knob: discovery and the hub-token attach both key on 'envSabelaUrl', which only
-'resolveEnv' fills. Run before 'newConn'; 'Nothing' leaves the env untouched.
--}
 applyUrlOverride :: Maybe Text -> IO ()
 applyUrlOverride = mapM_ (setEnv "SABELA_URL" . T.unpack)
 
@@ -135,12 +105,6 @@ newConn = do
     env <- resolveEnv >>= attachHubToken
     pure (Conn mgr env)
 
-{- | Attach a saved @siza login@ token as the bearer when the target is a hub
-('SABELA_URL') and no explicit 'SABELA_AI_TOKEN' was given. An explicit token
-always wins. An expired token is left unattached; the data-command path
-('Siza.Cli') turns that into a clear "run siza login" error rather than a
-silent unauthenticated request.
--}
 attachHubToken :: Env -> IO Env
 attachHubToken env
     | Just _ <- envToken env = pure env
@@ -151,11 +115,6 @@ attachHubToken env
             _ -> env
     | otherwise = pure env
 
-{- | Common request headers: content type, session, an optional bearer token
-(localhost trust model), and an optional @Cookie:@ (hub trust model). The hub
-strips @Authorization@ but not @X-Sabela-Session@, so the session header always
-flows through; the cookie is what authenticates a hub-hosted notebook.
--}
 aiHeaders :: Env -> [Header]
 aiHeaders env =
     ("content-type", "application/json")
@@ -166,9 +125,6 @@ aiHeaders env =
             (envToken env)
             <> maybe [] (\c -> [("Cookie", TE.encodeUtf8 c)]) (envCookie env)
 
-{- | @GET base/api/ai/health@. 'Nothing' if the server is unreachable or the
-body is not the expected JSON object; 2-second timeout, like the bash probe.
--}
 getHealth :: Conn -> Text -> IO (Maybe Value)
 getHealth conn base = do
     let env = connEnv conn
@@ -186,10 +142,6 @@ getHealth conn base = do
                 Left _ -> Nothing
                 Right r -> either (const Nothing) Just (eitherDecode (responseBody r))
 
-{- | @GET base/api/ai/tools@ → the @[ToolDef]@ catalogue as a raw JSON array,
-the source of truth an MCP @tools/list@ projects from. 'Nothing' on any error;
-10-second timeout.
--}
 getTools :: Conn -> Text -> IO (Maybe Value)
 getTools conn base = do
     let env = connEnv conn
@@ -212,18 +164,11 @@ mkGet env url = do
     req <- parseRequest (T.unpack url)
     pure req{method = "GET", requestHeaders = aiHeaders env}
 
--- | A tool-call response timeout: @0@ (or negative) means no timeout.
 toolTimeout :: Int -> ResponseTimeout
 toolTimeout n
     | n <= 0 = responseTimeoutNone
     | otherwise = responseTimeoutMicro (n * 1_000_000)
 
-{- | @POST base/api/ai/tool@ with body @{name, input}@, decoding the
-@{isError, result}@ envelope into a typed 'ToolOutcome'. Failures render
-through the single 'Siza.Transport.Failure' envelope: non-2xx statuses are
-classified BEFORE any payload decode (R6.9), and exception records never
-cross the surface raw (R6.3).
--}
 callTool :: Conn -> Text -> ToolName -> Value -> IO (Either Text ToolOutcome)
 callTool conn base name input = do
     let env = connEnv conn
@@ -258,7 +203,6 @@ callTool conn base name input = do
   where
     ok sc = sc >= 200 && sc < 300
 
--- | Decode the @{isError, result}@ envelope into a 'ToolOutcome'.
 decodeOutcome :: LBS.ByteString -> Either Text ToolOutcome
 decodeOutcome raw = case eitherDecode raw of
     Left _ ->

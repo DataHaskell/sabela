@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Markdown-to-notebook conversion internals for the LYAH gallery,
-split out of Hub.Gallery.Lyah for the module-size cap.
--}
 module Hub.Gallery.Lyah.Convert (
     convertChapter,
     finalizeNotebook,
@@ -25,11 +22,6 @@ attribution =
         <> "licensed under [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/). "
         <> "This Sabela port preserves that license."
 
--- ---------------------------------------------------------------------------
--- Driver
--- ---------------------------------------------------------------------------
-
--- | Convert every chapter from @srcDir\/\<slug\>.md@ to @outDir\/NN-\<slug\>.md@.
 finalizeNotebook :: Text -> (Text, Int)
 finalizeNotebook txt =
     let (chunks, n) = go (splitChunks (T.lines txt))
@@ -48,14 +40,10 @@ finalizeNotebook txt =
     renderCell code out = fence "haskell" code <> "\n\n" <> out
     fence lang code = "```" <> lang <> "\n" <> code <> "\n```"
 
--- | A parsed notebook chunk: a haskell cell (+ optional output), or raw text.
 data Chunk
     = HaskellCell Text (Maybe Text)
     | Verbatim Text
 
-{- | Split a notebook into chunks, pairing each @haskell@ fence with a following
-@\>@ output block (if any). Prose and other fences pass through verbatim.
--}
 splitChunks :: [Text] -> [Chunk]
 splitChunks = goProse []
   where
@@ -71,7 +59,6 @@ splitChunks = goProse []
     flushProse acc cs =
         let t = T.intercalate "\n" (reverse acc)
          in if T.null (T.strip t) then cs else Verbatim t : cs
-    -- A quoted output block follows after blank lines.
     grabOutput ls =
         let (blanks, rest) = span (T.null . T.strip) ls
          in case rest of
@@ -100,13 +87,6 @@ isErrorOutput out = any (`T.isInfixOf` out) signals
         , "Variable not in scope"
         ]
 
--- ---------------------------------------------------------------------------
--- Chapter conversion
--- ---------------------------------------------------------------------------
-
-{- | Convert one chapter's Markdown, prepending the title + attribution header
-and (when the chapter imports beyond @base@) a @-- cabal:@ setup cell.
--}
 convertChapter :: Text -> Text -> Text
 convertChapter title md =
     T.intercalate "\n\n" (header : setup ++ blocks (T.lines body))
@@ -121,10 +101,6 @@ convertChapter title md =
         ]
     extras = neededDeps body
 
-{- | Packages a chapter needs beyond @base@, inferred from the modules it
-mentions. Over-inclusion (a module named only in prose) is harmless — these are
-all common\/boot packages.
--}
 neededDeps :: Text -> [Text]
 neededDeps body = dedup [pkg | (needle, pkg) <- table, needle `T.isInfixOf` body]
   where
@@ -139,18 +115,12 @@ neededDeps body = dedup [pkg | (needle, pkg) <- table, needle `T.isInfixOf` body
         ]
     dedup = foldr (\x acc -> x : filter (/= x) acc) []
 
-{- | Drop @import Control.Monad.Instances@: those instances (e.g. @Functor
-((->) r)@) moved into @base@ and the module no longer exists.
--}
 dropDeprecated :: Text -> Text
 dropDeprecated =
     T.unlines
         . filter ((/= "import Control.Monad.Instances") . T.strip)
         . T.lines
 
-{- | The frontmatter title (@title: "…"@), if present. Exposed for tests; the
-driver uses the curated 'lcTitle' instead.
--}
 chapterFrontTitle :: Text -> Maybe Text
 chapterFrontTitle md = case T.lines md of
     ("---" : rest) ->
@@ -167,11 +137,6 @@ dropFrontmatter md = case T.lines md of
     ("---" : rest) -> T.unlines (drop 1 (dropWhile (/= "---") rest))
     _ -> md
 
--- ---------------------------------------------------------------------------
--- Block machine
--- ---------------------------------------------------------------------------
-
--- | Walk lines, emitting converted Markdown chunks (prose runs, code cells).
 blocks :: [Text] -> [Text]
 blocks [] = []
 blocks (l : ls)
@@ -190,7 +155,6 @@ isFenceLine l = "```" `T.isPrefixOf` l
 isFenceClose :: Text -> Bool
 isFenceClose l = T.strip l == "```"
 
--- | An opening fence @```{…}@ → its raw attribute string (between the braces).
 fenceOpen :: Text -> Maybe Text
 fenceOpen l = do
     rest <- T.stripPrefix "```" (T.stripStart l)
@@ -199,13 +163,6 @@ fenceOpen l = do
         then Just (T.dropAround (`elem` ("{}" :: String)) s)
         else Nothing
 
--- ---------------------------------------------------------------------------
--- Prose
--- ---------------------------------------------------------------------------
-
-{- | Convert a prose run: drop fenced-div markers, strip Pandoc attributes,
-repoint image paths. Each line is transformed independently.
--}
 proseBlock :: [Text] -> Text
 proseBlock =
     T.intercalate "\n"
@@ -218,11 +175,6 @@ isDivMarker l = ":::" `T.isPrefixOf` T.strip l
 rewriteImages :: Text -> Text
 rewriteImages = T.replace "](assets/" ("](" <> assetBase)
 
-{- | Drop Pandoc attribute braces — heading anchors @{#…}@, image\/span
-attributes @{.…}@ — anywhere on the line. Leaves ordinary prose braces alone
-(only braces whose first char is @.@ or @#@ are removed). Trailing space left by
-a removed brace is trimmed.
--}
 stripPandocAttrs :: Text -> Text
 stripPandocAttrs = T.stripEnd . go
   where
@@ -235,11 +187,3 @@ stripPandocAttrs = T.stripEnd . go
                         let (_, after) = T.breakOn "}" rest
                          in before <> go (T.drop 1 after)
                 _ -> before <> "{" <> go (T.drop 1 rest)
-
--- ---------------------------------------------------------------------------
--- Code
--- ---------------------------------------------------------------------------
-
-{- | Convert a fenced code block by its Pandoc attribute string into one or more
-notebook chunks.
--}

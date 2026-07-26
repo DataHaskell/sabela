@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The section 7.1 established-target fallback: a zero-hit answer inside a
-cluster whose target package has ledger provenance evidence answers with the
-package's bounded export card, ranked by 'producesGoal' against the standing
-goal — never an empty envelope, never triggered by a package name.
--}
 module Siza.Agent.Discover.ProducerCard (
     establishedFallback,
     fetchPackageExports,
@@ -27,11 +22,6 @@ import Siza.Agent.Discover.Goal (producesGoal)
 import Siza.Agent.Discover.Request (DiscoverRequest (..))
 import Siza.Agent.Discover.Types (StandingGoal (..))
 
-{- | Section 7.1: a zero-hit answer while a derived goal stands with package
-provenance answers the target's goal-ranked export card instead of an empty
-envelope. Trigger: empty AND established-target AND goal-standing — a state
-predicate, never a package name.
--}
 establishedFallback ::
     Maybe StandingGoal ->
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
@@ -48,10 +38,6 @@ establishedFallback mSG call req vOut
             Nothing -> vOut
     | otherwise = pure vOut
 
-{- | The goal-ranked export card for the established target package, or
-'Nothing' when the catalogue held no exports (the honest miss stands —
-a fabricated card would be a false found).
--}
 producerCard :: StandingGoal -> [(Text, Text)] -> Int -> Maybe Value
 producerCard sg exports limit
     | null exports = Nothing
@@ -92,10 +78,6 @@ producerCard sg exports limit
             ]
     tShow = T.pack . show
 
-{- | The (name, type) exports of a package via the live catalogue backends:
-the capability channel's per-package API slice plus a bounded browse of its
-modules — the same sources every discover answer draws from (R7.6).
--}
 fetchPackageExports ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     Text ->

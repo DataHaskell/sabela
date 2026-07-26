@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure candidate generation for the agent's repair cascade: each tier maps a
-diagnostic + cell source to rewrite candidates, recording the names it proposes
-so heal and search cross-check against one catalogue (R7.6). Vetting (apply,
-re-run, keep-iff-notebook-improves) lives in "Siza.Agent.Repair".
--}
 module Siza.Agent.RepairTiers (
     Candidate (..),
     TierInput (..),
@@ -42,11 +37,6 @@ import Sabela.AI.RepairDispatch (
  )
 import Sabela.AI.SelfHeal (plausibleRename)
 
-{- | What a tier may draw on: the diagnostic, the cell source, a hole-fit
-blob (when fetched), the discover-backed locator for a name's modules
-(module, Just package when a dep must be declared), and the nearest-module
-locator for a wrong module spelling (same catalogue, R7.6).
--}
 data TierInput = TierInput
     { tiDiag :: Text
     , tiSource :: Text
@@ -55,7 +45,6 @@ data TierInput = TierInput
     , tiModules :: Text -> [Text]
     }
 
--- | One rewrite candidate plus the names/modules/packages it introduces.
 data Candidate = Candidate
     { cdTier :: RepairTier
     , cdSource :: Text
@@ -63,12 +52,10 @@ data Candidate = Candidate
     }
     deriving (Eq, Show)
 
--- | All tiers' candidates in dispatch order, deduped on the rewritten source.
 candidatesFor :: [RepairTier] -> TierInput -> [Candidate]
 candidatesFor tiers input =
     dedupOn cdSource (concatMap (`tierCandidates` input) tiers)
 
--- | One tier's candidates; a tier this client cannot generate yields none.
 tierCandidates :: RepairTier -> TierInput -> [Candidate]
 tierCandidates tier input = case tier of
     TierDepAdd ->
@@ -143,11 +130,6 @@ tierCandidates tier input = case tier of
     withDep Nothing s = s
     withDep (Just p) s = addDepLine p s
 
-{- | The (rewrite-target, maybe goal-type) a refinement/not-in-scope diagnostic
-implies: the not-in-scope name with its inferred type when GHC named one, else a
-Found-hole's @_@ token and hole type (live_test cell 4). The hole-fit tier takes
-either; the type-directed tier takes the typed case (so an empty-fit hole heals).
--}
 holeTargetTyped :: Text -> Maybe (Text, Maybe Text)
 holeTargetTyped diag = case goalFromError diag of
     Just (w, ty) -> Just (w, Just ty)
@@ -155,9 +137,6 @@ holeTargetTyped diag = case goalFromError diag of
         Just w -> Just (w, Nothing)
         Nothing -> (\ty -> ("_", Just ty)) <$> holeTypeFromDiagnostic diag
 
-{- | Split an alias-qualified name (@T.unpack@) into (alias, bare name); the
-catalogue is queried with the BARE name only, never the qualified spelling.
--}
 splitQualified :: Text -> (Maybe Text, Text)
 splitQualified w = case T.breakOnEnd "." w of
     (qual, bare)
@@ -169,10 +148,6 @@ splitQualified w = case T.breakOnEnd "." w of
   where
     upperHead t = maybe False (isUpper . fst) (T.uncons t)
 
-{- | Hole fits that PRODUCE the goal type (result type equals it), nullary
-bindings first so a "value of type T" repair prefers a ready-made value
-over a producer still needing arguments (search-api.md section 7.1).
--}
 goalTypedFits :: Text -> Text -> [Text]
 goalTypedFits goalTy blob =
     map hfWrite . sortOn (argCount . hfType) $
@@ -181,18 +156,12 @@ goalTypedFits goalTy blob =
     producesGoal ty = normType ty == g || ("-> " <> g) `T.isSuffixOf` normType ty
     g = normType goalTy
 
--- | Whitespace-normalise a type for structural comparison.
 normType :: Text -> Text
 normType = T.unwords . T.words
 
--- | Count top-level function arrows in a signature (its argument arity).
 argCount :: Text -> Int
 argCount ty = length (T.splitOn "->" (normType ty)) - 1
 
-{- | Argument-order permutations of each top-level application on a line: the
-head stays put, its argument tokens are reordered. Blind to scope and types
-('acceptRepair' is the verifier), bounded so an arg list cannot explode.
--}
 permuteApplications :: Text -> [Text]
 permuteApplications src =
     nub [T.intercalate "\n" ls' | ls' <- oneLineVariants (T.lines src)]
@@ -202,7 +171,6 @@ permuteApplications src =
         [v : rest | v <- lineVariants l, v /= l]
             ++ [l : vs | vs <- oneLineVariants rest]
 
--- | The argument-permuted spellings of one line's applied RHS.
 lineVariants :: Text -> [Text]
 lineVariants l = case T.breakOn "=" l of
     (lhs, rhs)
@@ -212,7 +180,6 @@ lineVariants l = case T.breakOn "=" l of
             ]
     _ -> []
 
--- | Reorderings of an application spine @head a b …@ (head fixed), bounded.
 spineVariants :: Text -> [Text]
 spineVariants body = case T.words body of
     (h : args)
@@ -223,13 +190,9 @@ spineVariants body = case T.words body of
             ]
     _ -> []
 
--- | Cap on argument permutations tried per spine (context/latency guard).
 maxPermutations :: Int
 maxPermutations = 6
 
-{- | Merge @pkg@ into the cell's @-- cabal: build-depends:@ line (mirrors
-the server fixer's semantics): append to an existing line, else prepend one.
--}
 addDepLine :: Text -> Text -> Text
 addDepLine pkg src = case break ("build-depends:" `T.isInfixOf`) ls of
     (before, depLine : after)
@@ -241,7 +204,6 @@ addDepLine pkg src = case break ("build-depends:" `T.isInfixOf`) ls of
     declared line =
         map T.strip (T.splitOn "," (snd (T.breakOn "build-depends:" line)))
 
--- | Enable a LANGUAGE extension: a fresh pragma after any leading cabal line.
 addPragmaLine :: Text -> Text -> Text
 addPragmaLine ext src
     | ("{-# LANGUAGE" `T.isPrefixOf` T.stripStart src)
@@ -255,18 +217,12 @@ addPragmaLine ext src
   where
     pragma = "{-# LANGUAGE " <> ext <> " #-}"
 
-{- | Add @import M (n)@ after the cell's last import (else after the leading
-cabal\/pragma header); a no-op when the module is already imported.
--}
 addImportLine :: Text -> Text -> Text -> Text
 addImportLine m n src
     | any ((("import " <> m) `T.isPrefixOf`) . T.stripStart) (T.lines src) =
         src
     | otherwise = insertImportLine ("import " <> m <> " (" <> n <> ")") src
 
-{- | Add @import qualified M as A@ — the unimported-alias sub-class of the
-not-in-scope diagnostic (@No module named A is imported@).
--}
 addQualifiedImportLine :: Text -> Text -> Text -> Text
 addQualifiedImportLine m alias src
     | any ((line `T.isPrefixOf`) . T.stripStart) (T.lines src) = src
@@ -274,7 +230,6 @@ addQualifiedImportLine m alias src
   where
     line = "import qualified " <> m <> " as " <> alias
 
--- | Splice an import line after the last import (else after the header).
 insertImportLine :: Text -> Text -> Text
 insertImportLine line src = T.unlines (before ++ [line] ++ after)
   where

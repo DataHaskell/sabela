@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The R10(c) live-kernel check for R6.1/R6.2: against a REAL GHCi kernel
-and the real reactive pipeline, a deliberately long-running cell gets
-@{cellId, status: executing}@ well under the transport timeout, retrying
-the same write does not duplicate the cell, and @await_idle@ later
-reconciles the settled outcome. Skipped when ghc is not on PATH.
--}
 module Test.WriteAckLiveSpec (spec) where
 
 import Control.Exception (bracket, bracket_)
@@ -57,10 +51,6 @@ insertSrc :: App -> AIStore.AIStore -> ReactiveNotebook -> Text -> IO Value
 insertSrc app store rn src =
     callTool app store rn "insert_cell" (object ["source" .= src])
 
-{- | Loop @await_idle@ (bounded) until it either drains a settled write for
-the cell or the kernel reports idle with nothing pending. Returns the drained
-writes seen.
--}
 awaitWrites :: App -> AIStore.AIStore -> ReactiveNotebook -> Int -> IO [Value]
 awaitWrites _ _ _ 0 = pure []
 awaitWrites app store rn n = do
@@ -69,9 +59,6 @@ awaitWrites app store rn n = do
         Just (Array ws) -> pure (foldr (:) [] ws)
         _ -> awaitWrites app store rn (n - 1)
 
-{- | A cell that sleeps 20s: long enough to outlive both the ack deadline and
-G1's compile-gate cost (a real disposable GHCi spawn ahead of the ack path).
--}
 slowSrc :: Text
 slowSrc =
     "import Control.Concurrent\n\
@@ -85,16 +72,11 @@ spec = describe "R10(c) live-kernel write-ack" $
             Nothing -> pendingWith "ghc not on PATH"
             Just _ -> withLiveEnv $
                 withFixture "sabela-writeack" $ \(app, store, rn) -> do
-                    -- Warm the kernel through a trivial write so the slow
-                    -- insert's timing is not dominated by the cold spawn.
                     _ <- insertSrc app store rn "sabelaWarmup = (1 :: Int)"
                     _ <- awaitWrites app store rn 8
                     t0 <- getMonotonicTimeNSec
                     ack <- insertSrc app store rn slowSrc
                     t1 <- getMonotonicTimeNSec
-                    -- Well under the 60s transport timeout AND under the
-                    -- cell's own 20s runtime: the ack outran execution
-                    -- (the bound absorbs G1's real disposable-gate cost).
                     ((t1 - t0) < 15000000000) `shouldBe` True
                     textField "status" ack `shouldBe` Just "executing"
                     let mCid = field "cellId" ack
@@ -114,10 +96,6 @@ headMaybe :: [a] -> Maybe a
 headMaybe (x : _) = Just x
 headMaybe [] = Nothing
 
-{- | Run the test against a fresh fixture in its own temp dir, releasing the
-kernel afterwards so a leaked GHCi cannot hold its nursery for the rest of
-the suite.
--}
 withFixture ::
     String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a
 withFixture label action =
@@ -127,9 +105,6 @@ withFixture label action =
 releaseFixture :: (App, AIStore.AIStore, ReactiveNotebook) -> IO ()
 releaseFixture (app, _, _) = forceResetAllSessions (appSessions app)
 
-{- | The repl project needs the sabela-notebook overlay the production main
-resolves; without it GHCi cannot spawn.
--}
 newFixture :: FilePath -> IO (App, AIStore.AIStore, ReactiveNotebook)
 newFixture dir = do
     mgr <- newManager defaultManagerSettings
@@ -145,7 +120,6 @@ newFixture dir = do
     store <- AIStore.newAIStore cfg mgr
     pure (app, store, rn)
 
--- | The repo's sabela-notebook dir as a local package overlay, when present.
 supportOverlay :: IO [FilePath]
 supportOverlay = do
     present <- doesFileExist ("sabela-notebook" </> "sabela-notebook.cabal")

@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The R6.2 general invariant, over GENERATED lost-response retry schedules:
-for every schedule of byte-identical retries of ONE write — some while the
-write is still executing, some after it settles — every prefix of the
-schedule leaves exactly one cell in the notebook, and every retry response
-states the original landed. Nothing here reproduces a bench task; the
-schedule space is enumerated mechanically.
--}
 module Test.WriteAckRetrySpec (spec) where
 
 import Control.Concurrent (newEmptyMVar, putMVar, threadDelay)
@@ -26,7 +19,6 @@ import Test.WriteAckFixture (
     withAckEnv,
  )
 
--- | The generated schedule space: retries before x after the write settles.
 schedules :: [(Int, Int)]
 schedules = [(before, after) | before <- [0 .. 2], after <- [0 .. 2]]
 

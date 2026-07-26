@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The setup scaffold stage: when a request names a data file, pre-commit the
-loading cell as a disclosed write, keyed on prompt structure (never a library
-token); the note is gated on the cell verifiably running clean (R7.4, M16).
--}
 module Siza.Agent.Scaffold (
     runScaffoldStage,
     scaffoldCall,
@@ -25,10 +21,6 @@ import Siza.Agent.Messages (toolMsg)
 import Siza.Agent.Owned (ownedCellOutcome)
 import Siza.Agent.Tools (renderOutcome)
 
-{- | Run the scaffold stage through the injected dispatch: the setup write's
-call and real outcome land in the transcript on the @scaffold@ channel, and
-the orienting note is emitted only when the cell verifiably ran clean.
--}
 runScaffoldStage ::
     (ToolCall -> IO (Either Text ToolOutcome)) -> Text -> IO [Value]
 runScaffoldStage disp prompt = case scaffoldFile prompt of
@@ -50,35 +42,22 @@ runScaffoldStage disp prompt = case scaffoldFile prompt of
                 ]
         pure (disclosed : note)
 
--- | The data file the request names, if any: the structural scaffold key.
 scaffoldFile :: Text -> Maybe Text
 scaffoldFile =
     find (".csv" `T.isSuffixOf`)
         . map trimPathToken
         . T.words
 
-{- | Strip the punctuation prose wraps a path in, WITHOUT eating a relative
-path's leading dot. A @.@ is sentence punctuation only at the END: stripping
-it from both ends turned the user's @./examples/data/housing.csv@ into an
-absolute @/examples/data/housing.csv@, which is C4 task 1's near-miss class
-introduced by the harness itself (G8 task 10). live_test21 and live_test22
-both scaffolded against a path that does not exist.
--}
 trimPathToken :: Text -> Text
 trimPathToken =
     T.dropWhileEnd (`elem` ("`\"',." :: String))
         . T.dropWhile (`elem` ("`\"'," :: String))
 
--- | Pre-load the named data file, keyed off the prompt's structure alone.
 scaffoldCall :: Text -> Maybe ToolCall
 scaffoldCall prompt = do
     file <- scaffoldFile prompt
     pure (ToolCall "insert_cell" (object ["source" .= scaffoldText file]))
 
-{- | The orienting note for a VERIFIED scaffold: it states only the observed
-outcome and restates the full remaining ask, naming every typed deliverable.
-Callers must gate it on the scaffold cell's execution reporting healthy.
--}
 scaffoldNoteFor :: Text -> Text -> Text
 scaffoldNoteFor prompt file =
     "Setup: a cell loading `"
@@ -93,10 +72,6 @@ scaffoldNoteFor prompt file =
         [] -> ""
         ns -> ", including " <> T.intercalate ", " ["`" <> n <> "`" | n <- ns]
 
-{- | The transcript disclosure for the scaffold write: names the action and
-carries the real rendered outcome, so the note that follows has visible
-evidence and the write is never silent (the product-chat requirement).
--}
 scaffoldDisclosure :: Text -> Text -> Text
 scaffoldDisclosure file rendered =
     "Setup write: inserted a cell loading `"

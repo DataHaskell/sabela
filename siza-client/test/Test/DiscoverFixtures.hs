@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The controlled SYNTHETIC catalogue of testing-plan R10(a): two installed
-packages (one with an internal module), a hidden package, an absent-but-known
-package, a notebook alias import, and the prompt-documented builtins. No bench
-libraries, so the invariants generalise past the eval corpus.
--}
 module Test.DiscoverFixtures (
     SynPkg (..),
     synInstalled,
@@ -49,7 +44,6 @@ import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.DiscoverTool (runDiscoverCall, runDiscoverTool)
 
--- | One synthetic package: name, version, hidden flag, modules with exports.
 data SynPkg = SynPkg
     { spName :: Text
     , spVersion :: Text
@@ -89,11 +83,9 @@ synAbsent :: SynPkg
 synAbsent =
     SynPkg "nimbus" "2.0.0" False [("Nimbus.Sky", [("drizzle", "Sky -> Rain")])]
 
--- | What the local hoogle DB knows: everything, installed or not.
 synHoogle :: [SynPkg]
 synHoogle = synInstalled ++ [synHidden, synAbsent]
 
--- | What the session can browse: everything in the universe except absentees.
 sessionPkgsIn :: [SynPkg] -> [SynPkg]
 sessionPkgsIn universe =
     [p | p <- universe, spName p /= spName synAbsent]
@@ -111,9 +103,6 @@ catalogueModules = [m | p <- synHoogle, (m, _) <- spModules p]
 cataloguePackages :: [Text]
 cataloguePackages = map spName synHoogle
 
-{- | Every name the catalogue holds an answer for: exports, modules, packages,
-the notebook binding and alias spelling, and two prompt-documented builtins.
--}
 discoverables :: [Text]
 discoverables =
     catalogueExports
@@ -121,11 +110,9 @@ discoverables =
         ++ cataloguePackages
         ++ ["gustTotal", "Z.gust", "displayHtml", "slider"]
 
--- | The simulated tool dispatch a discover call fans out through.
 simCall :: ToolName -> Value -> IO (Either Text ToolOutcome)
 simCall = simCallIn synHoogle
 
--- | 'simCall' over an alternative package universe.
 simCallIn :: [SynPkg] -> ToolName -> Value -> IO (Either Text ToolOutcome)
 simCallIn _ ListCells _ = pure (Right (ToolOk notebookCells))
 simCallIn universe FindFunction args =
@@ -161,9 +148,6 @@ argText k (Object o) = case KM.lookup (K.fromText k) o of
     _ -> ""
 argText _ _ = ""
 
-{- | @find_function@ over the SESSION-VISIBLE packages: browse cards for
-module queries, name matches otherwise.
--}
 simSession :: [SynPkg] -> Text -> Text -> Value
 simSession sessionPkgs q mScope
     | moduleShaped q = browseAnswer q
@@ -207,7 +191,6 @@ simSession sessionPkgs q mScope
     matchJ m n t via =
         object ["module" .= m, "name" .= n, "type" .= t, "via" .= (via :: Text)]
 
--- | @search_capability@: enriched per-package buckets over the hoogle universe.
 simCapability :: [SynPkg] -> Text -> Value
 simCapability universe q = object ["query" .= q, "hits" .= map bucket matching]
   where
@@ -242,7 +225,6 @@ simCapability universe q = object ["query" .= q, "hits" .= map bucket matching]
         (m : _) -> m
         [] -> ""
 
--- | Run a discover query against the synthetic catalogue, capability lever on.
 runCat :: Text -> IO Value
 runCat q = do
     out <- runDiscoverTool True simCall q
@@ -250,11 +232,9 @@ runCat q = do
         ToolOk v -> pure v
         ToolErr v -> pure v
 
--- | Like 'runCat' but through the full argument-validating call path.
 runCatArgs :: Text -> Value -> IO Value
 runCatArgs = runCatArgsIn synHoogle
 
--- | 'runCatArgs' over an alternative package universe.
 runCatArgsIn :: [SynPkg] -> Text -> Value -> IO Value
 runCatArgsIn universe q args = do
     out <- runDiscoverCall True (simCallIn universe) q args
@@ -262,11 +242,9 @@ runCatArgsIn universe q args = do
         ToolOk v -> pure v
         ToolErr v -> pure v
 
--- | Write the sorted Hackage names file and point the resolver at it.
 installNamesFile :: IO ()
 installNamesFile = installNamesFileWith synHackageNames
 
--- | 'installNamesFile' with an explicit upstream name list.
 installNamesFileWith :: [Text] -> IO ()
 installNamesFileWith names = do
     dir <- getTemporaryDirectory

@@ -53,10 +53,6 @@ runDiscover mode dispatch calls =
   where
     proven = concatMap (usedNames . toolCallSource) calls
 
-{- | R6.10: module-API bytes attach ONLY to an install write that FAILED with
-a module-implicating diagnostic ('rediscoverModules' keys the class) — never
-to any executionSucceeded result, never to a transport error.
--}
 runDiscoverOutcomes ::
     GrammarMode -> Dispatch -> [(ToolCall, ToolOutcome)] -> IO [Value]
 runDiscoverOutcomes mode dispatch pairs =
@@ -72,12 +68,6 @@ runDiscoverOutcomes mode dispatch pairs =
             && executionFailed o
             && not (null (targets (c, o)))
 
--- | Did the call's cell actually run clean (payload execution report)?
-
-{- | The source a write offered and the gate refused (G5.4). A refusal
-commits nothing, so it leaves no owned cell — without this the rejected
-candidate is forgotten and can be recommended again.
--}
 refusedSource :: ToolCall -> ToolOutcome -> Maybe Text
 refusedSource tc out
     | not (isOwningTool (tcName tc)) = Nothing
@@ -98,16 +88,12 @@ executionSucceeded (ToolOk (Object o)) = case KM.lookup "execution" o of
         _ -> False
 executionSucceeded _ = False
 
-{- | The cell LANDED but ran red: an execution report with @ok: false@. A
-transport error or a report-free ack landed nothing browsable.
--}
 executionFailed :: ToolOutcome -> Bool
 executionFailed (ToolOk (Object o)) = case KM.lookup "execution" o of
     Just (Object e) -> KM.lookup "ok" e == Just (Bool False)
     _ -> False
 executionFailed _ = False
 
--- | The red cell's diagnostic text, from the execution report.
 outcomeDiagnostic :: ToolOutcome -> Text
 outcomeDiagnostic (ToolOk (Object o)) = case KM.lookup "execution" o of
     Just (Object e) -> textField "error" e
@@ -118,9 +104,6 @@ outcomeDiagnostic (ToolOk (Object o)) = case KM.lookup "execution" o of
         _ -> ""
 outcomeDiagnostic _ = ""
 
-{- | Browse the given modules and render the mode's message; @proven@ names
-(the writing cell's own uses) are exempt from the card's noise filter (R9.7).
--}
 discoverSurfaces ::
     GrammarMode -> Dispatch -> [Text] -> [(Text, ImportStyle)] -> IO [Value]
 discoverSurfaces mode dispatch proven specs = do
@@ -143,9 +126,6 @@ seamDiscover GrammarOn dispatch redCells =
     targets = concat [rediscoverModules src err | (src, err) <- redCells]
     proven = concatMap (usedNames . fst) redCells
 
-{- | Both arms render through the ONE synthesized-card path (R3.6): the raw
-":browse" banner is gone — it leaked package-hash names unbounded.
--}
 discoverMessages :: GrammarMode -> [Text] -> [Surface] -> [Value]
 discoverMessages _ _ [] = []
 discoverMessages _ proven surfaces = discoverGrammarMsg proven surfaces
@@ -177,10 +157,6 @@ valueText (Array a) = T.intercalate "\n" (map valueText (toList a))
 valueText (Object o) = T.intercalate "\n" (map valueText (KM.elems o))
 valueText _ = ""
 
-{- | The card message: shrunk until the wrapped envelope fits the budget
-(R3.9), then gated useful-or-absent (9.1, R5.8\/R9.7) — browse\/compile-
-verified names only, non-empty body, descriptive framing, else NOTHING.
--}
 discoverGrammarMsg :: [Text] -> [Surface] -> [Value]
 discoverGrammarMsg _ [] = []
 discoverGrammarMsg proven surfaces =
@@ -213,10 +189,6 @@ discoverEnvelope content =
         , "content" .= content
         ]
 
-{- | Every cell's source for discovery, in ONE @list_cells full:true@ call.
-The preview default omits @source@ entirely, so @full@ must be requested —
-without it the proactive lever is structurally dead (TRIAGE M1).
--}
 notebookSources :: Dispatch -> IO [Text]
 notebookSources dispatch = do
     listed <- dispatch (ToolCall "list_cells" (object ["full" .= True]))
@@ -226,7 +198,6 @@ outcomeValue :: Either Text ToolOutcome -> Value
 outcomeValue (Right (ToolOk v)) = v
 outcomeValue _ = Null
 
--- | The @source@ field of each cell in a @list_cells@ result.
 cellSources :: Value -> [Text]
 cellSources (Array a) =
     [s | Object c <- toList a, Just (String s) <- [KM.lookup "source" c]]
@@ -247,13 +218,9 @@ declaresDeps :: Text -> Bool
 declaresDeps src =
     any (("-- cabal:" `T.isPrefixOf`) . T.strip) (T.lines src)
 
--- | Whether a write call's source declares a @-- cabal:@ dependency line.
 declaresDepsCall :: ToolCall -> Bool
 declaresDepsCall = declaresDeps . toolCallSource
 
-{- | The package names a cell's @-- cabal: build-depends:@ lines declare,
-version bounds stripped — the R1.4 world-change legality key.
--}
 declaredPackages :: Text -> [Text]
 declaredPackages src =
     [ pkg

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G6's pure core: root-cause fold (task 2), the fractional-int generator
-(task 1), and the honest disclosure note (task 7). Live cascade behaviour is
-"Test.DiagnosticMitigationLiveSpec" and its Compound sibling.
--}
 module Test.DiagnosticMitigationSpec (spec) where
 
 import Data.Aeson (Value (..))
@@ -28,10 +24,6 @@ import Sabela.AI.Capabilities.Edit.Repair.Mitigate.Loop (
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Model (CellError (..), bareCellError)
 
-{- | live_test5's four-diagnostic rejection, verbatim in shape: one root
-cause (the sine cell's @w :: Int@ forcing Fractional\/Floating Int), and
-two knock-on not-in-scope echoes for names the SAME cell defines.
--}
 liveTest5Errors :: [CellError]
 liveTest5Errors =
     [ bareCellError
@@ -56,15 +48,10 @@ liveTest5Src =
 liveTest5Result :: Either Text ExecutionResult
 liveTest5Result = Right (ExecutionResult [] Nothing liveTest5Errors [])
 
--- | The field-lookup helper for asserting on 'mitigationDisclosure's Value.
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
-{- | live_test8's final-turn rejection: @import Data.Text as T@ with no
-@-- cabal:@ line, so GHC-87110 names the hidden package and the @T.pack@ /
-@T.unpack@ not-in-scope pair follow from it.
--}
 liveTest8Errors :: [CellError]
 liveTest8Errors =
     [ bareCellError
@@ -81,11 +68,6 @@ liveTest8Src = "import Data.Text as T\n\nsineWaveSvg = T.pack \"<svg/>\""
 
 spec :: Spec
 spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
-    {- live_test28: the model wrote `plot [...]` bare. It TYPECHECKS, so the
-    gate admits it, and the cell then goes red on "No instance for Show
-    Picture" — a red cell the invariant cannot catch, since the invariant is
-    about compiling. The identical run that wrote `displayPicture $ plot ...`
-    succeeded, so the difference between pass and fail was one wrapper. -}
     describe "unshowable-display (live_test28)" $ do
         let showErr =
                 bareCellError
@@ -118,15 +100,12 @@ spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
                 case cands of
                     (c : _) -> do
                         c `shouldSatisfy` T.isInfixOf "displayPicture ("
-                        -- the import above it is untouched
                         c `shouldSatisfy` T.isInfixOf "import Sabela.Notebook"
                     [] -> expectationFailure "expected a wrapped candidate"
 
         it "comprehension-not-bind: a comprehension arrow is not a bind" $ case row of
             Nothing -> expectationFailure "no unshowable-display row"
             Just r -> do
-                -- The live_test19 class: a bare " <- " scan reads the
-                -- comprehension arrow as a bind and refuses to wrap.
                 cands <-
                     mitGenerate
                         r

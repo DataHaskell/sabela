@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of the RESULT→USE bridge: ranking a discovered package's
-hoogle exports against the query keywords (so an action query surfaces the
-function, not the data accessor), and shaping the enriched
-@{query, hits:[{package, synopsis, cabal, modules, api:[...]}]}@ wire result.
-The per-package @hoogle "+pkg ..."@ shell-out itself is exercised in the live
-smoke; these pin the parsing and shaping decisions. No network.
--}
 module Test.CapabilityApiSpec (spec) where
 
 import Data.Aeson (Value (..), object, toJSON, (.=))
@@ -32,11 +25,6 @@ import Sabela.AI.HoogleResolve (HoogleHit (..), parseHoogleBlob)
 import Sabela.AI.Types (ToolOutcome (..), toolOutcomeValue)
 import Test.Hspec
 
-{- | A real @hoogle "+qrcode-core encode" --json@-shaped blob: the encoder, two
-sibling encoders, a data accessor (value with a record sig), a @data@ decl with
-no signature, and a @module@ row. Ranking must put the encoder first and drop
-the non-value declarations to the back.
--}
 qrBlob :: Text
 qrBlob =
     T.concat
@@ -88,15 +76,11 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
         it "surfaces the query-matching function first, drops non-values to back" $ do
             let kws = apiKeywords "generate a QR code from text"
                 ranked = rankApiFns 6 kws (parseHoogleBlob qrBlob)
-            -- encodeText and encode both match; both must precede the accessor
-            -- and the data decl. The top entry is a value with the QR signature.
             afType (head ranked)
                 `shouldSatisfy` ("Maybe QRImage" `T.isInfixOf`)
             map afName (take 3 ranked)
                 `shouldContain` ["encode"]
-            -- the data/module declarations (no signature) rank behind values
             last (map afType ranked) `shouldBe` ""
-            -- every value item precedes every non-value item
             let (vals, decls) = break (T.null . afType) ranked
             all (T.null . afType) decls `shouldBe` True
             length vals `shouldBe` 3

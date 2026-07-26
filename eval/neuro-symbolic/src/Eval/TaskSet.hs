@@ -1,6 +1,3 @@
-{- | The siza-eval task catalogue, split out of "Eval.Task" (module-size cap):
-the interactive @siza-eval@ pool of small graded tasks plus the id lookup.
--}
 module Eval.TaskSet (
     tasks,
     findTask,

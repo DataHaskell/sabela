@@ -1,13 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the query side-channel (P1 stress case 20): GHCi introspection
-serializes on 'sessQueryLock', a lock distinct from the cell run-lock
-'sessLock'. Queries no longer corrupt each other's stdin writes, and the
-run-lock stays free so a query never blocks behind a draining cell at the
-lock level (the busy gate is admission control, not the run-lock). Pure
-locking logic over a dummy 'Session'; no live kernel.
--}
 module Test.QueryConcurrencySpec (spec) where
 
 import Control.Concurrent (
@@ -90,8 +83,6 @@ spec :: Spec
 spec = describe "query side-channel: sessQueryLock (stress case 20)" $ do
     it "the query lock is distinct from the cell run-lock" $ do
         sess <- dummySession
-        -- Hold the query lock; the run-lock must stay free, so a query
-        -- never serializes behind a cell at the lock level.
         withMVar (sessQueryLock sess) $ \_ -> do
             runFree <- isJust <$> tryReadMVar (sessLock sess)
             runFree `shouldBe` True

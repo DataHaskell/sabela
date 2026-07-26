@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | One bounded failure envelope for the tool transport (R6.3, R6.9): every
-transport-layer failure is classified — infra, kernel, or payload — and
-rendered as a single @[class] message@ line. Raw exception records and
-serialisation-error strings never reach the model; routing failures never
-blame the caller's payload.
--}
 module Siza.Transport.Failure (
     FailureClass (..),
     ToolFailure (..),
@@ -24,18 +18,15 @@ import Network.HTTP.Client (
     HttpExceptionContent (..),
  )
 
--- | Who is at fault: the infrastructure, the kernel, or the caller's payload.
 data FailureClass = InfraFault | KernelFault | PayloadFault
     deriving (Eq, Show)
 
--- | The single failure envelope every transport error renders through.
 data ToolFailure = ToolFailure
     { tfClass :: FailureClass
     , tfText :: Text
     }
     deriving (Eq, Show)
 
--- | The one-line rendering: @[class] message@, bounded.
 renderFailure :: ToolFailure -> Text
 renderFailure (ToolFailure c t) = "[" <> tag c <> "] " <> bounded t
   where
@@ -43,14 +34,12 @@ renderFailure (ToolFailure c t) = "[" <> tag c <> "] " <> bounded t
     tag KernelFault = "kernel"
     tag PayloadFault = "payload"
 
--- | One line, bounded: newlines collapse and long text truncates.
 bounded :: Text -> Text
 bounded = T.take 380 . T.unwords . T.words
 
 notYourFault :: Text
 notYourFault = "Your request was not the problem."
 
--- | Classify any exception the HTTP layer threw; never ship its Show record.
 classifyTransport :: Int -> SomeException -> ToolFailure
 classifyTransport timeoutSecs e = case fromException e of
     Just he -> classifyException timeoutSecs he
@@ -91,9 +80,6 @@ classifyException _ (InvalidUrlException _ why) =
         InfraFault
         ("invalid tool endpoint URL (" <> T.pack why <> "). " <> notYourFault)
 
-{- | A non-2xx status is a server-side answer, classified BEFORE any payload
-decode: 404 and 5xx are infrastructure; only 400/422 blame the payload.
--}
 classifyStatus :: Int -> ToolFailure
 classifyStatus 404 =
     ToolFailure
@@ -114,9 +100,6 @@ classifyStatus s
             InfraFault
             ("HTTP " <> tshow s <> ": server-side failure. " <> notYourFault)
 
-{- | A 2xx body that fails to decode is a server/proxy fault (it spoke
-non-JSON) - never rendered as the caller's payload or JSON problem (M8).
--}
 classifyDecode :: Text -> ToolFailure
 classifyDecode raw =
     ToolFailure

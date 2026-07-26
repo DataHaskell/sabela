@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The typed error-index interface: GHC codes → reference URL + remediation
-class, and how a rejected cell's diagnostics surface to the model. Pins the
-wire shape the model consumes ('Sabela.AI.ErrorIndex').
--}
 module Test.ErrorIndexSpec (spec) where
 
 import Data.Aeson (Value (..), object, toJSON, (.=))

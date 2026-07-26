@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R4-T2: the SCOPE-KEYED assertion ledger (search-api.md section 11.1) and
-world-change-aware install state (R1.3/R1.4): distinct-scope queries never
-share a ledger key, a repeat replays its own recorded evidence, fuzzy hits
-assert nothing protected, and an in-session install refreshes install-state
-facts through an ANNOUNCED world change.
--}
 module Test.DiscoverScopeLedgerSpec (discoverScopeLedgerSpec) where
 
 import Control.Monad (forM_)
@@ -57,7 +51,6 @@ hkT = HackageInfo True []
 args :: [(Text, Value)] -> Value
 args kvs = object [(K.fromText k, v) | (k, v) <- kvs]
 
--- | A found envelope whose single hit has the given kind.
 foundKind :: MatchKind -> Text -> Text -> Value
 foundKind kind q name =
     discoverEnvelope
@@ -83,7 +76,6 @@ missFor q =
         [okAnswer "session" [], okAnswer "hoogle" []]
         hkT
 
--- | Replay a scripted (key, envelope) sequence through the guard discipline.
 script :: [(Text, Value)] -> (SearchLedger, [Value])
 script = foldl step (emptyLedger, [])
   where
@@ -92,8 +84,6 @@ script = foldl step (emptyLedger, [])
         Nothing ->
             let (led2, out) = ledgerRecord q v led
              in (led2, outs ++ [out])
-
--- Scope-keyed ledger keys (R3.8/R3.7) ---------------------------------------
 
 scopeGrid :: [Value]
 scopeGrid =
@@ -126,16 +116,12 @@ scopeKeySpec = describe "distinct scopes never share a ledger key (R3.8)" $ do
         textField "summary" refA `shouldSatisfy` (not . T.isInfixOf "lull")
         textField "summary" refB `shouldSatisfy` T.isInfixOf "lull"
     it "the ledger is deterministic under the new key (R3.7)" $ do
-        -- Two INDEPENDENT evaluations from separately constructed inputs
-        -- (never one thunk compared with itself).
         let mkRun () =
                 script
                     [ (requestKey "gust" a, foundKind MkExact "gust" "gust")
                     | a <- scopeGrid
                     ]
         encode (snd (mkRun ())) `shouldBe` encode (snd (mkRun ()))
-
--- Assertion strength follows matchKind (section 11.1) -----------------------
 
 assertionStrengthSpec :: Spec
 assertionStrengthSpec = describe "fuzzy hits assert nothing protected" $ do
@@ -165,8 +151,6 @@ assertionStrengthSpec = describe "fuzzy hits assert nothing protected" $ do
             (_, out2) = ledgerRecord "gust" (missFor "gust") led1
         stateOf out2 `shouldNotBe` "not_found"
 
--- The barChart t8/t10/t14 cross-scope echo, pinned (section 11.1) -----------
-
 crossScopeEchoSpec :: Spec
 crossScopeEchoSpec = describe "cross-scope dedup echo regression (barChart t8/t10/t14)" $ do
     it "a scoped miss after a global fuzzy hit is an honest scoped miss" $ do
@@ -179,8 +163,6 @@ crossScopeEchoSpec = describe "cross-scope dedup echo regression (barChart t8/t1
                     , (scopedKey, missFor "bar")
                     ]
             scoped = drop 1 outs
-            -- An echo replays FOREIGN-scope evidence; a byte-identical
-            -- repeat's back-reference to its OWN miss is not one (R3.8).
             echoes =
                 [ o
                 | o <- scoped
@@ -200,8 +182,6 @@ crossScopeEchoSpec = describe "cross-scope dedup echo regression (barChart t8/t1
                     , (scoped, missFor "gust")
                     ]
         stateOf (outs !! 1) `shouldBe` "not_found"
-
--- Install-state facts stay coherent (the nudge contradiction) ---------------
 
 factWith :: Text -> Text -> Value
 factWith pkg inst =
@@ -241,9 +221,6 @@ factsCoherenceSpec = describe "held install-state facts never contradict" $ do
         let (led1, _) = ledgerRecord "bars" (factWith "cumulus" "hidden") emptyLedger
             led2 = ledgerWorldChanged led1
         filter ("cumulus (" `T.isInfixOf`) (heldFacts led2) `shouldBe` []
-
--- The pure announcement half of the world-change law (R1.4) -----------------
--- The end-to-end three-state x event grid lives in Test.DiscoverWorldChangeSpec.
 
 worldChangeGridSpec :: Spec
 worldChangeGridSpec = describe "world change announces before it denies (R1.4)" $

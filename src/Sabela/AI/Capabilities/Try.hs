@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The single model-facing speculative execution operation.
-
-Routing is internal. A one-line expression may use the atomic, compiler-
-admitted live fast path when a live Haskell session is already idle. Imports,
-declarations, multiline expressions, or candidate dependencies use a fresh
-disposable notebook reconstruction. Unrestricted effects fail closed.
--}
 module Sabela.AI.Capabilities.Try (
     execTry,
     trialPlanErrorText,
@@ -83,8 +76,6 @@ execTry app input
     | otherwise =
         attachNormalizeNote normalizeNotes <$> case planTrial code of
             Left planErr -> pure (errOutcome (planErrorPayload planErr))
-            -- G3 task 4: a hole is a question, so the answer route is
-            -- typecheck-only. The plan's hazard checks still gate entry.
             Right _ | containsTypedHole code -> runHoleProbe app code
             Right plan -> runTrialWithDepAutofix app code plan
   where
@@ -96,16 +87,8 @@ execTry app input
         if T.null rawLanguage
             then Just ST.Haskell
             else parseCellLang rawLanguage
-    -- G7: the same normalizer/gate insert_cell and replace_cell_source use,
-    -- so a candidate's let-desugar or transport fix reads identically on
-    -- every path; the echoed source below is always this normalized code.
     (code, normalizeNotes) = gatedRewrite rawCode
 
-{- | Attach the G7 normalization disclosure to whichever outcome the trial
-produced — success or rejection alike, since a rejection AFTER normalization
-(a genuine type error, say) still owes the model the source it was actually
-judged against.
--}
 attachNormalizeNote :: [Text] -> ToolOutcome -> ToolOutcome
 attachNormalizeNote [] out = out
 attachNormalizeNote notes out = withField "normalized" (String (T.unwords notes)) out
@@ -115,19 +98,6 @@ withField k v (ToolOk (Object o)) = ToolOk (Object (KM.insert (Key.fromText k) v
 withField k v (ToolErr (Object o)) = ToolErr (Object (KM.insert (Key.fromText k) v o))
 withField _ _ out = out
 
-{- | Mechanical dependency repair, two rungs keyed on diagnostic class:
-
-* hidden package (GHC-87110): GHC names the package; retry once with it
-  declared.
-* module not found (GHC-35235): GHC cannot name a package because the module
-  name itself is wrong. Resolve it against the STORE index — near spelling
-  included — rename, declare the resolved package, retry once. live_test40
-  wrote @import Data.DataFrame@ then @import Data.Frame@ for the module the
-  card had named @DataFrame@, took two dead not-found errors, and abandoned
-  the right package for one it already knew.
-
-Scratch-only either way; committing a dependency stays deliberate.
--}
 runTrialWithDepAutofix :: App -> Text -> TrialPlan -> IO ToolOutcome
 runTrialWithDepAutofix app code plan = do
     outcome <- runHaskellTrial app plan
@@ -140,8 +110,6 @@ runTrialWithDepAutofix app code plan = do
         _ -> case notFoundModuleOf outcome of
             Nothing -> pure outcome
             Just wrong -> do
-                -- Extensive: iterate the nearest-name candidates until one
-                -- compiles, rather than betting the repair on the top guess.
                 cands <- resolveInstalledModules renameCandidateCap wrong
                 tryRenames outcome wrong cands
   where
@@ -179,11 +147,6 @@ runHaskellTrial app plan
                     else runPureLive app backend expression
     | otherwise = runDisposable app plan
 
-{- | A process being alive is not enough: after an edit, failed cell, package
-directive change, or hard reset its interactive bindings may not represent
-the current notebook. The live shortcut is allowed only for a clean
-notebook whose installed project metadata still matches.
--}
 liveFastPathReady :: App -> IO Bool
 liveFastPathReady app = do
     notebook <- readNotebook (appNotebook app)
@@ -231,10 +194,6 @@ runPureLive app backend expression = do
         ST.PureEvalInvariantFailed -> pure (errOutcome (purePayload result))
         ST.PureEvalUnavailable -> pure (errOutcome (purePayload result))
 
-{- | A failed marker resynchronization destroys the live kernel. Rebuild and
-replay synchronously before returning so a bounded trial cannot leave the
-notebook pointing at a dead interpreter.
--}
 recoverDestroyedKernel :: App -> ST.PureEvalResult -> AppSnapshot -> IO ()
 recoverDestroyedKernel app result before =
     case ST.pureEvalRecovery result of
@@ -274,8 +233,7 @@ candidateSpec plan =
                             <> hiddenExpressionBinding expression
                     , candidateExpression = Just "_sabelaTryCandidate"
                     , candidateReplacesCellId = Nothing
-                    , -- Speculative: keep Safe Haskell and the fail-fast budget.
-                      candidateDeliberate = False
+                    , candidateDeliberate = False
                     }
         expression ->
             CandidateSpec

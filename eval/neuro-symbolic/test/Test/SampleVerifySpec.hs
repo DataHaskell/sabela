@@ -71,7 +71,7 @@ spec = describe "B4 sample K, verify one at a time" $ do
                 sv =
                     SampleVerify
                         { svSample = \i -> do
-                            threadDelay 3000 -- model latency: would overlap if dispatched here
+                            threadDelay 3000
                             pure (cands !! i)
                         , svRollout = withConcurrencyGuard guard (pure . good)
                         , svInsert = withConcurrencyGuard guard (\_ -> pure ())

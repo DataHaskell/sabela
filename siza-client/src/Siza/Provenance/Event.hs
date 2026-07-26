@@ -1,10 +1,3 @@
-{- | The 'SessionEvent' record and its JSON wire encoding (redesign 7.1).
-
-A 'SessionEvent' is not a new schema: it serialises the R2 contract types
-('ToolName', 'ToolOutcome', 'KernelState', 'Diagnostic'), one JSON object per
-tool call. This module owns the type and its instances; 'Siza.Provenance.Log'
-owns the append-only file and the hash chain around it.
--}
 module Siza.Provenance.Event (
     SessionEvent (..),
     Actor (..),
@@ -42,10 +35,6 @@ import Sabela.AI.Provenance (
 import Sabela.AI.Types (ToolOutcome)
 import Siza.Language (Diagnostic (..), Severity (Error, Warning))
 
-{- | The pre-flight verdict, present at the CLIENT seam only — the parse
-result, the security findings, and whether a mutation was vetted. The server
-never sees this (redesign 7.2), so it is the client log's reason to exist.
--}
 data Preflight = Preflight
     { pfParsed :: Bool
     , pfFindings :: [Diagnostic]
@@ -53,10 +42,6 @@ data Preflight = Preflight
     }
     deriving (Eq, Show)
 
-{- | One provenance record. Reuses the contract types verbatim: it is the
-typed events serialised, not a parallel schema. @seGen@ together with
-@seSession@ is the correlation key against the server log.
--}
 data SessionEvent = SessionEvent
     { seAt :: UTCTime
     , seSession :: Text
@@ -72,11 +57,6 @@ data SessionEvent = SessionEvent
     }
     deriving (Eq, Show)
 
--- ---------------------------------------------------------------------------
--- Wire encoding
--- ---------------------------------------------------------------------------
-
--- | The actor tag, sharing the canonical casing from 'Sabela.AI.Provenance'.
 actorWire :: Actor -> Text
 actorWire = actorTag
 

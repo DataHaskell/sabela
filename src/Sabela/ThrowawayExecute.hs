@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Fail-closed admission and wire framing for throwaway execution.
-
-This module deliberately has no dependency on the GHC library.  A helper is
-admissible only when its compiler version is an exact match and its platform
-containment has been qualified.  macOS containment is currently unproven, so
-the integrated mode stops at this boundary and reports 'ExecuteUnavailable'.
--}
 module Sabela.ThrowawayExecute (
     ExecuteVerdict (..),
     ExecuteReason (..),
@@ -56,14 +49,9 @@ data ExecuteResult = ExecuteResult
     }
     deriving (Eq, Show)
 
--- | The safety-sensitive mode is opt-in.  Absence is always disabled.
 executeFlagEnabled :: Maybe String -> Bool
 executeFlagEnabled = maybe False ((`notElem` ["0", "off", "false", "no", ""]) . map toLower)
 
-{- | Admit a candidate runner only after both hard compatibility gates pass.
-The runner action is intentionally supplied by the caller so tests can prove
-that unavailable paths execute no candidate code.
--}
 admitExecute :: ExecuteQualification -> IO () -> IO ExecuteResult
 admitExecute qualification runCandidate
     | qualificationNotebookGhc qualification /= qualificationHelperGhc qualification =
@@ -75,7 +63,6 @@ admitExecute qualification runCandidate
         runCandidate
         pure (ExecuteResult ExecuteOk Nothing)
 
--- | Stable, UTF-8 text framing: decimal character count, newline, payload.
 encodeFrame :: Text -> Text
 encodeFrame payload = T.pack (show (T.length payload)) <> "\n" <> payload
 

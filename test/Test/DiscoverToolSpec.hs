@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The wire shape of the two discovery tool handlers, pinned so the JSON the
-model (and the MCP client) sees does not drift.
--}
 module Test.DiscoverToolSpec (spec) where
 
 import Data.Aeson (Value, encode, object, (.=))

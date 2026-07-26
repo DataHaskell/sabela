@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The R8.4 general invariant over the GENERATED header-state grid:
-'guardReport' withholds the numbers iff any defect is present — missing
-provenance, a run stamp predating the binary build (a stale directory
-re-graded), a missing arm label, or a lint failure — and names each defect
-class. Split from "Test.EpisodeSpec" (module size cap).
--}
 module Test.GuardGridSpec (spec) where
 
 import Control.Monad (filterM, forM_)
@@ -24,9 +18,6 @@ import Eval.Episode (EpisodeMeta (..), renderEpisodeMeta)
 import Eval.ReportGuard (guardReport, guardReportDirFor, guardReportRun)
 import Test.EpisodeSpec (sampleMeta)
 
-{- | The defect grid 'guardReport' is generated over: each defect mutates one
-provenance/header axis; a subset applies them all.
--}
 data HeaderDefect = NoProvenance | StaleRun | NoArm | LintFail
     deriving (Eq, Show)
 
@@ -40,7 +31,6 @@ applyDefect m StaleRun =
 applyDefect m NoArm = m{emArm = ""}
 applyDefect m LintFail = m{emLint = "FAIL raw-exception"}
 
--- | Every subset of the defect axes, generated mechanically.
 defectSubsets :: [[HeaderDefect]]
 defectSubsets = filterM (const [False, True]) [NoProvenance, StaleRun, NoArm, LintFail]
 

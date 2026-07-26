@@ -1,8 +1,3 @@
-{- | The discover envelope's declared budget and schema (search-api.md
-sections 5 and 10): one shape for every outcome, a 2,500-char cap enforced by
-construction (shrink hits\/exports, never blind truncation), and the schema
-vocabulary the tool description is generated from (R1.7).
--}
 module Siza.Agent.Discover.Envelope (
     badRequest,
     envelopeCharBudget,
@@ -30,7 +25,6 @@ import qualified Data.Text.Encoding as TE
 import Sabela.AI.LeakShape (embeddedSerialisation, leakyToken)
 import Siza.Agent.Discover.Types (InstallState, installText)
 
--- | A malformed request (blank query, bad bounds) is an argument error (R2.6).
 badRequest :: Text -> Text -> Value
 badRequest q reason =
     object
@@ -39,15 +33,12 @@ badRequest q reason =
         , "reason" .= reason
         ]
 
--- | The hard serialised cap; the typical envelope stays well under 1k (R3.9).
 envelopeCharBudget :: Int
 envelopeCharBudget = 2500
 
--- | The serialised size of an envelope, as the model would receive it.
 envelopeChars :: Value -> Int
 envelopeChars = T.length . TE.decodeUtf8 . LBS.toStrict . encode
 
--- | Every legal top-level field of the one envelope shape (R3.6).
 envelopeKeys :: [Text]
 envelopeKeys =
     [ "query"
@@ -68,18 +59,12 @@ envelopeKeys =
     , "goal"
     ]
 
-{- | The section 8.3 goal disclosure's declared shape: present iff the
-cluster has a resolved goal; @type@ and @satisfied@ are required;
-@derivedFrom@ cites the consumer fact the goal derives from (R9-T2).
--}
 goalKeys :: [Text]
 goalKeys = ["type", "satisfied", "note", "derivedFrom"]
 
--- | The four honest states; backend unavailability is per-source, never a state.
 envelopeStates :: [Text]
 envelopeStates = ["found", "not_found", "bad_request", "duplicate"]
 
--- | Per-hit provenance always present (R3.5); see 'hitKeys' for optionals.
 requiredHitKeys :: [Text]
 requiredHitKeys =
     ["name", "module", "package", "version", "install", "matchKind", "origin"]
@@ -87,9 +72,6 @@ requiredHitKeys =
 hitKeys :: [Text]
 hitKeys = requiredHitKeys ++ ["type", "cabal", "use"]
 
-{- | The description clause generated from the schema itself, so the advertised
-contract cannot drift from the delivered envelope (R1.7).
--}
 schemaPromise :: Text
 schemaPromise =
     "Every hit names its "
@@ -99,22 +81,9 @@ schemaPromise =
         <> "; a hidden or absent-known package carries its -- cabal: \
            \build-depends: line."
 
-{- | Enforce the budget by construction: shed trailing hits into @omitted@,
-then fold card exports into @moreExports@ down to a FLOOR — counts always
-reconcile (R3.4). Load-bearing fields (a hit's @type@\/@cabal@, @next@) are
-never truncated (section 10).
-
-Order matters, and exports go last with a floor: shedding them first emptied
-the card entirely (@exports: [], moreExports: 60@) while worst-ranked hits
-survived, and the export list is the evidence a caller decides FROM — shown
-useful exports, the live model imported the package 3/4; shown none, 0/4
-(probe-ollama). The raw probe then asked @module=DataFrame query=fromCsv@ and
-received a card with nothing in it.
--}
 boundEnvelope :: Value -> Value
 boundEnvelope = shrinkWith [dropLastHit, shrinkCard, clampNotes]
 
--- | Exports the bound may never shed below: the card must keep its evidence.
 exportFloor :: Int
 exportFloor = 8
 
@@ -133,7 +102,6 @@ shrinkWith steps v
 maxTypeChars :: Int
 maxTypeChars = 200
 
--- | Fold the card's last export line into a @moreExports@ count.
 shrinkCard :: Value -> Maybe Value
 shrinkCard = overKey "card" shrunk
   where
@@ -151,7 +119,6 @@ shrinkCard = overKey "card" shrunk
         Just (Number n) -> round n :: Int
         _ -> 0
 
--- | Shed the last (worst-ranked) hit; @shown@\/@omitted@ move with it.
 dropLastHit :: Value -> Maybe Value
 dropLastHit (Object o)
     | Just (Array hits) <- KM.lookup "hits" o
@@ -169,9 +136,6 @@ dropLastHit (Object o)
         _ -> 0
 dropLastHit _ = Nothing
 
-{- | Last-resort backstop: clamp free-text advice fields. @next@ is a
-load-bearing key (section 10) and is never clamped.
--}
 clampNotes :: Value -> Maybe Value
 clampNotes (Object o)
     | any clampable ["summary", "reason"] =
@@ -182,7 +146,6 @@ clampNotes (Object o)
         _ -> False
 clampNotes _ = Nothing
 
--- | Clamp a string value to 'maxTypeChars'; other values pass unchanged.
 clampStr :: Value -> Value
 clampStr (String t)
     | T.length t > maxTypeChars = String (T.take maxTypeChars t <> "…")
@@ -193,7 +156,6 @@ adjustKey f k o = case KM.lookup (K.fromText k) o of
     Just v -> KM.insert (K.fromText k) (f v) o
     Nothing -> o
 
--- | Apply a partial rewrite to one key of an object envelope.
 overKey :: Text -> (Value -> Maybe Value) -> Value -> Maybe Value
 overKey k f (Object o) = do
     v <- KM.lookup (K.fromText k) o
@@ -201,10 +163,6 @@ overKey k f (Object o) = do
     pure (Object (KM.insert (K.fromText k) v' o))
 overKey _ _ _ = Nothing
 
-{- | Schema violations of an envelope (R3.6, R3.10): unknown fields, a state
-outside the declared four, a hit missing required provenance, a serialisation
-format inside a string, or a package-hash-qualified name.
--}
 envelopeViolations :: Value -> [Text]
 envelopeViolations v@(Object o) =
     keyViols ++ stateViols ++ hitViols ++ goalViols ++ stringViols v
@@ -250,9 +208,6 @@ hitViol (Object h) =
            ]
 hitViol _ = ["hit is not an object"]
 
-{- | Deep string scan (shared shape detectors, "Sabela.AI.LeakShape"): no
-embedded serialisation, no package-hash or version-hash-qualified names.
--}
 stringViols :: Value -> [Text]
 stringViols (Object o) = concatMap stringViols (KM.elems o)
 stringViols (Array a) = concatMap stringViols (toList a)

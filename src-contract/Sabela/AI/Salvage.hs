@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Recover a code cell a weak model emitted as a fenced block in prose instead
-of via a tool call (the "narrate-then-stop" failure). 'salvageCell' extracts the
-block; 'salvageInsertSource' is the product policy that decides whether a turn
-should be salvaged into an @insert_cell@. Shared by the in-notebook orchestrator
-and the eval harness so both recover the same way.
--}
 module Sabela.AI.Salvage (
     salvageCell,
     salvageInsertSource,
@@ -30,10 +24,6 @@ salvageCell content
     (code, close) = T.breakOn "```" (T.drop 1 body0)
     cleaned = dropToolCallLines code
 
-{- | Product salvage policy: with no tool call and exactly one fenced Haskell
-block under 'salvageCap', the block becomes a candidate source. Rejects multi-block
-or oversized content so it cannot duplicate or truncate an edit.
--}
 salvageInsertSource :: Int -> Text -> Maybe Text
 salvageInsertSource toolCount content
     | toolCount /= 0 = Nothing
@@ -42,17 +32,9 @@ salvageInsertSource toolCount content
         Just src | T.length src <= salvageCap -> Just src
         _ -> Nothing
 
--- | Upper bound (characters) on a salvaged block; larger content is not salvaged.
 salvageCap :: Int
 salvageCap = 4000
 
-{- | Drop lines of an extracted block that are a bare tool-call statement — a
-known tool name (after trimming) immediately followed by @(@ and ending in @)@
-with nothing else, e.g. @insert_cell()@ / @try ()@. gpt-oss sometimes
-writes a tool call inside the ```haskell fence, where it would compile as
-@insert_cell :: () -> t@ and wedge the episode. Conservative: only an EXACT bare
-call is removed; real Haskell that merely mentions a tool name is untouched.
--}
 dropToolCallLines :: Text -> Text
 dropToolCallLines = T.unlines . filter (not . isBareToolCall) . T.lines
   where
@@ -67,10 +49,6 @@ dropToolCallLines = T.unlines . filter (not . isBareToolCall) . T.lines
                     && T.last args == ')'
         Nothing -> False
 
-{- | The known siza tool names a stray bare call inside the fence may be.
-Includes the legacy @scratchpad@ spelling, still stripped from old-model
-transcripts.
--}
 toolNames :: [Text]
 toolNames =
     [ "insert_cell"

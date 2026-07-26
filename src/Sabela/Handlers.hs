@@ -1,24 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Top-level reactive-notebook handlers: edit / run-cell / run-all /
-reset / restart, plus the 'ReactiveNotebook' record the server wires
-into the SSE bus. The actual machinery lives in three sibling modules:
-
-* 'Sabela.Handlers.Lifecycle' — GHCi session spawn, restart, kill, install.
-* 'Sabela.Handlers.Exec' — single-cell execution.
-* 'Sabela.Handlers.Plan' — dependency-aware planning + dispatch.
--}
 module Sabela.Handlers (
-    -- * Reactive notebook interface
     ReactiveNotebook (..),
     setupReactive,
     cellRunnable,
-
-    -- * Initialization
     initGlobalEnv,
     initPreinstalledPackages,
-
-    -- * Haskell session management (also used by tests)
     installAndRestart,
     ReplSupport (..),
     buildTimeSupportDir,
@@ -28,8 +15,6 @@ module Sabela.Handlers (
     killAllSessions,
     shutdownAllSessions,
     killSessionAsync,
-
-    -- * Re-exports from submodules
     module Sabela.Handlers.Shared,
 ) where
 
@@ -120,10 +105,6 @@ setupReactive app =
             , rnWidgetCell = handleWidgetCell app
             }
 
-{- | Apply an edit and run reactively — but only when the source really
-changed; an identical write (e.g. the run button's flush) is a no-op so
-clean cells are never re-executed.
--}
 handleCellEdit :: App -> Int -> Text -> IO ()
 handleCellEdit app cid src = do
     debugLog app $ "[handler] handleCellEdit: cell " <> T.pack (show cid)
@@ -137,10 +118,6 @@ handleCellEdit app cid src = do
         gen <- bumpGeneration app
         dispatchByLang app gen cid (cellLangOf cid nb) (executeAffected app gen cid)
 
-{- | Update a cell's source. On a real change the cell AND its transitive
-dependents go dirty (so staleness survives solo runs); an identical
-write changes nothing.
--}
 updateCellSource :: Int -> Text -> Notebook -> Notebook
 updateCellSource cid src nb
     | not changed = nb
@@ -159,17 +136,9 @@ handleWidgetCell app cid = do
     gen <- bumpGeneration app
     void $ forkIO $ executeAffected app gen cid
 
-{- | Run one cell — unless it is clean (unchanged since its last
-successful run), in which case the click is a no-op.
--}
 handleRunCell :: App -> Int -> IO ()
 handleRunCell = handleRunCellWith False
 
-{- | Force a single cell to run even when clean — the @execute_cell@ tool's
-contract ("re-run an existing cell"). Without this an already-clean code cell
-is skipped and broadcasts no result, so the AI listener waits out its 130s
-timeout on an event that never fires.
--}
 handleRunCellForced :: App -> Int -> IO ()
 handleRunCellForced = handleRunCellWith True
 
@@ -186,11 +155,6 @@ handleRunCellWith force app cid = do
                     forkIO $
                         executeSingleCell app gen cid
 
-{- | Whether 'handleRunCell' dispatches a run. A forced run (the AI
-@execute_cell@ tool) executes an existing cell even when clean; an unforced
-run (browser / reactive flush) skips a clean code cell. A missing cell never
-runs.
--}
 cellRunnable :: Bool -> Maybe Cell -> Bool
 cellRunnable _ Nothing = False
 cellRunnable force (Just c) = force || cellType c /= CodeCell || cellStale c
@@ -219,11 +183,6 @@ handleReset app = do
     modifyNotebook (appNotebook app) clearAllOutputs
     broadcast app (EvSessionStatus SReset)
 
-{- | Restart the kernel to a CONSISTENT state: a fresh GHCi has none of the
-notebook's bindings, so we mark every cell dirty and re-run the whole notebook
-('executeFullRestart'). Without the re-run a "restart" leaves the kernel empty
-while cells read clean — bindings gone, downstream work hanging on them.
--}
 handleRestartKernel :: App -> IO ()
 handleRestartKernel app = do
     debugLog app "[handler] handleRestartKernel"
@@ -233,9 +192,6 @@ handleRestartKernel app = do
     broadcast app (EvSessionStatus SReset)
     void $ forkIO $ executeFullRestart app gen
 
-{- | Cleanup AI state on reset/restart.
-fullReset clears conversation and reverts edits; partial only kills scratchpad.
--}
 cleanupAI :: App -> Bool -> IO ()
 cleanupAI app fullReset = do
     mStore <- getAIStore app

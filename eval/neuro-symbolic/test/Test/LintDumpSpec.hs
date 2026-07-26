@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6.10 x R8.4: the transcript-lint rules closing the jsonSum-off hole —
-module-API dumps on a harness channel after a Succeeded write, and
-version-qualified GHC FQNs in harness-channel notes. Split from
-'Test.TranscriptLintSpec' (module-size cap).
--}
 module Test.LintDumpSpec (spec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -71,7 +66,6 @@ card =
         \  encode :: Value -> ByteString\n\
         \  eitherDecode :: ByteString -> Either String Value"
 
--- | The real jsonSum-off leak shape: two banners after a Succeeded write.
 jsonSumLeak :: [Value]
 jsonSumLeak =
     [ sys "s"

@@ -23,24 +23,9 @@ import Sabela.Parse (CellSymbols (..), cellNames, cellSymbols)
 
 data TopoResult = TopoResult
     { trOrdered :: [Cell]
-    -- ^ Cells in safe execution order (no redef cells, no cycle cells)
     , trCycleIds :: S.Set Int
-    -- ^ Cell IDs that are part of a circular dependency
     }
 
-{- | Build @defMap@ = name → canonical-cell-id and a @redefMap@ identifying
-cells that try to redefine names already owned. Uses **first-wins**
-semantics: the EARLIEST cell (in notebook order) to define a name owns
-it. Any later cell whose @defs@ overlap with already-owned names is
-flagged in @redefMap@ and contributes nothing to @defMap@ — its non-redef
-defs are dropped too, since the cell will be skipped at execution time
-and those names would never actually be bound in the GHCi session.
-
-The flagged cells are surfaced to the user via 'Sabela.Reactivity.redefinitionErrorMsg'
-and skipped by the execution-plan layer (see 'Reactivity.computeExecutionPlan').
-This makes a redefinition a hard editor-visible error rather than a silent
-shadow — fixing the duplicate is a one-line edit.
--}
 buildDefMap :: [Cell] -> (M.Map Text Int, M.Map Int [Text])
 buildDefMap = foldl step (M.empty, M.empty)
   where
@@ -56,15 +41,6 @@ buildDefMap = foldl step (M.empty, M.empty)
                      in (defMap', redefMap)
                 else (defMap, M.insert cid redefs redefMap)
 
-{- | Build dependency graph: cell ID -> set of cell IDs it depends on.
-
-A cell depends on the cell that canonically defines each name it uses
-(@defMap@). On top of that, typeclass method users gain an edge to every
-*instance* that provides the method — instances own no top-level name, so
-@defMap@ alone can't connect them. The provides edges are scoped to
-methods actually declared by a notebook class so a @Show@/@Eq@ instance
-doesn't wire every @show@/@==@ caller to itself.
--}
 buildDepGraph :: M.Map Text Int -> [Cell] -> M.Map Int (S.Set Int)
 buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
   where
@@ -96,10 +72,6 @@ data TopoState = TopoState
     , tsCellById :: M.Map Int Cell
     }
 
-{- | Kahn's topological sort.
-Only processes the provided cells; deps to cells outside this set are ignored
-(treated as already satisfied). Leftover cells with unresolved in-degree are cycles.
--}
 topoSort :: [Cell] -> M.Map Int (S.Set Int) -> TopoResult
 topoSort cells deps =
     let st = buildTopoState cells deps
@@ -142,11 +114,6 @@ buildTopoState cells deps =
             , tsCellById = M.fromList [(cellId c, c) | c <- cells]
             }
 
-{- | Kahn's main loop. The queue is a 'Set' keyed by @(position, cellId)@
-so the lowest-position-first dequeue is O(log n) via 'S.deleteMin'; the
-accumulator is a 'Seq' so each snoc is O(1). The old @[Int]@ queue +
-@[Cell]@ accumulator were jointly O(N²).
--}
 runKahns ::
     TopoState ->
     S.Set (Int, Int) ->
@@ -175,10 +142,6 @@ unblock positions (unblocked, d) depCid =
             then (S.insert (pos, depCid) unblocked, d')
             else (unblocked, d')
 
-{- | Compose buildDefMap, buildDepGraph, topoSort. The @redefMap@
-identifies cells that redefine an earlier cell's names; the execution
-layer skips them.
--}
 computeTopoOrder :: [Cell] -> (TopoResult, M.Map Int [Text])
 computeTopoOrder cells =
     let (defMap, redefMap) = buildDefMap cells
@@ -186,17 +149,9 @@ computeTopoOrder cells =
         result = topoSort cells deps
      in (result, redefMap)
 
-{- | Find cells transitively downstream of editedCid and return a scoped
-TopoResult plus the cell-wide @redefMap@. The edited cell itself is
-included in the topo result; redef-flagged cells are filtered out at
-execution time by 'Reactivity.computeExecutionPlan'.
--}
 selectAffectedTopo :: Int -> [Cell] -> (TopoResult, M.Map Int [Text])
 selectAffectedTopo editedCid = selectAffectedTopoFrom (S.singleton editedCid)
 
-{- | Multi-root variant: cells transitively downstream of ANY root (roots
-included), as one scoped TopoResult. Used by the stale run-all plan.
--}
 selectAffectedTopoFrom :: S.Set Int -> [Cell] -> (TopoResult, M.Map Int [Text])
 selectAffectedTopoFrom roots cells =
     let (defMap, redefMap) = buildDefMap cells
@@ -210,15 +165,9 @@ computeAffectedSet :: Int -> M.Map Int (S.Set Int) -> S.Set Int
 computeAffectedSet editedCid deps =
     reachableFrom (S.singleton editedCid) (reverseDeps deps)
 
-{- | All cell IDs reachable from @seeds@ by following @graph@ edges (seeds
-included). With a forward dep graph this gives a node's transitive
-dependencies; with a reversed graph (see 'reverseDeps'), its transitive
-dependents.
--}
 reachableFrom :: S.Set Int -> M.Map Int (S.Set Int) -> S.Set Int
 reachableFrom seeds = bfsAffected seeds seeds
 
--- | Reverse every edge of a dependency map.
 reverseDeps :: M.Map Int (S.Set Int) -> M.Map Int (S.Set Int)
 reverseDeps deps =
     M.fromListWith

@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R3-T5: ONE repair cascade dispatched by diagnostic class (goal-1
-invariant: the tier is a function of the class alone, never a library name),
-the notebook-scope acceptance law (R7.5), the heal/search findability
-cross-check (R7.6), budget visibility (R7.7/R7.3) and the report leak
-invariant (R3.9).
--}
 module Test.RepairDispatchSpec (repairDispatchSpec) where
 
 import Control.Monad (forM_)
@@ -38,7 +32,6 @@ import Test.DiscoverFixtures (
     synHackageNames,
  )
 
--- | Diagnostic templates: (class, builder over a library/module name pair).
 templates :: [(DiagClass, (Text, Text) -> Text)]
 templates =
     [
@@ -209,7 +202,6 @@ repairDispatchSpec = describe "repair cascade dispatch (R3-T5)" $ do
                             []
                     txt = renderRepairReport rep
                 T.length txt `shouldSatisfy` (<= reportCharBudget)
-                -- the report type cannot even hold rejected candidates
                 txt `shouldSatisfy` (not . T.isInfixOf (T.replicate 300 "z"))
   where
     nameLike = T.all (\c -> c `elem` ("abcdefghijklmnopqrstuvwxyz" :: String))

@@ -22,7 +22,6 @@ ids = map taskId
 categoryOf :: Category -> [Task]
 categoryOf c = [t | (k, t) <- reasoningCorpus, k == c]
 
--- | The ByValue check string of a named task (empty if absent / not ByValue).
 checkOf :: T.Text -> T.Text
 checkOf tid =
     case [taskTest t | t <- reasoningTasks, taskId t == tid] of

@@ -1,22 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for the MID-LOOP contrast trigger (evalExpr deep-dive
-finding 4).
-
-The wrong-vs-real 'contrastLine' currently fires only on the stop\/re-enter
-rail — and the gate episode that needed it most died by max_turns while still
-actively working, so the one message built for its failure was never
-delivered. Gemma re-submitted @takeWhile1@ five times past GHC's own hint;
-after the SAME diagnostic repeats three times on a cell, the loop should
-inject the contrast immediately.
-
-Proposed API (new pure module Siza.Agent.Streak):
-
-  bumpStreak :: Map CellId (Text, Int) -> CellId -> Text
-             -> (Map CellId (Text, Int), Int)   -- new map, current streak
-  streakContrast :: Int -> Text -> Maybe Text
-    -- fires contrastLine EXACTLY at the threshold count (once per streak)
--}
 module Test.RedStreakSpec (redStreakSpec) where
 
 import qualified Data.Map.Strict as Map
@@ -26,7 +9,6 @@ import Test.Hspec
 
 import Siza.Agent.Streak (bumpStreak, streakContrast)
 
--- | A shortened real gemma diagnostic: wrong name + GHC's did-you-mean.
 diag :: Text
 diag =
     T.unlines

@@ -11,9 +11,6 @@ import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as T
 
-{- | One runnable example: search 'exTags', a one-line 'exTitle', and the full
-'exCode' cell (with its @-- cabal:@ first line) the model can paste and adapt.
--}
 data Example = Example
     { exTags :: [Text]
     , exTitle :: Text
@@ -21,7 +18,6 @@ data Example = Example
     }
     deriving (Eq, Show)
 
--- | The curated examples. Extend here; the prompt does not change.
 exampleIndex :: [Example]
 exampleIndex =
     [ Example
@@ -71,11 +67,6 @@ exampleIndex =
         )
     ]
 
-{- | Examples matching a free-text query, best match first. An example's score is
-the number of its tags that occur in the (lower-cased) query, so "csv cassava"
-ranks the cassava example over the plain dataframe one. Empty when nothing
-matches.
--}
 searchExamples :: Text -> [Example]
 searchExamples query =
     map snd $

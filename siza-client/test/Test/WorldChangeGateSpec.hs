@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R10-T4 (R1.4): the world-change banner is legal ONLY when a dep-install or
-kernel-restart landed AFTER a prior recorded discover answer in the same
-session. The first search of a session never banners — a change before any
-query has nothing prior to stale (the revenueTotal first-of-session false
-banner). Proven over enumerated D/R event sequences, not one fixture.
--}
 module Test.WorldChangeGateSpec (worldChangeGateSpec) where
 
 import Control.Monad (forM_)
@@ -21,10 +15,8 @@ import Siza.Agent.Discover.History (SearchLedger)
 import Siza.Agent.Discover.HistoryGuard (guardDiscover, newSearchLedger)
 import Test.DiscoverFixtures (installNamesFile, textField)
 
--- | Two session events: a discover (distinct query per step) and a restart.
 data Ev = D | R deriving (Eq, Show)
 
--- | A found envelope — recorded by the ledger, so it bumps the call counter.
 foundEnv :: Value
 foundEnv =
     object
@@ -34,7 +26,6 @@ foundEnv =
             .= [object ["source" .= ("hoogle" :: Text), "status" .= ("ok" :: Text)]]
         ]
 
--- | Inner dispatch: discover answers found; a restart is a world event.
 inner :: ToolCall -> IO (Either Text ToolOutcome)
 inner tc = pure . Right . ToolOk $ case tcName tc of
     "discover" -> foundEnv
@@ -47,7 +38,6 @@ discoverCall i =
 restartCall :: ToolCall
 restartCall = ToolCall "kernel_restart" (object [])
 
--- | Run a sequence, returning each discover's worldChange banner text.
 runSeq :: IORef SearchLedger -> [Ev] -> IO [Text]
 runSeq ref = go 0
   where
@@ -61,7 +51,6 @@ runSeq ref = go 0
         (banner :) <$> go (i + 1) es
     go i (R : es) = disp restartCall >> go i es
 
--- | Every event sequence up to a given length over {D, R}.
 seqsUpTo :: Int -> [[Ev]]
 seqsUpTo n = concat [replicateEvs k | k <- [1 .. n]]
   where

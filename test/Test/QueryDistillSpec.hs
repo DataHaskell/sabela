@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R7-T3 seam tests: check_type distils at the emitting seam. The
-run-181440 defect (recordDecl false-positives on a GHC JSON error, riding
-the blob back after a correct signature) is unrepresentable.
--}
 module Test.QueryDistillSpec (spec) where
 
 import Data.Text (Text)
@@ -13,7 +9,6 @@ import Test.Hspec
 import Sabela.AI.Capabilities.Query (recordDecl, typeConstructors)
 import Sabela.AI.VerifierDistill (answerVerdict, distillInfo, distillTypeAnswer)
 
--- | The exact GHC 9.12 diagnostics-as-JSON error the run-181440 blob carried.
 ghcJsonError :: Text
 ghcJsonError =
     "{\"version\":\"1.1\",\"ghcVersion\":\"ghc-9.12.2\",\"span\":{\"file\":\

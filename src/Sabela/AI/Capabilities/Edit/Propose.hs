@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The propose-edit tool: stage a pending cell edit for the user to accept
-or revert, broadcast on the chat channel. Split from
-"Sabela.AI.Capabilities.Edit" for the module-size cap.
--}
 module Sabela.AI.Capabilities.Edit.Propose (
     execProposeEdit,
     proceedProposeEdit,
@@ -54,10 +50,6 @@ execProposeEdit app store input = do
                                     )
                                 )
                     _ -> do
-                        -- Staged content is AI-authored and gated on accept
-                        -- (Sabela.AI.Capabilities.acceptEdit) exactly like
-                        -- insert/replace, so it is normalized the same way
-                        -- before the human ever sees the diff (G7).
                         let (newSrc, notes) =
                                 if cellLang c == Haskell
                                     then gatedRewrite rawSrc

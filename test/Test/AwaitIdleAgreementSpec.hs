@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | @await_idle@ and the admission bounce must share one notion of idle.
-live_test8: @await_idle@ answered @{"waited":"idle"}@ and the very next
-@insert_cell@ bounced with "cell 0 has been executing for 73356ms" — the
-documented barrier was a no-op, because await sampled @sbBusy@ while
-admission consulted the write registry, which the cascade does not clear
-between cells.
--}
 module Test.AwaitIdleAgreementSpec (spec) where
 
 import Data.Aeson (Value (..))
@@ -56,8 +49,6 @@ spec = describe "await_idle agrees with the admission bounce" $ do
 
     it "idle-then-busy: never claims idle while a write is still running" $ do
         (app, store) <- fixture
-        -- Exactly the live_test8 state: the run-lock is free (no session at
-        -- all here) but a write is still in flight, so the next insert bounces.
         _ <- registerWrite (aiWriteReg store) "cell-0" 0
         outcome <- execAwaitIdle app store
         waitedTag (toolOutcomeValue outcome) `shouldSatisfy` (/= Just "idle")
@@ -66,17 +57,11 @@ spec = describe "await_idle agrees with the admission bounce" $ do
         (app, store) <- fixture
         outcome <- execAwaitIdle app store
         waitedTag (toolOutcomeValue outcome) `shouldBe` Just "idle"
-        -- The barrier is only real if the write that follows is admitted by
-        -- the SAME evidence await consulted; live_test8's was not.
         verdict <-
             busyVerdict
                 <$> busyEvidenceNow app store (haskellKernelOccupied app)
         verdict `shouldBe` AdmitNow
 
-    {- The asymmetry is deliberate and one-directional: await is STRICTER
-    than the occupancy window, because the running-write bounce lives in the
-    write gate rather than in 'busyVerdict'. Only await-says-idle-then-busy
-    is a defect; await refusing idle while admission would allow is safe. -}
     it "await is stricter than the occupancy window, never the reverse" $ do
         (app, store) <- fixture
         _ <- registerWrite (aiWriteReg store) "cell-0" 0

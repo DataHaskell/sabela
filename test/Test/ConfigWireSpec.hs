@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the AI-config wire shapes the frontend picker + config persistence
-depend on: the persisted @.sabela/config.json@ keys (now @anthropicKey@ /
-@anthropicModel@ / @provider@) and the @knownModels@ picker entry shape.
--}
 module Test.ConfigWireSpec (spec) where
 
 import Data.Aeson (Value (..))

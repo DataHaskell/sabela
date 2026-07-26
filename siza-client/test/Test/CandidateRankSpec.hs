@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T3: candidate-seed re-ranking. The seed is the model's own writable
-draft when one is held, else the held consumer minimising its genuine-gap count
-(argument types no held fact produces). Over a generated grid of >=2-consumer
-fact ledgers with differing gap counts the minimiser wins; the 1-gap @bars@ vs
-8-gap record-stub fixture is the secondary confirmation.
-
-G3: a gap is filled from a harness hole probe, never from a hole, so each
-fixture holds the probe conclusions its gaps need.
--}
 module Test.CandidateRankSpec (candidateRankSpec) where
 
 import Control.Monad (forM_)
@@ -26,12 +17,10 @@ import Siza.Agent.Discover.Candidate (
  )
 import Siza.Agent.Discover.Goal (argTypesOf, genuineGaps, literalFill)
 
--- | A held consumer fact in the 'harvestFacts' shape 'consumerOf' parses.
 consumerFact :: Text -> Text -> Text -> Text -> Text
 consumerFact name sig m pkg =
     "`" <> name <> "` :: " <> sig <> " — found in " <> m <> " (" <> pkg <> ")"
 
--- | The seed name a candidate rests on: the first word of its application line.
 seedName :: Text -> Maybe Text
 seedName src = case reverse (T.lines src) of
     (appLine : _) -> case T.words appLine of
@@ -39,7 +28,6 @@ seedName src = case reverse (T.lines src) of
         [] -> Nothing
     [] -> Nothing
 
--- One entry of a generated ledger: (name, sig).
 type C = (Text, Text)
 
 grid :: [[C]]
@@ -54,9 +42,6 @@ grid =
     , [("z", "M -> Text"), ("y", "N -> Text"), ("x", "L -> Text")]
     ]
 
-{- | The ledger a fixture holds: its consumers, plus the hole-probe
-conclusion for every argument type no literal can fill.
--}
 factsOf :: [C] -> [Text]
 factsOf cs =
     [consumerFact n sig "Mod" "pkg" | (n, sig) <- cs]
@@ -69,11 +54,9 @@ gapTypes cs =
 probedFact :: Text -> Text
 probedFact t = "`" <> t <> "` is produced by: `mk" <> t <> "` (via: hole-probe)"
 
--- | Does this consumer have an argument slot no literal can fill?
 hasGap :: C -> Bool
 hasGap (_, sig) = any (isNothing . literalFill) (argTypesOf sig)
 
--- | The expected minimiser of a fact set: fewest genuine gaps, first on a tie.
 expectedSeed :: [C] -> Text
 expectedSeed cs = fst (minimumBy (comparing gaps) cs)
   where

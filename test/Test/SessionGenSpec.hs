@@ -1,14 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the two-axis kernel status and the session-generation tag (P1
-stress cases 35, 36). 'kernel_status' reports both a busy axis and a
-generation axis, so a client can tell "busy/slow" from "wedged" and also
-detect that a restart advanced the generation (discarding stale results).
-The generation is born at 'firstSessionGen' and 'bumpSessionGen' seeds a
-fresh, strictly-higher generation on restart. Pure logic over a dummy
-'Session' plus a fake 'SessionBackend'; no live kernel.
--}
 module Test.SessionGenSpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
@@ -86,7 +78,6 @@ dummySession g = do
             , sessionGen = gen
             }
 
--- | A fake backend with a fixed busy state and generation.
 fakeBackend :: Bool -> Int -> IO ST.SessionBackend
 fakeBackend busy g = do
     uid <- newUnique

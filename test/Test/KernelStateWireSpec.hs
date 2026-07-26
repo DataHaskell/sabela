@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Drives the real 'execKernelStatus' producer (design 1.1, slice R2-1):
-the typed @state@\/@ksGen@\/@ebGeneration@ fields ARE the wire, and the legacy
-@kernel\/running\/compiling\/sessionGen@ blob is gone — these specs assert its
-absence. Pinned against the producer, not a hand-built object.
--}
 module Test.KernelStateWireSpec (spec) where
 
 import Data.Aeson (Value (..))
@@ -25,7 +20,6 @@ import Sabela.State.EventBus (EventBus (..))
 import Sabela.State.SessionManager (setHaskellSession)
 import Test.Hspec
 
--- | A fake backend with fixed busy state and session generation.
 fakeBackend :: Bool -> Int -> IO ST.SessionBackend
 fakeBackend busy gen = do
     uid <- newUnique
@@ -53,11 +47,9 @@ fakeBackend busy gen = do
                 }
     pure backend
 
--- | App with no Haskell session attached (kernel absent → Cold).
 coldApp :: IO App
 coldApp = newApp "." Set.empty Nothing Nothing []
 
--- | App with a fake session of the given busy\/gen\/building\/ebGen reads.
 liveApp :: Bool -> Int -> Bool -> Int -> IO App
 liveApp busy gen building ebGen = do
     app <- newApp "." Set.empty Nothing Nothing []

@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G10: a scope miss is classified, never served raw. The live_test9 bill:
-@check_type@ on @Sabela.Notebook.render@, @toSVG@ and @displayPicture@
-returned identical not-in-scope text, so the model could not tell which kind
-of answer it held. These cases pin that the three answers differ and that
-each actionable one carries the line that would fix it.
--}
 module Test.IndexAnswerSpec (spec) where
 
 import qualified Data.Set as Set

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R7.6 cross-check (R6-T1): every name\/key the normalizer proposes is
-findable by discover on the same catalogue — one catalogue, two consumers —
-so heal proposals and search advice can never diverge.
--}
 module Test.NormalizeFindabilitySpec (normalizeFindabilitySpec) where
 
 import Control.Monad (forM_)
@@ -27,7 +23,6 @@ import Test.DiscoverFixtures (hitText, hitsOf, stateOf)
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
--- | The confusable-hyphen and key-variant grid (mirrors the sabela-side spec).
 corruptions :: [Text]
 corruptions =
     [ "-- cabal: " <> T.map swapFor key <> ": "

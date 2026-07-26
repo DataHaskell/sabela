@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Tests for 'computeTopoOrder' and the Untitled.md redefinition scenario.
 module Test.TopoSpec.Order (spec) where
 
 import qualified Data.Map.Strict as M
@@ -25,14 +24,12 @@ spec = do
             trCycleIds result `shouldBe` S.empty
 
         it "puts definer before user for a reverse-order chain" $ do
-            -- Notebook order: z uses y (cell 1), y uses x (cell 2), x defined (cell 3)
             let cells =
                     [ mkCell 1 "let z = y + 1"
                     , mkCell 2 "let y = x + 1"
                     , mkCell 3 "let x = 1"
                     ]
                 (result, redefMap) = computeTopoOrder cells
-            -- x (cell 3) must be first, then y (cell 2), then z (cell 1)
             map cellId (trOrdered result) `shouldBe` [3, 2, 1]
             redefMap `shouldBe` M.empty
             trCycleIds result `shouldBe` S.empty
@@ -46,7 +43,6 @@ spec = do
                     ]
                 (result, _) = computeTopoOrder cells
                 ordered = map cellId (trOrdered result)
-            -- a (cell 1) must come first, d (cell 4) must come last
             case ordered of
                 (first : rest) -> do
                     first `shouldBe` 1
@@ -57,9 +53,6 @@ spec = do
         it "flags the LATER cell when two cells redefine the same name (first-wins)" $ do
             let cells = [mkCell 1 "let x = 1", mkCell 2 "let x = 2"]
                 (_, redefMap) = computeTopoOrder cells
-            -- Cell 1 owns x. Cell 2 is flagged as a redefinition of x;
-            -- it will be skipped at execution time and a redef error
-            -- will surface on it.
             redefMap `shouldBe` M.fromList [(2, ["x"])]
 
         it "detects a simple two-cell cycle" $ do
@@ -78,9 +71,7 @@ spec = do
                     , mkCell 3 "let b = a + 1"
                     ]
                 (result, _) = computeTopoOrder cells
-            -- cell 1 has no cycle, should run
             map cellId (trOrdered result) `shouldBe` [1]
-            -- cells 2 and 3 form a cycle
             trCycleIds result `shouldBe` S.fromList [2, 3]
 
     describe "computeTopoOrder — redefinition semantics (first-wins)" $ do
@@ -92,8 +83,6 @@ spec = do
                     ]
                 (_, redefMap) = computeTopoOrder cells
                 (defMap, _) = buildDefMap cells
-            -- Cell 1 owns x (first-wins). Cell 2's `y` depends on cell
-            -- 1, not cell 3. Cell 3 is flagged.
             M.lookup "x" defMap `shouldBe` Just 1
             M.lookup "y" defMap `shouldBe` Just 2
             redefMap `shouldBe` M.fromList [(3, ["x"])]
@@ -110,9 +99,6 @@ spec = do
             redefMap `shouldBe` M.fromList [(2, ["x"]), (3, ["x"])]
 
         it "redef cell drops ALL its defs (even genuinely new ones)" $ do
-            -- Cell 2 redefines x (already owned by cell 1) AND
-            -- introduces y. Since cell 2 won't run, neither x nor y
-            -- ends up in the session — so y must NOT be in defMap.
             let cells =
                     [ mkCell 1 "let x = 1"
                     , mkCell 2 "let x = 2\nlet y = 1"
@@ -165,10 +151,6 @@ spec = do
                 trCycleIds result `shouldBe` S.empty
 
     describe "Untitled.md scenario: redefining f x in a separate cell" $ do
-        -- Mirrors the actual Untitled.md notebook: two cells use (f . g),
-        -- two cells define f (the second redefines), one cell defines g.
-        -- Under first-wins, cell 2 owns f, cell 3 owns g, cell 5 is
-        -- flagged as a redefinition error.
         let cells =
                 [ mkCell 1 "(f . g) 45"
                 , mkCell 2 "f x = x + 5"

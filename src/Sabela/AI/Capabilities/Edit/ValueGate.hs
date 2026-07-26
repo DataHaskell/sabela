@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Default-on Path-2 vetting for AI value-cell writes.
 module Sabela.AI.Capabilities.Edit.ValueGate (prewriteValueVeto) where
 
 import Data.Aeson ((.=))
@@ -20,9 +19,6 @@ import Sabela.SessionTypes (CellLang (..))
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), getHaskellSession)
 
-{- | Hard AI write gate for exactly the proven value subset. Declaration forms
-keep the established route; unavailable is explicit, never a false OK.
--}
 prewriteValueVeto ::
     App -> CellLang -> CellType -> Text -> IO (Maybe ToolOutcome)
 prewriteValueVeto app Haskell CodeCell src = do

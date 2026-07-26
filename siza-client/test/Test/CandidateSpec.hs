@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R8-T3 x R3.10 (x G3): candidate writability over GENERATED ledgers on
-the synthetic catalogue — paste-valid lines, only ledger-verified names,
-nothing from a fact-free ledger, and never a hole: an argument slot is a
-literal or a producer a harness hole probe established, else there is no
-candidate. Plus the R7.6 discover-findability cross-check.
--}
 module Test.CandidateSpec (candidateSpec) where
 
 import Control.Monad (forM_, unless, when)
@@ -50,7 +44,6 @@ import Test.DiscoverFixtures (
 envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
--- | One catalogue entry: package, hidden flag, module, export name, type.
 type Entry = (Text, Bool, Text, Text, Text)
 
 entries :: [Entry]
@@ -61,9 +54,6 @@ entries =
     , (n, ty) <- es
     ]
 
-{- | The found envelope an entry's discover answer would carry: an exact
-typed hit, with the cabal line when the package is not plainly installed.
--}
 entryEnvelope :: Entry -> Value
 entryEnvelope (pkg, hidden, m, n, ty) =
     discoverEnvelope
@@ -84,10 +74,6 @@ entryEnvelope (pkg, hidden, m, n, ty) =
                     else Nothing
             }
 
-{- | The held facts of a ledger fed the given entries in order, PLUS the
-hole-probe conclusion for every argument type no literal can fill — the
-harness answers those before any candidate can be proposed (G3).
--}
 factsFor :: [Entry] -> [Text]
 factsFor es = harvested ++ map probedFact (gapTypes es)
   where
@@ -105,13 +91,9 @@ gapTypes es =
 probedFact :: Text -> Text
 probedFact t = "`" <> t <> "` is produced by: `mk" <> t <> "` (via: hole-probe)"
 
--- | Generated ledger grid: every 1- and 2-entry sequence over the catalogue.
 ledgerGrid :: [[Entry]]
 ledgerGrid = [es | es <- subsequences entries, not (null es), length es <= 2]
 
-{- | The fill of one argument slot: a literal when constructible, else the
-probed producer — mirroring 'Siza.Agent.Discover.Candidate.fillArg'.
--}
 expectedArg :: Text -> Text
 expectedArg t = fromMaybe ("mk" <> t) (literalFill t)
 
@@ -145,8 +127,6 @@ candidateSpec = describe "candidate cell (R8-T3 / R3.10 / G3)" $ do
                     Nothing -> expectationFailure "no candidate"
                     Just src -> last (T.lines src) `shouldBe` expectedCall n ty
         it "an unprobed genuine gap proposes nothing at all (G3)" $ do
-            -- bars :: [(Text, Double)] -> Plot -> Text: the tuple-list fills,
-            -- but nothing is known to produce Plot, so there is no candidate.
             let facts =
                     [ "`bars` :: [(Text, Double)] -> Plot -> Text \
                       \— found in Cumulus.Plot (cumulus)"
@@ -197,7 +177,6 @@ candidateSpec = describe "candidate cell (R8-T3 / R3.10 / G3)" $ do
                 let facts = factsFor es
                     clause = candidateClause facts
                 unless (T.null clause) $ do
-                    -- Refute exactly what the ledger would propose.
                     let Just src = candidateCell facts
                         refuted = Set.singleton (normaliseSource src)
                     candidateClauseAgainst refuted Nothing facts `shouldBe` ""
@@ -244,8 +223,6 @@ candidateSpec = describe "candidate cell (R8-T3 / R3.10 / G3)" $ do
                         v <- runCat nm
                         (nm, stateOf v) `shouldBe` (nm, "found")
   where
-    -- The application line: a held consumer name applied to typed holes
-    -- drawn from its own held signature.
     isApplication facts l = case T.words l of
         (h : _) ->
             any (("`" <> h <> "` :: ") `T.isInfixOf`) facts

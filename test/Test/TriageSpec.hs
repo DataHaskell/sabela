@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for ERROR TRIAGE at the model-facing chokepoint. Context
-is the scarcest weak-model resource: a raw GHC blob repeats hidden-package
-advice our own prompt forbids and lists a dozen knock-on casualties of one
-root cause. The model must see root causes, once each, with knock-ons
-summarized — never the raw dump.
-
-Proposed API (Sabela.AI.Triage):
-
-  triageErrorText :: Text -> Text -> Text   -- cell source -> blob -> triaged
--}
 module Test.TriageSpec (spec) where
 
 import Data.Text (Text)
@@ -18,7 +8,6 @@ import Test.Hspec
 
 import Sabela.AI.Triage (triageErrorText)
 
--- | The failing cell's shape (defines the knock-on names).
 cellSrc :: Text
 cellSrc =
     T.unlines
@@ -32,7 +21,6 @@ cellSrc =
         , "parens p = between (symbol \"(\") (symbol \")\") p"
         ]
 
--- | Abridged verbatim turn-6 gate blob: 2 root causes, duplicated site, knock-ons.
 gateBlob :: Text
 gateBlob =
     T.intercalate
@@ -57,7 +45,6 @@ gateBlob =
         , "cell 0, line 7: Variable not in scope: numberParser"
         ]
 
--- | Abridged verbatim turn-13 hidden-package blob (advice the prompt forbids).
 hiddenBlob :: Text
 hiddenBlob =
     T.intercalate

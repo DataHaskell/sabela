@@ -1,6 +1,3 @@
-{- | Tests for @Sabela.Notebook.Anim@: frame sampling, the embedded player, and
-the @animateB == animate . at@ relationship.
--}
 module Test.NotebookAnimSpec (spec) where
 
 import Data.List (isInfixOf)
@@ -18,7 +15,6 @@ import Sabela.Notebook.Picture (
  )
 import Test.Hspec
 
--- A simple moving picture: a circle sliding right with time.
 slide :: Double -> Picture
 slide t = fill red (circle (t, 100) 10)
 
@@ -26,7 +22,7 @@ spec :: Spec
 spec = do
     describe "frameSvgs" $ do
         it "produces fps*seconds frames" $
-            length (frameSvgs defaultAnim 2 slide) `shouldBe` 60 -- 2s * 30fps
+            length (frameSvgs defaultAnim 2 slide) `shouldBe` 60
         it "honours a custom fps" $
             length (frameSvgs (AnimOpts defaultCanvas 10) 3 slide) `shouldBe` 30
         it "always yields at least one frame" $

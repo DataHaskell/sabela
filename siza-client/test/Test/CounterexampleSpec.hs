@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for the counterexample-naming verify re-prompt.
-
-Measured live (evalExpr gate 6): gemma's cells all ran, her own output showed
-@10 / 4 - 1 = Nothing@, the verify rail said only \"re-read the task's
-examples\" — and she declared success twice and tapped out. The re-prompt must
-NAME the failing example (and the wrong value when it can be probed), so a
-giving-up model is shown the exact contradiction.
--}
 module Test.CounterexampleSpec (counterexampleSpec) where
 
 import qualified Data.ByteString.Lazy as BL
@@ -33,7 +25,6 @@ import Siza.Agent.Check (
  )
 import Siza.Agent.Messages (verifyMessage')
 
--- | The real evalExpr gate check, verbatim from the corpus.
 evalExprCheck :: Text
 evalExprCheck =
     "evalExpr \"2 + 3 * 4\" == Just 14.0 && evalExpr \"(2 + 3) * 4\" == Just 20.0 \
@@ -126,7 +117,6 @@ counterexampleSpec = describe "counterexample-naming verify (intention)" $ do
             mCe `shouldSatisfy` maybe False (T.isInfixOf "10 / 4 - 1")
             mCe `shouldSatisfy` maybe False (T.isInfixOf "`Nothing`")
         it "extracts the bare printed value from the execute-cell envelope" $ do
-            -- Measured live (gate 8): the raw tool JSON leaked into the line.
             let envelope =
                     "{\"cellId\":4,\"ok\":true,\"outcome\":{\"tag\":\"Succeeded\"},\
                     \\"outputs\":[{\"oiMime\":\"text/plain\",\"oiOutput\":\"Nothing\\n\"}],\
@@ -155,10 +145,6 @@ counterexampleSpec = describe "counterexample-naming verify (intention)" $ do
             let msg = verifyMessage' 2 ["evalExpr"] (Just "This required example fails: `x == 1`.")
             msg `shouldSatisfy` T.isInfixOf "not defined"
 
-{- | A tool caller that answers every ExecuteCell with the next scripted
-output (JSON envelopes decode as production does); inserts/lists/deletes are
-acknowledged inertly.
--}
 scriptedCaller ::
     [Text] -> IO (ToolName -> Value -> IO (Either Text ToolOutcome))
 scriptedCaller outs = do

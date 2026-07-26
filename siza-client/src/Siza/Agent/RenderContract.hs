@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Repair the last-mile display contract for a clean, output-less markup
-write. Applicability is decided by the requested deliverable and the inferred
-type of the written expression, never by a producer or library name.
--}
 module Siza.Agent.RenderContract (
     displayCandidate,
     repairDisplayContract,
@@ -27,10 +23,6 @@ import Siza.Agent.Loop.Support (replaceCall)
 import Siza.Agent.Owned (ownedCellOutcome)
 import Siza.Agent.Repair (Dispatch, snapshot)
 
-{- | Produce a display-wrapped source when the goal asks for visible output and
-the compiler says the expression is textual markup. Strict and lazy Text use
-their matching unpacker; Html/SVG string aliases need no conversion.
--}
 displayCandidate :: Text -> Text -> Text -> Maybe Text
 displayCandidate goal inferred src
     | not (displayGoal goal) = Nothing

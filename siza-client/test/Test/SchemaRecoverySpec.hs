@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T5 schema-match recovery at the routing boundary: a garbled name
-carrying a payload that uniquely fits one offered schema now DISPATCHES
-(stamped by 'recoverTurn'); ambiguity reprompts naming the parse failure;
-a word-like foreign name stays honestly unknown. Safety invariant: an
-auto-dispatch only ever lands on a schema-consistent tool.
--}
 module Test.SchemaRecoverySpec (schemaRecoverySpec) where
 
 import Control.Monad (forM_)
@@ -36,8 +30,6 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
                 forM_ (corruptionsOf name) $ \bad -> do
                     let args = requiredPayloadFor name
                         route = routeCallWith offeredArgKeys (ToolCall bad args)
-                    -- Safety invariant: an auto-dispatch only ever lands on
-                    -- a tool whose schema the given argument keys fit.
                     case route of
                         RouteTool tn a -> do
                             (bad, dispatchFits tn a) `shouldBe` (bad, True)
@@ -134,9 +126,6 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
             turnCalls (recoverTurn offeredArgKeys t)
                 `shouldBe` [ToolCall "??" payload]
 
-{- | A tool's payload of exactly its required argument keys, values keyed by
-name — the minimal call a weak model actually sends.
--}
 requiredPayloadFor :: Text -> Value
 requiredPayloadFor tool =
     object
@@ -149,7 +138,6 @@ requiredPayloadFor tool =
     valFor "cell_id" = Number 1
     valFor k = String ("value for " <> k)
 
--- | Do the given argument keys fit the dispatched tool's offered schema?
 dispatchFits :: ToolName -> Value -> Bool
 dispatchFits tn (Object o) =
     case lookup (toolWireName tn) offeredArgKeys of
@@ -160,7 +148,6 @@ dispatchFits tn (Object o) =
     keys = map K.toText (KM.keys o)
 dispatchFits _ _ = False
 
--- | The function names stamped under @tool_calls@ in a raw message.
 rawNames :: Value -> [Text]
 rawNames (Object o) = case KM.lookup "tool_calls" o of
     Just (Array a) ->
@@ -172,10 +159,6 @@ rawNames (Object o) = case KM.lookup "tool_calls" o of
     _ -> []
 rawNames _ = []
 
-{- | A bounded, systematic set of <=2-edit corruptions: every single
-deletion, substitution, and insertion, plus two-edit combinations; anything
-that lands on an offered name is excluded (it routes as that tool).
--}
 corruptionsOf :: Text -> [Text]
 corruptionsOf name =
     [ bad

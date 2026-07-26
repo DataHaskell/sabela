@@ -20,7 +20,6 @@ import Hub.Session
 import Hub.Types
 import System.IO (hPutStrLn, stderr)
 
--- | Start a background thread that stops idle sessions.
 startReaper :: SessionManager -> IO ()
 startReaper sm = do
     _ <- forkIO $ loop sm
@@ -28,7 +27,7 @@ startReaper sm = do
 
 loop :: SessionManager -> IO ()
 loop sm = do
-    threadDelay 60_000_000 -- 1 minute
+    threadDelay 60_000_000
     reapIdle sm
     reconcileLiveness sm
     loop sm
@@ -44,11 +43,6 @@ reapIdle sm = do
     sessions <- readTVarIO (smSessions sm)
     mapM_ (reapOne sm) (Map.keys (Map.filter isIdle sessions))
 
-{- | Stop tracking sessions whose backend container has gone away (OOM-killed,
-crashed, externally removed). Without this a dead container leaves a session
-stuck in 'SReady' and the proxy returns 502s forever. Complements the orphan
-sweep (which runs once at startup) by re-checking liveness on every tick.
--}
 reconcileLiveness :: SessionManager -> IO ()
 reconcileLiveness sm = do
     let cfg = hcTaskConfig (smConfig sm)
@@ -74,17 +68,9 @@ reapOne sm key = do
     hPutStrLn stderr $ "[hub] Reaping idle session " ++ keyLabel key
     cleanupByKey sm key
 
-{- | Short, log-friendly label for a 'SessionKey'. Cookie IDs and reattach
-task IDs are both truncated so the log stays readable.
--}
 keyLabel :: SessionKey -> String
 keyLabel = T.unpack . T.take 16 . sessionKeyText
 
-{- | Stop any RUNNING ECS task in the configured cluster/family that is not
-tracked in the session map. Intended to run once at startup so that tasks
-which outlived a previous hub instance get cleaned up — the in-memory
-session map is not persisted, so they would otherwise live forever.
--}
 sweepOrphans :: SessionManager -> IO ()
 sweepOrphans sm = do
     let cfg = hcTaskConfig (smConfig sm)

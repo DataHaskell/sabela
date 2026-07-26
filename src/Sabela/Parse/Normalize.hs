@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | THE single normalizer every candidate-source-accepting path shares
-(G7, docs/discover/implementation-plan.md): detect Haskell mis-typed as a
-prose cell, desugar a top-level @let@, rename a reserved-word binding, fold a
-misspelled @-- cabal:@ key, sanitize weak-model JSON-transport artifacts, and
-unwrap a top-level @main@ to bare top-level code so it runs.
-'Sabela.AI.NormalizeGate' vets the whole composition with the one acceptance
-law before any tool path — insert, replace, propose, or try — keeps it.
--}
 module Sabela.Parse.Normalize (
     looksLikeHaskellCode,
     unwrapMain,
@@ -33,12 +25,6 @@ import Sabela.Model (CellType (..))
 import Sabela.Parse (CellSymbols (..), cellSymbols)
 import Sabela.Parse.Preprocess (noTopLevelIn)
 
-{- | True if the cell has a top-level @main@ binding or signature. Textual, not
-AST-based, so it still fires on cells the parser chokes on — Template Haskell
-splices, a LANGUAGE pragma the GHCi-fragment wrapper can't place — which is
-exactly where a defined-but-never-run @main@ slips through. The line test mirrors
-'unwrapMain'\'s own @isMainLine@, so the gate and the rewrite agree.
--}
 definesMain :: Text -> Bool
 definesMain = any isTopMain . T.lines
   where
@@ -53,10 +39,6 @@ definesMain = any isTopMain . T.lines
         (w : _) -> Just w
         _ -> Nothing
 
-{- | Rewrite a top-level @main@ to bare top-level code so the cell runs: a
-@main :: …@ signature and the @main = @ of @main = do …@ are dropped, leaving
-@do …@; @main = e@ becomes @e@. No top-level main → unchanged.
--}
 unwrapMain :: Text -> Text
 unwrapMain src
     | not (definesMain src) = src
@@ -77,10 +59,6 @@ unwrapMain src
         (w : _) -> Just w
         _ -> Nothing
 
-{- | True when a cell's source is unmistakably Haskell, not prose: the first
-non-blank line opens with an import / pragma / @-- cabal:@ / decl keyword / a
-top-level binding or signature, or it parses to a top-level definition.
--}
 looksLikeHaskellCode :: Text -> Bool
 looksLikeHaskellCode src =
     firstLineIsCode || not (S.null (csDefs (cellSymbols src)))
@@ -104,11 +82,6 @@ looksLikeHaskellCode src =
             | isLower c || c == '_' -> " :: " `T.isInfixOf` l || " = " `T.isInfixOf` l
         _ -> False
 
-{- | Rewrite a statement-form top-level @let@ into plain declarations, including a
-multi-line block (de-indent the @let@ line and each continuation to its binding
-column). A @let ... in ...@ expression and an indented (nested) @let@ are left;
-a source with no such @let@ is preserved byte-identically (R7.2).
--}
 rewriteTopLevelLet :: Text -> Text
 rewriteTopLevelLet src = T.intercalate "\n" (go (T.lines src)) <> trailing
   where
@@ -121,17 +94,9 @@ rewriteTopLevelLet src = T.intercalate "\n" (go (T.lines src)) <> trailing
                     (block, after) = span (contAt bcol) rest
                  in (T.drop bcol line : map (T.drop bcol) block) ++ go after
         _ -> line : go rest
-    -- A continuation of the block: a non-blank line indented to at least the
-    -- binding column (a shallower line ends the block).
     contAt bcol l =
         not (T.null (T.strip l)) && T.length (T.takeWhile (== ' ') l) >= bcol
 
-{- | A raw newline landing inside an unterminated string literal — the
-weak-model JSON-transport artifact behind live_test5's GHC-21231 lexical
-errors — rewritten to the escaped @\n@ GHC actually accepts. Line comments
-are skipped so a @--@ before a stray quote cannot mis-toggle string state; a
-source with no such literal is preserved byte-identically.
--}
 fixRawNewlineInString :: Text -> Text
 fixRawNewlineInString src = T.pack (outside (T.unpack src))
   where
@@ -147,11 +112,6 @@ fixRawNewlineInString src = T.pack (outside (T.unpack src))
     inside ('\n' : rest) = '\\' : 'n' : inside rest
     inside (c : rest) = c : inside rest
 
-{- | Spurious JSON\/JS-style @\uXXXX@ escapes — not valid Haskell string
-syntax, and the second live_test5 lexical-error class — rewritten to the
-character they denote, so GHC lexes the source the model meant rather than
-an escape it invented. A source with none is preserved byte-identically.
--}
 fixSpuriousUnicodeEscapes :: Text -> Text
 fixSpuriousUnicodeEscapes src = T.pack (go (T.unpack src))
   where
@@ -164,10 +124,6 @@ fixSpuriousUnicodeEscapes src = T.pack (go (T.unpack src))
             chr n : go rest'
     go (c : rest) = c : go rest
 
-{- | Both transport rewrites, one note per fix that actually changed the
-source — the generator 'normalizeCode' runs first so downstream generators
-see clean lexical input.
--}
 sanitizeTransport :: Text -> (Text, [Text])
 sanitizeTransport src = (afterUnicode, notes)
   where
@@ -179,11 +135,6 @@ sanitizeTransport src = (afterUnicode, notes)
     newlineMsg = "Escaped a raw newline found inside a string literal."
     unicodeMsg = "Rewrote a spurious `\\uXXXX` escape to the character it denotes."
 
-{- | The code-cell generator composition, one note per fix: transport
-sanitization, cabal-comment fold, top-level @let@ rewrite, keyword-binding
-rename, @main@ unwrap. The UNGATED candidate — 'Sabela.AI.NormalizeGate'
-vets it before it is kept.
--}
 normalizeCode :: Text -> (Text, [Text])
 normalizeCode src = (unMained, notes)
   where
@@ -201,10 +152,6 @@ normalizeCode src = (unMained, notes)
     letMsg = "Rewrote a top-level `let x = …` to a plain `x = …` declaration."
     mainMsg = "Rewrote `main` to a top-level do so the cell runs."
 
-{- | Normalize an AI-inserted cell: a prose cell that is really Haskell becomes a
-code cell, and the 'normalizeCode' generators run on code cells. Returns the
-type, source, and a note per fix.
--}
 normalizeInsert :: CellType -> Text -> (CellType, Text, [Text])
 normalizeInsert ty src = (ty', src', notes)
   where

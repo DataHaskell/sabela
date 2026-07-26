@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Cross-turn ledger invariant over EVERY artifact class (
-cell-source echoes, heal notes, discovery cards): no byte-identical block
-transmits twice; ONE assertion body serves all classes — grid-extensible.
--}
 module Test.EmitLedgerSpec (emitLedgerSpec) where
 
 import Control.Monad (forM_, unless, when)
@@ -26,7 +22,6 @@ import Siza.Agent.EmitLedger (
 import Siza.Agent.Tools (renderOutcome)
 import Test.DiscoverFixtures (textField)
 
--- | A cell source comfortably above 'blockFloor', with a stable first line.
 srcA :: Text
 srcA =
     T.unlines
@@ -40,7 +35,6 @@ srcA =
         , "best = minimumBy (comparing sse) candidates"
         ]
 
--- | 'srcA' with one changed line (the changed-content diff case).
 srcB :: Text
 srcB = T.replace "best = minimumBy" "best = maximumBy" srcA
 
@@ -102,10 +96,6 @@ discoveryCard name =
             ]
         )
 
-{- | The artifact-class grid: (class, [first, byte-identical repeat, changed]).
-Adding a class here is the ONLY step to cover a new artifact kind — the
-invariant below is class-agnostic.
--}
 classGrid :: [(String, [Text])]
 classGrid =
     [
@@ -130,16 +120,13 @@ classGrid =
         )
     ]
 
--- | JSON-escape a logical block the way it appears inside a tool echo.
 esc :: Text -> Text
 esc t = T.dropEnd 1 (T.drop 1 (TE.decodeUtf8 (LBS.toStrict (encode t))))
 
--- | A block occurs in an emission as raw bytes or as an escaped span.
 occursIn :: Text -> Text -> Bool
 occursIn block emission =
     block `T.isInfixOf` emission || esc block `T.isInfixOf` emission
 
--- | Run a sequence through the ledger, one emission per turn.
 runSeq :: [Text] -> [Text]
 runSeq = go 1 emptyEmitLedger
   where
@@ -148,18 +135,12 @@ runSeq = go 1 emptyEmitLedger
         let (c', led') = dedupText turn c led
          in c' : go (turn + 1) led' cs
 
-{- | The general invariant, stated once for any emission sequence: a block
-seen before is never re-transmitted verbatim (its emission carries a
-back-reference or a diff instead); an unseen block always passes verbatim.
--}
 assertInvariant :: [Text] -> Expectation
 assertInvariant cs = do
     let outs = runSeq cs
     forM_ (zip3 [1 :: Int ..] cs outs) $ \(i, orig, out) -> do
         let before = concatMap eligibleBlocks (take (i - 1) cs)
             blocks = eligibleBlocks orig
-            -- A leaf block contains no other eligible block; a container's
-            -- preservation is accounted through its inner blocks' entries.
             isLeaf b =
                 not
                     ( any
@@ -179,8 +160,6 @@ assertInvariant cs = do
                         $ expectationFailure
                             ("turn " <> show i <> ": repeat carries no back-reference or diff")
                 else when (isLeaf b) $ do
-                    -- An unseen leaf block passes verbatim, or (same anchor,
-                    -- changed bytes) as a diff that keeps every new line.
                     let priorLines = concatMap T.lines before
                         newLines =
                             [ l

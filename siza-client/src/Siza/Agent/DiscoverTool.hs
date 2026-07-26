@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The model-facing @discover@ tool: fan out IN UNION over the notebook
-environment, the live session, the capability channel and the Hackage name
-list, and merge every source's answer into one bounded, ranked envelope
-(docs/discover/search-api.md). No first-hit ladder: a miss in one source can
-never discard another source's true answer.
--}
 module Siza.Agent.DiscoverTool (
     blankPayload,
     discoverArgs,
@@ -83,11 +77,6 @@ import Siza.Agent.Discover.Types (
     StandingGoal,
  )
 
-{- | Backend fan-out order for a query, by shape: a type expression searches by
-type first, a single identifier by name first, prose by capability first. The
-Bool lever gates SHIP semantic enrichment INSIDE the capability call only —
-no arm ever drops the lexical channel (search-api.md section 2).
--}
 discoverPlan :: Bool -> Text -> [ToolName]
 discoverPlan _ q = plan
   where
@@ -97,12 +86,10 @@ discoverPlan _ q = plan
         | length (T.words (T.strip q)) <= 1 = [FindFunction, SearchCapability]
         | otherwise = [SearchCapability, FindFunction]
 
--- | The backend's argument object, keyed by its own primary key.
 discoverArgs :: ToolName -> Text -> Value
 discoverArgs tn q =
     object [K.fromText (fromMaybe "query" (primaryArgKey tn)) .= q]
 
--- | A query that could name a Hackage package: one lowercase hyphenated token.
 packageShaped :: Text -> Bool
 packageShaped q = case T.uncons t of
     Just (c, _) ->
@@ -111,9 +98,6 @@ packageShaped q = case T.uncons t of
   where
     t = T.strip q
 
-{- | The honest tool description (R1.7): its field promises are generated from
-the envelope schema ('schemaPromise'), so contract drift is impossible.
--}
 discoverToolDescription :: Text
 discoverToolDescription =
     "Find a function, package, or module in one call: pass a NAME (\"divvy\"), \
@@ -125,7 +109,6 @@ discoverToolDescription =
         <> " A miss lists what was consulted. This searches LIBRARIES, not \
            \your notebook — for the notebook use find_cells_by_content."
 
--- | Query-only compatibility surface: default scope, limit and mode.
 runDiscoverTool ::
     Bool ->
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
@@ -134,9 +117,6 @@ runDiscoverTool ::
 runDiscoverTool capSearch call q =
     runDiscoverRequest capSearch call (defaultRequest q)
 
-{- | Validate a raw call's arguments against the one request schema and run
-it; a malformed argument is a @bad_request@ envelope naming the field (R2.8).
--}
 runDiscoverCall ::
     Bool ->
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
@@ -147,12 +127,6 @@ runDiscoverCall capSearch call q args = case parseRequest q args of
     Left reason -> pure (ToolOk (boundEnvelope (badRequest q reason)))
     Right req -> runDiscoverGoal (goalFromArgs args) (recentFromArgs args) capSearch call req
 
-{- | Run a validated @discover@ request: build the notebook environment,
-consult every source, and union-merge into one envelope under the request's
-scope, limit and mode. Sources that fail are reported unavailable — never as
-absence. The lexical channel runs on every arm; the lever gates SHIP
-semantic enrichment only (search-api.md section 2).
--}
 runDiscoverRequest ::
     Bool ->
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
@@ -160,10 +134,6 @@ runDiscoverRequest ::
     IO ToolOutcome
 runDiscoverRequest = runDiscoverGoal Nothing []
 
-{- | 'runDiscoverRequest' with the guard-injected standing goal (section
-8.3): ledger provenance feeds producer ranking and the argument-producer
-attachment; everything else is identical.
--}
 runDiscoverGoal ::
     Maybe StandingGoal ->
     [Text] ->
@@ -178,8 +148,6 @@ runDiscoverGoal mSG recent capSearch call req0
         env <- fetchNotebookEnv call
         let interp0 = interpret env q
             interp = asConstruct req interp0
-        -- Section 3.3: ONE stage-0 exact resolution runs before any mode
-        -- branch — modes select a rendering, never which index is consulted.
         exact0 <- stageZero call env interp0
         let envA = envAnswer env interp0
         if isConstruct req interp
@@ -217,8 +185,6 @@ runDiscoverGoal mSG recent capSearch call req0
                         modeRedirect req env interp0 answers hk v
                 pure (ToolOk (boundEnvelope vOut))
   where
-    -- R2.6: a blank query in inventory mode falls back to the scope's own
-    -- name, so {mode:"inventory", module:"M"} answers the scoped module card.
     q = case (T.strip (drQuery req0), drMode req0) of
         ("", ModeInventory) ->
             fromMaybe "" (scopeFallbackQuery (drScope req0))
@@ -228,15 +194,9 @@ runDiscoverGoal mSG recent capSearch call req0
         "query must be a non-blank string (or set module/package with \
         \mode=\"inventory\" to list a scope's card)"
 
--- | The facet fires on the construct diagnostic class: shape or explicit mode.
 isConstruct :: DiscoverRequest -> Interpreted -> Bool
 isConstruct req interp = drMode req == ModeConstruct || iShape interp == "construct"
 
-{- | Section 3.3 denial legality across modes: a mode-specific envelope may
-never answer not_found for a name the stage-0-fed union resolves — the same
-union's SEARCH rendering answers instead, carrying a redirect note. A miss
-the union cannot resolve passes through untouched (honest in every mode).
--}
 modeRedirect ::
     DiscoverRequest ->
     NotebookEnv ->
@@ -272,13 +232,11 @@ stateText (Object o) = case KM.lookup "state" o of
     _ -> ""
 stateText _ = ""
 
--- | Under @mode=construct@ the bare query IS the goal type: force the shape.
 asConstruct :: DiscoverRequest -> Interpreted -> Interpreted
 asConstruct req interp
     | drMode req == ModeConstruct = interp{iShape = "construct"}
     | otherwise = interp
 
--- | The mode's envelope: ranked search hits, or the M6 inventory card.
 answerFor ::
     [Text] ->
     DiscoverRequest ->
@@ -312,6 +270,5 @@ answerFor recent req env interp answers hk = case drMode req of
                 lexical
             )
 
--- | Upstream lexical candidates an inventory answer may add, at most.
 lexicalCap :: Int
 lexicalCap = 25

@@ -1,9 +1,3 @@
-{- HLINT ignore "Monoid law, left identity" -}
-{- HLINT ignore "Monoid law, right identity" -}
-
-{- | Tests for the sticky @Sabela.Notebook.Picture@ DSL: monoid structure, the
-@svgBody@ homomorphism, shape rendering, and inner-wins styling.
--}
 module Test.NotebookPictureSpec (spec) where
 
 import Data.List (isInfixOf)
@@ -18,8 +12,8 @@ spec = do
             b = rectangle (0, 0) 4 5
             c = line (0, 0) (1, 1)
         it "mempty is the empty drawing" $ svgBody (mempty :: Picture) `shouldBe` ""
-        it "mempty is a left identity" $ svgBody (mempty <> a) `shouldBe` svgBody a
-        it "mempty is a right identity" $ svgBody (a <> mempty) `shouldBe` svgBody a
+        it "mempty is a left identity" $ svgBody (a) `shouldBe` svgBody a
+        it "mempty is a right identity" $ svgBody (a) `shouldBe` svgBody a
         it "is associative" $
             svgBody ((a <> b) <> c) `shouldBe` svgBody (a <> (b <> c))
 

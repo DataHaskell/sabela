@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The "running in your browser (MicroHs) — fork for the full toolchain"
-banner spliced into a published share's stored HTML. One mechanism for both the
-publish path (new shares) and
-the @republish-banners@ backfill (existing shares): 'spliceBanner' inserts the
-banner right after the opening @\<body\>@ tag, is idempotent via a marker
-comment, and is a no-op on HTML that has no @\<body\>@. Every byte outside the
-inserted banner is preserved.
--}
 module Hub.Banner (
     spliceBanner,
     bannerMarker,
@@ -18,14 +10,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
--- | Idempotency sentinel: a share whose HTML already contains it is left as-is.
 bannerMarker :: BS.ByteString
 bannerMarker = "<!--sabela-fork-banner-->"
 
-{- | Insert the fork banner after the first @\<body ...\>@ tag. Returns the HTML
-unchanged when the marker is already present (idempotent) or when there is no
-@\<body\>@ (e.g. a fragment), so callers can apply it blindly.
--}
 spliceBanner :: Text -> BS.ByteString -> BS.ByteString
 spliceBanner slug html
     | bannerMarker `BS.isInfixOf` html = html
@@ -39,13 +26,8 @@ spliceBanner slug html
                         let (bodyOpen, afterBody) = BS.splitAt (i + 1) rest
                          in before <> bodyOpen <> bannerHtml slug <> afterBody
   where
-    gt = 0x3e -- '>'
+    gt = 0x3e
 
-{- | The self-contained banner: inline styles only (so it renders in dashboard,
-slideshow, and notebook exports alike), a fork @POST@ form opened in a new tab,
-and an inline-JS dismiss. The slug is lowercase hex ('Hub.Share.validSlug'), so
-it is safe to interpolate into the action URL.
--}
 bannerHtml :: Text -> BS.ByteString
 bannerHtml slug =
     TE.encodeUtf8 . T.concat $

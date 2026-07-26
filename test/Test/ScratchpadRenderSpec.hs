@@ -11,23 +11,15 @@ import Sabela.SessionTypes (CellLang (..))
 import qualified ScriptHs.Parser as Scripths
 import qualified ScriptHs.Render as Scripths
 
-{- | Mirror of the empty-language default applied in Scratchpad.hs /
-Edit.hs: an empty @language@ field defaults to Haskell at the AI tool
-chokepoint; a non-empty unrecognised value still rejects.
--}
 defaultLang :: Text -> Maybe CellLang
 defaultLang rawLang =
     if T.null rawLang then Just Haskell else parseCellLang rawLang
 
-{- | Mirror of Orchestrator/Capabilities.renderHaskellForGhci. Kept here so the
-test has no dependency on internals.
--}
 renderHaskellForGhci :: Text -> Text
 renderHaskellForGhci src =
     let sf = Scripths.scriptLines (Scripths.parseScript src)
      in Scripths.toGhciScript sf
 
--- | Mirror of Capabilities.augmentGhciError for unit-level assertions.
 augmentGhciError :: Text -> Text
 augmentGhciError err
     | T.null err = err
@@ -67,13 +59,11 @@ spec = do
                         ]
                 rendered = renderHaskellForGhci src
             rendered `shouldSatisfy` (not . T.null)
-            -- scripths wraps multi-line defs in :{ :}; either form acceptable.
             (T.isInfixOf ":{" rendered || T.isInfixOf "double x" rendered)
                 `shouldBe` True
 
         it "rewrites a top-level TH splice so it evaluates at the REPL" $ do
             let rendered = renderHaskellForGhci "$(someSplice df)"
-            -- rewriteSplice turns $(...) into `_ = (); ...`
             T.isInfixOf "someSplice df" rendered `shouldBe` True
 
     describe "augmentGhciError" $ do

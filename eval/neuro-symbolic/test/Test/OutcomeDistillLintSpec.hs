@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R10-T5 x R8.4: a cell outcome carrying a multi-thousand-char ANSI wall
-(barChart-on turn-27), once rendered for the model through 'renderOutcome',
-crosses the surface clean — 'Eval.TranscriptLint' finds no raw-exception,
-serialisation-in-string, or package-hash leak over the distilled wall. The
-distillation is the seam that keeps the wall out of the model's context.
--}
 module Test.OutcomeDistillLintSpec (spec) where
 
 import Data.Aeson (Value, object, (.=))

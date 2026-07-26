@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure HTML for the public gallery pages (feed, collection landing, and the
-opaque-origin sandboxed reader). Kept separate from the store so the store stays
-testable without HTML, mirroring the "Hub.Pages" leaf discipline. Every
-user/admin string is 'htmlEscape'd; every slug is re-checked with 'validSlug'
-before it reaches an attribute.
--}
 module Hub.Gallery.Render (
     GalleryChrome (..),
     htmlEscape,
@@ -39,7 +33,6 @@ itemTitle :: GalleryItem -> Text
 itemTitle (GItemShare s _ _) = shareTitle s
 itemTitle (GItemCollection cv) = cvTitle cv
 
--- | The relative URL a top-level entry links to (slug re-validated).
 itemRelPath :: GalleryItem -> Text
 itemRelPath (GItemShare s _ _)
     | validSlug (shareSlug s) = "/s/" <> shareSlug s
@@ -51,8 +44,6 @@ itemRelPath (GItemCollection cv)
 itemTags :: GalleryItem -> [Text]
 itemTags (GItemShare _ ts _) = ts
 itemTags (GItemCollection cv) = cvTags cv
-
--- Gallery feed page
 
 renderGallery :: GalleryChrome -> Maybe Text -> [GalleryItem] -> Text
 renderGallery chrome activeFilter items =
@@ -96,8 +87,6 @@ chipRow active tags =
             <> htmlEscape t
             <> "</a>"
 
--- Cards (rendered as notebook "cells" with a catalog counter)
-
 cell :: Int -> Text -> GalleryItem -> Text
 cell n cls (GItemShare s tags author) =
     cellWrap
@@ -127,9 +116,6 @@ cell n cls (GItemCollection cv) =
     kind = "Collection / " <> T.pack (show (length (cvMembers cv)))
     open = "<span class=\"open\">view ▸</span>"
 
-{- | A card is an @article@ (not one big @a@) so its footer can hold a Download
-link and a Fork @form@ — interactive elements can't nest inside an @a@.
--}
 cellWrap :: Text -> Int -> Text -> Text -> Text -> Text -> Text -> Text
 cellWrap cls n kind href title body actions =
     "<article class=\"cell "
@@ -150,9 +136,6 @@ cellWrap cls n kind href title body actions =
   where
     pad x = (if x < 10 then "0" else "") <> T.pack (show x)
 
-{- | Download (anyone) + Fork (a POST form; the hub gates auth/Origin) for a
-share card. A non-hex slug yields no actions.
--}
 shareActions :: Text -> Text
 shareActions slug
     | not (validSlug slug) = ""
@@ -170,7 +153,6 @@ relShare s = if validSlug (shareSlug s) then "/s/" <> shareSlug s else "#"
 relCollection :: CollectionView -> Text
 relCollection cv = if validSlug (cvCid cv) then "/c/" <> cvCid cv else "#"
 
--- | An author byline ("by <name>"), shown when a curator attributed the work.
 byline :: Maybe Text -> Text
 byline Nothing = ""
 byline (Just a) = "<p class=\"byline\">by " <> htmlEscape a <> "</p>"
@@ -181,8 +163,6 @@ tagChips ts =
     "<p class=\"cardtags\">"
         <> T.concat ["<span class=\"tg\">#" <> htmlEscape t <> "</span>" | t <- ts]
         <> "</p>"
-
--- Collection landing + reader
 
 renderCollectionPage :: GalleryChrome -> CollectionView -> Text
 renderCollectionPage chrome cv =

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The agent's red-cell repair: ONE dispatcher keyed on the GHC diagnostic
-class feeds tier candidates through verify-and-revert under the notebook-scope
-acceptance law, reporting one bounded line — never rejected samples (R7.5-7.7).
--}
 module Siza.Agent.Repair (
     Dispatch,
     substituteAndVerify,
@@ -53,7 +49,6 @@ import Siza.Agent.RepairTiers (
 
 type Dispatch = ToolCall -> IO (Either Text ToolOutcome)
 
--- | Candidate vets per red cell before the cascade reports and stops.
 repairBudget :: Int
 repairBudget = 4
 
@@ -62,7 +57,6 @@ repairRedCells ::
 repairRedCells disp =
     fmap catMaybes . mapM (uncurry (repairOne disp))
 
--- | Dispatch one red cell by its diagnostic class through the tier cascade.
 repairOne ::
     Dispatch -> CellId -> Text -> IO (Maybe (ToolCall, Either Text ToolOutcome))
 repairOne disp cid errText = case tiersFor cls of
@@ -81,7 +75,6 @@ repairOne disp cid errText = case tiersFor cls of
   where
     cls = classifyDiag errText
 
--- | The tier resources: hole fits and the discover-backed locators (R7.6).
 buildInput :: Dispatch -> Text -> Text -> [RepairTier] -> IO TierInput
 buildInput disp errText src tiers = do
     let holeGoal = case goalFromErrorInCell (selfDeclaredSigs src) errText of
@@ -102,10 +95,6 @@ buildInput disp errText src tiers = do
         modLocate w = [m | (w0, m) <- mods, w0 == w]
     pure (TierInput errText src blob locate modLocate)
 
-{- | Try each candidate; keep the first the acceptance law admits, else
-restore the original and report attempted-and-reverted (R7.5). A restart-
-requiring candidate is applied and disclosed as unvalidated (R7.3).
--}
 runCascade ::
     Dispatch ->
     DiagClass ->
@@ -124,9 +113,6 @@ runCascade disp cls cid src before cands = go 1 cands
     lawApplies = any (\(k, _, _) -> k == key) before
     report n = RepairReport cls n budget
     go n (c : rest)
-        -- R7.3/R7.5: a restart-requiring repair is applied then RE-CHECKED
-        -- against the post-restart snapshot — confirmed when the target is
-        -- clean, else flagged kept-but-unconfirmed (never silently red).
         | tierRequiresRestart (cdTier c) = do
             let call = replaceCall cid (cdSource c)
             out <- disp call
@@ -164,7 +150,6 @@ runCascade disp cls cid src before cands = go 1 cands
         let rep = report budget "all candidates reverted" Nothing []
         pure (Just (call, withReport rep out))
 
--- | Attach the bounded repair report to the surviving outcome (R7.7).
 withReport ::
     RepairReport -> Either Text ToolOutcome -> Either Text ToolOutcome
 withReport rep (Right (ToolOk (Object o))) =
@@ -179,10 +164,6 @@ firstLine t = case T.lines t of
     (l : _) -> l
     [] -> t
 
-{- | The notebook health snapshot the acceptance law compares: every cell's
-(id, health, defines) from one preview listing, error text fetched only for
-red cells (bounded by the red count).
--}
 snapshot :: Dispatch -> IO [(Text, Health, [Text])]
 snapshot disp = do
     out <- disp (ToolCall "list_cells" (object []))
@@ -213,10 +194,6 @@ snapshot disp = do
         Just (Array ds) -> [d | String d <- toList ds]
         _ -> []
 
-{- | Repair a red cell from GHC hole-fits: try each plain fit for the goal the
-error implies, keeping the first whose re-run compiles (verify-and-backtrack, not
-first-fit), else restore the original. Refinement skeletons are left alone.
--}
 substituteAndVerify ::
     Dispatch -> CellId -> Text -> IO (Maybe (ToolCall, Either Text ToolOutcome))
 substituteAndVerify disp cid errText = case goalFromError errText of
@@ -226,8 +203,6 @@ substituteAndVerify disp cid errText = case goalFromError errText of
         msrc <- readCellSource disp cid
         case msrc of
             Nothing -> pure Nothing
-            -- The self-declared guard: a name the cell defines here is not a
-            -- producer-hunt target (the topMonth false goal).
             Just src
                 | wrong `elem` selfDeclaredSigs src -> pure Nothing
                 | otherwise -> do
@@ -239,9 +214,6 @@ substituteAndVerify disp cid errText = case goalFromError errText of
                             unless (null subs) (void (disp (replaceCall cid src)))
                             pure Nothing
 
-{- | Replace the cell with a candidate source and keep the call + outcome only
-when the re-run compiled, so the search backtracks past a non-compiling fit.
--}
 verifyReplace ::
     Dispatch ->
     CellId ->
@@ -252,7 +224,6 @@ verifyReplace disp cid newSrc = do
     out <- disp call
     pure (if compiled out then Just (call, out) else Nothing)
 
--- | True when a cell-execution outcome reports a successful run (@execution.ok@).
 compiled :: Either Text ToolOutcome -> Bool
 compiled (Right (ToolOk (Object o))) = case KM.lookup "execution" o of
     Just (Object e) -> KM.lookup "ok" e == Just (Bool True)

@@ -57,7 +57,6 @@ spec = do
             T.isInfixOf "merge" (T.toLower msg) `shouldBe` True
 
         it "omits the Variables line when no cycle-forming names are found" $ do
-            -- Edge case: empty cycle set → message should still be well-formed.
             let msg = cycleErrorMsg M.empty S.empty [] M.empty
             T.isInfixOf "cycle" (T.toLower msg) `shouldBe` True
             T.isInfixOf "Variables" msg `shouldBe` False

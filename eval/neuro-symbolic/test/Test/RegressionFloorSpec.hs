@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9 regression-floor pins: the behaviours the 2026-07-18 triage found
-working are pinned BEFORE anything changes, so improvements are provable and
-regressions are caught in the round they appear.
--}
 module Test.RegressionFloorSpec (spec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -89,11 +85,8 @@ spec = describe "R9 regression floor" $ do
             arTurns run `shouldBe` 2
             arToolCalls run `shouldBe` 1
             issued <- readIORef calls
-            -- The model made no discover-class call; the episode is one write.
             filter (`elem` ["discover", "find_function"]) issued `shouldBe` []
-            -- No added chatter: system, user, assistant, result, assistant.
             length (arTranscript run) `shouldBe` 5
-            -- The happy path is lint-clean under the R8.4 rules.
             lintMessages (arTranscript run) `shouldBe` []
 
     describe "R9.3 await-idle settled answer" $

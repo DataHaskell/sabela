@@ -1,11 +1,3 @@
-{- |
-Module      : Sabela.Notebook.Picture.Svg
-Description : Render a picture to an SVG string.
-
-The structural rendering of a 'Picture' into SVG. Split out of the
-'Sabela.Notebook.Picture' facade (which re-exports 'renderSvg' and 'svgBody')
-to keep each module under the size cap.
--}
 module Sabela.Notebook.Picture.Svg (
     renderSvg,
     svgBody,
@@ -19,12 +11,6 @@ import Sabela.Notebook.Picture.Internal (
     num,
  )
 
-{- | Render a picture to a standalone SVG string on a given canvas.
-
-The body is built by 'svgBody', which is a /monoid homomorphism/: the drawing of
-@a '<>' b@ is exactly the drawing of @a@ followed by the drawing of @b@. The
-@\<svg\>@ wrapper is added once around the whole thing.
--}
 renderSvg :: Canvas -> Picture -> Svg
 renderSvg (Canvas w h) p =
     Svg $
@@ -40,10 +26,6 @@ renderSvg (Canvas w h) p =
             ++ svgBody p
             ++ "</svg>"
 
-{- | The structural rendering of a picture's contents (no @\<svg\>@ wrapper).
-Styling and transforms become nested @\<g\>@ groups, so inner styles win via
-SVG's normal inheritance.
--}
 svgBody :: Picture -> String
 svgBody Blank = ""
 svgBody (Prim s) = shapeSvg s

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Tests for the static "notebook" (tutorial) export renderer: it must embed
-the notebook JSON (with cell source), flag the notebook render mode, embed the
-reassembled markdown for the in-page download, and keep any @</script>@ in cell
-content escaped. The plain dashboard render must stay mode-free.
--}
 module Test.NotebookExportSpec (spec) where
 
 import qualified Data.ByteString.Lazy as LBS
@@ -22,7 +17,6 @@ import Sabela.Model (
 import Sabela.SessionTypes (CellLang (..))
 import Test.Hspec
 
--- A minimal template carrying the injection placeholder.
 template :: Text
 template = "<html><body><script>/*__SABELA_INJECT__*/</script></body></html>"
 
@@ -59,15 +53,15 @@ spec = describe "Sabela.Dashboard static notebook export" $ do
     it "embeds the notebook JSON including cell source" $ do
         let out = renderNotebook nb1 "md"
         out `shouldSatisfy` T.isInfixOf "window.__SABELA_STATIC__"
-        out `shouldSatisfy` T.isInfixOf "putStrLn" -- cellSource is present
+        out `shouldSatisfy` T.isInfixOf "putStrLn"
     it "embeds the reassembled markdown for download" $ do
         let out = renderNotebook nb1 "# Title\n\n```haskell\nputStrLn x\n```\n"
         out `shouldSatisfy` T.isInfixOf "window.__SABELA_MARKDOWN__ ="
-        out `shouldSatisfy` T.isInfixOf "haskell" -- md content carried through
+        out `shouldSatisfy` T.isInfixOf "haskell"
     it "escapes </script> in cell content so it cannot close the tag" $ do
         let evil = Notebook "x" [Cell 1 ProseCell Haskell "</script><b>x</b>" [] Nothing False]
             out = renderNotebook evil "md"
-        out `shouldSatisfy` T.isInfixOf "<\\/script>" -- escaped form present
+        out `shouldSatisfy` T.isInfixOf "<\\/script>"
         out `shouldSatisfy` T.isInfixOf "<\\/b>"
 
     it "escapes </script> in the embedded markdown too" $

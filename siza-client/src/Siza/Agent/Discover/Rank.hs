@@ -1,9 +1,3 @@
-{- | The discover ranking core (docs/discover/search-api.md section 7): the
-total-order strata, the within-stratum key — including the internal-module
-demotion, an API-visibility class judgement, never a library judgement — and
-the duplicate-hit fusion. Split from "Siza.Agent.Discover.Merge" for the
-module-size cap.
--}
 module Siza.Agent.Discover.Rank (
     rankKeyRecent,
     RankKey,
@@ -28,10 +22,6 @@ import Siza.Agent.Discover.Types (
     NotebookEnv (..),
  )
 
-{- | The total-order strata of section 7: environment exact first, then
-installed exact, then an IN-SCOPE prefix match, then exact matches the
-notebook cannot reach without a new dependency, then weaker kinds.
--}
 stratum :: NotebookEnv -> Interpreted -> DHit -> Int
 stratum env interp h
     | exact && dhInstall h `elem` [InstBuiltin, InstNotebook] = 1
@@ -49,39 +39,19 @@ stratum env interp h
     exact = dhKind h == MkExact
     aliasScoped =
         dhModule h `elem` (map snd (neAliases env) ++ neImports env)
-    {- B2: reachability, judged by install state and import evidence, never by
-    package name. An exact export of a package the notebook would have to
-    install first is weaker evidence than a partial match it can already call.
-    -}
     inScope =
         dhInstall h `elem` [InstBuiltin, InstNotebook, InstInstalled]
             || aliasScoped
 
--- | The full deterministic ranking key (R3.7); 'Construct.producerKey' nests it.
 type RankKey =
     (Int, Int, Int, Int, Int, (Int, Int), Int, Int, Text, Text)
 
-{- | The within-stratum order (section 7 stage 2): install state, the
-internal-module demotion (public API before @*.Internal@ noise), then a
-call-ready bit — a hit carrying its signature outranks a signatureless
-package stub on evidence, never on name order — then signature plainness and
-the deterministic length/name tie-breaks (R3.7).
--}
 rankKey :: NotebookEnv -> Interpreted -> DHit -> RankKey
 rankKey = rankKeyIn []
 
-{- | 'rankKey' with the union's imported-package evidence (R4.5) and the
-session's own footprint: a hit from a package the notebook imports leads its
-stratum; a hit from a package the session's held facts already established
-leads the remaining strangers — so each search REFINES what the session has
-learned instead of starting blind. live_test33 asked @summary@ and blaze-html's
-attribute outranked the dataframe world every prior call had been about.
-Affinity decides ORDER only; nothing is filtered by it.
--}
 rankKeyIn :: [Text] -> NotebookEnv -> Interpreted -> DHit -> RankKey
 rankKeyIn = rankKeyRecent []
 
--- | 'rankKeyIn' with the refinement band supplied.
 rankKeyRecent ::
     [Text] -> [Text] -> NotebookEnv -> Interpreted -> DHit -> RankKey
 rankKeyRecent recentPkgs importedPkgs env interp h =
@@ -104,15 +74,9 @@ rankKeyRecent recentPkgs importedPkgs env interp h =
         | not (T.null (dhPackage h)), dhPackage h `elem` recentPkgs = 1
         | otherwise = 2
 
-{- | Signature plainness (section 7, round 7): (constraint count, type-level
-argument count), computed from the signature's own shape only — module and
-package identity never enter the key, so a plain variant of a name always
-outranks its constraint-heavy or type-applied twin.
--}
 plainness :: Text -> (Int, Int)
 plainness ty = (constraintCount ty, typeLevelArgCount ty)
 
--- | Constraint atoms left of the signature's @=>@ arrows.
 constraintCount :: Text -> Int
 constraintCount ty = case T.splitOn "=>" ty of
     [_] -> 0
@@ -125,24 +89,14 @@ constraintCount ty = case T.splitOn "=>" ty of
             , not (T.null (T.strip a))
             ]
 
--- | Type-level arguments: visible @\@T@ applications and promoted @'X@ tokens.
 typeLevelArgCount :: Text -> Int
 typeLevelArgCount ty =
     length
         [w | w <- T.words ty, "@" `T.isPrefixOf` w || "'" `T.isPrefixOf` w]
 
-{- | How many internal-module hits sit in the tail a limit cut off — demoted
-AND omitted, so the envelope can summarise them instead of dropping silently.
--}
 demotedCount :: [DHit] -> Int
 demotedCount = length . filter (isNoiseModule . dhModule)
 
-{- | Same-package name-variant stubs (R6-T1): two SIGNATURELESS rows whose
-names are both case\/hyphen variants of their one package are duplicates of
-the package fact itself and fuse to one row — so variant rows can never crowd
-a function-with-signature hit out of the shown window (R3.2\/R3.1). A hit
-carrying a signature is never a variant stub, whatever its name.
--}
 samePackageVariants :: DHit -> DHit -> Bool
 samePackageVariants a b =
     variantStub a && variantStub b && dhPackage a == dhPackage b
@@ -153,9 +107,6 @@ samePackageVariants a b =
             && norm (dhName h) == norm (dhPackage h)
     norm = T.toLower . T.filter (/= '-')
 
-{- | Fuse two answers for the same (name, module): keep the better-ranked
-copy, fill its empty provenance fields from the other (R3.3 conservation).
--}
 fuse :: NotebookEnv -> Interpreted -> DHit -> DHit -> DHit
 fuse env interp a b =
     best

@@ -12,10 +12,6 @@ import qualified Data.Text.Read as TR
 import Sabela.Model (CellError (..))
 import ScriptHs.Compiled (parseLinePragmaTag)
 
-{- | The @NNNNN@ of GHC's @[GHC-NNNNN]@ diagnostic code, if the text carries one.
-The textual path (pre-9.8 GHC, and the scratchpad which forces JSON off) still
-prints the code inline, so a coded diagnostic keeps its errors.haskell.org key.
--}
 ghcCodeIn :: Text -> Maybe Int
 ghcCodeIn t = case T.breakOn "[GHC-" t of
     (_, rest)
@@ -38,7 +34,6 @@ parseErrors stderr
                     Just (ln, col) ->
                         [CellError (Just ln) col (T.strip block) (ghcCodeIn block)]
                     Nothing
-                        -- Only treat as error if it contains "error" or "Error"
                         | "error" `T.isInfixOf` T.toLower (T.strip block) ->
                             [CellError Nothing Nothing (T.strip block) (ghcCodeIn block)]
                         | otherwise -> []
@@ -46,8 +41,6 @@ parseErrors stderr
 
     splitErrors t = filter (not . T.null . T.strip) $ splitOnHeaders (T.lines t) [] []
 
-    -- Bang both accumulators so a long GHCi stderr doesn't pile a
-    -- thunk chain until the terminal 'reverse' forces it.
     splitOnHeaders [] !current !acc =
         let b = T.unlines (reverse current)
          in reverse (if T.null (T.strip b) then acc else b : acc)
@@ -76,11 +69,6 @@ parseErrorHeader hdr = do
              in Just (ln, col)
         _ -> Nothing
 
-{- | Route GHC diagnostics from a generated compiled module back to cells via
-the LINE-pragma tags ('ScriptHs.Compiled.parseLinePragmaTag'). Lines are
-already cell-relative thanks to the pragmas. Blocks that name no cell tag are
-returned separately.
--}
 parseCompiledErrors :: Text -> (M.Map Int [CellError], [CellError])
 parseCompiledErrors stderrText =
     let blocks = splitCompiledBlocks stderrText
@@ -93,7 +81,6 @@ parseCompiledErrors stderrText =
              in (M.insertWith (++) cid [ce] m, loose)
         Nothing -> (m, CellError Nothing Nothing (T.strip block) (ghcCodeIn block) : loose)
 
--- | @sabela-cell-12:4:7@ → (12, 4, Just 7) from a block's first line.
 compiledHeader :: Text -> Maybe (Int, Int, Maybe Int)
 compiledHeader block = case T.lines block of
     (hdr : _) -> do
@@ -108,7 +95,6 @@ compiledHeader block = case T.lines block of
             _ -> Nothing
     _ -> Nothing
 
--- | Rewrite @sabela-cell-N:@ location prefixes so messages read naturally.
 scrubTags :: Text -> Text
 scrubTags block = T.unlines (map scrubLine (T.lines block))
   where

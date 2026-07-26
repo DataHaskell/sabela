@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for the @discover@ tool plumbing: routing by query shape,
-the qualified-name fallback, blank-payload detection, catalogue drift-freedom,
-and the honest tool description (R1.7: advertised behaviour = actual). The
-merge itself is covered by Test.DiscoverCatalogueSpec / DiscoverInvariantSpec.
--}
 module Test.DiscoverToolClientSpec (discoverToolSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -29,7 +24,6 @@ import Siza.Agent.Tools (catalogueWith, unknownToolMsg)
 import Test.DiscoverFixtures (stateOf, textField)
 import Test.Hspec
 
--- | The function names offered by a model-facing catalogue value.
 catalogueNames :: [Value] -> [Text]
 catalogueNames cat =
     [ n
@@ -71,11 +65,6 @@ discoverToolSpec = describe "discover tool (plumbing)" $ do
             queryVariants "parse digits from a string"
                 `shouldBe` ["parse digits from a string"]
 
-        {- live_test25: the model asked `take D.DataFrame`, the session index
-        was handed the whole string, scoped to a module `D.DataFrame` that
-        does not exist (D is an alias) and answered with a Prelude dump. The
-        one query that works — `take` — was never tried, so
-        `DataFrame.take :: Int -> DataFrame -> DataFrame` was never served. -}
         it "session-query-mangled: a name-plus-type query also tries the name" $
             queryVariants "take D.DataFrame"
                 `shouldBe` ["take D.DataFrame", "take"]
@@ -84,10 +73,6 @@ discoverToolSpec = describe "discover tool (plumbing)" $ do
             queryVariants "read a CSV file into memory"
                 `shouldBe` ["read a CSV file into memory"]
 
-    {- live_test26: `fetchSession` returned the FIRST non-blank payload, so a
-    module listing (always non-blank) beat the value-word variant that
-    actually answers. `DataFrame head` browsed DataFrame's 1413 exports and
-    never asked `head`. An answer that NAMES things wins now. -}
     describe "session-prefers-matches (live_test26)" $ do
         let interp = Interpreted "DataFrame head" "DataFrame" Nothing "prose" "" []
             listing =

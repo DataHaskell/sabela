@@ -1,9 +1,3 @@
-{- | Discovery: find live Sabela servers the way @siza-discover.sh@ did.
-
-Scans the registry @~/.local/state/sabela/servers/*.json@ (honouring
-@XDG_STATE_HOME@), probes each entry's @/api/ai/health@, and keeps the live
-ones. @SABELA_URL@ short-circuits the scan to a single probed URL.
--}
 module Siza.Discover (
     Server (..),
     discover,
@@ -30,7 +24,6 @@ import Siza.Transport (Conn (..), Env (..), getHealth)
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
 
--- | A registry entry augmented with its live health body.
 data Server = Server
     { srvBaseUrl :: Text
     , srvPort :: Maybe Int
@@ -51,9 +44,6 @@ instance FromJSON Server where
             <*> o .:? "authRequired"
             <*> o .:? "tokenHint"
 
-{- | Flatten a 'Server' back to the JSON the bash @discover@ printed, with
-@live: true@ appended so the wire shape stays compatible.
--}
 serverValue :: Server -> Value
 serverValue s =
     object
@@ -66,16 +56,9 @@ serverValue s =
         , "live" .= True
         ]
 
-{- | The localhost server siza falls back to when no @SABELA_URL@ is set and
-the registry has no live entry — the standard sabela port.
--}
 defaultLocalUrl :: Text
 defaultLocalUrl = "http://localhost:3000"
 
-{- | Live servers. @SABELA_URL@, if set, short-circuits to a single probe;
-otherwise scan the registry, and if it is empty fall back to probing
-'defaultLocalUrl' so a plain local notebook needs no configuration.
--}
 discover :: Conn -> IO [Server]
 discover conn =
     case envSabelaUrl (connEnv conn) of

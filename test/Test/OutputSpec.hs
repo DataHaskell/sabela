@@ -14,11 +14,6 @@ spec = do
     scatterEmbedSpec
     inputRenameSpec
 
-{- | The effectful interactive-control type is @Input@ (the pure
-@Sabela.Notebook.Behavior@ keeps @Behavior@). These pin the lockstep rename
-across the three string-producing sites (Output.displayPrelude, Output.Widgets,
-Output.Scatter), none of which the type checker validates until a session runs.
--}
 inputRenameSpec :: Spec
 inputRenameSpec = describe "effectful widget type Input (renamed from Behavior)" $ do
     let prelude = displayPrelude
@@ -45,8 +40,6 @@ inputRenameSpec = describe "effectful widget type Input (renamed from Behavior)"
 scatterEmbedSpec :: Spec
 scatterEmbedSpec = describe "scatter widget JS embedding" $ do
     it "embeds the real scatter.js library, not a hand-escaped blob" $ do
-        -- The render logic lives in static/src/widgets/scatter.js and is
-        -- embedded verbatim; these tokens pin that the file is wired in.
         scatterWidgetJs `shouldSatisfy` T.isInfixOf "function sabelaScatter"
         scatterWidgetJs `shouldSatisfy` T.isInfixOf "parent.postMessage"
         scatterWidgetJs `shouldSatisfy` T.isInfixOf "inPoly"
@@ -96,7 +89,6 @@ parseMimeOutputsSpec = describe "parseMimeOutputs" $ do
                        ]
 
     it "slider + result: two html blocks stay separate at parse time" $ do
-        -- mergeOutputs (JS) will later collapse them; parser should keep them split
         let raw =
                 "<!-- MIME:text/html -->\n<input type='range' value='50'>\n"
                     <> "<!-- MIME:text/html -->\n<p>50 C = 122 F</p>\n"

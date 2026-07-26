@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of Phase-0 name→module resolution: exact-name lookup over a
-capability index, and the import + package a resolution needs. The browse half is
-verified live; these pin the decisions the resolve tool makes.
--}
 module Test.ResolveSpec (spec) where
 
 import Sabela.AI.Capabilities.Resolve (lookupByName, resolutionImport)

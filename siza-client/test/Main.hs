@@ -2,10 +2,12 @@ module Main (main) where
 
 import Test.AdviceSpec (adviceSpec)
 import Test.AgentCheckSpec (agentCheckSpec)
+import Test.ArtifactSpec (artifactSpec)
 import Test.CandidateRankSpec (candidateRankSpec)
 import Test.CandidateSpec (candidateSpec)
 import Test.CardGateSpec (cardGateSpec)
 import Test.CheckGateSpec (checkGateSpec)
+import Test.CompactSpec (compactSpec)
 import Test.ContextCharsSpec (contextCharsSpec)
 import Test.CounterexampleSpec (counterexampleSpec)
 import Test.CrossSeamSpec (crossSeamSpec)
@@ -133,6 +135,8 @@ main = hspec $ do
     discoverMissSpec
     discoverRequestSpec
     discoverEnvelopeSpec
+    artifactSpec
+    compactSpec
     discoverHackageSpec
     discoverHistorySpec
     discoverClosureSpec

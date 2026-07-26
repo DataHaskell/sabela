@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Generated corruption-class coverage for the Ollama parse seam. The
-payload matrix is schema-driven rather than copied from a benchmark task.
--}
 module Test.OllamaParseSafetySpec (spec) where
 
 import Control.Monad (forM_)

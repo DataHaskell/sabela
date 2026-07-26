@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The gallery's page chrome: the 'GalleryChrome' config, 'htmlEscape', the
-shared HTML document shell (head, og tags, header, footer), and the small leaf
-helpers. Split out of "Hub.Gallery.Render" to keep that module under the cap.
--}
 module Hub.Gallery.Chrome (
     GalleryChrome (..),
     htmlEscape,
@@ -21,18 +17,12 @@ import qualified Data.Text as T
 
 import Hub.Gallery.Style (styleBlock)
 
-{- | Static config threaded into every page: origin (for absolute og/feed
-links), the admin contact for the request CTA, and the repo run-locally link.
--}
 data GalleryChrome = GalleryChrome
     { gcOrigin :: Text
     , gcContact :: Maybe Text
     , gcRepoUrl :: Text
     }
 
-{- | Escape the five HTML/XML-significant characters (load-bearing: titles and
-descriptions are user/admin free text).
--}
 htmlEscape :: Text -> Text
 htmlEscape =
     T.replace "\"" "&quot;"

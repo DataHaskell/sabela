@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Drives 'agenticLoop' against a scripted fake 'ModelProvider' — no network,
-no live model. Proves the rewired loop actually calls the port, maps a
-'Completion' onto the turn phase + history, and fails cleanly on a provider
-error. (Tool-dispatch + live streaming are covered by the end-to-end smoke.)
--}
 module Test.OrchestratorLoopSpec (spec) where
 
 import Control.Concurrent.STM (TChan, atomically, readTVarIO, tryReadTChan)
@@ -27,7 +22,6 @@ import Sabela.Server (newApp)
 import Sabela.State (App (..))
 import Sabela.State.EventBus (subscribeBroadcast)
 
--- | A provider that always returns the same scripted result.
 constProvider :: Either Text Completion -> ModelProvider
 constProvider r =
     ModelProvider

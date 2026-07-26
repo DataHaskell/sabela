@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | A simulated WORLD over the synthetic catalogue: session visibility is
-controlled separately from the hoogle universe (so an in-session install is
-representable), @find_by_type@ answers hole-fit blobs, and the capability
-channel answers hoogle-style result-type queries (@:: T@). Shared by the
-world-change ledger tests and the constructibility-facet tests.
--}
 module Test.CatalogueSim (
     SimWorld (..),
     simWorldCall,
@@ -30,15 +24,11 @@ import Test.DiscoverFixtures (
     simSession,
  )
 
-{- | One world: what the live session can see vs what the hoogle universe
-knows. An install event moves a package from universe-only into the session.
--}
 data SimWorld = SimWorld
     { swSession :: [SynPkg]
     , swUniverse :: [SynPkg]
     }
 
--- | The simulated dispatch of a world; unknown tools answer unsupported.
 simWorldCall :: SimWorld -> ToolName -> Value -> IO (Either Text ToolOutcome)
 simWorldCall w tn args = pure $ case tn of
     ListCells -> ok cellsJson
@@ -53,7 +43,6 @@ simWorldCall w tn args = pure $ case tn of
     _ -> Left "unsupported tool in world sim"
   where
     ok = Right . ToolOk
-    -- Hole fits are in-scope evidence: hidden packages cannot contribute.
     inScopePkgs = filter (not . spHidden) . swSession
 
 cellsJson :: Value
@@ -67,7 +56,6 @@ cellsJson =
                ]
         ]
 
--- | A GHC-shaped hole-fit blob for @_ :: T@ over the session-visible exports.
 worldBlob :: [SynPkg] -> Text -> Value
 worldBlob pkgs goalArg =
     object ["goal" .= goal, "result" .= blob]
@@ -84,7 +72,6 @@ worldBlob pkgs goalArg =
         | null fits = "" :: Text
         | otherwise = T.unlines ("Valid hole fits include" : fits)
 
--- | Does @ty@ produce the goal: equal to it, or returning it as final result?
 resultLike :: Text -> Text -> Bool
 resultLike goal ty =
     norm ty == g || ("-> " <> g) `T.isSuffixOf` norm ty
@@ -92,7 +79,6 @@ resultLike goal ty =
     g = norm goal
     norm = T.unwords . T.words
 
--- | Hoogle-style result-type search: capability buckets of producers of @T@.
 typeBuckets :: [SynPkg] -> Text -> Value
 typeBuckets universe goal =
     object ["query" .= (":: " <> goal), "hits" .= map bucket matching]
@@ -117,11 +103,9 @@ typeBuckets universe goal =
                    ]
             ]
 
--- | Run a discover call (query only) against a world.
 runWorld :: SimWorld -> Text -> IO Value
 runWorld w q = runWorldArgs w q (object [])
 
--- | Run a discover call with raw arguments against a world.
 runWorldArgs :: SimWorld -> Text -> Value -> IO Value
 runWorldArgs w q args = do
     out <- runDiscoverCall True (simWorldCall w) q args
@@ -129,11 +113,6 @@ runWorldArgs w q args = do
         ToolOk v -> v
         ToolErr v -> v
 
-{- | A producer catalogue with structure held constant and package names
-substitutable (the library-name-invariance grid): a plotting package with a
-nullary default, a frame package with constructors-and-producers, and a
-hidden styling package whose only producer needs an argument.
--}
 producerPkgs :: (Text, Text, Text) -> [SynPkg]
 producerPkgs (pA, pB, pC) =
     [ SynPkg

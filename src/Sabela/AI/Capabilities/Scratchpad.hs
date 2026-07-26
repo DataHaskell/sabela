@@ -1,18 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Scratchpad tool: an isolated GHCi (or Python) session the AI can
-run snippets in without touching the notebook. 'execScratchpadGuarded'
-wraps the raw 'execScratchpad' with a per-turn churn breaker that nudges
-the model after several consecutive failures.
--}
 module Sabela.AI.Capabilities.Scratchpad (
     execScratchpadGuarded,
     execScratchpad,
     evictScratchpad,
     ensureScratchpad,
-
-    -- * Pieces (exposed for testing)
     renderHaskellForGhci,
     augmentGhciError,
     silentDiagnostic,
@@ -42,8 +35,6 @@ import Sabela.AI.Types
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Api (errorJson)
 
--- 'ToolOutcome' (and its smart constructors) is re-exported from
--- 'Sabela.AI.Types' via the open import above; no explicit list needed.
 import Sabela.Deps (collectMetadata, collectMetadataFromContent, mergedMeta)
 import Sabela.Diagnose (
     diagnose,
@@ -81,15 +72,6 @@ import Sabela.ThrowawayExecute (
 import qualified ScriptHs.Parser as Scripths
 import qualified ScriptHs.Render as Scripths
 
-{- | Wrap 'execScratchpad' with a circuit breaker. If the model has had
-several consecutive failing scratchpad attempts in the same turn, append a
-nudge to the tool response telling it to change approach instead of
-silently letting the loop churn through a rate-limit window.
-
-The breaker is per-turn and stored on the 'AIStore' via the current turn's
-'turnScratchpadFails' counter. It doesn't actually block the tool — it just
-annotates the response, which is enough for the model to notice.
--}
 execScratchpadGuarded :: App -> AIStore -> Value -> IO ToolOutcome
 execScratchpadGuarded app store input = do
     outcome <- execScratchpad app store input
@@ -170,8 +152,6 @@ execScratchpad app store input = do
 
 runLegacyScratchpad :: App -> AIStore -> CellLang -> Text -> IO ToolOutcome
 runLegacyScratchpad app store lang rawCode = do
-    -- Seed the scratchpad with the notebook's declared deps plus the
-    -- snippet's own, so an already-declared package is available.
     nb <- readNotebook (appNotebook app)
     let deps0 =
             S.toList . S.fromList $
@@ -213,19 +193,12 @@ unavailableThrowawayExecute = do
     executeReasonText HelperVersionMismatch = "helper_version_mismatch" :: Text
     executeReasonText ContainmentNotProven = "containment_not_proven"
 
--- | How many missing deps the scratchpad will infer-and-install per call.
 scratchpadDepHealCap :: Int
 scratchpadDepHealCap = 3
 
-{- | Run a scratchpad snippet, and if it fails on a package GHC names as hidden
-or needing a flag, add that dep and rebuild — self-installing missing deps the
-way a cell does, so the model isn't stuck retrying the same import.
--}
 runScratchpadHealed ::
     App -> AIStore -> CellLang -> Text -> [Text] -> Int -> IO ToolOutcome
 runScratchpadHealed app store lang rawCode deps budget = do
-    -- G7: the same shared normalizer/gate every candidate-source path uses
-    -- (Sabela.AI.NormalizeGate), so this agrees with insert/replace/try.
     let code = case lang of
             Haskell -> renderHaskellForGhci (fst (gatedRewrite rawCode))
             Python -> rawCode
@@ -278,33 +251,23 @@ runScratchpadHealed app store lang rawCode deps budget = do
                         then okOutcome payload
                         else errOutcome payload
 
-{- | Section 5.3: the schema-required verdict of a scratchpad run, keyed on the
-observable outcome class alone — stderr = diagnostic, output = ok, silence =
-could-not-run. Silence can never render as a pass.
--}
 scratchpadVerdict :: Text -> Text -> VerdictClass
 scratchpadVerdict stdout stderr
     | not (T.null (T.strip stderr)) = VerdictDiagnostic
     | not (T.null (T.strip stdout)) = VerdictOk
     | otherwise = VerdictCouldNotRun
 
--- | Prepend the section-5.3 verdict field to a verifier payload.
 withVerdict :: VerdictClass -> Value -> Value
 withVerdict c (Object o) =
     Object (KM.insert (Key.fromText "verdict") (String (verdictTag c)) o)
 withVerdict c v = object ["verdict" .= verdictTag c, "result" .= v]
 
-{- | R6.7: the scratchpad never answers with silence. When a snippet yields no
-output, no error and no guidance, a typed diagnostic states the scratchpad's
-isolation and the in-session alternative; any real output suppresses it.
--}
 silentDiagnostic :: Text -> Text -> [a] -> Maybe Text
 silentDiagnostic stdout stderr guidance
     | T.null (T.strip stdout) && T.null (T.strip stderr) && null guidance =
         Just isolationDiagnostic
     | otherwise = Nothing
 
--- | What the scratchpad cannot do, and what to use instead.
 isolationDiagnostic :: Text
 isolationDiagnostic =
     "No output and no error. The scratchpad is ISOLATED from the notebook \
@@ -313,9 +276,6 @@ isolationDiagnostic =
     \`print` it here, or probe live notebook state with check_type / \
     \list_bindings, or just insert a cell instead."
 
-{- | Tear down the cached scratchpad backend (if any) and clear the slot.
-Used after a failure so the next scratchpad call starts a fresh session.
--}
 evictScratchpad :: AIStore -> IO ()
 evictScratchpad store = do
     mSp <- getScratchpad store
@@ -327,18 +287,11 @@ evictScratchpad store = do
             setScratchpad store Nothing
         Nothing -> pure ()
 
-{- | Apply scripths's GHCi rendering to an ad-hoc Haskell snippet so scratchpad
-is parity with notebook cells.
--}
 renderHaskellForGhci :: Text -> Text
 renderHaskellForGhci src =
     let sf = Scripths.scriptLines (Scripths.parseScript src)
      in Scripths.toGhciScript sf
 
-{- | Tack a short hint onto GHCi stderr when it contains the classic top-level
-`let` parse error, so models don't hallucinate that "session state is
-corrupted". Zero-cost on benign stderr.
--}
 augmentGhciError :: Text -> Text
 augmentGhciError err
     | T.null err = err
@@ -360,8 +313,6 @@ ensureScratchpad app store lang deps = do
     case mSp of
         Just sp | spLang sp == lang, spDeps sp == deps -> pure (spBackend sp)
         mOld -> do
-            -- Kill an existing scratchpad when the language OR the declared deps
-            -- changed, so a self-healed dep triggers a rebuild.
             case mOld of
                 Just sp -> sbClose (spBackend sp)
                 Nothing -> pure ()
@@ -369,10 +320,6 @@ ensureScratchpad app store lang deps = do
                 createTempDirectory (envTmpDir (appEnv app)) "sabela-scratch"
             backend <- case lang of
                 Haskell -> do
-                    -- The scratchpad gets its OWN scaffolded project (separate
-                    -- dist-newstyle), so it works on a cold notebook (before any
-                    -- cell has materialised repl-project) and never contends with
-                    -- the live notebook session over the shared build dir.
                     nb <- readNotebook (appNotebook app)
                     let projDir = envTmpDir (appEnv app) </> "scratch-project"
                         meta =
@@ -384,15 +331,8 @@ ensureScratchpad app store lang deps = do
                         (envLocalPackages (appEnv app))
                         projDir
                         meta
-                    -- The scratchpad reports raw GHCi stderr to the model and
-                    -- runs textual diagnose/guidance over it, so keep it on the
-                    -- textual diagnostic path (no -fdiagnostics-as-json).
                     cfg <- (\c -> c{scJsonDiagnostics = False}) <$> mkSessionConfig projDir spDir
                     sess <- newSession cfg
-                    -- If GHCi/cabal dies during prelude injection, surface
-                    -- the captured cabal/ghci stderr instead of the opaque
-                    -- "GHCi process exited with ExitFailure 1" so callers can
-                    -- see the real cause.
                     initRes <-
                         try (runBlock sess displayPrelude) ::
                             IO (Either SomeException (Text, Text))

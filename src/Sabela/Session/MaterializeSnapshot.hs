@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The snapshot fence for disposable materialization
-('Sabela.Session.Materialize'): one immutable cut across every mutable
-'App' store, plus the staleness checks that guard the candidate boundary.
-The scratch process never consults the mutable stores again after capture;
-it only compares against this cut immediately before, and while, admitting
-candidate code.
--}
 module Sabela.Session.MaterializeSnapshot (
     MaterializeSnapshot (..),
     captureMaterializeSnapshot,
@@ -82,10 +75,6 @@ snapshotStillCurrent app expected = do
                 Left
                     "notebook or render context changed during disposable materialization; no candidate code ran"
 
-{- | Compare and run while every mutable context store remains locked. This
-closes the check/use gap at the candidate boundary: edits and widget/bridge
-updates cannot land between the equality check and the bounded candidate.
--}
 withCurrentSnapshot ::
     App ->
     MaterializeSnapshot ->

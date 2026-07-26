@@ -1,8 +1,3 @@
-{- | The discover feedback protocol (docs/discover/search-api.md section 8):
-every miss moves the caller closer to acting — consulted scope, disclosed
-incompleteness, nearest held names — and a found answer that still needs an
-action states it once. No retry boilerplate, no invent ban (R5.8).
--}
 module Siza.Agent.Discover.Guidance (
     actionNext,
     missNext,
@@ -26,7 +21,6 @@ import Siza.Agent.Discover.Types (
     SourceAnswer (..),
  )
 
--- | The action a found answer still needs (expose or install), stated once.
 actionNext :: [DHit] -> Maybe Text
 actionNext hits = case hits of
     (h : _)
@@ -46,12 +40,6 @@ actionNext hits = case hits of
                 )
     _ -> Nothing
 
-{- | A miss that converges (R5): a miss scoped to an imported package routes
-to write-and-observe FIRST (section 8, round 7 — the compiler is the one
-verifier that cannot be wrong about an imported package), then consulted
-scope, nearest held names, disclosed incompleteness — never retry
-boilerplate, never an invent ban (R5.8).
--}
 missNext ::
     NotebookEnv -> Interpreted -> Scope -> [SourceAnswer] -> HackageInfo -> Text
 missNext env interp scope answers hk =
@@ -102,17 +90,10 @@ missNext env interp scope answers hk =
     nearLine = case nearNames of
         [] -> ""
         ns -> "Nearest held names: " <> T.intercalate ", " ns <> "."
-    -- The R5.3 clean-miss pointer: with no neighbours, redirect the search to
-    -- the inventory question instead of padding with substring noise.
-    -- Always offered on a miss: the export list is the answer to "what CAN I
-    -- use here", and a name miss is the moment the model most needs it
-    -- (live_test20 searched three synonyms, saw none of the 227 exports, and
-    -- guessed a package instead).
     inventoryLine =
         "For 'what is available for a topic', call discover with \
         \mode=\"inventory\" and no query."
 
--- | Up to three environment names within edit distance 2 (R5.1).
 nearestNames :: NotebookEnv -> Text -> [Text]
 nearestNames env q =
     take 3 . map fst . sortOn snd $
@@ -122,7 +103,6 @@ nearestNames env q =
         , d <= 2
         ]
 
--- | Small Levenshtein distance (names are short; no bounds needed).
 editDistance :: Text -> Text -> Int
 editDistance a b = last (foldl row [0 .. length sa] (T.unpack b))
   where

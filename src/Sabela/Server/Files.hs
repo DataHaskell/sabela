@@ -1,12 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | File-explorer handlers for the @/api/files@ + @/api/file@ subtree:
-list, read, create (file or directory), write, delete, rename. Every
-path is canonicalized and gated by 'isWithinPath' / 'isPrefixOfPath' so
-nothing escapes @envWorkDir@.
--}
 module Sabela.Server.Files (
-    -- * Handlers
     listFilesH,
     readFileH,
     readFilePreviewH,
@@ -14,8 +8,6 @@ module Sabela.Server.Files (
     writeFileH,
     deleteFileH,
     renameFileH,
-
-    -- * Path-safety helpers (exposed for other server modules)
     isWithinPath,
     isPrefixOfPath,
 ) where
@@ -112,21 +104,12 @@ readFileH app mPath = liftIO $ do
         then pure "(access denied)"
         else TIO.readFile canon
 
--- | Default preview window when the client omits @?limit=@ (256 KiB).
 defaultPreviewLimit :: Int
 defaultPreviewLimit = 256 * 1024
 
-{- | Hard ceiling on a single preview window, so one request can't slurp a
-huge file (4 MiB).
--}
 maxPreviewLimit :: Int
 maxPreviewLimit = 4 * 1024 * 1024
 
-{- | Read a bounded @[offset, offset+limit)@ byte window of a file and
-report the total size, so the frontend can page through a large file with
-@\"Show more\"@ instead of loading it whole. Bytes are decoded leniently,
-so a window that splits a multi-byte character still returns text.
--}
 readFilePreviewH ::
     App -> Maybe Text -> Maybe Int -> Maybe Int -> Handler FilePreview
 readFilePreviewH app mPath mOffset mLimit = liftIO $ do
@@ -219,9 +202,6 @@ renameFileH app (RenameFileRequest oldRelPath newRelPath) = liftIO $ do
         then pure NoContent
         else do renamePath oldAbs newAbs; pure NoContent
 
-{- | Check whether @path@ is within @prefix@ using path component comparison.
-  This avoids false positives like @/home/alice@ matching @/home/alice-secret@.
--}
 isPrefixOfPath :: FilePath -> FilePath -> Bool
 isPrefixOfPath prefix path =
     let prefixParts = splitDirectories (normalise prefix)

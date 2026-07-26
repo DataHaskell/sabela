@@ -1,12 +1,3 @@
-{- | Phase-0.1 hard out-of-distribution corpus: task literals.
-
-Each task pairs a fold tag with an 'Eval.Task.Task'. The HeldOut tasks force
-discovery of a package outside the seed index (megaparsec, async, JuicyPixels,
-fgl, conduit, text-metrics, split, extra, network-uri) whose deliverable is a
-uniquely-named function the local resolver pins cleanly; the InIndex tasks are
-composition controls solvable on base + a seed-index package (vector,
-containers). See docs/neuro-symbolic-corpus.md for the durable manifest.
--}
 module Eval.Corpus.Tasks (
     Fold (..),
     hardTasks,
@@ -15,18 +6,9 @@ module Eval.Corpus.Tasks (
 import Eval.Corpus.Capability (capabilityTasks)
 import Eval.Task (Grader (..), Task (..))
 
-{- | Which fold a task belongs to: 'InIndex' / 'HeldOut' tag the search-lever
-folds (reference inside vs outside the seed index); 'Capability' is the
-discovery fold whose lever is the @search_capability@ tool, not the server's
-auto-resolver. See "Eval.Corpus.Capability".
--}
 data Fold = InIndex | HeldOut | Capability
     deriving (Eq, Show)
 
-{- | The fold-tagged corpus: the eleven Phase-0.1 search-lever tasks plus the
-six capability-discovery tasks (five un-hand-rollable + one control). Graders
-are the real constructors the grader strings in the spec denote.
--}
 hardTasks :: [(Fold, Task)]
 hardTasks =
     [ (InIndex, rollingAnomalyIndicesTask)

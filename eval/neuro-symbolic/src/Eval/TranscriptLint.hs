@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Transcript lint (R8.4): content-shape rules over an episode's observable
-messages — no raw exception records, no serialisation-in-string, no internal
-package-hash names, no sentence more than twice per payload, exactly one
-result per tool call, and no injected note asserting unverified state
-(section 9.2, M16). Arm- and task-agnostic by construction.
--}
 module Eval.TranscriptLint (
     LintIssue (..),
     lintMessages,
@@ -34,16 +28,12 @@ import Eval.VerdictLint (verdictProblems, verifierChannels)
 import Eval.VerifierLeakLint (verifierLeakProblems)
 import Siza.Agent.NoteLedger (assertedLive)
 
--- | One violated rule, with the offending content snippet.
 data LintIssue = LintIssue
     { liRule :: Text
     , liDetail :: Text
     }
     deriving (Eq, Show)
 
-{- | Harness-injected tool channels: results that are not answers to a model
-call, so the one-result-per-call rule exempts them.
--}
 harnessChannels :: [Text]
 harnessChannels = ["discover", "health_gate", "verify", "salvage", "scaffold"]
 
@@ -58,19 +48,13 @@ lintMessages msgs =
         <> map (uncurry LintIssue) (verifierLeakProblems msgs)
         <> map (uncurry LintIssue) (elisionProblems msgs)
 
--- | Section 5.3 verdict totality, rule logic in "Eval.VerdictLint".
 verdictIssues :: [Value] -> [LintIssue]
 verdictIssues = map (uncurry LintIssue) . verdictProblems
 
--- | The compact lint verdict recorded in the episode-config header.
 lintLine :: [LintIssue] -> Text
 lintLine [] = "ok"
 lintLine issues = "FAIL " <> T.intercalate "," (nub (map liRule issues))
 
-{- | R8.4 stop-shape rule: a cap-class stop (the harness, not the model, ended
-the episode) must carry a non-empty final line — the run-20260720-085948
-symbolicRegression-off 43.7k max_turns transcript ended with @final:@ empty.
--}
 stopIssues :: Text -> Text -> [LintIssue]
 stopIssues stopped final =
     [ LintIssue "empty-final" ("stopped: " <> stopped <> " with an empty final")
@@ -104,7 +88,6 @@ packageHashNames :: Text -> [LintIssue]
 packageHashNames c =
     [LintIssue "package-hash" w | w <- take 3 (filter hashToken (T.words c))]
 
--- | @pkg-1.2.3-\<abihash\>@: a version segment followed by a long alnum hash.
 hashToken :: Text -> Bool
 hashToken w = go (T.splitOn "-" w)
   where
@@ -131,10 +114,6 @@ repeatedSentence c =
 sentences :: Text -> [Text]
 sentences c = concatMap (map T.strip . T.splitOn ". ") (T.lines c)
 
-{- | R6.10 x R8.4: module-API content on a harness channel is illegal while
-the most recent write result Succeeded — a red write re-opens the seam, and
-a card before any write is the legal proactive one.
--}
 postSuccessDumpIssues :: [Value] -> [LintIssue]
 postSuccessDumpIssues = go False
   where
@@ -153,16 +132,12 @@ postSuccessDumpIssues = go False
         strAt "role" m == "tool"
             && strAt "tool_name" m `elem` ["insert_cell", "replace_cell_source"]
 
--- | Module-dump shape: the banner header, the card header, or 3+ signatures.
 moduleApiShaped :: Text -> Bool
 moduleApiShaped c =
     "Discovered API of" `T.isInfixOf` c
         || "Live API grammar" `T.isInfixOf` c
         || length [l | l <- T.lines c, " :: " `T.isInfixOf` l] >= 3
 
-{- | Version-qualified FQNs (@aeson-2.3.1.0:Data.Aeson...@) are GHC
-internals; a harness-composed note or channel result must never carry one.
--}
 versionQualifiedIssues :: [Value] -> [LintIssue]
 versionQualifiedIssues msgs =
     [ LintIssue "version-qualified-name" w
@@ -172,7 +147,6 @@ versionQualifiedIssues msgs =
     , w <- take 3 (filter versionQualified (T.words (strAt "content" m)))
     ]
 
--- | A token with a @pkg-<version>:@ prefix before a nonempty remainder.
 versionQualified :: Text -> Bool
 versionQualified w = case T.breakOn ":" w of
     (pre, post) -> not (T.null (T.drop 1 post)) && versionSuffixed pre
@@ -185,12 +159,6 @@ versionQualified w = case T.breakOn ":" w of
                     && T.all (\c -> isDigit c || c == '.') v
         _ -> False
 
-{- | One result per call: each assistant message's tool calls are answered by
-exactly one following tool result each; a tool result no call asked for is a
-phantom (P10). The harness-channel exemption applies only to UNREQUESTED
-results — a model call to a tool that shares a harness channel's name (the
-merged @discover@) is still owed exactly one answer.
--}
 cardinalityIssues :: [Value] -> [LintIssue]
 cardinalityIssues = go . map classify
   where
@@ -223,10 +191,6 @@ callNames m = case lookupField "tool_calls" m of
         ]
     _ -> []
 
-{- | Note ledger (section 9.2, M16): a user-role note after the task prompt may
-assert a name live only when a preceding successful tool result evidences that
-name. The first user message is the task's own ground truth and is exempt.
--}
 noteIssues :: [Value] -> [LintIssue]
 noteIssues = go False Set.empty
   where
@@ -241,7 +205,6 @@ noteIssues = go False Set.empty
                 <> go seenPrompt evidence rest
         | otherwise = go seenPrompt (addEvidence m evidence) rest
 
--- | Names evidenced by a successful tool result's content.
 addEvidence :: Value -> Set Text -> Set Text
 addEvidence m evidence
     | strAt "role" m == "tool" && okResult c = evidence <> identTokens c
@@ -249,9 +212,6 @@ addEvidence m evidence
   where
     c = strAt "content" m
 
-{- | A successful result: a clean write ack, or a found discover envelope
-(its named hits are evidence a note may cite).
--}
 okResult :: Text -> Bool
 okResult c =
     any
@@ -264,7 +224,6 @@ identTokens =
         . filter (not . T.null)
         . T.split (\c -> not (isAlphaNum c || c == '_' || c == '\''))
 
--- | Every cell entry in a list_cells result decodes against ONE shape (R9.1).
 singleShapedCells :: Value -> Bool
 singleShapedCells v = case cellObjects v of
     Nothing -> False

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R7-T3 x R8.4: serialisation-in-string and package-hash atoms fail the
-lint on VERIFIER tool surfaces (5.2); non-verifier channels and model text
-are exempt. Detectors shared with "Sabela.AI.LeakShape".
--}
 module Eval.VerifierLeakLint (
     verifierLeakProblems,
     verifierToolSurfaces,
@@ -18,13 +14,9 @@ import qualified Data.Text as T
 import Eval.VerdictLint (verifierChannels)
 import Sabela.AI.LeakShape (doubleEncodedJson, leakyToken)
 
-{- | Verifier surfaces the model calls directly, plus the harness verifier
-channels of "Eval.VerdictLint".
--}
 verifierToolSurfaces :: [Text]
 verifierToolSurfaces = ["check_type", "list_bindings"] ++ verifierChannels
 
--- | Each leak on a verifier surface as a @(rule, detail)@ pair.
 verifierLeakProblems :: [Value] -> [(Text, Text)]
 verifierLeakProblems msgs =
     [ issue

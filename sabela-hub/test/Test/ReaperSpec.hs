@@ -25,8 +25,6 @@ spec = describe "Reaper.sweepOrphans" $ do
     it "leaves tracked tasks alone" $ do
         ms <- newMockState
         sm <- newSessionManager (mockEcsBackend ms) testConfig
-        -- ebRunTask returns "arn:aws:ecs:us-east-1:123:task/mock/abc123";
-        -- include it in the running list so one task is tracked.
         atomically $
             writeTVar
                 (mockRunningTasks ms)

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T3 budget-exhaustion wrap-up, pure half (R8.3, R9.8): the general
-(stop-reason x final-content x owned) grid, the fire-once seam, and the
-escalation curves. The real-loop half lives in "Test.WrapUpLoopSpec".
--}
 module Test.WrapUpSpec (wrapUpSpec, searchAdvicePhrases) where
 
 import Control.Monad (forM_)
@@ -28,8 +24,6 @@ import Siza.Agent.Loop.WrapUp (
  )
 import Siza.Agent.Owned (OwnedCell (..))
 import Test.DiscoverFixtures (textField)
-
--- Grid material ------------------------------------------------------------
 
 stopReasons :: [Text]
 stopReasons =
@@ -58,11 +52,9 @@ ownedShapes =
         )
     ]
 
--- | A fresh, unpressured budget view (a happy path's opening turn).
 freshView :: BudgetView
 freshView = budgetView 25 0 4 0 0 600
 
--- | Search-advice phrases banned after the wrap-up or the close (R5.7).
 searchAdvicePhrases :: [Text]
 searchAdvicePhrases = ["retry", "different shape", "rephrase", "search again"]
 
@@ -71,8 +63,6 @@ wrapUpSpec = describe "budget-exhaustion wrap-up (R6-T3: R8.3/R9.8/R5.7)" $ do
     finalGridSpec
     dueOnceSpec
     escalationSpec
-
--- The pure (stop-reason x final x owned) grid --------------------------------
 
 finalGridSpec :: Spec
 finalGridSpec = describe "wrapUpFinal: empty final unrepresentable (full grid)" $ do
@@ -96,8 +86,6 @@ finalGridSpec = describe "wrapUpFinal: empty final unrepresentable (full grid)" 
     it "a red owned cell's diagnostic reaches the synthesised final" $
         wrapUpFinal "max_turns" (snd (ownedShapes !! 2)) ""
             `shouldSatisfy` T.isInfixOf "Variable not in scope: colx"
-
--- wrapUpDue / wrapUpOnce -----------------------------------------------------
 
 dueOnceSpec :: Spec
 dueOnceSpec = describe "wrapUpDue and the fire-once seam" $ do
@@ -146,8 +134,6 @@ dueOnceSpec = describe "wrapUpDue and the fire-once seam" $ do
         content `shouldSatisfy` T.isInfixOf "Do not search further"
         forM_ searchAdvicePhrases $ \p ->
             (p, p `T.isInfixOf` T.toLower content) `shouldBe` (p, False)
-
--- Budget-proportional escalation curves --------------------------------------
 
 escalationSpec :: Spec
 escalationSpec = describe "budget-proportional escalation (R5.6/R5.9)" $ do

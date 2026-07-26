@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The history-aware feedback protocol (testing-plan R3.8, R5.5-R5.7) driven
-by a scripted literal-minded caller: advice never repeats a tried query shape,
-misses escalate to held facts by the second and an act-or-blocker directive by
-the third, a byte-identical repeat is a one-line reference, and once the nudge
-says act no channel says search more.
--}
 module Test.DiscoverHistorySpec (discoverHistorySpec) where
 
 import Data.Aeson (Value)
@@ -35,7 +29,6 @@ import Siza.Agent.Discover.Types (
  )
 import Test.DiscoverFixtures (stateOf, textField)
 
--- | Notebook with an alias import and two bindings near the hunted name.
 envB :: NotebookEnv
 envB =
     seededBuiltins
@@ -51,7 +44,6 @@ envB =
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
--- | A found answer for a hidden package: the cabal-line fact to hold.
 foundCumulus :: Value
 foundCumulus =
     discoverEnvelope
@@ -69,7 +61,6 @@ foundCumulus =
             , dhCabal = Just "-- cabal: build-depends: cumulus"
             }
 
--- | A found alias-resolved answer: the alias fact to hold.
 foundAliased :: Value
 foundAliased =
     discoverEnvelope
@@ -79,7 +70,6 @@ foundAliased =
         [okAnswer "session" [(mkHit "gust" "DataFrame" "dataframe"){dhVersion = "2.0"}]]
         hk0
 
--- | A miss for the given raw query (empty sources; nearest names from envB).
 missOf :: Text -> Value
 missOf q =
     discoverEnvelope
@@ -89,7 +79,6 @@ missOf q =
         [okAnswer "session" [], okAnswer "hoogle" []]
         hk0
 
--- | The scripted literal-minded caller: shortcut else record, in order.
 script :: [(Text, Value)] -> (SearchLedger, [Value])
 script = foldl step (emptyLedger, [])
   where
@@ -99,7 +88,6 @@ script = foldl step (emptyLedger, [])
             let (led2, out) = ledgerRecord q v led
              in (led2, outs ++ [out])
 
--- | The generated miss sequence: facts first, then the colx hunt.
 hunt :: [(Text, Value)]
 hunt =
     [ ("cumulus", foundCumulus)
@@ -116,7 +104,6 @@ hunt =
 adviceOf :: Value -> Text
 adviceOf v = textField "next" v <> " " <> textField "summary" v
 
--- | The names the "Nearest held names" sentence suggests, if any.
 suggestedNames :: Value -> [Text]
 suggestedNames v = case T.breakOn "Nearest held names:" (adviceOf v) of
     (_, rest)
@@ -169,8 +156,6 @@ discoverHistorySpec = describe "discover history ledger (R3.8, R5.5-R5.7)" $ do
             ledgerShortcut led2 "colx" `shouldBe` Nothing
 
     describe "after close the record replays; no channel says search more" $ do
-        -- Closure is scope-keyed (section 8.2): only a SEEN key shortcuts;
-        -- an unseen key re-runs the backends even after close.
         let closed = ledgerClose led
             Just gated = ledgerShortcut closed "colx"
         it "an unseen scope key is never answered from the closed ledger" $

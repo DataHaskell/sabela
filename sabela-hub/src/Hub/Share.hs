@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Public, static notebook shares (Phase 3a).
-
-A share is a self-contained HTML snapshot (the dashboard/slideshow export)
-stored on EFS under an unguessable slug and served at @\/s\/<slug>@ with no
-auth and no backend - so there is no anonymous compute, only a file serve.
-
-Layout: @<baseDir>\/<slug>\/{index.html, meta}@. @meta@ is simple @key=value@
-lines (owner, mode, createdAt) so listing/ownership work without parsing the
-HTML. An in-memory cache mirrors the directory and is reloaded at startup.
--}
 module Hub.Share (
     Share (..),
     ShareStore,
@@ -21,8 +11,6 @@ module Hub.Share (
     listShares,
     listAllShares,
     deleteShare,
-
-    -- * Pure helpers (exported for testing)
     validSlug,
     sanitizeTitle,
     scrubSecrets,
@@ -62,16 +50,11 @@ data Share = Share
     }
     deriving (Eq, Show)
 
-{- | Per-share dirs + a 'TVar' cache. The disk write and the cache update are
-two separate steps (fine here: each slug has its own dir) — do NOT copy this
-pattern for a shared file; serialize writers instead (cf. the gallery store).
--}
 data ShareStore = ShareStore
     { ssBaseDir :: FilePath
     , ssCache :: TVar (Map Text Share)
     }
 
--- | Open a share store rooted at @dir@, loading any shares already on disk.
 newShareStore :: FilePath -> IO ShareStore
 newShareStore dir = do
     createDirectoryIfMissing True dir
@@ -80,12 +63,6 @@ newShareStore dir = do
     cache <- newTVarIO (Map.fromList [(shareSlug s, s) | s <- shares])
     pure ShareStore{ssBaseDir = dir, ssCache = cache}
 
-{- | Store the snapshot HTML (with the fork banner and the WASM runner spliced
-in) + metadata and cache the share. The optional scrubbed source markdown is
-both embedded into the page (the runner's data island) and written beside the
-export as @source.md@ (for Download/Fork). A share with no source still gets the
-banner; the runner island simply carries an empty source.
--}
 publishShare :: ShareStore -> Share -> Text -> Maybe Text -> IO ()
 publishShare store share html mSrc = do
     let dir = ssBaseDir store </> T.unpack (shareSlug share)
@@ -103,9 +80,6 @@ publishShare store share html mSrc = do
     maybe (pure ()) (writeShareSource store slug) mSrc
     atomically $ modifyTVar' (ssCache store) (Map.insert slug share)
 
-{- | The stored HTML for a slug, or 'Nothing'. Rejects non-slug input so a
-crafted @\/s\/<slug>@ cannot traverse out of the base dir.
--}
 lookupShareHtml :: ShareStore -> Text -> IO (Maybe BS.ByteString)
 lookupShareHtml store slug
     | not (validSlug slug) = pure Nothing
@@ -114,10 +88,6 @@ lookupShareHtml store slug
         e <- doesFileExist f
         if e then Just <$> BS.readFile f else pure Nothing
 
-{- | Store the notebook's secret-scrubbed source markdown beside the export,
-enabling Download/Fork. A legacy share with no @source.md@ is simply not
-forkable/downloadable.
--}
 writeShareSource :: ShareStore -> Text -> Text -> IO ()
 writeShareSource store slug src
     | not (validSlug slug) = pure ()
@@ -126,7 +96,6 @@ writeShareSource store slug src
         createDirectoryIfMissing True dir
         BS.writeFile (dir </> "source.md") (TE.encodeUtf8 src)
 
--- | The stored source markdown for a slug (slug re-validated), or 'Nothing'.
 lookupShareSource :: ShareStore -> Text -> IO (Maybe BS.ByteString)
 lookupShareSource store slug
     | not (validSlug slug) = pure Nothing
@@ -135,19 +104,14 @@ lookupShareSource store slug
         e <- doesFileExist f
         if e then Just <$> BS.readFile f else pure Nothing
 
--- | Shares owned by the given user.
 listShares :: ShareStore -> Text -> IO [Share]
 listShares store owner = do
     m <- readTVarIO (ssCache store)
     pure [s | s <- Map.elems m, shareOwner s == owner]
 
--- | Every share regardless of owner (the admin curation view).
 listAllShares :: ShareStore -> IO [Share]
 listAllShares store = Map.elems <$> readTVarIO (ssCache store)
 
-{- | Delete a share if it belongs to @owner@. Returns 'True' if removed,
-'False' if missing or owned by someone else.
--}
 deleteShare :: ShareStore -> Text -> Text -> IO Bool
 deleteShare store owner slug
     | not (validSlug slug) = pure False
@@ -160,37 +124,17 @@ deleteShare store owner slug
                 pure True
             _ -> pure False
 
--- ---------------------------------------------------------------------------
--- Pure helpers
--- ---------------------------------------------------------------------------
-
-{- | A slug must be non-empty lowercase hex (as produced by
-'Hub.OAuth.generateRandomToken'). This is the path-traversal guard for
-@\/s\/<slug>@ - no @\/@, @.@, or @..@ can pass.
--}
 validSlug :: Text -> Bool
 validSlug = isLowerHex
 
-{- | Titles are free text destined for a meta line and HTML cards: collapse
-newlines (via 'sanitizeLine'), cap the length, and default a blank title to
-@\"Untitled\"@ so a card never renders empty.
--}
 sanitizeTitle :: Text -> Text
 sanitizeTitle t =
     let cleaned = T.take 200 (sanitizeLine t)
      in if T.null (T.strip cleaned) then "Untitled" else cleaned
 
-{- | Best-effort guard: refuse to publish a snapshot that appears to contain a
-credential, so a notebook output can't leak a key into a public page. 'Just' a
-reason blocks the publish. This is a denylist of distinctive token shapes, not a
-guarantee — the author is ultimately responsible for a public share's contents.
--}
 scrubSecrets :: Text -> Maybe Text
 scrubSecrets html = snd <$> find (\(p, _) -> p `T.isInfixOf` html) secretPatterns
 
-{- | @(substring, human label)@. Only high-signal prefixes with a negligible
-false-positive rate, so a legitimate notebook isn't wrongly blocked.
--}
 secretPatterns :: [(Text, Text)]
 secretPatterns =
     [ ("sk-ant-", "an Anthropic API key")
@@ -204,9 +148,6 @@ secretPatterns =
     , ("-----BEGIN ", "a private key")
     ]
 
-{- | Response headers for a served share. The export carries its own strict
-in-page CSP; these add framing/sniffing protection at the HTTP layer.
--}
 shareHeaders :: [Header]
 shareHeaders =
     [ ("Content-Type", "text/html; charset=utf-8")
@@ -214,10 +155,6 @@ shareHeaders =
     , ("X-Frame-Options", "SAMEORIGIN")
     , ("Content-Security-Policy", "frame-ancestors 'self'")
     ]
-
--- ---------------------------------------------------------------------------
--- Internal
--- ---------------------------------------------------------------------------
 
 metaText :: Share -> Text
 metaText s =
@@ -228,10 +165,6 @@ metaText s =
         , writeMetaLine "title" (sanitizeTitle (shareTitle s))
         ]
 
-{- | Load one share's meta. The title enters via 'pure' with a default, never
-a bare @get@: a legacy 3-key meta must load (as @\"Untitled\"@), not silently
-drop the share from the cache at startup.
--}
 loadShare :: FilePath -> Text -> IO (Maybe Share)
 loadShare baseDir slug = do
     let metaF = baseDir </> T.unpack slug </> "meta"

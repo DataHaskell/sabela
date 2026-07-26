@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Golden pin for the Ollama @/api/chat@ outbound request body. Guards the
-wire shape ('num_ctx', 'keep_alive', 'stream:false', options, seed) so the
-Phase 2 move of the client into @Sabela.LLM.Ollama@ cannot change what the
-model sees byte-for-byte.
--}
 module Test.OllamaBodySpec (spec) where
 
 import Data.Aeson (Value (..), object, toJSON, (.=))

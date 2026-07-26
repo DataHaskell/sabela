@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R3-T5 end-to-end: the agent's red-cell cascade over a mock two-cell
-notebook — a did-you-mean repair is kept when the notebook heals, reverted
-and reported attempted-and-reverted when nothing heals (R7.5, R7.7).
--}
 module Test.RepairCascadeSpec (repairCascadeSpec) where
 
 import Control.Monad (forM_)
@@ -65,7 +61,6 @@ repairCascadeSpec =
             src <- readIORef lastSrc
             src `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: cumulus"
         it "flags a dep-add kept-but-unconfirmed when the cell stays red" $ do
-            -- "unvalidated" can no longer silently mean kept-while-red (R7.5).
             (disp, lastSrc) <- mockNotebook hiddenDiag depSrc (const False)
             fixes <- repairRedCells disp [(1, hiddenDiag)]
             fixes `shouldSatisfy` (not . null)
@@ -183,10 +178,6 @@ reportOf (Right (ToolOk (Object o))) = case KM.lookup "repair" o of
     _ -> ""
 reportOf _ = ""
 
-{- | A two-cell mock notebook: cell 1 is red until a replacement satisfying
-the verdict lands; cell 2 stays clean. Returns the dispatch plus cell 1's
-last-committed source.
--}
 mockNotebook ::
     Text ->
     Text ->

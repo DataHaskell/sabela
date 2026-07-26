@@ -1,12 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-{- | The @scatterSelect@ widget's GHCi-source definitions, spliced into
-'Sabela.Output.displayPrelude'. The render logic lives in the real
-@static/src/widgets/scatter.js@ file (lintable, prettier-formatted) and is
-embedded here verbatim; each render only emits a small @sabelaScatter(cfg)@
-bootstrap carrying the per-render data.
--}
 module Sabela.Output.Scatter (scatterDefs, scatterWidgetJs) where
 
 import Data.FileEmbed (embedFile, makeRelativeToProject)
@@ -14,10 +8,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
-{- | The scatter widget render library, embedded from
-@static/src/widgets/scatter.js@ at compile time. Exposes a single
-@sabelaScatter(cfg)@ global that draws into a canvas inside the output iframe.
--}
 scatterWidgetJs :: Text
 scatterWidgetJs =
     TE.decodeUtf8

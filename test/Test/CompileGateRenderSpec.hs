@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins 'renderNonExecuting': G1's gate must type-check a candidate WITHOUT
-ever letting GHCi execute it. A live_test4-class regression (a runaway
-@print (length [1..])@ candidate actually ran for a full 120s inside the
-gate) is exactly what this guards — fast, no live GHCi needed.
--}
 module Test.CompileGateRenderSpec (spec) where
 
 import Data.Text (Text)
@@ -16,17 +11,6 @@ import Sabela.AI.Capabilities.Edit.CompileGate.Render (
     renderNonExecuting,
  )
 
-{- | Nothing in the render is a bare, immediately-runnable GHCi statement:
-every non-declaration piece is wrapped in a fresh probe binding.
--}
-
-{- | Nothing GHCi would EXECUTE. GHCi runs a bare statement but never the
-BODY of a binding, so the invariant is per block, not per line: each
-@:{ … :}@ block must OPEN with a binding or declaration, and everything
-outside a block must be an import, pragma or comment. Checking every line
-instead wrongly flagged the statements inside a non-executing @do@ block,
-which are exactly as inert as the binding that holds them.
--}
 noBareStatement :: Text -> Bool
 noBareStatement rendered =
     all blockOpensWithBinding (blocksOf rendered)
@@ -46,7 +30,6 @@ noBareStatement rendered =
             || "{-#" `T.isPrefixOf` l
             || "--" `T.isPrefixOf` l
 
--- | Lines that sit outside every @:{ … :}@ block.
 outsideBlockLines :: Text -> [Text]
 outsideBlockLines rendered = go (map T.strip (T.lines rendered))
   where
@@ -54,9 +37,6 @@ outsideBlockLines rendered = go (map T.strip (T.lines rendered))
         (before, _ : rest) -> before <> go (drop 1 (dropWhile (/= ":}") rest))
         (before, []) -> before
 
-{- | The @:{ … :}@ blocks of a rendering. GHCi judges each block on its own,
-so what shares a block is what shares a scope.
--}
 blocksOf :: Text -> [[Text]]
 blocksOf rendered = go (map T.strip (T.lines rendered))
   where
@@ -66,10 +46,6 @@ blocksOf rendered = go (map T.strip (T.lines rendered))
              in body : go (drop 1 after)
         _ -> []
 
-{- | Brackets balance outside string literals. A render that drops part of an
-expression produces a stray closing bracket, which GHC reports at a column the
-submitted source does not have — the live_test19 phantom diagnostic.
--}
 balancedBrackets :: Text -> Bool
 balancedBrackets = go (0 :: Int) . T.unpack
   where
@@ -86,16 +62,12 @@ balancedBrackets = go (0 :: Int) . T.unpack
         ('"' : rest) -> rest
         (_ : rest) -> skipString rest
 
-{- | A type signature split from its binding makes GHCi report the signature's
-own name as not in scope, so the two must land in one block.
--}
 sharesABlock :: Text -> Text -> Text -> Bool
 sharesABlock sig bind rendered =
     any
         (\b -> any (T.isInfixOf sig) b && any (T.isInfixOf bind) b)
         (blocksOf rendered)
 
--- | How many non-executing statement blocks the rendering emits.
 blockCount :: Text -> Int
 blockCount = length . filter (T.isInfixOf "= do") . T.lines
 
@@ -128,11 +100,6 @@ spec = do
                 `shouldSatisfy` noBareStatement
 
     describe "renderNonExecuting (G1 compile-gate candidate rendering)" $ do
-        {- live_test24: the gate rejected the commonest idiom there is —
-        `df <- readCsv ...` then any use of `df` — because each bind's
-        pattern was dropped. A gate with false negatives starves a session
-        exactly as a missing gate does; the housing probe could not load a
-        CSV at all until this was folded into one do block. -}
         describe "gate-drops-bind (live_test24)" $ do
             let rendered =
                     renderNonExecuting
@@ -205,10 +172,6 @@ spec = do
                 rendered `shouldSatisfy` T.isInfixOf "main = putStrLn \"hi\""
                 rendered `shouldSatisfy` noBareStatement
 
-        {- Inverted 2026-07-25: the pattern is now KEPT. Dropping it is what
-        made `df <- readCsv …` + any use of `df` unpassable — see
-        'gate-drops-bind'. The invariant that still holds is that nothing
-        executes, which the enclosing binding guarantees. -}
         it "a monadic bind KEEPS its pattern, inside a non-executing block" $ do
             let rendered = renderNonExecuting "x <- readFile \"input.txt\""
             rendered `shouldSatisfy` T.isInfixOf "_sabelaGateStmts"
@@ -216,10 +179,6 @@ spec = do
             rendered `shouldSatisfy` T.isInfixOf "x <- readFile"
             rendered `shouldSatisfy` noBareStatement
 
-        -- live_test19: the gate rejected every animate candidate with a
-        -- fabricated "parse error on input ']'" because a comprehension's
-        -- `<-` was read as a bind pattern and everything before it dropped,
-        -- leaving an unbalanced bracket the model could not see in its source.
         it "a comprehension's arrow is not mistaken for a bind pattern" $ do
             let src = "animate 0 (\\t -> plot [(x, sin x) | x <- [0,0.01..(2*pi)]])"
                 rendered = renderNonExecuting src

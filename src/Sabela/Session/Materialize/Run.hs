@@ -1,13 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Checked block execution for the disposable materialization route: run a
-GHCi block, distinguish a genuine compiler/runtime failure from harmless
-Template Haskell chatter or linker noise, and return either the diagnostic or
-the captured @(stdout, stderr)@. Extracted from 'Sabela.Session.Materialize'
-to keep that module within the size cap; carries no 'MaterializeStage' so the
-dependency stays one-directional.
--}
 module Sabela.Session.Materialize.Run (
     runChecked,
     runLoadChecked,
@@ -21,6 +14,8 @@ import qualified Data.Text as T
 
 import Sabela.Bridge (isTemplateHaskellOutput)
 import Sabela.Errors (parseErrors)
+import Sabela.Errors.Json (parseJsonInteractive)
+import Sabela.Model (CellError (..))
 import qualified Sabela.SessionTypes as ST
 
 runOptional :: ST.SessionBackend -> Text -> IO (Either Text (Text, Text))
@@ -50,19 +45,16 @@ runCheckedWith checkLoadOutput backend source = do
             | checkLoadOutput, loadFailed out -> Left (T.strip out)
             | otherwise -> Right pair
 
--- Keep the textual scratch path aligned with the normal non-JSON cell engine:
--- compiler diagnostics and runtime exceptions live on stderr; Template
--- Haskell chatter and linker warnings are harmless.  Stdout is user output,
--- except for GHCi's structural @Failed,@ line from a @:load@ command.
 textualStderrFailure :: Text -> Maybe Text
 textualStderrFailure rawErr
     | T.null cleaned = Nothing
     | isTemplateHaskellOutput rawErr = Nothing
-    | not (null errs) = Just cleaned
+    | not (null jsonErrs) = Just (T.strip (T.unlines (map ceMessage jsonErrs)))
+    | not (null (parseErrors residual)) = Just cleaned
     | any (`T.isInfixOf` T.toLower cleaned) runtimeFailureSignals = Just cleaned
     | otherwise = Nothing
   where
-    errs = parseErrors rawErr
+    (jsonErrs, _warns, residual) = parseJsonInteractive rawErr
     cleaned =
         T.strip . T.unlines . filter (not . isLinkerNoise) . T.lines $ rawErr
     isLinkerNoise line = "ld: warning:" `T.isPrefixOf` T.strip line

@@ -1,8 +1,3 @@
-{- | Typed vocabulary of the discover union merge: the four-plus-two install
-states (docs/discover/search-api.md section 6), match-kind strata, per-source
-answers, and the notebook environment layer. One envelope shape is rendered
-from these — no source's raw payload ever crosses to the model.
--}
 module Siza.Agent.Discover.Types (
     DHit (..),
     InstallState (..),
@@ -29,9 +24,6 @@ import qualified Data.Text as T
 
 import Sabela.AI.PromptCore (builtinModules, builtinNames)
 
-{- | Where a resolved name stands, decided by evidence class (session card,
-hackage membership), never by which library it is.
--}
 data InstallState
     = InstBuiltin
     | InstNotebook
@@ -50,7 +42,6 @@ installText s = case s of
     InstAbsentKnown -> "absent-known"
     InstAbsentUnknown -> "absent-unknown"
 
--- | How a hit matched the query; strata order exact-first (R3.2).
 data MatchKind
     = MkExact
     | MkPrefix
@@ -71,7 +62,6 @@ matchKindText k = case k of
     MkSynonym -> "synonym"
     MkSemantic -> "semantic"
 
--- | One merged hit with full provenance (R3.5).
 data DHit = DHit
     { dhName :: Text
     , dhType :: Text
@@ -86,15 +76,10 @@ data DHit = DHit
     }
     deriving (Eq, Show)
 
--- | An exact-kind hit with the given name/module/package and open defaults.
 mkHit :: Text -> Text -> Text -> DHit
 mkHit n m p =
     DHit n "" m p "" InstAbsentUnknown MkExact "hoogle" Nothing Nothing
 
-{- | The notebook's own environment: alias imports, imported modules (with the
-first importing cell), cell-defined names, and the prompt-documented builtins
-(R1.5, R1.6).
--}
 data NotebookEnv = NotebookEnv
     { neAliases :: [(Text, Text)]
     , neImports :: [Text]
@@ -105,14 +90,10 @@ data NotebookEnv = NotebookEnv
     }
     deriving (Eq, Show)
 
-{- | Seed an environment's builtin surface from the SAME source the system
-prompt derives from, so a documented builtin is structurally undeniable.
--}
 seededBuiltins :: NotebookEnv -> NotebookEnv
 seededBuiltins env =
     env{neBuiltins = builtinNames, neBuiltinModules = builtinModules}
 
--- | One consulted source's classified answer; unavailability is per-source.
 data SourceAnswer = SourceAnswer
     { saSource :: Text
     , saOk :: Bool
@@ -129,7 +110,6 @@ okAnswer src hs = SourceAnswer src True "" hs Nothing []
 unavailableAnswer :: Text -> Text -> SourceAnswer
 unavailableAnswer src why = SourceAnswer src False why [] Nothing []
 
--- | The normalised query: what was actually searched, and why (R2.4).
 data Interpreted = Interpreted
     { iRaw :: Text
     , iName :: Text
@@ -140,9 +120,6 @@ data Interpreted = Interpreted
     }
     deriving (Eq, Show)
 
-{- | The request's optional scope filters (R2.7): honoured at the merge or
-the call is rejected — never silently ignored.
--}
 data Scope = Scope
     { scModule :: Maybe Text
     , scPackage :: Maybe Text
@@ -152,10 +129,6 @@ data Scope = Scope
 emptyScope :: Scope
 emptyScope = Scope Nothing Nothing
 
-{- | The evidence-derived standing goal (section 8.3): the argument type a
-held call-ready consumer signature needs but no held fact produces, with the
-consumer's name and package as ledger provenance evidence.
--}
 data StandingGoal = StandingGoal
     { sgType :: Text
     , sgConsumer :: Text
@@ -163,14 +136,12 @@ data StandingGoal = StandingGoal
     }
     deriving (Eq, Show)
 
--- | The hackage names source: availability plus the membership answers held.
 data HackageInfo = HackageInfo
     { hiAvailable :: Bool
     , hiKnown :: [Text]
     }
     deriving (Eq, Show)
 
--- | Render one hit; the four provenance fields are always present (R3.5).
 hitJson :: DHit -> Value
 hitJson h =
     object $

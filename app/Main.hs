@@ -123,17 +123,9 @@ start port workDir globalFile pkgs = do
                   )
 
 #if defined(mingw32_HOST_OS)
-{- | Windows has no POSIX signal handlers to install. The RTS already
-delivers a console Ctrl-C\/close as 'UserInterrupt' to the main thread,
-so the 'finally' cleanup (session teardown) still runs on interrupt.
--}
 installShutdownHandlers :: IO ()
 installShutdownHandlers = pure ()
 #else
-{- | SIGTERM/SIGHUP fire the same shutdown path as Ctrl-C so the
-'finally' cleanup (session teardown) always runs; once-guarded so a
-second signal cannot abort the cleanup. Inherited HUP-Ignore is kept.
--}
 installShutdownHandlers :: IO ()
 installShutdownHandlers = do
     mainTid <- myThreadId

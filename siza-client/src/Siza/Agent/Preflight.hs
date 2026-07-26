@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Ollama preflight for the siza harnesses: require the @ollama@ binary on PATH
-AND a reachable daemon before starting, failing fast with an actionable message.
-Per the user's decision this does NOT fork a server — the daemon must already be
-running (@ollama serve@).
--}
 module Siza.Agent.Preflight (
     Preflight (..),
     classifyPreflight,
@@ -33,14 +28,12 @@ import Sabela.LLM.Ollama.Client (ollamaBaseUrl)
 data Preflight = Ready | MissingBinary | Unreachable
     deriving (Eq, Show)
 
--- | Pure decision from (binary-on-PATH, daemon-reachable).
 classifyPreflight :: Bool -> Bool -> Preflight
 classifyPreflight hasBinary reachable
     | not hasBinary = MissingBinary
     | not reachable = Unreachable
     | otherwise = Ready
 
--- | The actionable message for a non-'Ready' preflight ('Nothing' when ready).
 preflightMessage :: Preflight -> String -> Maybe Text
 preflightMessage p base = case p of
     Ready -> Nothing
@@ -55,7 +48,6 @@ preflightMessage p base = case p of
                 <> ". Start it with `ollama serve` (or set OLLAMA_HOST)."
             )
 
--- | Reachable = the daemon answered any HTTP response to @/api/tags@.
 ollamaReachable :: Manager -> String -> IO Bool
 ollamaReachable mgr base = do
     er <- try (parseRequest (base <> "/api/tags"))
@@ -68,9 +60,6 @@ ollamaReachable mgr base = do
                 Left (_ :: SomeException) -> False
                 Right _ -> True
 
-{- | Require Ollama installed + reachable, else print the actionable message and
-exit. No server is forked (the daemon must already be up).
--}
 ensureOllama :: Manager -> IO ()
 ensureOllama mgr = do
     base <- ollamaBaseUrl

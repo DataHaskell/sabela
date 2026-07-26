@@ -8,7 +8,6 @@ import Test.Hspec
 
 import Eval.Transcript (renderMessage, renderTranscript)
 
--- | A tiny episode: system, user, an assistant tool-call turn, a tool result.
 msgs :: [Value]
 msgs =
     [ object ["role" .= ("system" :: Text), "content" .= ("You are pairing." :: Text)]

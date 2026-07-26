@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Durable per-episode results for the Phase-0.2 gate: a JSONL row per
-completed (task, seed, mode) episode, a done-set keyed by that triple so a
-relaunch skips finished episodes, and a report rendered over the accumulated
-file (mirroring 'Eval.Gate.renderGate' but over 'GateResult').
--}
 module Eval.GateResult (
     GateResult (..),
     SearchMode (..),
@@ -51,11 +46,9 @@ import Eval.Bench (
     twoProportionZ,
  )
 
--- | Which side of the search lever an arm runs on. A=off, B=on.
 data SearchMode = SearchOff | SearchOn
     deriving (Eq, Ord, Show)
 
--- | The wire tag for a mode: @"off"@ / @"on"@.
 modeText :: SearchMode -> Text
 modeText SearchOff = "off"
 modeText SearchOn = "on"
@@ -65,7 +58,6 @@ modeFromText "off" = Just SearchOff
 modeFromText "on" = Just SearchOn
 modeFromText _ = Nothing
 
--- | One completed episode's durable record.
 data GateResult = GateResult
     { grTask :: Text
     , grSeed :: Int
@@ -74,12 +66,7 @@ data GateResult = GateResult
     , grTurns :: Int
     , grCalls :: Int
     , grStopped :: Text
-    {- ^ The 'Eval.Agent.arStopped' reason ("done"/"max_turns"/"stuck"/
-    "deadline"/"repair_budget"/"error"); "error" is an infra/chat failure,
-    not a task fail. Empty in pre-field JSONL rows.
-    -}
     , grCtxChars :: Int
-    -- ^ The episode's context spend (summed message chars); 0 in old rows.
     }
     deriving (Eq, Show)
 
@@ -110,14 +97,9 @@ instance FromJSON GateResult where
             <*> o .:? "grStopped" .!= ""
             <*> o .:? "grCtxChars" .!= 0
 
--- | The done-set key: the triple identifying an episode.
 gateKey :: GateResult -> (Text, Int, SearchMode)
 gateKey g = (grTask g, grSeed g, grMode g)
 
-{- | Read every parseable JSONL line from the results file (blanks and parse
-errors ignored), so a partially written file or a torn last line never aborts a
-resume. A missing file is the empty list.
--}
 readGateResults :: FilePath -> IO [GateResult]
 readGateResults path = do
     exists <- doesFileExist path
@@ -133,9 +115,6 @@ readGateResults path = do
         | BS8.null (BS8.dropWhile (== ' ') l) = Nothing
         | otherwise = either (const Nothing) Just (eitherDecodeStrict l)
 
-{- | Append one result as a single JSON line, flushing and closing immediately so
-a kill mid-next-episode never loses a finished one.
--}
 appendGateResult :: FilePath -> GateResult -> IO ()
 appendGateResult path g = do
     h <- openFile path AppendMode
@@ -143,14 +122,9 @@ appendGateResult path g = do
     hFlush h
     hClose h
 
--- | True when an episode's triple is already present in the done-set.
 isDone :: Set.Set (Text, Int, SearchMode) -> Text -> Int -> SearchMode -> Bool
 isDone done task seed mode = Set.member (task, seed, mode) done
 
-{- | The full gate report over accumulated results: per-task A/B pass split, the
-overall two-proportion z with the 5% verdict, and calls-to-green cost. Mirrors
-'Eval.Gate.renderGate'.
--}
 renderGateResults :: [GateResult] -> Text
 renderGateResults rs =
     T.unlines
@@ -221,9 +195,6 @@ costByTask rs =
     statsFor tid mode =
         armCost [stat g | g <- rs, grTask g == tid, grMode g == mode]
 
-{- | Mean context spend per episode, per task and overall — context is the
-scarcest weak-model resource, so its price is part of every gate report.
--}
 renderCtx :: [GateResult] -> Text
 renderCtx rs
     | all ((== 0) . grCtxChars) rs = ""
@@ -247,9 +218,6 @@ renderCtx rs
         tshow (round1 (fromIntegral (sum xs) / (1000 * fromIntegral (length xs))))
             <> "k"
 
-{- | A one-line tally of episodes that stopped on an infra/chat error (so they
-are never silently read as task failures); empty when there were none.
--}
 infraNote :: [GateResult] -> Text
 infraNote rs
     | n == 0 = ""

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of the server-side missing-dependency repair: read the package
-GHC named in a "hidden package" failure, and merge it into the cell's
-@-- cabal: build-depends:@ line. The IO loop that re-runs the cell is verified
-live; these pin the decisions it makes.
--}
 module Test.DepRepairSpec (spec) where
 
 import Data.Text (Text)
@@ -13,7 +8,6 @@ import Sabela.AI.DepRepair (addBuildDepend, depFromResult, newDependencies)
 import Sabela.AI.Types (ExecutionResult (..))
 import Test.Hspec
 
--- | A realistic GHC "hidden package" wall (the shape the kernel emits).
 hiddenPkgErr :: Text
 hiddenPkgErr =
     T.unlines
@@ -66,9 +60,6 @@ spec = describe "Sabela.AI.DepRepair" $ do
         it "is Nothing for an abort (Left)" $
             depFromResult (Left "Cancelled") `shouldBe` Nothing
 
-    -- G2 hard rule 1: the caller uses this to detect a dependency-ADD, so it
-    -- can downgrade the rewrite to a disclosed suggestion instead of applying
-    -- it automatically.
     describe "newDependencies (G2's dependency-add detector)" $ do
         it "is empty when the candidate declares nothing new" $
             newDependencies

@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | 'repairDeps' comma-separates build-depends a model wrote space-separated
-(@text granite@), without breaking version constraints, whose spaces are not
-dependency boundaries (@dataframe == 2.3.0.0@, @text < 4 && < 5@). A space-
-mangled line otherwise reaches cabal as one bogus package and the install hangs
-to a timeout (observed on the quarterlyBars benchmark task).
--}
 module Test.DepsRepairSpec (depsRepairSpec) where
 
 import Sabela.Deps (repairDeps)

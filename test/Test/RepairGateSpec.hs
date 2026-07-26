@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G2: self_heal demoted to propose-verify-disclose. Against a REAL GHCi
-kernel (mirrors 'Test.CompileGateSpec'): a repair candidate never touches the
-notebook before "Sabela.AI.Capabilities.Edit.RepairGate" gate-verifies it,
-a dependency-only fix is disclosed as a suggestion and never applied, C4's
-path-near-miss tier still commits and discloses a genuine fix, and a cell
-holding a typed-hole probe is never entered by the cascade at all. Skipped
-when cabal is not on PATH.
--}
 module Test.RepairGateSpec (spec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -83,11 +75,6 @@ insertSrc :: App -> AIStore.AIStore -> ReactiveNotebook -> Text -> IO Value
 insertSrc app store rn src =
     callTool app store rn "insert_cell" (object ["source" .= src])
 
-{- | Land a cell WITHOUT G1's compile gate — simulates a cell that already
-compiled (or was committed by some other route) and is now failing at real
-execution, so the propose-verify-disclose CASCADE (not the initial-commit
-gate) can be driven directly and in isolation.
--}
 bypassInsert :: App -> Text -> IO Int
 bypassInsert app src = do
     nid <- freshCellId (appNotebook app)
@@ -119,7 +106,6 @@ spec = describe "G2 self_heal propose-verify-disclose" $ do
                 ct <- newCancelToken
                 (_result, suggestions, _mitigations) <- executeWithRepair app store rn cid ct
 
-                -- The dependency fix ("containers") is offered, never committed.
                 suggestions `shouldSatisfy` (not . null)
                 let sugText = T.concat [T.pack (show s) | s <- suggestions]
                 sugText `shouldSatisfy` T.isInfixOf "containers"
@@ -149,9 +135,6 @@ spec = describe "G2 self_heal propose-verify-disclose" $ do
                 createDirectoryIfMissing True (dir </> "examples" </> "data")
                 writeFile (dir </> "examples" </> "data" </> "housing.csv") "x\n1\n"
                 (app, store, rn) <- newFixture dir
-                -- Compiles fine (readFile/putStrLn are always in scope), so G1's
-                -- gate commits it; it fails only at runtime, on the wrong path —
-                -- exactly the class of failure the post-commit cascade exists for.
                 ack <-
                     insertSrc app store rn "readFile \"/examples/data/housing.csv\" >>= putStrLn"
 
@@ -159,9 +142,6 @@ spec = describe "G2 self_heal propose-verify-disclose" $ do
                 let mCid = field "cellId" ack
                 Just (Number _) <- pure mCid
 
-                -- The gate-checked cascade can outrun the write-ack deadline
-                -- (each candidate now pays a real disposable compile), so an
-                -- "executing" ack settles later, via await_idle.
                 execution <- case textField "status" ack of
                     Just "completed" -> pure (field "execution" ack)
                     _ -> settledExecutionFor app store rn 8 mCid
@@ -175,9 +155,6 @@ spec = describe "G2 self_heal propose-verify-disclose" $ do
                             _ -> expectationFailure "self_heal note carries no source"
                     Nothing -> expectationFailure "expected a self_heal disclosure for the path fix"
 
-{- | Poll @await_idle@ (bounded) until the given cell's write settles, and
-return its @execution@ value.
--}
 settledExecutionFor ::
     App ->
     AIStore.AIStore ->

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @replace_cell_source@ tool: gated rewrite, structural pre-check, G1's
-compile gate, and the checked commit. Split from "Sabela.AI.Capabilities.Edit"
-for the module-size cap; 'execInsertCell' there still reaches
-'execReplaceCellSource' for its red-cell-supersession redirect.
--}
 module Sabela.AI.Capabilities.Edit.Replace (
     execReplaceCellSource,
     applyReplaceCellSource,
@@ -16,7 +11,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.Ack (withNote)
 import Sabela.AI.Capabilities.Edit.Admit (conflictJson, restickCabal)
-import Sabela.AI.Capabilities.Edit.CompileGate (compileGateCheck)
+import Sabela.AI.Capabilities.Edit.GateRepair (gatedCandidate)
 import Sabela.AI.Capabilities.Edit.Run (autoExecuteAfterMutation)
 import Sabela.AI.Capabilities.Util (field, fieldInt, fieldText)
 import Sabela.AI.Doc (cellHash)
@@ -31,10 +26,6 @@ import Sabela.Parse (staleBindings, validateCellShape)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
 
-{- | Replace a cell's source, broadcast, and (for Haskell code cells)
-auto-run via 'autoExecuteAfterMutation' so the response carries the
-fresh execution summary. AI-internal iteration loop.
--}
 execReplaceCellSource ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Value -> IO ToolOutcome
 execReplaceCellSource app store rn cancelTok input = do
@@ -83,11 +74,6 @@ applyReplaceCellSource app store rn cancelTok oldCell newSrc0 =
                 [] -> out
                 ns -> withNote (T.unwords ns) out
   where
-    -- Restick before gating: 'restickCabal' only fires when the submission
-    -- carries zero cabal lines, a fact none of 'gatedRewrite'\'s generators
-    -- can change, so the two compose in either order — restick first lets
-    -- 'gatedRewrite' (G7, the one normalizer every path shares) see, and
-    -- echo, the truly final source.
     sticked =
         if cellLang oldCell == Haskell
             then restickCabal (cellSource oldCell) newSrc0
@@ -96,25 +82,17 @@ applyReplaceCellSource app store rn cancelTok oldCell newSrc0 =
         if cellLang oldCell == Haskell
             then gatedRewrite sticked
             else (sticked, [])
-    -- R7.1: every kept machine rewrite is disclosed, carrying the source.
     disclosures =
         [ "Kept the -- cabal: line your replace omitted (its imports still need it)."
         | sticked /= newSrc0
         ]
             <> gateNotes
 
-{- | The pre-GHC structural rejection for a Haskell cell, if any. Non-Haskell
-cells are not shape-checked (the validator uses the Haskell parser).
--}
 structuralReject :: Cell -> Text -> Maybe Text
 structuralReject c newSrc
     | cellLang c == Haskell = validateCellShape (cellType c) newSrc
     | otherwise = Nothing
 
-{- | G1's compile gate, then the checked commit: a candidate that does not
-compile against the current notebook prefix is rejected outright — no cell,
-no generation bump, no session mutation — carrying the full diagnostic.
--}
 doReplace ::
     App ->
     AIStore ->
@@ -126,10 +104,11 @@ doReplace ::
 doReplace app store rn cancelTok oldCell newSrc = do
     let cid = cellId oldCell
     gate <-
-        compileGateCheck app (Just cid) (cellLang oldCell) (cellType oldCell) newSrc
+        gatedCandidate app (Just cid) (cellLang oldCell) (cellType oldCell) newSrc
     case gate of
         Left rejection -> pure (errOutcome rejection)
-        Right () -> commitReplace app store rn cancelTok oldCell newSrc
+        Right (newSrc', repairNotes) ->
+            commitReplace app store rn cancelTok oldCell newSrc' repairNotes
 
 commitReplace ::
     App ->
@@ -138,8 +117,9 @@ commitReplace ::
     CancelToken ->
     Cell ->
     Text ->
+    [Text] ->
     IO ToolOutcome
-commitReplace app store rn cancelTok oldCell newSrc = do
+commitReplace app store rn cancelTok oldCell newSrc repairNotes = do
     let cid = cellId oldCell
     res <- atomicEditNotebook (appNotebook app) $ \nb ->
         case setCellSourceChecked oldCell newSrc nb of
@@ -162,8 +142,10 @@ commitReplace app store rn cancelTok oldCell newSrc = do
             pure $
                 okOutcome $
                     object
-                        [ "cellId" .= cid
-                        , "hash" .= cellHash newCell
-                        , "execution" .= execSummary
-                        , "staleBindings" .= stale
-                        ]
+                        ( [ "cellId" .= cid
+                          , "hash" .= cellHash newCell
+                          , "execution" .= execSummary
+                          , "staleBindings" .= stale
+                          ]
+                            <> ["repairs" .= repairNotes | not (null repairNotes)]
+                        )

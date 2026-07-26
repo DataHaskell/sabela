@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Phase 1 acceptance tests for the local-Docker backend: pure argv builders
-plus an in-process end-to-end of the session lifecycle (create, same-user
-idempotency, reattach-not-reap, liveness, idle override) driven through a
-fake 'DockerOps' that simulates the real daemon's behaviour.
--}
 module Test.DockerSpec (spec) where
 
 import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
@@ -32,7 +27,6 @@ testDockerConfig =
         , dcNamePrefix = "sabela-user-"
         }
 
--- | In-memory stand-in for the Docker daemon, keyed by container name.
 data FakeDocker = FakeDocker
     { fdContainers :: TVar (Map.Map Text TaskStatus)
     , fdRunCount :: TVar Int
@@ -202,7 +196,6 @@ spec = describe "Hub.Docker" $ do
         it "liveness reaps a session whose container died" $ do
             (sm, fd) <- newHarness
             _ <- getOrCreateSession sm (SessionId "s1") (UserId "a@b.com")
-            -- container vanishes (OOM / crash / external rm)
             atomically $
                 modifyTVar' (fdContainers fd) (Map.delete "sabela-user-a_b_com")
             reconcileLiveness sm

@@ -64,9 +64,6 @@ import Sabela.Session.Timeout (
     tcResyncUs,
  )
 
-{- | A dummy Session safe for functions that only use the queue, error
-buffer, counter, or config; touching process fields crashes the test.
--}
 dummySession ::
     OutQueue ->
     IORef [Text] ->
@@ -196,10 +193,6 @@ spec = do
                 `shouldBe` "total :: Int = 600"
 
     describe "resolveLocalPackages" $ do
-        -- Since "siza and display separate packages", the sabela-notebook support
-        -- package is supplied as an operator overlay (SABELA_LOCAL_PACKAGES, or the
-        -- build-time source as a dev fallback), so it arrives through envLocals
-        -- rather than a staged work-dir path.
         it "is empty with no overlays and no notebook packages" $
             resolveLocalPackages "/work" [] emptyMeta
                 `shouldBe` []

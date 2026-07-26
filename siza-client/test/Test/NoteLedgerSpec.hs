@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Section 9.2 injected-note truthfulness (M16): the note ledger — a note may
-assert a binding live only when the asserting event verifiably happened — and
-deliverable consistency — no note shrinks the prompt's stated ask. General
-invariants over generated (note, state) pairs, never task- or library-keyed.
--}
 module Test.NoteLedgerSpec (noteLedgerSpec) where
 
 import Data.List (subsequences)
@@ -21,14 +16,12 @@ import Siza.Agent.NoteLedger (
  )
 import Siza.Agent.Scaffold (scaffoldNoteFor)
 
--- | The baseline revenuePipeline scaffold note (the M16 defect, verbatim).
 baselineNote :: Text
 baselineNote =
     "A DataFrame `df` is already loaded from the CSV and is in scope. Write the \
     \cell that computes the requested result from `df` (read a column with \
     \`D.columnAsList (D.col @Type \"name\") df`)."
 
--- | The bench revenuePipeline prompt: two declared cells, no typed deliverable.
 revenuePipelinePrompt :: Text
 revenuePipelinePrompt =
     "A CSV `revenue.csv` with columns `month` and `revenue` is in the working \
@@ -39,11 +32,9 @@ revenuePipelinePrompt =
 namePool :: [Text]
 namePool = ["df", "model", "totals"]
 
--- | A state-asserting sentence for one binding name.
 asserting :: Text -> Text
 asserting n = "A value `" <> n <> "` is already loaded and is in scope."
 
--- | A prompt declaring @k@ typed deliverables over a named data file.
 promptWith :: Int -> Text
 promptWith k =
     "Load data.csv and define "

@@ -78,9 +78,6 @@ spec = describe "Session" $ do
             ms <- newMockState
             sm <- newSessionManager (mockEcsBackend ms) testConfig
             now <- getCurrentTime
-            -- Placeholder lives under the ReattachPlaceholder constructor;
-            -- any SessionId lookup goes through UserSession, so the two
-            -- name-spaces are disjoint at the type level.
             insertSession sm (ReattachPlaceholder (TaskId "sabela-user-victim")) $
                 Session
                     (TaskId "sabela-user-victim")

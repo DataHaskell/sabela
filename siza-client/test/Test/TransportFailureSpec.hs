@@ -22,7 +22,6 @@ import Siza.Transport.Failure (
     renderFailure,
  )
 
--- | Strings the 2026-07-18 transcripts leaked and must never leak again.
 banned :: [Text]
 banned = ["HttpExceptionRequest", "Trailing garbage", "Error in $"]
 

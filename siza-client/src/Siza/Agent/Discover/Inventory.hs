@@ -1,10 +1,3 @@
-{- | @mode:"inventory"@ (docs/discover/search-api.md section 3, defect M6):
-answer "what is available for this topic" as ONE bounded card of candidate
-packages across the three honest install states — installed, hidden (with the
-cabal line), absent-but-on-Hackage (with the cabal line) — over the same
-union-merge catalogue the search mode uses. No topic-to-library table:
-membership is lexical over names the sources returned.
--}
 module Siza.Agent.Discover.Inventory (
     inventoryEnvelope,
     inventoryRows,
@@ -31,15 +24,11 @@ import Siza.Agent.Discover.Types (
     SourceAnswer,
  )
 
--- | The lexical topic terms of a query: prose terms, else the resolved name.
 topicTokens :: Interpreted -> [Text]
 topicTokens interp = case iTerms interp of
     [] -> [T.toLower (iName interp)]
     ts -> ts
 
-{- | The inventory answer: one package row per candidate, best install state
-first, rendered through the same bounded envelope as search (R3.4, R3.9).
--}
 inventoryEnvelope ::
     NotebookEnv ->
     Interpreted ->
@@ -54,10 +43,6 @@ inventoryEnvelope env interp scope limit answers hk lexical =
   where
     rows = inventoryRows (mergedHits env interp answers hk) interp lexical
 
-{- | One row per package: its best-evidenced install state, any known
-version, its lead public module, and the cabal line whenever the state needs
-one — the three states are never conflated (R1.3).
--}
 inventoryRows :: [DHit] -> Interpreted -> [Text] -> [DHit]
 inventoryRows merged interp lexical =
     sortOn (\h -> (fromEnum (dhInstall h), dhPackage h)) (pkgRows ++ lexRows)
@@ -100,15 +85,11 @@ inventoryRows merged interp lexical =
                 (c : _) -> Just c
                 [] -> Just (cabalLine p)
         | otherwise = Nothing
-    -- Public modules lead; internal ones are a last resort (section 7).
     leadModule hs =
         case sortOn (\m -> (isNoiseModule m, T.length m)) (mods hs) of
             (m : _) -> m
             [] -> "(package)"
     mods hs = [m | h <- hs, let m = dhModule h, not (T.null m), m /= "(not installed)"]
-    {- A package row is exact only when its name IS a topic token. Substring
-    matching here let a package be "exact" for any token buried in it (the
-    live_test13 spam-package row for `line`, via "online"). -}
     matchOf p =
         if T.toLower p `elem` topicTokens interp
             then MkExact

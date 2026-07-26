@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Output-rendering correctness with an eye to Windows pitfalls:
-non-ASCII content must survive the markdown round trip and a real
-on-disk round trip, and our serialization must stay LF-only so a
-notebook written on one OS renders identically on another. These run
-on the Windows CI job (.github/workflows/windows.yml), where a
-locale-encoding or CRLF-translation regression would surface.
--}
 module Test.RenderSpec (spec) where
 
 import qualified Data.ByteString as BS
@@ -35,15 +28,11 @@ serialize = reassemble . cellsToSegments
 roundTrip :: [Cell] -> [Segment]
 roundTrip = splitProseSegments . parseMarkdown . serialize
 
--- A spread of non-ASCII the renderer must not mangle: Greek used in
--- Haskell prose, arrows, CJK, and an astral-plane emoji.
 unicodeProse :: Text
 unicodeProse = "λ-calculus: f → g, 日本語, café, 🎲 roll"
 
 spec :: Spec
 spec = describe "output rendering (cross-platform)" $ do
-    -- T.strip isolates Unicode survival from scripths' known habit of
-    -- adding edge whitespace around a lone prose round trip.
     it "preserves non-ASCII through the markdown round trip" $
         map T.strip (proseTexts (roundTrip [prose unicodeProse]))
             `shouldBe` [unicodeProse]

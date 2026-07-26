@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | C2 tasks 2, 3 and 6: the tautology corpus, drawn verbatim from the live
-transcripts, can never reach the user prompt. Compiling is not the bar —
-every member of the corpus compiles. The reference gate kills the ones that
-name nothing the task defined; the mutation gate kills the ones that name it
-and still cannot fail.
--}
 module Test.CheckGateSpec (checkGateSpec) where
 
 import Control.Monad (forM_)
@@ -23,10 +17,6 @@ import Siza.Agent.Check.Gate (
     refusalNote,
  )
 
-{- | The live corpus. @True@ and @5 == 5@ are from live_test8 and the housing
-episode; the rest are the "mentions the binding but cannot fail" class the
-compile-vet alone lets through.
--}
 constantCorpus :: [Text]
 constantCorpus = ["True", "5 == 5", "1 + 1 == 2", "otherwise"]
 
@@ -41,10 +31,6 @@ vacuousCorpus =
 owned :: [Text]
 owned = ["x", "xs", "total", "sineWaveSvg"]
 
-{- | A check survives the mutation gate only if some perturbation makes it
-false. Evaluated here as a pure predicate over the value, standing in for the
-kernel run 'Siza.Agent.Check.Vet' performs.
--}
 discriminates :: (Text -> Bool) -> Text -> Text -> Text -> Bool
 discriminates eval name ty check =
     any (\p -> not (eval (perturbCheck name p check))) (perturbationsFor ty name)
@@ -71,23 +57,16 @@ checkGateSpec = describe "check gate: reference and mutation (C2)" $ do
             mentionsAny ["x"] "f x" `shouldBe` True
 
     describe "mutation gate (task 3)" $ do
-        {- The whole vacuous corpus, evaluated against a value that is
-        nonempty however it is perturbed: not one member can be falsified,
-        so not one may be offered. These are precisely the checks that pass
-        the compile-vet — they all compile. -}
         it "refuses every vacuous check in the corpus" $
             forM_ vacuousCorpus $ \(name, ty, check) ->
                 (check, discriminates (const True) name ty check)
                     `shouldBe` (check, False)
 
         it "a string check surviving truncation cannot fail — refused" $ do
-            -- `x /= ""` on a nonempty string: truncation keeps it nonempty,
-            -- so no perturbation falsifies it. The plan's named specimen.
             let evalNonEmpty _ = True
             discriminates evalNonEmpty "x" "String" "x /= \"\"" `shouldBe` False
 
         it "a numeric equality is falsified by an off-by-one" $ do
-            -- `total == 42.5` is false once total is perturbed.
             let evalExact e = e == "total == 42.5"
             discriminates evalExact "total" "Double" "total == 42.5"
                 `shouldBe` True

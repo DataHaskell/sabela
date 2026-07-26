@@ -13,22 +13,9 @@ import GHC.Generics (Generic)
 import Sabela.Model (CellError, CellType, OutputItem)
 import Sabela.SessionTypes (CellLang)
 
--- ---------------------------------------------------------------------
--- Error-response helpers
--- ---------------------------------------------------------------------
-
-{- | Build a tool/HTTP error payload: @{"error": <msg>}@. Used wherever a
-handler or tool returns a JSON object whose only field is @error@. One
-shared helper keeps the wire shape consistent across the server and
-'Sabela.AI.Capabilities'.
--}
 errorJson :: Text -> Value
 errorJson msg = object ["error" .= msg]
 
-{- | Like 'errorJson' but with extra fields appended after @error@. The
-helper preserves insertion order, so @errorJsonWith \"…\" [\"cellId\" .=
-123]@ renders as @{"error":\"…\",\"cellId\":123}@.
--}
 errorJsonWith :: Text -> [Pair] -> Value
 errorJsonWith msg extras = object (("error" .= msg) : extras)
 
@@ -49,13 +36,6 @@ newtype UpdateCell = UpdateCell
 instance ToJSON UpdateCell
 instance FromJSON UpdateCell
 
-{- | Where to insert a new cell. The wire format is a single integer:
-@-1@ means "at the beginning of the notebook"; any non-negative value
-identifies the cell to insert after. Negative values other than @-1@ are
-rejected at parse time — the previous @Int@-typed field silently treated
-them as "append at end", which is a clean illegal-states-unrepresentable
-fix.
--}
 data InsertAt = AtBeginning | After !Int
     deriving (Eq, Generic, Show)
 
@@ -94,18 +74,12 @@ instance FromJSON LoadRequest
 
 newtype SaveRequest = SaveRequest
     { srPath :: Maybe FilePath
-    -- ^ Nothing = save to nbTitle
     }
     deriving (Eq, Generic, Show)
 
 instance ToJSON SaveRequest
 instance FromJSON SaveRequest
 
-{- | Sum type for the @POST /api/files/create@ payload. Directories
-don't carry content; making the two cases distinct constructors removes
-the @{isDir: true, content: "hello"}@ silent-discard footgun the old
-record shape allowed.
--}
 data CreateFileRequest
     = CreateDir !Text
     | CreateFile !Text !Text
@@ -155,10 +129,6 @@ data RenameFileRequest = RenameFileRequest
 instance ToJSON RenameFileRequest
 instance FromJSON RenameFileRequest
 
-{- | A bounded window of a file's bytes for @GET /api/file/preview@. The
-frontend pulls one window at a time so a multi-gigabyte file never loads
-whole; @fpEof@ says whether @fpOffset + fpReturned@ reached the end.
--}
 data FilePreview = FilePreview
     { fpContent :: Text
     , fpOffset :: Int

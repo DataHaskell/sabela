@@ -13,14 +13,10 @@ module Sabela.AI.Handles (
     lookupHandle,
     clearHandles,
     summarizeForLLM,
-
-    -- * Drill-down ops
     headLines,
     tailLines,
     sliceLines,
     grepLines,
-
-    -- * Cleanup pipeline
     cleanOutput,
     stripAnsi,
 ) where
@@ -59,7 +55,6 @@ data HandleStore = HandleStore
 newHandleStore :: IO HandleStore
 newHandleStore = HandleStore <$> newTVarIO M.empty <*> newIORef 0
 
--- Threshold above which we store under a handle instead of inlining.
 largeThresholdLines :: Int
 largeThresholdLines = 40
 
@@ -69,11 +64,6 @@ largeThresholdBytes = 4096
 summaryPreviewLines :: Int
 summaryPreviewLines = 20
 
-{- | Inspect a raw tool output. If it's small, return the cleaned text as an
-'Inline' 'Output' (with a placeholder 'MimePlain' the caller re-tags). If it's
-large, stash the cleaned body under a fresh handle and return a 'Stashed'
-'HandleRef' the LLM can drill into via @explore_result@.
--}
 storeLargeResult :: HandleStore -> Text -> IO Output
 storeLargeResult store raw = do
     let cleaned = cleanOutput raw
@@ -99,11 +89,9 @@ storeLargeResult store raw = do
 lookupHandle :: HandleStore -> HandleId -> IO (Maybe LargeResult)
 lookupHandle store hid = M.lookup hid <$> readTVarIO (hsMap store)
 
--- | Clear all stored handles. Call at end of turn.
 clearHandles :: HandleStore -> IO ()
 clearHandles store = atomically $ writeTVar (hsMap store) M.empty
 
--- | JSON payload describing a stored large result.
 summarizeForLLM :: HandleId -> Text -> Int -> Int -> Value
 summarizeForLLM (HandleId hid) summary nLines nBytes =
     object
@@ -116,10 +104,6 @@ summarizeForLLM (HandleId hid) summary nLines nBytes =
                     Text
                )
         ]
-
-------------------------------------------------------------------------
--- Drill-down ops
-------------------------------------------------------------------------
 
 headLines :: Int -> LargeResult -> [Text]
 headLines n lr = take (max 0 n) (lrLines lr)
@@ -136,25 +120,13 @@ sliceLines from1 to1 lr =
         size = to - from + 1
      in take size (drop (from - 1) (lrLines lr))
 
-{- | Return line-number,text pairs whose line contains @pat@. Capped to 50 hits.
-Line numbers are 1-based.
--}
 grepLines :: Text -> LargeResult -> [(Int, Text)]
 grepLines pat lr =
     take 50 [(i, l) | (i, l) <- zip [1 ..] (lrLines lr), pat `T.isInfixOf` l]
 
-------------------------------------------------------------------------
--- Cleanup pipeline
-------------------------------------------------------------------------
-
-{- | Strip ANSI escape sequences and collapse runs of identical consecutive
-lines into a single line with a count suffix. Mirrors marimo's cleanup pass.
--}
 cleanOutput :: Text -> Text
 cleanOutput = T.intercalate "\n" . dedupeConsec . map stripAnsi . T.lines
   where
-    -- Tail-recursive with a strict run-length counter; avoids the
-    -- @span@/@length@ pair that allocated a prefix list per run.
     dedupeConsec [] = []
     dedupeConsec (x : xs) = go x (1 :: Int) xs
     go x !n (y : ys)
@@ -165,7 +137,6 @@ cleanOutput = T.intercalate "\n" . dedupeConsec . map stripAnsi . T.lines
         if n > 1 then [annotate x n] else [x]
     annotate x n = x <> " [\xd7" <> T.pack (show n) <> "]"
 
--- | Remove ANSI CSI sequences (@ESC [ ... letter@). Leaves other bytes alone.
 stripAnsi :: Text -> Text
 stripAnsi = go
   where

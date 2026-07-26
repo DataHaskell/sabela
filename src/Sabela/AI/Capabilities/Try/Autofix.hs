@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure half of try's mechanical autofix rungs: the diagnostics they
-key on and the R7.1 disclosure notes they answer with. The retry driver stays
-in "Sabela.AI.Capabilities.Try", which owns the trial run itself.
--}
 module Sabela.AI.Capabilities.Try.Autofix (
     autofixNote,
     renameCandidateCap,
@@ -21,10 +17,6 @@ import Data.Text (Text)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.Diagnose (couldNotFindModule, hiddenPackage)
 
-{- | R7.1: the trial declared the dependency itself, so it owes the caller the
-source that carries it. Committing the pre-repair source would fail the gate,
-which declares no dependency the model did not write.
--}
 autofixNote :: Text -> Text -> Text
 autofixNote pkg repairedCode =
     "Declared build-depends: "
@@ -33,9 +25,6 @@ autofixNote pkg repairedCode =
            \CURRENT source, which carries the dependency line:\n"
         <> repairedCode
 
-{- | R7.1 for the rename rung: name both corrections and hand back the source
-that carries them, so a commit never silently differs from the trial.
--}
 renameNote :: Text -> Text -> Text -> Text -> Text
 renameNote wrong right pkg repairedCode =
     "No module \8216"
@@ -48,24 +37,16 @@ renameNote wrong right pkg repairedCode =
            \Commit this CURRENT source:\n"
         <> repairedCode
 
-{- | The hidden package named by a rejected trial, read from the fields that
-actually carry the compiler's words.
--}
 hiddenPackageOf :: ToolOutcome -> Maybe Text
 hiddenPackageOf (ToolOk _) = Nothing
 hiddenPackageOf (ToolErr value) =
     listToMaybe (mapMaybe hiddenPackage (diagnosticTexts value))
 
--- | The module a rejected trial could not find, read from its diagnostics.
 notFoundModuleOf :: ToolOutcome -> Maybe Text
 notFoundModuleOf (ToolOk _) = Nothing
 notFoundModuleOf (ToolErr value) =
     listToMaybe (mapMaybe couldNotFindModule (diagnosticTexts value))
 
-{- | Every field the compiler's words reach the outcome through, the nested
-@failure.message@ of a disposable rejection included — the shape try's own
-candidate-setup failures arrive in.
--}
 diagnosticTexts :: Value -> [Text]
 diagnosticTexts value =
     [ text
@@ -81,9 +62,5 @@ lookupField :: Text -> Value -> Maybe Value
 lookupField key (Object obj) = KM.lookup (Key.fromText key) obj
 lookupField _ _ = Nothing
 
-{- | Most nearest-name renames one failed trial may attempt. Each retry is a
-disposable run, so the ladder is short; past it the original diagnostic
-answers.
--}
 renameCandidateCap :: Int
 renameCandidateCap = 3

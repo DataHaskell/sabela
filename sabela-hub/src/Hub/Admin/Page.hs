@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The server-rendered admin curation page at @\/_hub\/admin@ (inline JS →
-the JSON endpoints in "Hub.Admin.Api"). Reflected titles are rendered with
-@textContent@, never @innerHTML@, so the client side has no DOM-XSS sink.
--}
 module Hub.Admin.Page (
     adminPage,
 ) where
@@ -15,9 +11,6 @@ import qualified Data.Text.Encoding as TE
 import Network.HTTP.Types (status200)
 import Network.Wai (Response, responseLBS)
 
-{- | The admin page. @contact@ (if set) drives the request-access note; when
-unset, a banner reminds the operator the gallery CTA is disabled.
--}
 adminPage :: Maybe Text -> Response
 adminPage contact =
     responseLBS

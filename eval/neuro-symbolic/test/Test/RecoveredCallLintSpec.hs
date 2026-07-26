@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T5 x R8.4: a schema-recovered dispatch must be stamped as the call
-its result answers. Red fixtures are the pre-fix shapes (the topMonth
-@insert_cell?We@ turn and both live_test.md garbles, where the garbled
-call went unanswered and the result had no recorded call); green fixtures
-are the same turns with the recovered call stamped.
--}
 module Test.RecoveredCallLintSpec (spec) where
 
 import Data.Aeson (Value, object, (.=))

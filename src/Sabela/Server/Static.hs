@@ -1,26 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-{- | Static asset serving (embedded @index.html@ + the dashboard / slideshow
-shells), the safe-canonicalised @/api/asset@ pass-through for files in the
-work directory, and the single-file @/api/upload@ endpoint. Export
-endpoints live in "Sabela.Server.Export"; both modules share the embedded
-HTML shells re-exported here.
--}
 module Sabela.Server.Static (
-    -- * Embedded HTML shells
     indexHtml,
     dashboardHtml,
     slideshowHtml,
-
-    -- * Handlers
     staticApp,
     dashboardApp,
     slideshowApp,
     assetApp,
     uploadApp,
-
-    -- * Pieces (exposed for testing)
     safeUploadName,
     assetContentType,
 ) where
@@ -90,10 +79,6 @@ slideshowApp _req resp =
             [(hContentType, "text/html; charset=utf-8")]
             (LBS.fromStrict slideshowHtml)
 
-{- | Serve a raw file (images, etc.) from the work directory, addressed by
-the @?path=@ query param relative to the work-dir root. The path is
-canonicalized and confined to the work directory.
--}
 assetApp :: App -> Application
 assetApp app req resp = do
     let workDir = envWorkDir (appEnv app)
@@ -142,21 +127,11 @@ assetContentType p = case map toLower (takeExtension p) of
     ".pdf" -> "application/pdf"
     _ -> "application/octet-stream"
 
-{- | Reduce an uploaded file name to a safe basename within a single directory,
-or 'Nothing' if it isn't usable (empty, @.@, @..@, or only a path). Pure so the
-upload path guard is unit-testable.
--}
 safeUploadName :: Text -> Maybe Text
 safeUploadName raw =
     let n = takeFileName (T.unpack (T.strip raw))
      in if n `elem` ["", ".", ".."] then Nothing else Just (T.pack n)
 
-{- | Receive one uploaded file: the raw request body is written verbatim
-(binary-safe) to @\<workDir\>\/\<dir\>\/\<name\>@. @?dir=@ is an optional
-sub-path (default root) and @?name=@ the file name; the directory is
-canonicalized and confined to the work dir, and the name is reduced to a safe
-basename, so neither can escape the workspace.
--}
 uploadApp :: App -> Application
 uploadApp app req resp = do
     let workDir = envWorkDir (appEnv app)

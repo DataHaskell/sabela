@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The closed kernel-state vocabulary (R1.7/R3.6): every state string any
-kernel\/await\/ack surface emits is a member of one documented enum, checked
-over the full generated outcome grid of the REAL producers — never a
-bench-task fixture — and an out-of-vocabulary state fails the one-shape
-validator.
--}
 module Test.KernelVocabSpec (spec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -31,7 +25,6 @@ import Sabela.AI.WriteAck (
 import Sabela.State.EventBus (AwaitResult (..))
 import Test.Hspec
 
--- | Every kernel-state wire object over the full input grid.
 kernelStateGrid :: [Value]
 kernelStateGrid =
     [ kernelStateJSON (kernelStateOf alive gen busy building)
@@ -41,7 +34,6 @@ kernelStateGrid =
     , building <- [False, True]
     ]
 
--- | Every write-ack wire object over the status × duplicate grid.
 writeAckGrid :: [Value]
 writeAckGrid =
     [ writeAckJson (WriteAck 3 st Nothing Nothing dup Nothing)
@@ -103,8 +95,6 @@ spec = describe "closed kernel-state vocabulary (R1.7/R3.6)" $ do
                        , "queued"
                        , "completed"
                        ]
-        -- The advertised line names every member, so a tool description
-        -- built from it can never advertise an undocumented state.
         filter (not . (`textIn` vocabularyLine)) stateVocabulary
             `shouldBe` []
 

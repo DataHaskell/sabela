@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The compile-only candidate selector of the speculative repair tier:
-keep every candidate whose rewritten binding @:type@-checks clean, without
-executing any. Split from "Sabela.AI.Capabilities.Edit.HoleSearch" for the
-module-size cap.
--}
 module Sabela.AI.Capabilities.Edit.TypeSelect (
     selectCleanByTypeCheck,
     typeCheckTarget,
@@ -26,10 +21,6 @@ import Sabela.Session.Query (
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), getHaskellSession)
 
-{- | Every candidate whose expression @:type@-checks clean, in order, WITHOUT
-running any. Returning ALL survivors lets the caller's health vet walk past a
-candidate that type-checks in isolation but fails the binding's goal.
--}
 selectCleanByTypeCheck :: App -> [Text] -> IO [Text]
 selectCleanByTypeCheck _ [] = pure []
 selectCleanByTypeCheck app cands = do
@@ -51,15 +42,6 @@ selectCleanByTypeCheck app cands = do
                 out <- ST.sbQueryType backend (typeCheckTarget c)
                 pure (isClean (healthOfTypeQuery out))
 
-{- | The expression to @:type@ for a candidate source: the RHS of the LAST
-@x = expr@ binding line, else the whole stripped source. The last binding is the
-one a cell defines for its dependents, and the one a repair rewrote.
-
-A multi-line cell must not fall through to @:type@-ing the whole source — that
-never checks clean, so every correct candidate would be rejected and the tier
-would look inert. Imports and @x <- e@ statements are skipped; a non-checkable
-candidate still fails the check, so at worst a repair is missed, never kept.
--}
 typeCheckTarget :: Text -> Text
 typeCheckTarget src = case reverse (mapMaybe bindingRhs (T.lines stripped)) of
     (rhs : _) -> rhs

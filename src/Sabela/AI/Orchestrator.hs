@@ -1,10 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Public entry points for the AI chat orchestrator. The agentic loop
-itself, the streaming/tool-dispatch helpers, and the system prompt live
-in 'Sabela.AI.Orchestrator.Loop' and 'Sabela.AI.Orchestrator.Prompt'.
--}
 module Sabela.AI.Orchestrator (
     handleChatMessage,
     handleCancelTurn,
@@ -62,10 +58,6 @@ handleChatMessage app store rn userText = do
                     _ ->
                         broadcast (appEvents app) (EvChatDone tid)
 
-{- | Emit an 'EvChatUsageUpdate' summarising token usage and elapsed
-wall-clock time for the turn. Called once per turn after the agentic
-loop finishes.
--}
 emitTurnUsage :: App -> Turn -> IO ()
 emitTurnUsage app turn = do
     let tid = turnId turn

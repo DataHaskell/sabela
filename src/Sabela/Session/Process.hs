@@ -1,25 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Spawn, initialise, and tear down the long-lived GHCi subprocess
-backing a notebook session: 'newSessionStreaming' starts @cabal repl@
-in its own process group via 'Sabela.Session.Proc', wires the output
-drains, and synchronises on a first marker before any cell runs.
--}
 module Sabela.Session.Process (
-    -- * Lifecycle
     newSession,
     newSessionStreaming,
     resetSession,
     closeSession,
-
-    -- * Backend adapter
     ghciBackend,
-
-    -- * Generation
     firstSessionGen,
     bumpSessionGen,
-
-    -- * Building blocks (exposed for tests)
     ghciArgs,
     rtsGhcOptions,
     ghciProcessSpec,
@@ -94,10 +82,6 @@ newSession cfg = newSessionStreaming cfg (\_ -> pure ())
 newSessionStreaming :: SessionConfig -> (Text -> IO ()) -> IO Session
 newSessionStreaming = newSessionGen firstSessionGen
 
-{- | Spawn a session tagged with an explicit generation. 'resetSession'
-threads the next generation through here so a restart's backend reports a
-strictly-higher tag than the one it replaced (stress case 36).
--}
 newSessionGen :: Int -> SessionConfig -> (Text -> IO ()) -> IO Session
 newSessionGen gen cfg onStartupLine = do
     spec <- ghciProcessSpec cfg
@@ -107,18 +91,13 @@ newSessionGen gen cfg onStartupLine = do
         mapM_ spawnParentPoller (psPgid ps)
         pure sess
 
-{- | The generation every freshly-spawned (un-restarted) session is born
-with; each 'resetSession' seeds the next one strictly above it.
--}
 firstSessionGen :: Int
 firstSessionGen = 1
 
--- | Advance and return the session's generation tag.
 bumpSessionGen :: Session -> IO Int
 bumpSessionGen sess =
     atomicModifyIORef' (sessionGen sess) (\g -> (g + 1, g + 1))
 
--- | The @cabal repl@ spec, in its own process group with piped handles.
 ghciProcessSpec :: SessionConfig -> IO CreateProcess
 ghciProcessSpec cfg = do
     mGhc <- lookupEnv "GHC"
@@ -128,10 +107,6 @@ ghciProcessSpec cfg = do
         args = ghciArgs cfg (rtsGhcOptions caps mHeap) ++ compilerArgs
     pure (sessionProcessSpec (Just (scWorkDir cfg)) (proc "cabal" args))
 
-{- | Capabilities for the kernel: @SABELA_GHCI_CAPS@ when it parses positive
-(the hub passes the container's CPU count), else the host's cores capped at
-'detectedCapsCeiling'. An unparseable value falls back rather than mangling @-N@.
--}
 resolveGhciCaps :: IO Int
 resolveGhciCaps = do
     mCaps <- lookupEnv "SABELA_GHCI_CAPS"
@@ -139,22 +114,9 @@ resolveGhciCaps = do
         Just n | n > 0 -> pure n
         _ -> min detectedCapsCeiling <$> getNumProcessors
 
-{- | Ceiling on auto-detected capabilities: past a handful GHCi gains little
-from more, and every capability costs a slice of the nursery budget.
--}
 detectedCapsCeiling :: Int
 detectedCapsCeiling = 8
 
-{- | Repl args. The prompt runs **interpreted** (byte-code) so a plain
-notebook — and every restart — starts fast (incident K / stress case 26): the
-unconditional @-fobject-code -O2 -fexpose-all-unfoldings@ that forced the whole
-session into object code is gone. Each @-- compile@ module opts itself back
-into @-O2@ object code via a per-module @OPTIONS_GHC@ pragma
-('Sabela.Compiled.objectCodeOptions'). @--builddir@, @-odir@, and @-hidir@ are
-pinned absolute under the project dir so the @:cd@ to the work dir at init can
-neither orphan the @.o@\/@.hi@ cache nor scatter a @dist-newstyle@ into the
-notebook's directory.
--}
 ghciArgs :: SessionConfig -> String -> [String]
 ghciArgs cfg rtsOpts =
     storeArgs
@@ -173,10 +135,6 @@ ghciArgs cfg rtsOpts =
         | scJsonDiagnostics cfg = " -fdiagnostics-as-json"
         | otherwise = ""
 
-{- | GHCi RTS options: an explicit @-N@ with the nursery budget split across
-those capabilities, plus the heap cap. @SABELA_GHCI_MAXHEAP@ overrides the cap
-size (@Just "4G"@ → @-M4G@); the @"0"@ sentinel opts out of @-M@ entirely.
--}
 rtsGhcOptions :: Int -> Maybe String -> String
 rtsGhcOptions caps mHeap =
     concat
@@ -195,28 +153,15 @@ rtsGhcOptions caps mHeap =
         Just "0" -> ""
         Just h -> " -M" ++ h
 
-{- | One capability's nursery slice, in MB. @-A@ is per-capability, so a fixed
-size scales the kernel's idle cost with core count: @-A512m@ cost 7.4GB idle on
-a 14-core box, against 574MB for the same total budget divided.
--}
 nurseryMb :: Int -> Int
 nurseryMb caps = max nurseryFloorMb (nurseryTotalMb `div` max 1 caps)
 
--- | Total allocation area across all capabilities, in MB.
 nurseryTotalMb :: Int
 nurseryTotalMb = 512
 
-{- | Floor on a single capability's slice, in MB. Past 32 capabilities the
-division would starve each one, so a very large @-N@ trades the flat total
-for a bounded per-capability area instead.
--}
 nurseryFloorMb :: Int
 nurseryFloorMb = 16
 
-{- | The default GHCi max-heap cap applied when @SABELA_GHCI_MAXHEAP@ is unset:
-above any legitimate cell, yet low enough that a runaway dies by heap overflow
-before a developer's box starts thrashing.
--}
 defaultMaxHeap :: String
 defaultMaxHeap = "8g"
 
@@ -227,7 +172,6 @@ buildSessionState ::
     IO Session
 buildSessionState = buildSessionStateGen firstSessionGen
 
--- | 'buildSessionState' tagged with an explicit generation.
 buildSessionStateGen ::
     Int ->
     SessionConfig ->
@@ -262,10 +206,6 @@ buildSessionStateGen genTag cfg ps onStderrLine = do
             , sessBaselineBindings = baseline
             }
 
-{- | A 12-digit per-session nonce derived from the wall-clock picoseconds, kept
-in a fixed digit band so every marker number is the same width. It seeds the
-high digits of each marker so notebook output cannot forge the live boundary.
--}
 mkSessionNonce :: IO Int
 mkSessionNonce = do
     t <- getPOSIXTime
@@ -287,10 +227,6 @@ initializeGhci sess onLine = do
             detail <- readErrorBuffer sess
             ioError (userError (startupErrorMessage detail))
 
-{- | GHCi never reached the first marker: the @cabal repl@ build/configure
-step died. Append the captured stderr (the real cause, e.g. a missing C
-library) so the failure is diagnosable, not an opaque "exited during startup".
--}
 startupErrorMessage :: Text -> String
 startupErrorMessage detail
     | T.null (T.strip detail) = base
@@ -298,7 +234,6 @@ startupErrorMessage detail
   where
     base = "GHCi exited during startup"
 
--- | Brief grace for the stderr drain to flush the build log before we read it.
 startupErrSettleUs :: Int
 startupErrSettleUs = 200000
 
@@ -312,20 +247,12 @@ forceUtf8Output sess =
      in
         mapM_ (sendRaw sess . setUtf8) ["stdout", "stderr"]
 
-{- | Kill and respawn the kernel, seeding the replacement with a strictly
-higher generation than the session it replaces so a client can detect the
-restart and discard any result tagged with the older generation.
--}
 resetSession :: Session -> IO Session
 resetSession sess = do
     prevGen <- readSessionGen sess
     closeSession sess
     newSessionGen (prevGen + 1) (sessConfig sess) (\_ -> pure ())
 
-{- | Polite close: @:quit@, a short grace, then the 'destroySession'
-chokepoint — which also reclaims handles, queue, and registry entry
-when the quit succeeded.
--}
 closeSession :: Session -> IO ()
 closeSession sess = do
     _ <- timeout quitWriteGraceUs (sendQuit (sessStdin sess))
@@ -336,10 +263,6 @@ quitGraceUs, quitWriteGraceUs :: Int
 quitGraceUs = 2000000
 quitWriteGraceUs = 1000000
 
-{- | One try around the whole sequence: the enclosing 'timeout' throws
-exactly once, so per-op handlers would swallow it and re-block on flush.
-An aborted close is reclaimed by 'destroySession'.
--}
 sendQuit :: Handle -> IO ()
 sendQuit h =
     void
@@ -347,9 +270,6 @@ sendQuit h =
             IO (Either SomeException ())
         )
 
-{- | Adapter exposing the live GHCi 'Session' through the generic
-'ST.SessionBackend' record-of-functions interface.
--}
 ghciBackend :: Session -> ST.SessionBackend
 ghciBackend sess =
     ST.SessionBackend

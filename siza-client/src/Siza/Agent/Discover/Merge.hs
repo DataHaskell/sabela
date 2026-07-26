@@ -1,8 +1,3 @@
-{- | The discover union merge (docs/discover/search-api.md sections 5-8): all
-sources' answers are unioned — never laddered — classified into the four-plus-
-two install states, ranked exact-name-first in total-order strata (R3.2), and
-rendered as ONE bounded envelope with cap disclosure (R3.3, R3.4).
--}
 module Siza.Agent.Discover.Merge (
     discoverEnvelope,
     discoverEnvelopeRecent,
@@ -53,15 +48,10 @@ import Siza.Agent.Discover.Types (
     hitJson,
  )
 
--- | Build the single response envelope from every source's answer.
 discoverEnvelope ::
     NotebookEnv -> Interpreted -> Int -> [SourceAnswer] -> HackageInfo -> Value
 discoverEnvelope env interp = discoverEnvelopeScoped env interp emptyScope
 
-{- | 'discoverEnvelope' under the request's scope filters (R2.7): the filter
-is honoured at the merge — after ranking, before the limit — and a filter
-that matched nothing or changed nothing says so in @narrow@, never silently.
--}
 discoverEnvelopeScoped ::
     NotebookEnv ->
     Interpreted ->
@@ -72,7 +62,6 @@ discoverEnvelopeScoped ::
     Value
 discoverEnvelopeScoped = discoverEnvelopeRecent []
 
--- | 'discoverEnvelopeScoped' with the session-footprint refinement band.
 discoverEnvelopeRecent ::
     [Text] ->
     NotebookEnv ->
@@ -88,11 +77,6 @@ discoverEnvelopeRecent recentPkgs env interp scope limit answers hk =
     ranked = mergedHitsRecent recentPkgs env interp answers hk
     card = listToMaybe (mapMaybe saCard answers)
 
-{- | Render the one envelope shape from an already-ranked hit list: scope
-filter honoured with disclosure, limit with reconciling counts, and demoted
-internal hits summarised — never dropped (R3.1-R3.4). Shared by the search
-and inventory modes.
--}
 envelopeFrom ::
     NotebookEnv ->
     Interpreted ->
@@ -119,15 +103,9 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
             <> ["next" .= n | Just n <- [next]]
             <> ["narrow" .= n | Just n <- [narrowNote]]
   where
-    {- A card for a module the caller did NOT scope to is an install-state
-    probe artifact, and reads as an answer about the module it asked for:
-    `module=Data.Csv query=!?` came back carrying Data.ByteString's export
-    list, because the probe browsed the top hit's module (live_test36). -}
     scopedCard = case (scModule scope, card) of
         (Just m, Just c) | cardModule c /= Just m -> Nothing
         _ -> card
-    -- Section 3.3: the scope filter is a post-union predicate over each
-    -- hit's attributed modules/packages; removals are disclosed below.
     ranked = filter (attributedKeep rankedAll scope) rankedAll
     total = length ranked
     shownHits = capAbsentKnown (max 1 limit) ranked
@@ -153,12 +131,10 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
             [] -> Nothing
             notes -> Just (T.intercalate "; " notes)
 
--- | Union, finalise install states, fuse duplicates, rank by strata.
 mergedHits ::
     NotebookEnv -> Interpreted -> [SourceAnswer] -> HackageInfo -> [DHit]
 mergedHits = mergedHitsRecent []
 
--- | 'mergedHits' under the refinement band (order only, never a filter).
 mergedHitsRecent ::
     [Text] -> NotebookEnv -> Interpreted -> [SourceAnswer] -> HackageInfo -> [DHit]
 mergedHitsRecent recentPkgs env interp answers hk =
@@ -168,8 +144,6 @@ mergedHitsRecent recentPkgs env interp answers hk =
         $ map finalise allHits
   where
     allHits = concatMap saHits answers ++ hackageOnlyHit
-    -- Packages the notebook imports, by union evidence (R4.5): a disclosed
-    -- module list or a hit module that matches an imported module.
     importedPkgs =
         nub $
             [ p
@@ -204,8 +178,6 @@ mergedHitsRecent recentPkgs env interp answers hk =
                    , Just (String "ok") <- [KM.lookup "status" o]
                    , Just (String m) <- [KM.lookup "module" o]
                    ]
-    -- A package is session-proven installed when ANY of its disclosed
-    -- modules browsed ok — one probed module vouches for its siblings.
     sessionPkgs =
         nub
             [ p
@@ -213,8 +185,6 @@ mergedHitsRecent recentPkgs env interp answers hk =
             , (p, mods) <- saPkgModules a
             , any (`elem` sessionMods) mods
             ]
-    -- Any version any source holds for a package (the live package env wins
-    -- by arriving first), so a session hit can be enriched at the merge.
     pkgVersions =
         [ (dhPackage h, dhVersion h)
         | h <- allHits
@@ -225,13 +195,9 @@ mergedHitsRecent recentPkgs env interp answers hk =
     fuseIn acc h = case break (sameKey h) acc of
         (pre, x : post) -> pre ++ [fuse env interp x h] ++ post
         _ -> acc ++ [h]
-    -- Duplicate keys: same (name, module), or same-package name-variant
-    -- stubs (R6-T1) — dedup, never a drop, so R3.3 conservation holds.
     sameKey a b =
         (dhName a == dhName b && dhModule a == dhModule b)
             || samePackageVariants a b
-    -- Install state by evidence class: environment > session > hidden card >
-    -- hackage membership > hoogle-implied upstream; never by library name.
     finalise h
         | dhInstall h == InstHidden =
             promote h{dhCabal = fillCabal h}
@@ -265,14 +231,10 @@ mergedHitsRecent recentPkgs env interp answers hk =
         Nothing
             | T.null (dhPackage h) -> Nothing
             | otherwise -> Just (cabalLine (dhPackage h))
-    -- Session-hit version enrichment (carryover 6): fill from the package
-    -- env's union knowledge; an unknown version is left empty (suppressed),
-    -- never the raw "unknown: not in package env" provenance leak (R3.10).
     enrichVersion h
         | not (T.null (dhVersion h)) = h
         | Just v <- lookup (dhPackage h) pkgVersions = h{dhVersion = v}
         | otherwise = h
-    -- The notebook's imports make one candidate the obvious referent (R4.5).
     promote h
         | dhKind h == MkExact
         , dhModule h `elem` importTargets
@@ -304,7 +266,6 @@ mergedHitsRecent recentPkgs env interp answers hk =
 tShow :: Int -> Text
 tShow = T.pack . show
 
--- | The module a card names, when it names one.
 cardModule :: Value -> Maybe Text
 cardModule (Object o) = case KM.lookup "module" o of
     Just (String m) | not (T.null m) -> Just m

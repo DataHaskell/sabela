@@ -1,7 +1,3 @@
-{- | Cold-start package resets: a declarative task→packages table plus a
-best-effort cabal-store purge, so an out-of-distribution install task
-measures a genuinely cold build every episode. Never fails the episode.
--}
 module Eval.ColdStart (
     coldStartPackages,
     storeBuildDirsFor,
@@ -25,13 +21,11 @@ import System.Exit (ExitCode)
 import System.FilePath ((</>))
 import System.Process (readProcessWithExitCode)
 
--- | Task-id → packages the episode must build cold (data, not control flow).
 coldStartPackages :: Text -> [Text]
 coldStartPackages tid = fromMaybe [] (lookup tid table)
   where
     table = [("hggScatter", ["hgg"])]
 
--- | Store entries that are builds of exactly @pkg@: @pkg-\<digit\>…@.
 storeBuildDirsFor :: Text -> [FilePath] -> [FilePath]
 storeBuildDirsFor pkg = filter isBuild
   where
@@ -41,7 +35,6 @@ storeBuildDirsFor pkg = filter isBuild
             c : _ -> isDigit c
             [] -> False
 
--- | Purge every cold-start package for @tid@ from the real cabal store.
 purgeColdStart :: Text -> IO [FilePath]
 purgeColdStart tid = case coldStartPackages tid of
     [] -> pure []
@@ -51,9 +44,6 @@ purgeColdStart tid = case coldStartPackages tid of
             Nothing -> pure []
             Just root -> concat <$> mapM (purgeStoreIn root) pkgs
 
-{- | Remove @pkg@'s builds under every @ghc-*@ dir of @root@, unregistering
-from that dir's package.db first (failures tolerated: purge is best-effort).
--}
 purgeStoreIn :: FilePath -> Text -> IO [FilePath]
 purgeStoreIn root pkg = do
     exists <- doesDirectoryExist root
@@ -73,7 +63,6 @@ purgeStoreIn root pkg = do
                     removePathForcibly (dir </> v)
                     pure (dir </> v)
 
--- | @ghc-pkg unregister@ against a store db; absence and failure are fine.
 unregister :: FilePath -> Text -> IO ()
 unregister db pkg = do
     r <-
@@ -87,7 +76,6 @@ unregister db pkg = do
     _ <- pure r
     pure ()
 
--- | The real cabal store root, or Nothing when cabal is unavailable.
 storeRoot :: IO (Maybe FilePath)
 storeRoot = do
     r <-

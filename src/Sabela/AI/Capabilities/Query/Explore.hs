@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | @explore_result@ drill-down into handles returned by other tools, split
-from "Sabela.AI.Capabilities.Query" (module size cap): the four enum ops over
-a stored 'LargeResult'.
--}
 module Sabela.AI.Capabilities.Query.Explore (
     ExploreOp (..),
     execExploreResult,
@@ -42,18 +38,12 @@ execExploreResult store input = do
                 Nothing ->
                     pure
                         (errOutcome (errorJson ("Handle not found (may have expired): " <> hidText)))
-                -- 'runExplore' returns 'errorJson' for an unknown op; propagate
-                -- that as a typed tool error rather than masquerading as
-                -- success.
                 Just lr -> case parseExploreOp op of
                     Nothing ->
                         pure (errOutcome (runExplore op input lr))
                     Just _ ->
                         pure (okOutcome (runExplore op input lr))
 
-{- | The four 'explore_result' ops the schema declares an enum for.
-Parsed at the boundary so 'runExplore' is total.
--}
 data ExploreOp = ExHead | ExTail | ExSlice | ExGrep
     deriving (Eq, Show)
 

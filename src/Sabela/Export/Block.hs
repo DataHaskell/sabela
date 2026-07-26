@@ -1,21 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Turn raw notebook-cell source into a compilable program shape.
-
-A notebook cell is a sequence of GHCi statements sharing one scope, so a value
-binding and the @x \<- readCsv@ it depends on can sit in any cell. A compiled
-module can't mirror that with top-level declarations: a top-level binding can't
-see a @main@-local @\<-@ bind. So we put everything sequential into one
-@do@-block ("everything in @main@"): value bindings become @let@s, @\<-@ binds
-stay, expressions stay — all in document order, so each statement sees the ones
-before it. Only things that genuinely can't live in a @do@-block — imports,
-pragmas, @data@\/@type@\/@class@\/@instance@, and Template Haskell splices — are
-hoisted to the top level.
-
-Crucially this works from the *raw* cell text (not the @let@-stripped
-'ScriptHs.Parser.Line's), so multi-binding @let@s, @case@ layout, and
-multi-clause functions keep their indentation.
--}
 module Sabela.Export.Block (
     Hoisted (..),
     splitProgram,
@@ -30,7 +14,6 @@ import qualified Data.Text as T
 
 import ScriptHs.Render (TrailKind (..), TrailingResolver)
 
--- | Material that must live at the top level (can't go in a @do@-block).
 data Hoisted = Hoisted
     { hPragmas :: [Text]
     , hImports :: [Text]
@@ -56,17 +39,10 @@ data UnitKind
     | UAction
     deriving (Eq, Show)
 
-{- | Split raw cell sources into hoisted top-level material and an ordered list
-of @do@-block statements. @\<-@ binds whose binder is in @skip@ are dropped
-(used by the reactive exporter to turn widget binds into parameters). Trailing
-single-line expressions are shaped by the resolver (print pure values, run IO).
--}
 splitProgram :: TrailingResolver -> Set Text -> [Text] -> (Hoisted, [Text])
 splitProgram resolve skip cells = go emptyHoisted [] (groupUnits (rawLines cells))
   where
     go h ss [] = (h, ss)
-    -- @u@ is non-empty by 'groupUnits' (each group starts with @l : cont@),
-    -- so the @hd@ pattern is total.
     go h ss (u@(hd : _) : us) = case classifyUnit u of
         UImport -> go h{hImports = hImports h ++ [T.stripStart hd]} ss us
         UPragma -> go h{hPragmas = hPragmas h ++ [unlinesU u]} ss us
@@ -81,20 +57,12 @@ splitProgram resolve skip cells = go emptyHoisted [] (groupUnits (rawLines cells
         ULet -> go h (ss ++ [unlinesU u]) us
         UBinding -> go h (ss ++ [letify u]) us
         UAction -> go h (ss ++ [actionStmt resolve u]) us
-        -- A type signature attaches to the binding that follows it: emit them
-        -- as one @let@ (a do-block can't have a bare signature). A lone
-        -- signature with no following binding is dropped.
         USig -> case us of
             (next : us')
                 | classifyUnit next == UBinding -> go h (ss ++ [letify (u ++ next)]) us'
             _ -> go h ss us
-    -- Unreachable given 'groupUnits' invariant; pinned for exhaustiveness.
     go h ss ([] : us) = go h ss us
 
-{- | Every single-line trailing-action expression a 'splitProgram' would
-resolve, so a caller can pre-resolve them against a live session and build a
-pure 'TrailingResolver'.
--}
 programActionExprs :: [Text] -> [Text]
 programActionExprs cells =
     [ unlinesU u
@@ -102,10 +70,6 @@ programActionExprs cells =
     , classifyUnit u == UAction
     , length u == 1
     ]
-
--- ---------------------------------------------------------------------------
--- Grouping raw lines into lead + continuation units
--- ---------------------------------------------------------------------------
 
 rawLines :: [Text] -> [Text]
 rawLines = intercalate [""] . map T.lines
@@ -131,10 +95,6 @@ isBlank = T.null . T.strip
 
 isIndentedNonBlank :: Text -> Bool
 isIndentedNonBlank t = not (isBlank t) && (T.isPrefixOf " " t || T.isPrefixOf "\t" t)
-
--- ---------------------------------------------------------------------------
--- Classification
--- ---------------------------------------------------------------------------
 
 classifyUnit :: [Text] -> UnitKind
 classifyUnit [] = UAction
@@ -163,13 +123,6 @@ startsDeclKeyword t =
         (`T.isPrefixOf` t)
         ["data ", "newtype ", "type ", "class ", "instance ", "deriving ", "default "]
 
--- ---------------------------------------------------------------------------
--- Emitting do-block statements
--- ---------------------------------------------------------------------------
-
-{- | A value/function binding becomes a @let@; continuation lines are indented
-by the width of @"let "@ so they stay aligned past the binding name.
--}
 letify :: [Text] -> Text
 letify [] = ""
 letify (l : rest) = T.intercalate "\n" (("let " <> l) : map ("    " <>) rest)
@@ -178,15 +131,11 @@ actionStmt :: TrailingResolver -> [Text] -> Text
 actionStmt resolve unit =
     let expr = unlinesU unit
      in if length unit > 1
-            then expr -- multi-line: assume an IO action, emit verbatim
+            then expr
             else case resolve expr of
                 TrailPure -> "print (" <> expr <> ")"
                 TrailIOShow -> "print =<< (" <> expr <> ")"
                 _ -> expr
-
--- ---------------------------------------------------------------------------
--- GHCi directives
--- ---------------------------------------------------------------------------
 
 setExts :: Text -> [Text]
 setExts t = case T.words (T.stripStart t) of
@@ -198,11 +147,6 @@ setExts t = case T.words (T.stripStart t) of
 langPragma :: Text -> Text
 langPragma ext = "{-# LANGUAGE " <> ext <> " #-}"
 
--- ---------------------------------------------------------------------------
--- Depth/string-aware token scanners
--- ---------------------------------------------------------------------------
-
--- | Does the line have a top-level (depth-0, outside strings) @\<-@?
 hasTopArrow :: Text -> Bool
 hasTopArrow = go (0 :: Int) . T.unpack
   where
@@ -214,9 +158,6 @@ hasTopArrow = go (0 :: Int) . T.unpack
         | c `elem` (")]}" :: String) = go (max 0 (d - 1)) cs
         | otherwise = go d cs
 
-{- | Does the line have a top-level standalone @=@ (a binding), not @==@\/@\/=@
-\/@\<=@\/@>=@ and not inside parens or strings?
--}
 hasTopEquals :: Text -> Bool
 hasTopEquals = go (0 :: Int) ' ' . T.unpack
   where
@@ -234,7 +175,6 @@ hasTopEquals = go (0 :: Int) ' ' . T.unpack
     nextChar (x : _) = Just x
     nextChar [] = Nothing
 
--- | Does the line have a top-level (depth-0, outside strings) @::@?
 hasTopDoubleColon :: Text -> Bool
 hasTopDoubleColon = go (0 :: Int) . T.unpack
   where
@@ -246,7 +186,6 @@ hasTopDoubleColon = go (0 :: Int) . T.unpack
         | c `elem` (")]}" :: String) = go (max 0 (d - 1)) cs
         | otherwise = go d cs
 
--- | The binder on the left of a top-level @\<-@.
 binderOf :: [Text] -> Text
 binderOf [] = ""
 binderOf (l : _) = T.strip (fst (T.breakOn "<-" l))

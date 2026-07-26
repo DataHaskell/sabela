@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | @siza chat@: an interactive session that drives the local model through the
-shared agent loop (scaffold, salvage, diagnostics, the verify-gate), reading
-free-form requests from the terminal against one persistent notebook.
-
-Unlike the eval harness this is built on, the verify-gate here is the light
-'Siza.Agent.Check' (propose a boolean, confirm, run it) rather than the benchmark
-grader, and the default view is terse: the full audit stream (system prompt,
-thinking, raw tool JSON) is behind @--verbose@. Ctrl-C cancels the running
-request and returns to the prompt; Ctrl-D quits.
--}
 module Siza.Agent.Chat (
     ChatConfig (..),
     runChat,
@@ -27,7 +17,8 @@ import Network.HTTP.Client (Manager)
 import System.IO (hFlush, isEOF, stdout)
 import System.Timeout (timeout)
 
-import Sabela.AI.Types (ToolOutcome)
+import Data.Map.Strict (Map)
+import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..), chat, chatSeeded)
 import Siza.Agent.Check (
     CheckResult (..),
@@ -41,6 +32,7 @@ import Siza.Agent.Check (
     runMarkerWith,
  )
 import Siza.Agent.Check.Vet (vetProposal)
+import Siza.Agent.Compact (compactSeed, recallResult, recallToolName)
 import Siza.Agent.Discover (isOwningTool)
 import Siza.Agent.Loop (
     AgentRun (..),
@@ -52,10 +44,6 @@ import Siza.Agent.Loop (
 import Siza.Agent.Tools (catalogueWith, dispatch, renderOutcome)
 import Siza.Transport (Conn, callTool)
 
-{- | Interactive session configuration. The budget's deadline is the loop's
-between-turn cap; 'ccRequestTimeoutSecs' is a hard wall-clock cap around the whole
-request (a safety net for a single wedged model/tool call the loop cannot preempt).
--}
 data ChatConfig = ChatConfig
     { ccModel :: Text
     , ccVerbose :: Bool
@@ -95,9 +83,6 @@ runChat cfg mgr conn base = do
                 if T.strip line `elem` ["quit", "exit", ":q"]
                     then TIO.putStrLn "bye"
                     else runTurn prev line
-    -- Bound each request by a hard wall-clock cap and let Ctrl-C (GHC's
-    -- 'UserInterrupt') abort just this request, returning to the prompt with the
-    -- prior transcript intact rather than tearing down the whole session.
     runTurn prev line = do
         res <-
             try (timeout (ccRequestTimeoutSecs cfg * 1000000) (turn prev line)) ::
@@ -113,13 +98,12 @@ runChat cfg mgr conn base = do
                         <> "s \8212 back to the prompt)"
                     )
                 loop prev
-            -- Check-prompt feedback becomes the next turn automatically: no
-            -- fresh prompt, no waiting on the user to retype it.
             Right (Just (prev', Just feedback)) -> do
                 TIO.putStrLn ("\8250 " <> feedback)
                 runTurn prev' feedback
             Right (Just (prev', Nothing)) -> loop prev'
     turn prev userText = do
+        let (seed, store) = compactSeed prev
         gateRef <- newIORef Nothing
         wroteRef <- newIORef False
         seenRef <- newIORef ([] :: [Text])
@@ -130,23 +114,22 @@ runChat cfg mgr conn base = do
             driver =
                 Driver
                     { drvChat = chatFn
-                    , drvDispatch = tracedDispatch wroteRef seenRef (dispatch conn base)
+                    , drvDispatch =
+                        tracedDispatch
+                            wroteRef
+                            seenRef
+                            (withRecall store (dispatch conn base))
                     , drvNow = realToFrac <$> getPOSIXTime
                     , drvVerify = verifyGate mgr conn base model gateRef wroteRef feedbackRef
                     }
             emit = if verbose then TIO.putStr else const (pure ())
-        run <- runEpisodeSeeded prev emit GrammarOn budget driver userText maxTurns
+        run <- runEpisodeSeeded seed emit GrammarOn budget driver userText maxTurns
         TIO.putStrLn ("\n" <> arFinal run)
         TIO.putStrLn
             ("  [" <> arStopped run <> ", " <> tshow (arToolCalls run) <> " tool calls]\n")
         pending <- readIORef feedbackRef
         pure (arTranscript run, pending)
 
-{- | After a writing turn, gate acceptance on a covering check: propose one
-Haskell boolean, let the user confirm/edit/skip, and run it off-notebook. A
-non-writing turn passes straight through. Prose typed at the prompt is
-captured in 'feedbackRef' so it becomes the next turn automatically.
--}
 verifyGate ::
     Manager ->
     Conn ->
@@ -168,11 +151,6 @@ verifyGate mgr conn base model gateRef wroteRef feedbackRef = do
                     progress "\183 proposing a check\8230"
                     proposed <- proposeTest mgr conn base model
                     vetted <- vetProposal (callTool conn base) proposed
-                    {- C2 task 4: when no candidate survives the gate there is
-                    nothing to accept. Prompting anyway offers the user an
-                    EMPTY check and blocks on their answer — live_test25 sat
-                    at that prompt until it timed out. Disclose the state
-                    instead; never invent a check. -}
                     t <-
                         if T.null (T.strip vetted)
                             then do
@@ -183,22 +161,13 @@ verifyGate mgr conn base model gateRef wroteRef feedbackRef = do
                     pure t
             runConfirmedTest conn base test
 
-{- | The disclosed no-check state (C2 task 4): the cells ran, but nothing
-machine-checkable survived the gate. Said plainly, never as a silent pass.
--}
 noCheckApplies :: Text
 noCheckApplies =
     "  cells ran clean; no machine check applies to this deliverable"
 
-{- | Run the confirmed covering check: a compiling-but-False check is a real
-denial (with its example); a non-compiling one has no clear target, so the
-clean-running cells are accepted and the acceptance is disclosed.
--}
 runConfirmedTest :: Conn -> Text -> Text -> IO (CheckResult, Maybe Text)
 runConfirmedTest conn base test
     | T.null test = pure (CheckNotApplicable, Nothing)
-    -- A check reading nothing the notebook defines proves nothing; running it
-    -- reported "check passed: True" over an empty deliverable (live_test8 #4).
     | degenerateCheck test = do
         TIO.putStrLn
             ("  \9888 no covering check \8212 reads no notebook binding: " <> test)
@@ -242,9 +211,6 @@ proposeSystem =
     \correct, over the bindings the cells define (e.g. `total == 600` or \
     \`length xs == 3`). Reply with ONLY the expression, no prose, no code fence."
 
-{- | Prompt the user to accept, edit with a test, or skip; prose is feedback,
-captured into 'feedbackRef' so the caller carries it into the next turn.
--}
 confirmTest :: IORef (Maybe Text) -> Text -> IO Text
 confirmTest feedbackRef proposed = do
     TIO.putStrLn ("  proposed check: " <> proposed)
@@ -275,14 +241,6 @@ tracedDispatch wroteRef seenRef dsp call = do
     when (isOwningTool (tcName call)) (writeIORef wroteRef True)
     pure out
 
-{- | Record this call's (tool, args) signature for the human trace.
-
-It used to append "repeat xN — going in circles?", which the harness cannot
-know: re-running a call after a type error is the repair loop working, and a
-re-issued discover with different scope keys is a refinement, not a circle.
-Payload suppression for genuine read-only repeats happens in the history
-guard, on the ANSWER, where it belongs.
--}
 noteCall :: IORef [Text] -> ToolCall -> IO Text
 noteCall seenRef call = do
     let sig = tcName call <> " " <> clip 160 (tshow (tcArgs call))
@@ -292,14 +250,12 @@ noteCall seenRef call = do
 progress :: Text -> IO ()
 progress = TIO.putStrLn . ("  " <>)
 
--- | The first non-blank line, for one-line progress digests.
 firstLine :: Text -> Text
 firstLine = headOr "" . filter (not . T.null . T.strip) . T.lines
   where
     headOr d [] = d
     headOr _ (x : _) = x
 
--- | Truncate to @n@ characters with an ellipsis, for one-line progress digests.
 clip :: Int -> Text -> Text
 clip n t
     | T.length t <= n = t
@@ -307,3 +263,13 @@ clip n t
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
+
+withRecall ::
+    Map Int Text ->
+    (ToolCall -> IO (Either Text ToolOutcome)) ->
+    ToolCall ->
+    IO (Either Text ToolOutcome)
+withRecall store inner tc
+    | tcName tc == recallToolName =
+        pure (Right (ToolOk (object ["result" .= recallResult store (tcArgs tc)])))
+    | otherwise = inner tc

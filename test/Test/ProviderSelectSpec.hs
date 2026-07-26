@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Provider selection through 'updateAIConfig': choosing Ollama builds an
-Ollama-backed provider (no API key), switching back rebuilds Anthropic, and
-first-time Anthropic still requires a key. Uses a temp workdir so the persisted
-@.sabela/config.json@ write is isolated.
--}
 module Test.ProviderSelectSpec (spec) where
 
 import qualified Data.Set as Set

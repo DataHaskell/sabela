@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Ranking generality (R7-T2, search-api.md section 7): imported packages
-lead (R4.5); signature plainness among same-name exact hits over a grid;
-exact-first preserved; rankings invariant under library-name substitution.
--}
 module Test.DiscoverRankPlainSpec (discoverRankPlainSpec) where
 
 import Data.Aeson (Value, encode, object, (.=))
@@ -44,10 +40,6 @@ env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
-{- | A universe where the notebook-imported package (zephyr, via Zephyr.Core)
-exports the queried name from a NON-imported sibling module, against an
-equally-installed competitor in another package.
--}
 importedBandPkgs :: [SynPkg]
 importedBandPkgs =
     [ SynPkg
@@ -60,7 +52,6 @@ importedBandPkgs =
     , SynPkg "brill" "3.0.0" False [("Brill.Main", [("strum", "Int -> Strum")])]
     ]
 
--- | A generated signature with @c@ constraint atoms and @t@ type-level args.
 sigWith :: Int -> Int -> Text
 sigWith c t = constraints <> "Text -> Expr a" <> tyArgs
   where
@@ -73,7 +64,6 @@ sigWith c t = constraints <> "Text -> Expr a" <> tyArgs
     tyArgs = T.concat [" @S" <> tShow i | i <- [1 .. t]]
     tShow = T.pack . show
 
--- | The plainness grid: every strictly-plainer/heavier same-name exact pair.
 plainPairs :: [((Int, Int), (Int, Int))]
 plainPairs =
     [ (a, b)
@@ -164,9 +154,6 @@ discoverRankPlainSpec = describe "ranking generality (R7-T2)" $ do
             substitute (zip (tripleList namesA) (tripleList namesB)) (jsonText va)
                 `shouldBe` jsonText vb
 
-{- | The notebook imports Zephyr.Core (fixture cell 0): whenever a query's
-answer holds any zephyr hit, that hit must lead (R4.5).
--}
 importedFirstViolation :: Text -> IO [Text]
 importedFirstViolation n = do
     v <- runCatArgs n (object [])
@@ -177,9 +164,6 @@ importedFirstViolation n = do
         , take 1 pkgs /= ["zephyr"]
         ]
 
-{- | Structure held constant, names substitutable: same modules, same
-signatures, only the package identities differ (equal lengths pairwise).
--}
 subsPkgs :: (Text, Text, Text) -> [SynPkg]
 subsPkgs (pA, pB, pC) =
     [ SynPkg pA "1.0.0" False [("Gem.One", [("colx", "Text -> Expr a")])]

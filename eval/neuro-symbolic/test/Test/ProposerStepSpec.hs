@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The deterministic pieces of per-step rejection sampling: the K gate read from
-@SIZA_SAMPLE_K@ (default 1 = off, so the default episode is unchanged) and the
-cell-source extraction a write candidate is judged on. The sampling loop itself
-(re-ask → verify → keep first that compiles) is exercised end-to-end by the eval
-run and by 'Test.SampleVerifySpec' for 'sampleVerifyOne'.
--}
 module Test.ProposerStepSpec (spec) where
 
 import Data.Aeson (object, (.=))

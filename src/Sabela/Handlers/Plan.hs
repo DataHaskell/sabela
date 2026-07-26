@@ -1,13 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Reactive-execution planning + plan-driven dispatch: turn a cell edit
-into the ordered list of downstream cells to re-run, broadcast plan-level
-errors (cycles, redefinitions), and step through the resulting cells via
-'Sabela.Handlers.Exec.runAndBroadcast'. Also owns the dispatch into the
-Python sub-engine for non-Haskell cells.
--}
 module Sabela.Handlers.Plan (
-    -- * Dispatchers
     dispatchByLang,
     executeAffected,
     executeSingleCell,
@@ -15,8 +8,6 @@ module Sabela.Handlers.Plan (
     recoverHaskellSession,
     executeRunAll,
     isSessionUpToDate,
-
-    -- * Sub-pieces (exposed for the entry-points module and tests)
     rerunBridgeCells,
     runPlanPhases,
 ) where
@@ -129,10 +120,6 @@ cellInSkipSet cid plan =
             `S.union` M.keysSet (epRedefErrors plan)
             `S.union` M.keysSet (cpViolations (epCompilePlan plan))
 
-{- | Run-all entry: when the live session is current, only stale cells
-(changed or errored) and their dependents re-run; otherwise the full
-restart path runs everything against a fresh interpreter.
--}
 executeRunAll :: App -> Int -> IO ()
 executeRunAll app gen = do
     nb <- readNotebook (appNotebook app)
@@ -173,10 +160,6 @@ executeFullRestart app gen = do
         whenCurrentGen app gen $
             executeNonHaskellCells app gen
 
-{- | Recover only the exact live backend destroyed by a bounded pure trial
-(compare-and-swap detach prevents a late callback killing a newer backend).
-Rebuilds and replays Haskell only; other backends are not collateral damage.
--}
 recoverHaskellSession :: App -> ST.SessionBackend -> Int -> IO Bool
 recoverHaskellSession app crashed gen = do
     claimed <-
@@ -294,12 +277,6 @@ logCellDeps app c = do
                 ++ " uses="
                 ++ show usesPreview
 
-{- | Run a plan: plan-level errors, then the compile phase (generated
-modules), then interpreted cells. Any actual reload — successful or not —
-wiped every prompt binding, so the interpreted run set escalates to all
-interpreted cells; a failed compile additionally skips the interpreted
-cells that transitively depend on a compiled cell.
--}
 runPlanPhases :: App -> Int -> ExecutionPlan -> IO ()
 runPlanPhases app gen plan = do
     broadcastPlanErrors app plan Nothing

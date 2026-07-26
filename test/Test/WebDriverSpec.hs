@@ -48,11 +48,9 @@ testPort = 13742
 testUrl :: String
 testUrl = "http://localhost:" ++ show testPort ++ "/index.html"
 
--- | Run a WebDriver action in a fresh browser session, then close it.
 withSession :: WD () -> IO ()
 withSession action = runSession driverConfig (action >> closeSession)
 
--- | Wait for at least one .cell element to appear on the page.
 waitForPageLoad :: WD ()
 waitForPageLoad =
     waitUntil 15 $ do
@@ -140,7 +138,6 @@ spec = do
                                         <> "displayHtml $ \"<p>n=\" ++ show n ++ \"</p>\""
                             setCellContent 1 src
                             runCell 1
-                            -- two consecutive text/html outputs → merged into one iframe
                             waitForIframeCount 1 15 1
 
                     it "HTML followed by markdown renders two separate blocks" $
@@ -152,9 +149,7 @@ spec = do
                                         <> "displayMarkdown \"# md part\""
                             setCellContent 1 src
                             runCell 1
-                            -- HTML → one iframe; markdown → one .mime-markdown div; total iframes = 1
                             waitForIframeCount 1 15 1
-                            -- markdown block should also be present
                             waitUntil 15 $ do
                                 elems <- findElems (ByCSS ".cell[data-id='1'] .mime-markdown")
                                 Control.Monad.when (null elems) $
@@ -169,13 +164,10 @@ spec = do
                             setCellContent 1 "displayHtml \"<p>first</p>\""
                             runCell 1
                             waitForIframeCount 1 15 1
-                            -- stamp the iframe DOM element
                             stamped <- stampCellIframe 1 "reuse-marker"
                             liftIO $ stamped `shouldBe` True
-                            -- re-run the cell (same content, new execution)
                             runCell 1
                             waitForIframeCount 1 15 1
-                            -- stamp must persist: same DOM node was reused, not replaced
                             mStamp <- getCellIframeStamp 1
                             liftIO $ mStamp `shouldBe` Just "reuse-marker"
 
@@ -183,14 +175,12 @@ spec = do
                         withSession $ do
                             openPage testUrl
                             waitForPageLoad
-                            -- two outputs: html block + markdown block
                             let src2 =
                                     "displayHtml \"<p>html</p>\"\n"
                                         <> "displayMarkdown \"**md**\""
                             setCellContent 1 src2
                             runCell 1
                             waitForOutputBlockCount 1 15 2
-                            -- re-run with only one output
                             setCellContent 1 "displayHtml \"<p>html only</p>\""
                             runCell 1
                             waitForOutputBlockCount 1 15 1
@@ -206,14 +196,11 @@ spec = do
                             setCellContent 1 src
                             runCell 1
                             waitForOutput 1 15 "value=0"
-                            -- fire 5 rapid widget messages — debounce should coalesce to 1 fetch
                             postWidgetMessage 1 "x" "10"
                             postWidgetMessage 1 "x" "20"
                             postWidgetMessage 1 "x" "30"
                             postWidgetMessage 1 "x" "40"
                             postWidgetMessage 1 "x" "50"
-                            -- after debounce + execution, output should reflect the last value
                             waitForOutput 1 15 "value=50"
-                            -- and must NOT still show an intermediate value only
                             mOut <- getCellOutput 1
                             liftIO $ mOut `shouldBe` Just "value=50"

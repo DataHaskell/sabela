@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The declared write-ack envelope (R6.1/R6.2/R6.4, R3.6): ONE shape for
-every mutation-write response — queued, executing, completed (ok or error),
-duplicate — plus the own-write busy bounce. Producers encode through
-'writeAckJson' / 'busyAckJson' only; consumers decode through
-'parseAckEnvelope', which rejects serialisation-in-string execution fields.
--}
 module Sabela.AI.WriteAck (
     AckStatus (..),
     ackStatusText,
@@ -34,7 +28,6 @@ import qualified Data.Text as T
 
 import Sabela.Api (errorJsonWith)
 
--- | Where a landed write's execution stands when the response is built.
 data AckStatus = AckQueued | AckExecuting | AckCompleted
     deriving (Bounded, Enum, Eq, Show)
 
@@ -49,10 +42,6 @@ parseAckStatus "executing" = Just AckExecuting
 parseAckStatus "completed" = Just AckCompleted
 parseAckStatus _ = Nothing
 
-{- | The one write-ack envelope: the durable write's cell plus its execution
-status. @waExecution@ is @Just@ only once the run settled (@Just Null@ for a
-cell class that never executes); @waDuplicate@ marks an idempotent-retry reply.
--}
 data WriteAck = WriteAck
     { waCellId :: Int
     , waStatus :: AckStatus
@@ -74,9 +63,6 @@ writeAckJson wa =
             <> ["duplicate" .= True | waDuplicate wa]
             <> ["note" .= n | Just n <- [waNote wa]]
 
-{- | The kernel-needing-call bounce while the caller's own write is executing
-(R6.4): names the writing cell, the elapsed time, and the reconcile path.
--}
 data BusyAck = BusyAck
     { baCellId :: Int
     , baElapsedMs :: Int
@@ -99,12 +85,6 @@ busyAckJson ba =
         , "hint" .= ownWriteHint
         ]
 
-{- | A mutation the server declined to commit as written (R3.6): a
-signature-without-body proposal, a pending-error dam, a duplicate-def conflict.
-It never damaged the session, so it is not an @error@ the caller relays raw —
-it names its class ('raKind'), the cell it points at when it names one, and its
-one-line message, and the caller routes on the class.
--}
 data RefusalAck = RefusalAck
     { raKind :: Text
     , raCell :: Maybe Int
@@ -112,12 +92,6 @@ data RefusalAck = RefusalAck
     }
     deriving (Eq, Show)
 
-{- | Tag an existing 'Sabela.Api.errorJsonWith' refusal object as a decodable
-refusal-class ack: insert the @refusal@ discriminant (and @cellId@, when the
-refusal names a cell) so the one 'parseAckEnvelope' validator decodes it — no
-new envelope shape, the same @error@-plus-fields object every refusal already
-emits. A non-object is returned untouched.
--}
 refusalAck :: Text -> Maybe Int -> Value -> Value
 refusalAck kind mCell (Object o) =
     Object (KM.union o (KM.fromList extras))
@@ -128,15 +102,6 @@ refusalAck kind mCell (Object o) =
     jsonInt = Number . fromIntegral
 refusalAck _ _ v = v
 
-{- | The pending-error refusal envelope (R10-T2): a new cell cannot be added
-atop a red one. It names the ONE class of legal move — replace_cell_source on
-the blocking cell, or delete_cell — and, when an unchecked mechanical proposal
-for that cell exists, returns it as @suggestedSource@ with an explicit status.
-It NEVER
-re-ships the raw multi-line GHC error: the compiler text lives on the red cell,
-not in every downstream insert refusal. Decodes on the one 'parseAckEnvelope'
-refusal arm; @suggestedSource@ mirrors the sig-body proposal's own field.
--}
 pendingErrorAck :: Int -> Maybe Text -> Value
 pendingErrorAck cid mCand =
     refusalAck "pending-error" (Just cid) (errorJsonWith msg extras)
@@ -171,13 +136,9 @@ pendingErrorAck cid mCand =
             , ["pendingErrorCell" .= cid]
             )
 
--- | The shapes a caller may decode a mutation-path response into.
 data AckEnvelope = EnvWrite WriteAck | EnvBusy BusyAck | EnvRefusal RefusalAck
     deriving (Eq, Show)
 
-{- | Decode a response against the declared shape. An @execution@ field that
-is a JSON string is serialisation-in-string and fails the decode outright.
--}
 parseAckEnvelope :: Value -> Maybe AckEnvelope
 parseAckEnvelope (Object o)
     | KM.lookup "busy" o == Just (Bool True)
@@ -215,7 +176,6 @@ parseAckEnvelope (Object o)
         _ -> ""
 parseAckEnvelope _ = Nothing
 
--- | The cell id of an executing (not yet settled) write ack, if that is what @v@ is.
 executingAckCell :: Value -> Maybe Int
 executingAckCell v = case parseAckEnvelope v of
     Just (EnvWrite wa) | waStatus wa == AckExecuting -> Just (waCellId wa)

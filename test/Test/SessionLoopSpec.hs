@@ -1,10 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the session capture/teardown contract: reader loops terminate
-at EOF with a sticky tombstone, binary and over-cap output can't kill or
-bloat the server, and teardown reclaims the whole process group.
--}
 module Test.SessionLoopSpec (spec) where
 
 import Control.Concurrent (
@@ -202,12 +198,9 @@ spec = do
                     [1 .. 12 :: Int]
                 putMVar done ()
             threadDelay 200_000
-            -- 8 chunks fill the budget; the 9th enqueue must still be blocked,
-            -- so the producer cannot have finished and the queue stays bounded.
             tryTakeMVar done `shouldReturn` Nothing
             used <- readTVarIO (oqBytes q)
             used `shouldSatisfy` (<= queueBytesCap)
-            -- draining credits bytes back, unblocking the producer to completion.
             withTimeout 5_000_000 (drainWhilePending q done)
             withTimeout 2_000_000 (takeMVar done)
 
@@ -233,11 +226,8 @@ spec = do
                     out
                         `shouldSatisfy` T.isSuffixOf "[output truncated by sabela]"
                 DrainEof _ -> expectationFailure "ended at EOF, not the marker"
-            -- every kept line is streamed to onLine even past the accum cap.
             readIORef seen `shouldReturn` lineCount
 
--- Pop lines (crediting the byte budget back) until the blocked producer,
--- observed via the peek-only MVar, has finished enqueuing.
 drainWhilePending :: OutQueue -> MVar () -> IO ()
 drainWhilePending q done = go
   where

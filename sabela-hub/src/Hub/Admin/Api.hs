@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Admin curation API: @adminDispatch@ routes the @\/_hub\/admin\/*@ JSON
-endpoints behind 'requireAdmin' (its own cookie→session→isAdmin lookup, since
-'requireSession' is JSON-401-only) and, for mutations, a config-anchored
-'Origin' check (fail closed). The server-rendered page lives in "Hub.Admin.Page".
--}
 module Hub.Admin.Api (
     adminDispatch,
     requireAdmin,
@@ -31,7 +26,6 @@ import Hub.Users (UserStore, isAdmin)
 import Network.HTTP.Types
 import Network.Wai
 
--- | scheme+host of @GOOGLE_REDIRECT_URI@ — the only Origin a mutation may carry.
 canonicalOrigin :: SessionManager -> BS.ByteString
 canonicalOrigin sm =
     TE.encodeUtf8 $
@@ -39,10 +33,6 @@ canonicalOrigin sm =
             take 3 $
                 T.splitOn "/" (hcGoogleRedirectUri (smConfig sm))
 
-{- | Run the continuation with the caller's email iff they are an admin; else
-403 JSON (never enumerable). Does its own session lookup — it cannot wrap the
-JSON-401-only 'Hub.Auth.requireSession'.
--}
 requireAdmin ::
     SessionManager ->
     UserStore ->
@@ -64,7 +54,6 @@ requireAdmin sm users req respond k =
   where
     deny = respond (jsonError status403 "Admin access required.")
 
--- | Mutations must carry the canonical 'Origin' (fail closed on a missing one).
 originOk :: SessionManager -> Request -> Bool
 originOk sm req =
     lookup "Origin" (requestHeaders req) == Just (canonicalOrigin sm)
@@ -94,10 +83,6 @@ adminDispatch sm users gallery shares req respond =
             else respond (jsonError status403 "Cross-origin request rejected.")
     on method act = if requestMethod req == method then act else notAllowed
     notAllowed = respond (jsonError status405 "Method not allowed.")
-
--- ---------------------------------------------------------------------------
--- Handlers
--- ---------------------------------------------------------------------------
 
 ok :: (Response -> IO ResponseReceived) -> IO ResponseReceived
 ok respond = respond $ jsonResponse status200 (object ["ok" .= True])
@@ -230,10 +215,6 @@ handleTags gallery tid req respond = do
                     respond $
                         jsonResponse status400 (object ["invalid" .= (["too many tags"] :: [Text])])
                 TagsInvalid bad -> respond $ jsonResponse status400 (object ["invalid" .= bad])
-
--- ---------------------------------------------------------------------------
--- Tiny JSON-body helpers (hand-rolled, per the repo convention)
--- ---------------------------------------------------------------------------
 
 withField ::
     Request ->

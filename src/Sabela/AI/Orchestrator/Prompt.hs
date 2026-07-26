@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The Anthropic system prompt for the Sabela chat agent and the
-notebook-document system block we feed alongside it. Split out from
-'Sabela.AI.Orchestrator' because (a) the literal is large and stable
-and (b) it lets the agentic loop module stay focused on control flow.
-
-The working rules and tool-surface block come from 'Sabela.AI.PromptCore',
-shared with the eval harness. Signatures are looked up live via the search
-tools (find_function, describe_function, api_reference) rather than shipped as
-a static card.
--}
 module Sabela.AI.Orchestrator.Prompt (
     systemPrompt,
     buildNotebookDocText,
@@ -151,7 +141,6 @@ systemPrompt =
         , "Be concise."
         ]
 
--- | Build the notebook JSON document rendered to text for the system block.
 buildNotebookDocText :: App -> IO Text
 buildNotebookDocText app = do
     nb <- readNotebook (appNotebook app)

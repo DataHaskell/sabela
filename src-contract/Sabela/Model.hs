@@ -4,24 +4,17 @@
 {-# LANGUAGE StrictData #-}
 
 module Sabela.Model (
-    -- * Output
     OutputItem (..),
     MimeType (..),
     mimeIndicator,
     textToMime,
-
-    -- * Notebook and cells
     Notebook (..),
     Cell (..),
     CellType (..),
     lookupCell,
     cellLangOf,
-
-    -- * Events
     NotebookEvent (..),
     SessionStatus (..),
-
-    -- * Errors
     CellError (..),
     bareCellError,
 ) where
@@ -49,7 +42,6 @@ data OutputItem = OutputItem
     }
     deriving (Eq, Generic, Show)
 
--- | Wire-format MIME label. Round-trips with 'textToMime'.
 mimeIndicator :: MimeType -> Text
 mimeIndicator m = case m of
     MimeHtml -> "text/html"
@@ -60,11 +52,8 @@ mimeIndicator m = case m of
     MimeImage t -> t <> ";base64"
     MimePlain -> "text/plain"
 
--- | Inverse of 'mimeIndicator'. Anything unrecognised maps to 'MimePlain'.
 textToMime :: Text -> MimeType
 textToMime m
-    -- @"<type>;base64"@ round-trips back to 'MimeImage' so an image
-    -- output isn't silently saved as plain text.
     | Just t <- T.stripSuffix ";base64" m = MimeImage t
     | otherwise = case m of
         "text/html" -> MimeHtml
@@ -74,9 +63,6 @@ textToMime m
         "application/json" -> MimeJson
         _ -> MimePlain
 
--- Hand-rolled instances preserve the wire shape: @oiMime@ goes out as
--- the indicator string (e.g. @"text/html"@) regardless of which 'MimeType'
--- constructor it came from, so the frontend continues to see strings.
 instance ToJSON OutputItem where
     toJSON oi =
         object
@@ -120,47 +106,22 @@ instance FromJSON CellType
 
 data NotebookEvent
     = EvCellUpdating Int
-    | -- | A compiled cell's module is being (re)compiled.
-      EvCellCompiling Int
+    | EvCellCompiling Int
     | EvCellPartialOutput Int Text
-    | -- | cellId, outputs, holistic error, structured errors, structured warnings.
-      EvCellResult Int [OutputItem] (Maybe Text) [CellError] [CellError]
-    | {- | cellId, widget name, value: a widget's value changed (browser→kernel,
-      or set from Haskell), pushed so every open view reflects it.
-      -}
-      EvWidget Int Text Text
+    | EvCellResult Int [OutputItem] (Maybe Text) [CellError] [CellError]
+    | EvWidget Int Text Text
     | EvExecutionDone
     | EvSessionStatus SessionStatus
     | EvInstallLog Text
-    | -- | turnId, text token
-      EvChatTextDelta TurnId Text
-    | -- | turnId, toolCallId, toolName, input
-      EvChatToolCall TurnId ToolCallId Text Value
-    | -- | turnId, toolCallId, result
-      EvChatToolResult TurnId ToolCallId Value
-    | {- | 'Nothing' is an edit proposed outside any turn (e.g. via the
-      REST tool bridge); previously this was the magic sentinel @TurnId 0@.
-      -}
-      EvChatEditProposed (Maybe TurnId) EditId Int Text Text
-    | -- | turnId
-      EvChatDone TurnId
-    | -- | turnId
-      EvChatCancelled TurnId
-    | {- | 'Nothing' is a global error not bound to any turn (e.g. "AI not
-      configured" or "A turn is already in progress"); previously this
-      was the magic sentinel @0@.
-      -}
-      EvChatError (Maybe TurnId) Text
-    | {- | Full notebook snapshot — fired whenever cells are inserted, deleted,
-      reordered, or edited outside the reactive execute path, so the frontend
-      can refresh its view without re-fetching.
-      -}
-      EvNotebookChanged Notebook
-    | {- | Per-turn token accounting: {turnId, inputTokens, outputTokens,
-      cacheCreationInputTokens, cacheReadInputTokens, wallTimeMs,
-      iterations}. Emitted once when a turn completes.
-      -}
-      EvChatUsageUpdate TurnId Value
+    | EvChatTextDelta TurnId Text
+    | EvChatToolCall TurnId ToolCallId Text Value
+    | EvChatToolResult TurnId ToolCallId Value
+    | EvChatEditProposed (Maybe TurnId) EditId Int Text Text
+    | EvChatDone TurnId
+    | EvChatCancelled TurnId
+    | EvChatError (Maybe TurnId) Text
+    | EvNotebookChanged Notebook
+    | EvChatUsageUpdate TurnId Value
     deriving (Show)
 
 data SessionStatus
@@ -265,24 +226,15 @@ instance ToJSON NotebookEvent where
 
 data CellError = CellError
     { ceLine :: Maybe Int
-    -- ^ 1-based line within cell
     , ceCol :: Maybe Int
     , ceMessage :: Text
     , ceCode :: Maybe Int
-    {- ^ GHC diagnostic code (the NNNNN of @GHC-NNNNN@) when the compiler
-    emitted one; the errors.haskell.org taxonomy key. 'Nothing' for
-    synthetic errors and diagnostics GHC left uncoded.
-    -}
     }
     deriving (Eq, Generic, Show)
 
 instance ToJSON CellError
 instance FromJSON CellError
 
-{- | A diagnostic with no GHC code: synthetic\/holistic errors Sabela raises
-itself, and the pre-code textual path. Keeps those call sites from threading a
-'Nothing' the compiler never gave them.
--}
 bareCellError :: Maybe Int -> Maybe Int -> Text -> CellError
 bareCellError l c m = CellError l c m Nothing
 

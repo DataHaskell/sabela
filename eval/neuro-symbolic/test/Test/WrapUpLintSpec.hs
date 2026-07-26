@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T3 red-then-green over the round-5 empty-final fixtures (run-130012 /
--132124): the cap-stop blank-final shape stays RED under 'stopIssues', and
-'wrapUpFinal' for the same shapes passes for every stop reason and owned state.
--}
 module Test.WrapUpLintSpec (spec) where
 
 import Control.Monad (forM_)

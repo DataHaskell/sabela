@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the session-staleness check: 'depsMatch' must notice changes to
-local package dirs, git pins, and ghc-options — not just dep names and
-extensions — so directive edits trigger a package-env rebuild.
--}
 module Test.DepsMatchSpec (spec) where
 
 import qualified Data.Set as S

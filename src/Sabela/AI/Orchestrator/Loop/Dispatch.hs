@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Tool-call dispatch for the agentic loop: run each call the model asked for,
-broadcast it, record provenance, and append the compacted result. Split from
-"Sabela.AI.Orchestrator.Loop" to keep each module under the size cap.
--}
 module Sabela.AI.Orchestrator.Loop.Dispatch (
     executeToolCalls,
     cellIdOf,
@@ -41,10 +37,6 @@ import Sabela.State (App (..), readNotebook)
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.EventBus (broadcast)
 
-{- | Dispatch the assistant turn's tool calls, broadcasting each call + result to
-the UI and appending a neutral 'ToolResult' (compacted, error flag preserved) to
-the conversation for the next turn.
--}
 executeToolCalls ::
     App ->
     AIStore ->
@@ -75,8 +67,6 @@ executeToolCalls app store rn turn ownedRef parts = do
                 , "args" .= snip 200 input
                 , "result" .= snip 300 (toolOutcomeValue outcome)
                 ]
-            -- The in-browser chat bypasses 'aiToolH', so record its own
-            -- provenance here (actor=InBrowserChat, browser-session sentinel).
             recordToolCall
                 (envWorkDir (appEnv app))
                 Nothing
@@ -86,8 +76,6 @@ executeToolCalls app store rn turn ownedRef parts = do
                 outcome
                 kBefore
                 gen
-            -- Broadcast the raw (un-compacted) result so the UI shows full
-            -- content; only the LLM history gets the compacted form.
             broadcast (appEvents app) $
                 EvChatToolResult tid cid (toolOutcomeValue outcome)
             compacted <- compactToolResult store (toolOutcomeValue outcome)
@@ -98,9 +86,6 @@ executeToolCalls app store rn turn ownedRef parts = do
             appendMessage store $
                 Message User [ToolResultPart (ToolResult cid nm compactedOutcome)]
 
-{- | If a tool call is a notebook-acting mutation, fold the cell it wrote into
-the owned map, so the accept gate knows which cells this turn is responsible for.
--}
 recordOwnedMutation ::
     App -> IORef (Map Int OwnedCell) -> ToolCall -> ToolOutcome -> IO ()
 recordOwnedMutation app ownedRef tc outcome =
@@ -115,7 +100,6 @@ recordOwnedMutation app ownedRef tc outcome =
                 modifyIORef' ownedRef (recordMutation (MutationEvent tool cid src health))
         _ -> pure ()
 
--- | The @cellId@ a mutation tool's outcome reports, if any.
 cellIdOf :: ToolOutcome -> Maybe Int
 cellIdOf o = case toolOutcomeValue o of
     Object m -> case KM.lookup "cellId" m of
@@ -123,7 +107,6 @@ cellIdOf o = case toolOutcomeValue o of
         _ -> Nothing
     _ -> Nothing
 
--- | Whether a mutation tool's outcome reports a clean execution.
 okOf :: ToolOutcome -> Bool
 okOf o = case toolOutcomeValue o of
     Object m -> case KM.lookup "execution" m of

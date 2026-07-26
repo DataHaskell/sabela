@@ -21,6 +21,7 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
+import qualified Data.Text as T
 import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome (..))
 
@@ -28,10 +29,6 @@ import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Discover (isOwningTool, toolCallSource)
 import Siza.Agent.Tools (renderOutcome)
 
-{- | Latest health, rendered diagnostic, and source for a cell this episode
-wrote. 'ocInvariantAlarm' is True for a compile-class ('Rejected') outcome —
-G1 makes that structurally impossible, so it flags a gate bug, not a fix-it.
--}
 data OwnedCell = OwnedCell
     { ocHealthy :: Bool
     , ocDiagnostic :: Text
@@ -39,14 +36,9 @@ data OwnedCell = OwnedCell
     , ocInvariantAlarm :: Bool
     }
 
--- | The harness's verdict when the model stops calling tools.
 data StopDecision = Stop | Reenter [CellId]
     deriving (Eq, Show)
 
-{- | Fold one (call, outcome) into the owned-cell health map. A successful
-delete un-owns the cell — the give-up and done paths must never cite or
-count a cell the model itself removed.
--}
 recordOwned ::
     (ToolCall, Either Text ToolOutcome) ->
     Map CellId OwnedCell ->
@@ -61,7 +53,6 @@ recordOwned (tc, out) m
                 m
         Nothing -> m
 
--- | See 'ocInvariantAlarm': True iff the settled outcome tag is @Rejected@.
 rejectedClass :: Either Text ToolOutcome -> Bool
 rejectedClass (Right (ToolOk (Object o))) = outcomeTagIs "Rejected" o
 rejectedClass _ = False
@@ -99,43 +90,31 @@ bestFailing owned = case newestFailing owned of
     Just oc -> "Gave up with a failing cell. Last diagnostic: " <> ocDiagnostic oc
     Nothing -> ""
 
-{- | The still-failing owned cell with the highest 'CellId' — the newest one,
-and the one a give-up must cite. Deleted cells are already absent from
-'owned' ('recordOwned' un-owns them), so this never resurrects a stale one.
--}
 newestFailing :: Map CellId OwnedCell -> Maybe OwnedCell
 newestFailing owned =
     case Map.toDescList (Map.filter (not . ocHealthy) owned) of
         ((_, oc) : _) -> Just oc
         [] -> Nothing
 
-{- | Whether the episode holds an artifact: an owned cell it wrote this task.
-"Done" may end the episode only once this holds — a passing check on an
-empty owned map is a vacuous verdict, not a deliverable (C3).
--}
 hasArtifact :: Map CellId OwnedCell -> Bool
-hasArtifact = not . Map.null
+hasArtifact = any (substantive . ocSource) . Map.elems
 
-{- | The model's own most recent draft (R3.8): the source of the highest-id
-owned cell — the candidate seed nearest the proposer, mined as generator input
-only ('candidateCellFrom' vets it), never trusted as a fact. 'Nothing' when the
-episode has written nothing to seed from.
--}
+substantive :: Text -> Bool
+substantive src =
+    not (null [l | l <- map T.strip (T.lines src), not (isPreamble l)])
+  where
+    isPreamble l =
+        T.null l
+            || "--" `T.isPrefixOf` l
+            || "{-#" `T.isPrefixOf` l
+
 latestDraft :: Map CellId OwnedCell -> Maybe Text
 latestDraft owned = ocSource . snd <$> Map.lookupMax owned
 
-{- | A stable no-progress signature for the still-red owned cells: each red cell
-paired with its rendered diagnostic, sorted. An identical signature across two
-reenter rounds means nothing changed — the gate is spinning and should stop.
--}
 redSignature :: [CellId] -> Map CellId OwnedCell -> [(CellId, Text)]
 redSignature reds owned =
     sort [(cid, ocDiagnostic oc) | cid <- reds, Just oc <- [Map.lookup cid owned]]
 
-{- | One reenter-guard step: the updated seen-set plus whether this signature has
-been seen before (no progress). Tracking a SET catches an A/B/A/B oscillation,
-which a compare-to-previous check resets on every round and never trips.
--}
 noProgressStep ::
     Set [(CellId, Text)] -> [(CellId, Text)] -> (Set [(CellId, Text)], Bool)
 noProgressStep seen sig = (Set.insert sig seen, sig `Set.member` seen)

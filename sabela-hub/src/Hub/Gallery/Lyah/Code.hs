@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Code/GHCi cell helpers for the LYAH converter, split out for the cap.
 module Hub.Gallery.Lyah.Code (codeChunks) where
 
 import Data.Text (Text)
@@ -24,14 +23,6 @@ haskellCell body = "```haskell\n" <> body <> "\n```"
 staticBlock :: [Text] -> Text
 staticBlock code = "```text\n" <> T.intercalate "\n" code <> "\n```"
 
--- ---------------------------------------------------------------------------
--- GHCi transcripts
--- ---------------------------------------------------------------------------
-
-{- | Split a GHCi transcript into chunks: one runnable @haskell@ cell per
-expression input, with meta-commands and intentional-error examples preserved as
-static @text@ blocks. The banner and bare prompts are dropped.
--}
 ghciChunks :: [Text] -> [Text]
 ghciChunks = go
   where
@@ -41,9 +32,9 @@ ghciChunks = go
             let input = stripPrompt l
                 (out, rest) = break isPrompt ls
              in classify l input out ++ go rest
-        | otherwise = go ls -- banner / stray output before the first prompt
+        | otherwise = go ls
     classify raw input out
-        | T.null (T.strip input) = [] -- bare "ghci>"
+        | T.null (T.strip input) = []
         | isMeta input || looksLikeError out = [staticBlock (raw : out)]
         | otherwise = [haskellCell input]
 

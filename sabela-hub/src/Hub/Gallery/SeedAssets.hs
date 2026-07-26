@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Repoint a notebook's @\/api\/asset@ output references (a live-editor
-endpoint the static gallery cannot serve) at public committed assets, so the
-inlined dashboard outputs render. Model viewers are remapped positionally to a
-caller-supplied list; other assets keep their name under a new base. Port of the
-@rewrite_assets@ helper from the former @seed-gallery.py@ (CSG-specific).
--}
 module Hub.Gallery.SeedAssets (
     rewriteAssets,
 ) where
@@ -17,14 +11,9 @@ import qualified Data.Text as T
 marker :: Text
 marker = "/api/asset?path="
 
--- | Apply the positional model remap, then the generic waterfall-base swap.
 rewriteAssets :: Text -> [Text] -> Text -> Text
 rewriteAssets base models = replaceWaterfall base . replaceModels base models
 
-{- | Replace each @\/api\/asset?path=…models\/\<digits\>.glb@ (in document
-order) with @\<base\>models\/\<name\>.glb@, drawing names positionally from the
-list. Matches beyond the list length are left unchanged.
--}
 replaceModels :: Text -> [Text] -> Text -> Text
 replaceModels base models = go (0 :: Int)
   where
@@ -51,10 +40,6 @@ replaceModels base models = go (0 :: Int)
                             Nothing ->
                                 before <> marker <> go i afterMarker
 
-{- | If @afterMarker@ begins a no-delimiter run ending in
-@models\/\<digits\>.glb@, return @(matched length, digits)@. The run may not
-contain whitespace, quotes, or angle brackets (the regex @[^\\s"'\<\>]@).
--}
 matchModel :: Text -> Maybe (Int, Text)
 matchModel afterMarker
     | T.null fromModels = Nothing
@@ -70,7 +55,6 @@ matchModel afterMarker
 isDelim :: Char -> Bool
 isDelim c = c `elem` (" \t\n\r\"'<>" :: String)
 
--- | @\/api\/asset?path=[examples\/data\/]waterfall\/@ → the new base URL.
 replaceWaterfall :: Text -> Text -> Text
 replaceWaterfall base =
     T.replace (marker <> "waterfall/") base

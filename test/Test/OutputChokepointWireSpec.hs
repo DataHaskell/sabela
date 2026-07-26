@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the R2-5 'Output' chokepoint by driving the REAL producers:
-'storeLargeResult', 'inlineOrStash', 'compactOutputs', 'compactMaybeText'.
-Asserts the inline @{mime,output}@ shape, the stashed handle keys, and that
-both compaction paths emit the SAME inline shape for the same text.
--}
 module Test.OutputChokepointWireSpec (spec) where
 
 import Data.Aeson (Value (..), toJSON, (.=))

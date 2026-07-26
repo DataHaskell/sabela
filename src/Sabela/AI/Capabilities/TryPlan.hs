@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure planning for the model-facing @try@ operation.
-
-The public operation accepts a small scripths program, but execution is only
-admitted when there is at most one expression statement.  Imports and ordinary
-declarations are setup for a disposable session; effectful prompt statements,
-GHCi meta-commands, Template Haskell and FFI are rejected before any candidate
-code reaches an interpreter.
--}
 module Sabela.AI.Capabilities.TryPlan (
     TrialPlan (..),
     TrialPlanError (..),
@@ -49,7 +41,6 @@ data TrialPlanError
     | TrialUnsafeSyntax Text
     deriving (Eq, Show)
 
--- | Parse and conservatively classify one trial without running anything.
 planTrial :: Text -> Either TrialPlanError TrialPlan
 planTrial raw
     | T.null (T.strip raw) = Left TrialEmpty
@@ -71,10 +62,6 @@ planTrial raw
     parsed = parseScript raw
     meta = scriptMeta parsed
 
-{- | Only a single, one-line expression with no candidate environment changes
-may use the live fast path.  Everything else is reconstructed in a fresh
-disposable session.
--}
 candidateNeedsDisposable :: TrialPlan -> Bool
 candidateNeedsDisposable plan =
     not (metaIsEmpty (trialMeta plan))
@@ -154,9 +141,6 @@ firstHazard raw meta
         , "options_ghc"
         ]
 
--- Candidate-controlled compile-time execution must be rejected even when the
--- notebook already enabled the extension. In particular, @$name@ is a splice
--- but scripths classifies it as an ordinary action rather than 'KTHSplice'.
 hasSpliceSyntax :: Text -> Bool
 hasSpliceSyntax source =
     any startsSplice (T.tails source)
@@ -169,8 +153,6 @@ hasSpliceSyntax source =
             || isAsciiUpper c
             || c == '_'
 
--- @[q|...|]@ runs the in-scope quasiquoter at compile time. Empty names also
--- cover Template Haskell expression/type quotes (@[|@ / @[||@).
 hasQuasiquoteSyntax :: Text -> Bool
 hasQuasiquoteSyntax source =
     any startsQuote (T.tails source)

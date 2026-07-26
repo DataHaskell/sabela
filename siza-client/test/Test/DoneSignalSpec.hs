@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The deliverable-green done-signal (R5.5/R5.7/R9.8) through the REAL
-'runEpisodeSeeded': fires exactly once, only after the verify channel confirms
-the deliverable, never before the write; no search/read advice after it.
--}
 module Test.DoneSignalSpec (doneSignalSpec) where
 
 import Control.Monad (forM_)
@@ -58,7 +54,6 @@ dispatchScript tc = case tcName tc of
 assistant :: Text -> Value
 assistant t = object ["role" .= ("assistant" :: Text), "content" .= t]
 
--- | A chat driver that plays the given call batches, then stops calling.
 scriptedChat :: [[ToolCall]] -> IO ([Value] -> IO (Either Text Turn))
 scriptedChat batches = do
     step <- newIORef (0 :: Int)
@@ -119,14 +114,16 @@ doneSignalSpec = describe "deliverable-green done-signal (R5.5/R5.7/R9.8)" $ do
         arStopped run `shouldBe` "done"
         length (signalMsgs run) `shouldBe` 1
 
-    -- live_test19 §39: the check did not compile, the CLI said so, and the
-    -- verify channel still told the model "the covering check passes". A
-    -- deliverable with no applicable check finishes on its artifact, and the
-    -- signal must not claim a check it never ran.
     it "never claims a passing check when none applied" $ do
         run <- runScript [[write], [readOnly], [readOnly]] (CheckNotApplicable, Nothing)
-        arStopped run `shouldBe` "done"
+        arStopped run `shouldBe` "done_unverified"
         signalMsgs run `shouldBe` []
+
+    it "reserves the done tag for a check that actually passed" $ do
+        passed <- runScript [[write]] (CheckPassed, Nothing)
+        unchecked <- runScript [[write]] (CheckNotApplicable, Nothing)
+        arStopped passed `shouldBe` "done"
+        arStopped unchecked `shouldSatisfy` (/= "done")
 
     it "discloses the no-check state instead of nagging a landed deliverable" $ do
         run <- runScript [[write], [readOnly], [readOnly]] (CheckNotApplicable, Nothing)

@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Shared fixtures and gating helpers for the disposable-materialization specs.
 module Test.Materialize.Helpers (
     requireLiveIntegration,
     scratchDirectories,
@@ -52,9 +51,6 @@ scratchDirectories :: FilePath -> IO [FilePath]
 scratchDirectories root =
     filter ("sabela-try" `isPrefixOf`) <$> listDirectory root
 
-{- | An uninstalled-package trial: tiny and dependency-free, so a real build
-(network fetch + compile) is genuinely required, but stays fast.
--}
 newPackageCandidate :: T.Text -> CandidateSpec
 newPackageCandidate pkg =
     CandidateSpec
@@ -80,9 +76,6 @@ requireCompleted action = do
 nsToSeconds :: Word64 -> Double
 nsToSeconds ns = fromIntegral ns / 1e9
 
-{- | Is a bucket marked complete, i.e. usable as a cache HIT? A shelved
-(budget-breached) bucket keeps its store but never this marker.
--}
 hasCompleteMarker :: FilePath -> FilePath -> IO Bool
 hasCompleteMarker root bucket = doesFileExist (root </> bucket </> ".complete")
 

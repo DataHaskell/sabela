@@ -8,13 +8,6 @@ import qualified Data.Text as T
 import Sabela.Output.Scatter (scatterDefs)
 import Sabela.Output.Widgets (widgetDefs)
 
-{- | Inline GHCi prelude that defines the Sabela display/widget API.
-Safe to re-run before each cell because it uses ':{ :}' blocks rather than
-':load', which would reset the entire GHCi context. Also imports the modules
-the pure-live admission/eval protocol (Sabela.Session.Query) addresses by
-full qualified name, since GHCi requires the import even when unqualified
-names are never brought into scope.
--}
 displayPrelude :: Text
 displayPrelude =
     T.unlines
@@ -73,46 +66,32 @@ displayPrelude =
         <> scatterDefs
         <> ":}\n"
 
--- | Framing understood by the atomic pure-live session primitive.
 pureAdmittedMarker, pureIOMarker, pureValueMarker, pureErrorMarker :: Text
 pureAdmittedMarker = "---SABELA_PURE_ADMITTED---"
 pureIOMarker = "---SABELA_PURE_IO---"
 pureValueMarker = "---SABELA_PURE_VALUE---"
 pureErrorMarker = "---SABELA_PURE_ERROR---"
 
--- | Bound rendering before it reaches the session's much larger run buffer.
 pureValueCap :: Int
 pureValueCap = 4000
 
--- New (valid-HTML) marker shape. Hidden by every Markdown previewer.
 mimeMarkerHtmlPrefix :: Text
 mimeMarkerHtmlPrefix = "<!-- MIME:"
 
 mimeMarkerHtmlSuffix :: Text
 mimeMarkerHtmlSuffix = " -->"
 
--- Legacy bare-marker shape, kept accepted on read for back-compat with
--- existing on-disk notebooks. Never emitted by current producers.
 mimeMarkerPrefix :: Text
 mimeMarkerPrefix = "---MIME:"
 
 mimeMarkerSuffix :: Text
 mimeMarkerSuffix = "---"
 
-{- | Unwrap one line into its inner @<mime>@ payload. Accepts the new
-@<!-- MIME:m -->@ shape and the legacy @---MIME:m---@ form so old
-saved notebooks still load.
--}
 parseMarker :: Text -> Maybe Text
 parseMarker l =
     (T.stripPrefix mimeMarkerHtmlPrefix l >>= T.stripSuffix mimeMarkerHtmlSuffix)
         <|> (T.stripPrefix mimeMarkerPrefix l >>= T.stripSuffix mimeMarkerSuffix)
 
-{- | Return the raw MIME markers as @Text@ — including the @EXPORT:@
-prefix bridge values use. 'Sabela.Handlers.Shared.partitionExports'
-splits exports from normal outputs; callers that need a typed
-'MimeType' convert via 'Sabela.Model.textToMime' on the normal half.
--}
 parseMimeOutputs :: Text -> [(Text, Text)]
 parseMimeOutputs raw =
     let ls = T.lines raw

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Evidence-backed value echo (docs/discover/search-api.md §9.2): a nullary
-pure binding's value is echoed within a pinned size\/time budget, elision
-states the exceeded bound, and the @= _@ placeholder never reaches the model
-(TRIAGE M14). Pure; the evaluator is injected by the caller.
--}
 module Sabela.AI.ValueEcho (
     echoCharBound,
     echoTimeLimitMicros,
@@ -31,15 +26,12 @@ import qualified Data.Text as T
 import Sabela.AI.Grammar.Synth (sanitizeTypeText)
 import Sabela.AI.LeakShape (leakyLine)
 
--- | Longest inlined echo value, in characters.
 echoCharBound :: Int
 echoCharBound = 80
 
--- | Longest wall-clock wait for one echo evaluation, in microseconds.
 echoTimeLimitMicros :: Int
 echoTimeLimitMicros = 500000
 
--- | The whole listing's budget (R3.9), aligned with the envelope cap.
 listingCharBudget :: Int
 listingCharBudget = 2500
 
@@ -55,11 +47,9 @@ elidedUnevaluated =
         <> tShow (echoTimeLimitMicros `div` 1000)
         <> "ms echo budget>"
 
--- | @(name, type)@ of every @name :: ty = _@ line in a bindings listing.
 holeLines :: Text -> [(Text, Text)]
 holeLines raw = [b | l <- T.lines raw, Just b <- [holeLine l]]
 
--- | Parse one @name :: ty = _@ line; 'Nothing' for any other line shape.
 holeLine :: Text -> Maybe (Text, Text)
 holeLine l = case T.breakOn " :: " l of
     (lhs, rhs)
@@ -70,18 +60,12 @@ holeLine l = case T.breakOn " :: " l of
                     Just (T.strip lhs, T.strip ty)
             _ -> Nothing
 
-{- | A type whose value is a plain constant: no function arrow and not an
-IO action — the only class whose echo is safe and meaningful.
--}
 nullaryPureType :: Text -> Bool
 nullaryPureType ty =
     not ("->" `T.isInfixOf` t) && not ("IO " `T.isPrefixOf` t) && t /= "IO"
   where
     t = T.strip ty
 
-{- | Restrict a bindings listing to the given defined names — the write-ack
-echo shows only what THIS cell defined, never the whole session.
--}
 definedListing :: [Text] -> Text -> Text
 definedListing defined raw =
     T.unlines [l | l <- T.lines raw, bindingName l `elem` defined]
@@ -89,10 +73,6 @@ definedListing defined raw =
 bindingName :: Text -> Text
 bindingName l = T.strip (fst (T.breakOn " :: " l))
 
-{- | R6.5 kernel truth: split a session bindings listing into lines whose name
-a CURRENT cell defines (live) and leftovers of replaced\/deleted cells (stale
-names, in listing order) — the session keeps them alive; the report must not.
--}
 partitionLive :: [Text] -> Text -> (Text, [Text])
 partitionLive defined raw = (T.unlines live, map bindingName stale)
   where
@@ -100,7 +80,6 @@ partitionLive defined raw = (T.unlines live, map bindingName stale)
         partition isLive [l | l <- T.lines raw, not (T.null (T.strip l))]
     isLive l = bindingName l `elem` defined
 
--- | One bounded line flagging stale session bindings; empty when none.
 staleNote :: [Text] -> Text
 staleNote [] = ""
 staleNote names =
@@ -110,21 +89,14 @@ staleNote names =
         <> (if T.length (T.intercalate ", " names) > 90 then "…" else "")
         <> "\n"
 
--- | The ONE bounded statement of a session with nothing writable to list.
 noWritableBindings :: Text
 noWritableBindings = "no writable bindings in the live session yet."
 
--- | A pasteable binding name: lowercase\/underscore head, identifier chars.
 writableName :: Text -> Bool
 writableName n =
     maybe False (\(c, _) -> isLower c || c == '_') (T.uncons n)
         && T.all (\c -> isAlphaNum c || c `elem` ("_'" :: String)) n
 
-{- | Reduce a raw session listing to writable @name :: Type@ logical lines
-(R3.10): wrapped continuations rejoin their binding, types pass the same
-name-reduction as hit signatures, and a leak-shaped value is dropped rather
-than dumped. Anything unwritable is omitted, never shown.
--}
 normalizeListing :: Text -> Text
 normalizeListing raw =
     T.unlines
@@ -133,7 +105,6 @@ normalizeListing raw =
         , Just l <- [renderLogical logical]
         ]
 
--- | Rejoin physical lines that continue the previous binding's line.
 joinContinuations :: [Text] -> [Text]
 joinContinuations = go . filter (not . T.null . T.strip)
   where
@@ -148,7 +119,6 @@ isBindingHead :: Text -> Bool
 isBindingHead l = case T.breakOn " :: " l of
     (n, rest) -> not (T.null rest) && writableName (T.strip n)
 
--- | One writable @name :: ty [= value]@ line, or 'Nothing' when unwritable.
 renderLogical :: Text -> Maybe Text
 renderLogical l
     | not (isBindingHead l) = Nothing
@@ -166,10 +136,6 @@ renderLogical l
         | leakyLine value = ""
         | otherwise = " = " <> value
 
-{- | The @list_bindings@ report over the normalised listing: live bindings
-echoed, stale ones flagged in one bounded line, and a session with nothing
-writable answered by 'noWritableBindings' — internals never cross (R3.10).
--}
 liveBindingsReport :: [Text] -> (Text -> Maybe Text) -> Text -> Text
 liveBindingsReport defined echo raw
     | T.null (T.strip listed) = noWritableBindings
@@ -178,11 +144,6 @@ liveBindingsReport defined echo raw
     (live, stale) = partitionLive defined (normalizeListing raw)
     listed = echoListing echo live <> staleNote (filter writableName stale)
 
-{- | Rewrite a bindings listing so @= _@ is unrepresentable: a nullary pure
-binding echoes its value within 'echoCharBound' (elision names the exceeded
-bound), a function or IO binding answers with its type alone, and the whole
-listing stays within 'listingCharBudget'.
--}
 echoListing :: (Text -> Maybe Text) -> Text -> Text
 echoListing echo raw = boundListing (T.unlines (map line (T.lines raw)))
   where
@@ -200,7 +161,6 @@ echoListing echo raw = boundListing (T.unlines (map line (T.lines raw)))
             | T.length v > echoCharBound -> elidedOverSize
             | otherwise -> v
 
--- | Keep whole lines within 'listingCharBudget', disclosing what was cut.
 boundListing :: Text -> Text
 boundListing t
     | T.length t <= listingCharBudget = t

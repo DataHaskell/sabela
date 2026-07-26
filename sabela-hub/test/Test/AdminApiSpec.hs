@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Admin curation API: admin-gating (non-admin / no-session → 403 JSON),
-the config-anchored Origin CSRF check on mutations, and the JSON wire shapes
-('AdminApiWireSpec'). Driven through @adminDispatch@ as a standalone WAI
-'Application' (not through @hubApp@, whose signature changes only at step 12).
--}
 module Test.AdminApiSpec (spec) where
 
 import Control.Exception (SomeException, finally, try)
@@ -40,7 +35,6 @@ import System.FilePath ((</>))
 import Test.Hspec
 import Test.MockEcs (mockEcsBackend, newMockState, testConfig)
 
--- | testConfig's GOOGLE_REDIRECT_URI → canonical origin for the CSRF check.
 canonicalOrigin :: BL.ByteString
 canonicalOrigin = "http://localhost:8080"
 
@@ -74,13 +68,11 @@ withAdminApp act = do
 cookieHdr :: BL.ByteString -> Header
 cookieHdr sid = ("Cookie", "_sabela_session=" <> BL.toStrict sid)
 
--- | A GET with the given session cookie.
 getReq :: BL.ByteString -> Text -> WT.Session SResponse
 getReq sid path =
     WT.request $
         setPath defaultRequest{requestHeaders = [cookieHdr sid]} (TE.encodeUtf8 path)
 
--- | A body-bearing mutation with optional Origin header.
 mutReq ::
     Method ->
     Text ->

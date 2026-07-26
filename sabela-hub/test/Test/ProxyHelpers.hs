@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | App-construction helpers shared by 'Test.ProxySpec' and
-'Test.ProxyRoutesSpec' (split out for the module-size cap).
--}
 module Test.ProxyHelpers (
     makeApp,
     makeAppWithStore,
@@ -57,7 +54,6 @@ makeAppWithStore = do
     app <- hubApp sm store users gallery mgr
     pure (app, store)
 
--- | App + its share and gallery stores (for download/feature tests).
 makeAppFull :: IO (Application, ShareStore, GalleryStore)
 makeAppFull = do
     ms <- newMockState
@@ -73,9 +69,6 @@ makeAppFull = do
     app <- hubApp sm store users gallery mgr
     pure (app, store, gallery)
 
-{- | App with a "user@x" session and the data root pointed at @root@ (so a
-fork's file write lands in a temp dir, not /mnt/sabela).
--}
 makeAppForkable :: FilePath -> IO (Application, ShareStore, GalleryStore)
 makeAppForkable root = do
     ms <- newMockState
@@ -97,7 +90,6 @@ makeAppForkable root = do
     app <- hubApp sm store users gallery mgr
     pure (app, store, gallery)
 
--- | An app with an admin ("admin@x") and a non-admin ("user@x") session.
 makeAppSess :: IO Application
 makeAppSess = do
     ms <- newMockState

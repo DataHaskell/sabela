@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The bounded absent-known tail (R7-T2, section 7) and the in-budget card
-block (section 10): at every limit at most two absent-known cross-package
-rows render, counts reconcile, and the card fits inside 2,500 chars.
--}
 module Test.DiscoverAbsentBoundSpec (discoverAbsentBoundSpec) where
 
 import Data.Aeson (Value (..))
@@ -34,9 +30,6 @@ env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
-{- | The maxBy shape: one session-installed exact hit plus six absent-known
-exact hits across six not-installed packages (hoogle tier).
--}
 installedMaxBy :: DHit
 installedMaxBy =
     (mkHit "maxBy" "Frame.Ops" "frameio")
@@ -99,7 +92,6 @@ discoverAbsentBoundSpec = describe "bounded absent-known tail + card budget (R7-
                 [v] -> envelopeChars v `shouldSatisfy` (<= envelopeCharBudget)
                 other -> expectationFailure ("expected one card, got " ++ show (length other))
 
--- | The R3.4/R3.5 violations of one limit's envelope.
 violationsAt :: Int -> [Text]
 violationsAt limit =
     capViol ++ reconcileViol ++ budgetViol

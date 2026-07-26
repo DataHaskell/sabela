@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Cell execution: build the GHCi script for a 'Cell', run it through the
-'SessionBackend', store bridge exports, and turn the raw stdout/stderr into
-a structured 'RunResult' + parsed 'CellError's that 'Sabela.Handlers.Plan'
-broadcasts to the frontend.
--}
 module Sabela.Handlers.Exec (
     runAndBroadcast,
     execCell,
@@ -106,12 +101,6 @@ execCellWith app cell backend = do
 isReplCrash :: Text -> Bool
 isReplCrash err = "repl failed" `T.isInfixOf` err
 
-{- | Render a cell to a GHCi script, prepending the widget/bridge preamble.
-With JSON diagnostics on (GHC ≥ 9.8), each block is tagged with a
-@{\-# LINE … "sabela-cell-N" #-\}@ pragma so GHC reports cell-relative lines and
-the cell file regardless of the preamble; otherwise the untagged renderer keeps
-the pre-9.8 @<interactive>@ output the textual 'parseErrors' expects.
--}
 buildGhciScript :: Bool -> App -> Cell -> IO Text
 buildGhciScript jsonOn app cell = do
     cellWidgets <- getWidgetValues (appWidgets app) (cellId cell)
@@ -129,12 +118,6 @@ storeBridgeExports app rawOut = do
     forM_ exports $ \(name, val) ->
         setBridgeValue (appBridge app) name (T.strip val)
 
-{- | Turn raw stdout\/stderr into a 'RunResult' + structured errors. With JSON
-diagnostics on, stderr is NDJSON: errors and warnings are split by severity, and
-the holistic 'rrError' is rebuilt from the error messages plus any non-JSON
-residual (so warnings never read as a failure). Off, the textual 'parseErrors'
-path is used unchanged and there are no warnings.
--}
 parseCellResult :: Bool -> Int -> Text -> Text -> IO (RunResult, [CellError])
 parseCellResult jsonOn cid rawOut rawErr = do
     let (_, normalItems) = partitionExports (parseMimeOutputs rawOut)
@@ -153,10 +136,6 @@ parseCellResult jsonOn cid rawOut rawErr = do
                 let errs = parseErrors rawErr
                  in (RunResult cid outputs (classifyError errs rawErr) [], errs)
 
-{- | Resolve each @Perhaps use `name'@ suggestion in the result's messages to
-the cell that defines @name@. Skips the notebook-wide def scan unless a message
-actually carries a suggestion, so a clean or ordinary error pays nothing.
--}
 annotateSuggestions ::
     App -> (RunResult, [CellError]) -> IO (RunResult, [CellError])
 annotateSuggestions app res@(rr, errs)
@@ -171,7 +150,6 @@ annotateSuggestions app res@(rr, errs)
   where
     msgs = maybe [] pure (rrError rr) ++ map ceMessage errs
 
--- | A @name -> defining cell@ lookup over the current notebook's cells.
 defSiteResolver :: App -> IO (Text -> Maybe Int)
 defSiteResolver app = do
     nb <- readNotebook (appNotebook app)
@@ -183,23 +161,12 @@ defSiteResolver app = do
                 ]
     pure (`M.lookup` defMap)
 
-{- | Prefix a diagnostic's message with its cell-relative location for the
-holistic @error@ display, e.g. @cell 12, line 1: Variable not in scope …@.
-The error's own line is otherwise invisible in the joined text (GHC's hints
-abbreviate other definition sites to a bare @(line N)@), and the cell number
-matches the badge the editor shows, so a notebook of single-line cells no longer
-reads as "line 1" everywhere.
--}
 locateError :: Int -> CellError -> Text
 locateError cid e = "cell " <> tShow cid <> linePart <> ": " <> ceMessage e
   where
     linePart = maybe "" (\l -> ", line " <> tShow l) (ceLine e)
     tShow = T.pack . show
 
-{- | Decide whether raw stderr counts as a cell failure. Template Haskell
-chatter and linker noise (macOS @ld: warning:@ lines emitted when GHCi
-links native code) are harmless and never flag the cell.
--}
 classifyError :: [CellError] -> Text -> Maybe Text
 classifyError errs rawErr
     | null errs && isTemplateHaskellOutput rawErr = Nothing

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | An introspection result that hits GHC's "hidden package" wall (an installed
-but unexposed library) should carry the same @-- cabal:@ guidance a failed cell
-gets, so discovery tells the model to declare the dependency instead of falling
-back to hand-rolled code.
--}
 module Test.QueryGuidanceSpec (spec) where
 
 import Data.Aeson (Value, encode)
@@ -16,7 +11,6 @@ import Sabela.AI.Capabilities.Query (guidedOutcome)
 import Sabela.AI.Types (ToolOutcome (..))
 import Test.Hspec
 
--- | A real GHC 9.12 hidden-package wall for @:browse DataFrame@, abbreviated.
 hiddenResult :: Text
 hiddenResult =
     "Could not load module \8216DataFrame\8217.\n\

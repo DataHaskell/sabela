@@ -42,7 +42,6 @@ toolRes n c = object ["role" .= ("tool" :: Text), "tool_name" .= n, "content" .=
 rules :: [Value] -> [Text]
 rules = map liRule . lintMessages
 
--- | A well-formed episode: every call answered once, harness channels exempt.
 clean :: [Value]
 clean =
     [ sys "Pair on a live notebook."
@@ -54,7 +53,6 @@ clean =
     , asst "Done: dateDays = 100." []
     ]
 
--- | Real defect shapes from the 2026-07-18 bench transcripts.
 httpDump :: Text
 httpDump =
     "transport error: HttpExceptionRequest Request { host = \"localhost\" \

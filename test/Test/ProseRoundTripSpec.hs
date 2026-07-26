@@ -29,8 +29,6 @@ prose t = Cell 0 ProseCell ST.Haskell t [] Nothing False
 code :: Text -> Cell
 code t = Cell 0 CodeCell ST.Haskell t [] Nothing False
 
--- Full on-disk round trip at the segment level: serialize cells to
--- markdown, then parse + split back into segments.
 roundTrip :: [Cell] -> [Segment]
 roundTrip = splitProseSegments . parseMarkdown . reassemble . cellsToSegments
 
@@ -47,10 +45,6 @@ spec = describe "markdown + MIME round trip" $ do
         proseTexts (roundTrip [prose "A", prose "B", prose "C"])
             `shouldBe` ["A", "B", "C"]
 
-    -- NB: scripths' own round trip adds edge whitespace to a lone Prose
-    -- segment (parseMarkdown does T.unlines; code fences add a blank
-    -- line). That is pre-existing behavior outside this fix's scope, so
-    -- these two cases assert content modulo surrounding whitespace.
     it "preserves prose boundaries around a code cell" $ do
         let segs = roundTrip [prose "Intro", code "x = 1", prose "Outro"]
         map T.strip (proseTexts segs) `shouldBe` ["Intro", "Outro"]

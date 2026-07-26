@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | E2 the seam between "regrounded" and "keep repairing". A failing in-grammar
-cell routes one of two ways: a type error inside an in-grammar construct keeps
-repairing (it never abandons the grammar), while a not-in-scope or no-instance
-error naming a token the grammar did not offer is grammar-implicated and routes
-to discover/hole-fits. Abandonment is gated on grammar-implicated errors only.
--}
 module Test.GrammarRouteSpec (grammarRouteSpec) where
 
 import Data.Text (Text)

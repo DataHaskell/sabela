@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Round-trip and law tests for the typed 'CellResult' carving (R2-2,
-@docs/siza-redesign.md@ §1.2). These drive the REAL encoders
-('Data.Aeson.toJSON' / 'fromJSON' of 'CellResult' and 'CellOutcome') and
-the REAL pure mapper 'toCellResult', fed the actual @executeCell@ @Left@
-strings exported from "Sabela.AI.Capabilities.Edit.Run" — closing the
-run-1 gap where the wire was pinned against hand-reconstructed Aeson.
--}
 module Test.CellResultWireSpec (spec) where
 
 import Data.Aeson (FromJSON, ToJSON, Value (..), fromJSON, toJSON)
@@ -32,7 +25,6 @@ import Sabela.Model (
  )
 import Test.Hspec
 
--- | Round-trip a value through the real ToJSON/FromJSON pair.
 roundTrips :: (Eq a, FromJSON a, Show a, ToJSON a) => a -> Expectation
 roundTrips x = case fromJSON (toJSON x) of
     Success y -> y `shouldBe` x
@@ -57,7 +49,6 @@ sampleOutput = OutputItem MimePlain "hi"
 cerr :: CellError
 cerr = bareCellError (Just 1) (Just 2) "boom"
 
--- | The legacy ok-derivation, reproduced to assert the law against it.
 legacyOk :: ExecutionResult -> Bool
 legacyOk er = null (erErrors er) && isNothing (erError er)
 

@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | A general covering verifier for symbolic-regression-shaped tasks: extract
-the arithmetic expression a run reported, evaluate it over the sample points,
-and recompute the total squared error. The model PROPOSES an expression; this
-VETS it by recomputation, so any zero-error expression passes and a wrong one
-fails — no overfitting to a single known answer string.
-
-The accepted grammar is @x@, numeric constants, @+@, @-@, @*@, @^@ and
-parentheses (the task's search grammar plus a tolerant superset), so an
-equivalent winner such as @x^2@ is accepted alongside @(x*x)@.
--}
 module Eval.FitCheck (
     FitOutcome (..),
     fitOutcome,
@@ -24,13 +14,12 @@ module Eval.FitCheck (
 
 import Data.Char (isAlpha, isAlphaNum, isDigit, isSpace)
 import Data.List (minimumBy)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.Read (readMaybe)
 
--- | An arithmetic expression over the single variable @x@.
 data Expr
     = X
     | Num Double
@@ -41,21 +30,12 @@ data Expr
     | Pow Expr Expr
     deriving (Eq, Show)
 
-{- | The three-valued verify verdict (R5-T5): confirmation and refutation both
-carry the recomputed error plus the expression it was recomputed FROM, so a
-denial always has positive evidence; anything unextractable is unconfirmed.
--}
 data FitOutcome
     = FitConfirmed Double Text
     | FitRefuted Double Text
     | FitUnconfirmed Text
     deriving (Eq, Show)
 
-{- | Vet a run's output by recomputation over every parseable candidate the
-text carries, format-agnostically. Any candidate within @tol@ confirms; else
-the best non-trivial x-expression refutes with its recomputed error; a text
-with neither routes to unconfirmed — never to a fabricated denial.
--}
 fitOutcome :: [(Double, Double)] -> Double -> Text -> FitOutcome
 fitOutcome points tol out
     | Just (err, e) <- best (const True) = FitConfirmed err e
@@ -76,18 +56,11 @@ fitOutcome points tol out
         [] -> Nothing
         cs -> Just (minimumBy (comparing fst) cs)
 
-{- | Refutation-grade candidates must be a genuine function of @x@ — an @x@
-with structure — so a stray prose @x@ can never manufacture a denial.
--}
 nonTrivialX :: Text -> Bool
 nonTrivialX c =
     T.any (\ch -> ch == 'x' || ch == 'X') c
         && T.any (\ch -> ch `elem` ("+-*^" :: String) || isDigit ch) c
 
-{- | The recomputed total squared error of a run's reported expression over the
-sample (the best candidate), or 'Left' when the output carries no parseable
-expression. Trusts the sample, never the model's self-reported error number.
--}
 fitResult :: [(Double, Double)] -> Text -> Either Text Double
 fitResult points out = case errs of
     [] -> Left "no parseable arithmetic expression in the reported output"
@@ -99,18 +72,11 @@ fitResult points out = case errs of
         , Just e <- [parseExpr c]
         ]
 
-{- | Does the run's reported expression fit the sample within @tol@ squared
-error? A missing or unparseable expression never fits.
--}
 fitsSample :: [(Double, Double)] -> Double -> Text -> Bool
 fitsSample points tol out = case fitOutcome points tol out of
     FitConfirmed _ _ -> True
     _ -> False
 
-{- | Every parseable expression candidate in a text, format-agnostically:
-maximal runs of grammar characters, rejected when glued inside a word (the
-@x@ inside \"expression\"), then balance-trimmed of unmatched parentheses.
--}
 extractCandidates :: Text -> [Text]
 extractCandidates out =
     [ c
@@ -129,7 +95,6 @@ extractCandidates out =
         (Just n, r : _) -> isAlpha n && isAlphaNum r
         _ -> False
 
--- | Maximal grammar-character runs with their adjacent boundary characters.
 runs :: String -> [(Maybe Char, String, Maybe Char)]
 runs = go Nothing
   where
@@ -144,7 +109,6 @@ runs = go Nothing
     headMay [] = Nothing
     exprChar c = isDigit c || c `elem` ("xX.+-*^() " :: String)
 
--- | Drop unmatched leading @(@ and trailing @)@ so tuple fragments parse.
 balanceTrim :: Text -> Text
 balanceTrim t
     | opens > closes
@@ -158,12 +122,6 @@ balanceTrim t
     opens = T.count "(" t
     closes = T.count ")" t
 
-{- | The expression a run printed, taken from the text after the word
-@expression@: skip a leading @:@/@=@/@is@, then keep the leading run of
-grammar characters (@x@, digits, @. + - * ^ ( )@, spaces). That stops cleanly at
-the @, total squared error …@ or @ with error …@ tail without a fixed delimiter
-list. 'Nothing' when absent or empty.
--}
 extractExpression :: Text -> Maybe Text
 extractExpression out
     | T.null rest = Nothing
@@ -177,13 +135,11 @@ extractExpression out
     stripIs s = fromMaybe s (T.stripPrefix "is " s)
     exprChar c = isDigit c || c `elem` ("xX.+-*^() " :: String)
 
--- | Parse the whole text as one expression, or 'Nothing' if it does not.
 parseExpr :: Text -> Maybe Expr
 parseExpr t = case tokenize t >>= parseSum of
     Just (e, []) -> Just e
     _ -> Nothing
 
--- | Evaluate an expression at a given @x@.
 evalAt :: Double -> Expr -> Double
 evalAt x = go
   where

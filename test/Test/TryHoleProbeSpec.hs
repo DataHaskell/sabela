@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G3 task 4 against a REAL kernel and cabal build (same fixture discipline
-as 'Test.CompileGateSpec'): a hole-bearing candidate the MODEL submits to
-@try@ is admitted as typecheck-only — the compiler's fits come back as an
-answer, the notebook is untouched, and nothing the candidate would have
-printed is ever printed, because nothing is evaluated. Skipped when cabal is
-not on PATH.
--}
 module Test.TryHoleProbeSpec (spec) where
 
 import Control.Exception (bracket)
@@ -55,10 +48,6 @@ textField k v = case field k v of
     Just (String s) -> Just s
     _ -> Nothing
 
-{- | Run one test against a fresh fixture in its own temp dir, releasing the
-kernel afterwards so a leaked GHCi cannot hold its nursery for the rest of
-the suite.
--}
 withFixture ::
     String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a
 withFixture label action =
@@ -94,10 +83,6 @@ cellCount app = length . nbCells <$> readNotebook (appNotebook app)
 generationOf :: App -> IO Int
 generationOf app = readIORef (ebGeneration (appEvents app))
 
-{- | A hole beside an effect that WOULD announce itself if anything ran. The
-hole makes the candidate uncompilable, so the effect is unreachable — the
-probe's answer must show that, not the marker.
--}
 sideEffectingProbe :: Text
 sideEffectingProbe =
     "sabelaProbe = (putStrLn \"SABELA_HOLE_PROBE_RAN\" >> print (_ :: Int))"
@@ -118,8 +103,6 @@ spec = describe "G3 try admits a hole-bearing candidate as typecheck-only" $ do
             field "evaluated" out `shouldBe` Just (Bool False)
             field "error" out `shouldBe` Nothing
 
-            -- The answer names the goal type; the producers list is whatever
-            -- GHC reported for it, stated plainly either way.
             case field "answer" out of
                 Just (Array answers) -> do
                     length answers `shouldSatisfy` (> 0)
@@ -127,9 +110,6 @@ spec = describe "G3 try admits a hole-bearing candidate as typecheck-only" $ do
                         `shouldSatisfy` T.isInfixOf "Int"
                 _ -> expectationFailure "expected an answer array"
 
-            -- Nothing ran: the marker the candidate would have printed never
-            -- reaches stdout (the diagnostic quotes the source, which is the
-            -- compiler echoing it, not the candidate running).
             textField "stdout" out `shouldBe` Just ""
             textField "diagnostic" out
                 `shouldSatisfy` maybe False (T.isInfixOf "Found hole")

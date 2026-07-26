@@ -52,14 +52,9 @@ intProp d = object ["type" .= ("integer" :: Text), "description" .= d]
 boolProp :: Text -> Value
 boolProp d = object ["type" .= ("boolean" :: Text), "description" .= d]
 
-{- | The model-facing tool catalogue. The Bool is caller compatibility only:
-the @SABELA_CAPABILITY_SEARCH@ lever gates enrichment inside @discover@,
-not the catalogue, so both arms see one discovery tool.
--}
 catalogueWith :: Bool -> [Value]
 catalogueWith _ = baseCatalogue
 
--- | The eval-harness catalogue (constant; see 'catalogueWith' for the lever).
 catalogue :: IO [Value]
 catalogue = pure baseCatalogue
 
@@ -152,7 +147,6 @@ baseCatalogue =
         (props [] [])
     ]
 
--- | Build an object schema from (name, schema) properties plus a required list.
 props :: [(Text, Value)] -> [Text] -> Value
 props ps required =
     object
@@ -161,10 +155,6 @@ props ps required =
         , "required" .= required
         ]
 
-{- | Dispatch through the 'routeCall' boundary: an offered name can never be
-answered "unknown tool" for its argument shape (P4/M8); a still-wrong shape
-answers one hint naming the wrapper.
--}
 dispatch :: Conn -> Text -> ToolCall -> IO (Either Text ToolOutcome)
 dispatch conn base tc = case routeCallWith offeredArgKeys tc of
     RouteBadArgs hint ->
@@ -177,14 +167,8 @@ dispatch conn base tc = case routeCallWith offeredArgKeys tc of
     RouteTool tn a -> reconcile =<< callTool conn base tn a
     RouteUnknown name -> pure (Left (unknownToolMsg name))
   where
-    -- R6.1: an executing write ack settles through await_idle before any
-    -- consumer (health gate, sampling, markers) reads it as an outcome.
     reconcile = reconcileWrite (callTool conn base)
 
-{- | Derived from the same catalogue values the model is offered, so the
-valid-list can never drift from the catalogue again (a drifted list once
-listed the very tool it was rejecting).
--}
 unknownToolMsg :: Text -> Text
 unknownToolMsg name =
     "unknown tool '"
@@ -194,14 +178,9 @@ unknownToolMsg name =
         <> "."
         <> installSteer name
 
--- | The function names in the offered catalogue.
 offeredNames :: [Text]
 offeredNames = map fst offeredArgKeys
 
-{- | Every offered tool's (name, (property keys, required keys)), derived
-from the same catalogue values the model sees, so the garbled-name rescue
-fingerprint can never drift from the advertised schemas.
--}
 offeredArgKeys :: [(Text, ([Text], [Text]))]
 offeredArgKeys =
     [ (n, schemaKeys f)
@@ -210,7 +189,6 @@ offeredArgKeys =
     , Just (String n) <- [KM.lookup "name" f]
     ]
 
--- | A function schema's property-key and required-key lists.
 schemaKeys :: KM.KeyMap Value -> ([Text], [Text])
 schemaKeys f = case KM.lookup "parameters" f of
     Just (Object p) -> (propKeys p, reqKeys p)
@@ -223,9 +201,6 @@ schemaKeys f = case KM.lookup "parameters" f of
         Just (Array rs) -> [r | String r <- foldr (:) [] rs]
         _ -> []
 
-{- | Fill the cell_type/language defaults the eval model often omits. Placement
-needs no default: the server appends every new cell.
--}
 withInsertDefaults :: Value -> Value
 withInsertDefaults (Object o) =
     Object $
@@ -235,10 +210,6 @@ withInsertDefaults (Object o) =
     def k val m = if KM.member k m then m else KM.insert k val m
 withInsertDefaults v = v
 
-{- | Render a tool outcome for the model's context. Execution outputs are
-distilled to a bounded, escape-stripped preview ('distillOutcome', R10-T5)
-before encoding; 'trunc' stays as an absolute backstop.
--}
 renderOutcome :: Either Text ToolOutcome -> Text
 renderOutcome (Left e) = "transport error: " <> e
 renderOutcome (Right (ToolOk v)) = trunc (enc (distillOutcome v))
@@ -250,17 +221,6 @@ enc = TE.decodeUtf8 . LBS.toStrict . encode
 trunc :: Text -> Text
 trunc t = if T.length t > 6000 then T.take 6000 t <> " …[truncated]" else t
 
-{- | The tool surface as the system prompt lists it, GENERATED from the
-catalogue itself so the two can never disagree: @describe_function@ was
-implemented, dispatched and catalogued in the product chat while absent from
-this list, so no episode could ever call it and its zero usage read as a
-verdict on the tool.
-
-Groups are the notebook's own nouns — cells, the session, and finding things —
-because that is how a caller decides which tool it wants. The one-line
-descriptions carry the rules that used to be prose: a tool that says it runs
-on write does not need a separate rule saying writes run.
--}
 toolSurfacePrompt :: Text
 toolSurfacePrompt =
     T.unlines $
@@ -275,8 +235,6 @@ toolSurfacePrompt =
               ]
                 <> [""]
     synopsis n = firstSentence (fromMaybe "" (lookup n catalogueDescriptions))
-    -- A sentence break is ". ", except after an abbreviation: splitting
-    -- naively truncated find_cells_by_content at "for a substring (e.g."
     firstSentence d = go (T.splitOn ". " d)
       where
         go [] = d
@@ -286,7 +244,6 @@ toolSurfacePrompt =
             | otherwise = s <> "."
         endsAbbrev s = any (`T.isSuffixOf` s) ["e.g", "i.e", "etc", "cf", "vs"]
 
--- | Which tools belong to which group, in the order a caller meets them.
 toolGroups :: [(Text, [Text])]
 toolGroups =
     [
@@ -311,7 +268,6 @@ toolGroups =
         )
     ]
 
--- | Every catalogued tool's (name, description), read back off the catalogue.
 catalogueDescriptions :: [(Text, Text)]
 catalogueDescriptions =
     [ (n, d)
@@ -321,13 +277,6 @@ catalogueDescriptions =
     , Just (String d) <- [KM.lookup "description" f]
     ]
 
-{- | The human-facing surface listing behind @siza tools@: the same groups the
-system prompt shows, with each tool's FULL description and its arguments.
-
-Generated from the one catalogue, so what an operator reads and what an agent
-is offered cannot drift — the drift is how @describe_function@ stayed absent
-from the agent's list while present everywhere else.
--}
 toolSurfaceHelp :: Text
 toolSurfaceHelp =
     T.unlines $
@@ -351,10 +300,6 @@ toolSurfaceHelp =
     render p True = "<" <> p <> ">"
     render p False = "[" <> p <> "]"
 
-{- | Every catalogued tool's (name, (property keys, required keys)), read back
-off the catalogue so the help can never advertise an argument the schema does
-not carry.
--}
 catalogueArgs :: [(Text, ([Text], [Text]))]
 catalogueArgs =
     [ (n, (props', req))

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R5-T5 verify honesty at the loop seam: uncheckable injects "not yet
-confirmed — here is what to run" (never a failure claim); a denial needs
-'CheckFailed'; a satisfied contract emits the one done-signal R5-T4 consumes.
--}
 module Test.VerifyHonestySpec (spec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -58,8 +54,6 @@ spec = describe "verify-channel honesty (R5-T5, three-valued)" $ do
             run <- runEpisodeWith openBudget driver "task" 10
             let verifies = channelContents "verify" (arTranscript run)
             verifies `shouldSatisfy` (not . null)
-            -- The first injection carries the full guidance; R5-T4 dedups the
-            -- replays into back-references, which must still never claim failure.
             head verifies `shouldSatisfy` T.isInfixOf "not yet confirmed"
             head verifies `shouldSatisfy` T.isInfixOf "print the best expression"
             mapM_
@@ -110,7 +104,6 @@ spec = describe "verify-channel honesty (R5-T5, three-valued)" $ do
                     ]
                     (pure (CheckFailed, Nothing))
             run <- runEpisodeWith openBudget driver "task" 10
-            -- No done-signal, and no denial injected before the model stopped.
             let msgs = arTranscript run
                 firstStopIx = length (takeWhile (not . isDoneTurnMsg) msgs)
                 before = take firstStopIx msgs
@@ -150,7 +143,6 @@ isDoneTurnMsg (Object o) =
         && KM.lookup "content" o == Just (String "ok")
 isDoneTurnMsg _ = False
 
--- | Contents of tool-channel messages with the given tool_name.
 channelContents :: Text -> [Value] -> [Text]
 channelContents name msgs =
     [ c

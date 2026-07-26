@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Shared fixture for the write-ack invariant specs: a real @executeTool@
-dispatch over an inert kernel backend, with a barrier-controlled slow
-reactive notebook and a fast one. Mirrors @Test.WriteAckSpec@'s fixture so
-the schedule/shape properties drive the same production seam.
--}
 module Test.WriteAckFixture (
     withAckEnv,
     mkFixture,
@@ -44,7 +39,6 @@ import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), broadcast, readNotebook)
 import Sabela.State.SessionManager (setHaskellSession)
 
--- | 1s ack deadline + zero repair budget, restored after each example.
 withAckEnv :: IO a -> IO a
 withAckEnv =
     bracket_
@@ -85,8 +79,6 @@ inertBackend = do
 mkFixture :: IO (App, AIStore.AIStore)
 mkFixture = do
     mgr <- newManager defaultManagerSettings
-    -- G1's compile gate always reconstructs a disposable session, which
-    -- (like the live kernel) needs the sabela-notebook overlay to spawn.
     app <- newApp "." Set.empty (Just mgr) Nothing [buildTimeSupportDir]
     backend <- inertBackend
     setHaskellSession (appSessions app) (Just backend)
@@ -99,9 +91,6 @@ mkFixture = do
     store <- AIStore.newAIStore cfg mgr
     pure (app, store)
 
-{- | As 'mkFixture', but the backend's @sbBusy@ is a swappable sampler, so a
-spec can script a post-settle release tail or a persistent foreign busy.
--}
 mkScriptedFixture :: IO (App, AIStore.AIStore, IORef (IO Bool))
 mkScriptedFixture = do
     (app, store) <- mkFixture
@@ -112,9 +101,6 @@ mkScriptedFixture = do
         (Just backend{ST.sbBusy = join (readIORef busyRef)})
     pure (app, store, busyRef)
 
-{- | A reactive notebook whose forced run completes (broadcasts the cell's
-result) only once the barrier fills — a deliberately long-running cell.
--}
 slowRn :: App -> MVar () -> ReactiveNotebook
 slowRn app barrier =
     (fastRn app)
@@ -123,7 +109,6 @@ slowRn app barrier =
             broadcast (appEvents app) (EvCellResult cid [] Nothing [] [])
         }
 
--- | A reactive notebook whose forced run settles almost immediately.
 fastRn :: App -> ReactiveNotebook
 fastRn app =
     ReactiveNotebook

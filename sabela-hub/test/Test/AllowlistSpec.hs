@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Signup allowlist + verified-email JWT extraction specs.
 module Test.AllowlistSpec (spec) where
 
 import Control.Exception (SomeException, try)
@@ -21,25 +20,18 @@ import System.Directory (
 import System.FilePath ((</>))
 import Test.Hspec
 
-{- | header.payload.sig with a fixed header; the payload is base64url JSON.
-No signature check — the token comes straight from Google over HTTPS.
--}
 mkJwt :: Text -> Text
 mkJwt payload = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9." <> payload <> ".sig"
 
--- {"email":"Alice@Example.com","email_verified":true}
 verifiedPayload :: Text
 verifiedPayload = "eyJlbWFpbCI6IkFsaWNlQEV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWV9"
 
--- {"email":"alice@example.com","email_verified":false}
 unverifiedPayload :: Text
 unverifiedPayload = "eyJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlfQ"
 
--- {"email":"alice@example.com"}
 missingClaimPayload :: Text
 missingClaimPayload = "eyJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIn0"
 
--- {"email":"alice@example.com","email_verified":"true"}
 stringTruePayload :: Text
 stringTruePayload = "eyJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOiJ0cnVlIn0"
 

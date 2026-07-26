@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the execute_cell run-target contract. A forced run (the AI
-@execute_cell@ tool) executes an existing cell even when clean; an unforced
-run (browser / reactive flush) skips a clean code cell; a missing cell never
-runs. And execute_cell fails fast with a clear, id-naming message instead of
-waiting out the 130s listener on a result event that will never broadcast.
--}
 module Test.ExecuteCellSpec (spec) where
 
 import Sabela.AI.Capabilities.Edit.Run (missingCellError)

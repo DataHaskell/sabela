@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R10-T1 general invariants: the hole-fit / type-directed repair on a
-self-authored red cell, decided by the diagnostic CLASS alone (never a library
-name). Over a synthetic catalogue of INVENTED types (Zephyr/Cumulus/Nimbus)
-every @Found hole: _ :: T@ classifies identically, yields a candidate per named
-fit, and — for an EMPTY-fit hole — still yields a type-directed candidate from
-the queried producers. The keep/revert gate is 'acceptRepair' (compiler-as-
-verifier); a sibling regression is reverted. Grow generators, not control flow.
--}
 module Test.HoleDirectedInvariantSpec (holeDirectedInvariantSpec) where
 
 import Control.Monad (forM_)
@@ -31,15 +23,12 @@ import Siza.Agent.RepairTiers (
     tierCandidates,
  )
 
--- | Invented types, never a real library — applicability is by class, not name.
 synTypes :: [Text]
 synTypes = ["Zephyr", "Cumulus", "Nimbus"]
 
--- | A nullary producer name for a synthetic type.
 fitName :: Text -> Text
 fitName ty = "mk" <> ty
 
--- | A literal Found-hole diagnostic for a hole of the synthetic type.
 holeDiag :: Text -> Text
 holeDiag ty =
     "cell 1, line 2: Found hole: _ :: "
@@ -48,7 +37,6 @@ holeDiag ty =
         <> ty
         <> ")'"
 
--- | GHC's valid-hole-fits blob for a hole of the synthetic type (two producers).
 fitBlob :: Text -> Text
 fitBlob ty =
     T.unlines
@@ -74,8 +62,6 @@ holeDirectedInvariantSpec =
         emptyFitSpec
         acceptGateSpec
 
--- The trigger is decided by class, identically for every synthetic type -------
-
 classInvariantSpec :: Spec
 classInvariantSpec =
     describe "trigger fingerprint identical for every synthetic type" $ do
@@ -100,8 +86,6 @@ classInvariantSpec =
                             (inputFor (holeDiag ty) (fitBlob ty))
                 map cdSource cands `shouldSatisfy` notElem "cell = render _"
 
--- A diagnostic with no inline fits can use queried producers (R7.5) ----------
-
 emptyFitSpec :: Spec
 emptyFitSpec =
     describe "no-inline-fit hole engages TierTypeDirected" $ do
@@ -111,8 +95,6 @@ emptyFitSpec =
             "a no-inline-fit diagnostic yields candidates from a non-empty producer query"
             $ forM_ synTypes
             $ \ty -> do
-                -- The diagnostic carries NO fits; the producers arrive from the
-                -- queried find_by_type blob (buildInput's queryHoleFits path).
                 let cands =
                         tierCandidates
                             TierTypeDirected
@@ -126,8 +108,6 @@ emptyFitSpec =
                     TierTypeDirected
                     (inputFor (holeDiag ty) "")
                     `shouldBe` []
-
--- The keep/revert gate is the compiler-as-verifier acceptRepair --------------
 
 acceptGateSpec :: Spec
 acceptGateSpec =

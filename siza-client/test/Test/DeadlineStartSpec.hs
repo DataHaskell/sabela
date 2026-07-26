@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The episode deadline starts at the MODEL's first turn, not at process
-start. Harness-owned setup — above all the scaffold's dependency build,
-which can run for minutes — is not the model's to pay for.
-
-live_test24 is the specimen: the scaffold installed @dataframe@ (~4 minutes
-of wall clock), and the model then opened its episode being told "the time
-budget is nearly spent", made four tool calls, and stopped on @deadline@
-with the deliverable unwritten. Every driver in the other loop specs uses a
-frozen clock (@drvNow = pure 0@), which is exactly why nothing caught it.
--}
 module Test.DeadlineStartSpec (deadlineStartSpec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -28,19 +18,13 @@ import Siza.Agent.Loop (
     runEpisodeSeeded,
  )
 
--- | A prompt naming a data file, so the scaffold stage fires.
 scaffoldPrompt :: Text
 scaffoldPrompt = "load ./examples/data/housing.csv and print the first rows"
 
-{- | A driver whose clock only moves when the SCAFFOLD write is dispatched,
-standing in for the dependency build. The model's own calls are free, so any
-deadline the episode reports is attributable to setup alone.
--}
 slowScaffoldDriver :: IORef Double -> Double -> IO Driver
 slowScaffoldDriver clock buildSecs = do
     turns <- newIORef (0 :: Int)
     let dispatch tc = do
-            -- The scaffold's insert is what costs; everything else is free.
             case tcName tc of
                 "insert_cell" -> modifyIORef' clock (+ buildSecs)
                 _ -> pure ()
@@ -76,7 +60,6 @@ runWithBuild deadline buildSecs = do
 deadlineStartSpec :: Spec
 deadlineStartSpec = describe "the deadline starts at the model's first turn" $ do
     it "scaffold-eats-deadline: a slow setup build does not end the episode" $ do
-        -- The build alone exceeds the whole deadline; the model must still run.
         run <- runWithBuild 600 900
         arStopped run `shouldNotBe` "deadline"
         arTurns run `shouldSatisfy` (> 0)
@@ -87,7 +70,5 @@ deadlineStartSpec = describe "the deadline starts at the model's first turn" $ d
         arTurns run `shouldSatisfy` (> 0)
 
     it "the model's OWN time still counts against the deadline" $ do
-        -- Nothing is charged for setup here, so an episode whose deadline is
-        -- already zero stops immediately: the clock is not simply ignored.
         run <- runWithBuild 0 0
         arStopped run `shouldBe` "deadline"

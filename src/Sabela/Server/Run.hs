@@ -1,30 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Small handlers + the SSE event stream that live alongside the
-top-level router: cell run/run-all/reset/restart/clear, IDE complete +
-info, cell-language change, widget value update, and the @/api/examples@
-catalogue. Kept together because each is a few-line wrapper over an
-existing service and they share imports.
--}
 module Sabela.Server.Run (
-    -- * Cell lifecycle
     runCellH,
     runAllH,
     resetH,
     restartKernelH,
     interruptKernelH,
     clearCellH,
-
-    -- * IDE
     completeH,
     infoH,
-
-    -- * Misc
     examplesH,
     setCellLangH,
     setWidgetH,
-
-    -- * SSE event stream
     sseApp,
     sseHeaders,
 ) where
@@ -54,10 +41,6 @@ import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import Sabela.State.SessionManager (getHaskellSession, getPythonSession)
 import Sabela.State.WidgetStore (setWidget)
 
-------------------------------------------------------------------------
--- SSE event stream
-------------------------------------------------------------------------
-
 sseHeaders :: [(HeaderName, BS.ByteString)]
 sseHeaders =
     [ (hContentType, "text/event-stream")
@@ -84,10 +67,6 @@ sendEvent chan write flush = do
     write (Builder.byteString $ "data: " <> json <> "\n\n")
     flush
 
-------------------------------------------------------------------------
--- Cell lifecycle
-------------------------------------------------------------------------
-
 runCellH :: ReactiveNotebook -> Int -> Handler RunResult
 runCellH rn cid = liftIO $ do
     rnRunCell rn cid
@@ -102,9 +81,6 @@ resetH rn app = liftIO $ rnReset rn >> readNotebook (appNotebook app)
 restartKernelH :: ReactiveNotebook -> Handler NoContent
 restartKernelH rn = liftIO $ rnRestartKernel rn >> pure NoContent
 
-{- | Stop the running cell: busy-gated group SIGINT to every present
-backend, so an idle interrupt is a no-op. Takes no session lock.
--}
 interruptKernelH :: App -> Handler NoContent
 interruptKernelH app = liftIO $ do
     mHs <- getHaskellSession (appSessions app)
@@ -127,10 +103,6 @@ clearCellH app cid = liftIO $ do
                 , cellError = Nothing
                 }
         | otherwise = c
-
-------------------------------------------------------------------------
--- IDE
-------------------------------------------------------------------------
 
 completeH :: App -> CompleteRequest -> Handler CompleteResult
 completeH app (CompleteRequest prefix) = liftIO $ do
@@ -163,10 +135,6 @@ appendDoc backend name info = do
     if T.null doc || "not found" `T.isInfixOf` T.toLower doc
         then pure (InfoResult info)
         else pure (InfoResult (info <> "\n\n--- Documentation ---\n" <> doc))
-
-------------------------------------------------------------------------
--- Misc
-------------------------------------------------------------------------
 
 examplesH :: Handler [Example]
 examplesH = pure builtinExamples

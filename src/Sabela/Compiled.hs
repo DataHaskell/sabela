@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure planning for compile mode: which cells are compiled, how they group
-into generated modules, the rendered module sources (with cross-module
-imports inferred from the dependency graph), and the plan-time violations
-that make a cell uncompilable. The IO side lives in
-'Sabela.Handlers.Compile'.
--}
 module Sabela.Compiled (
     defaultModuleName,
     objectCodeOptions,
@@ -43,16 +37,9 @@ import ScriptHs.Parser (
     parseScriptNumbered,
  )
 
--- | Where bare @-- compile@ cells land.
 defaultModuleName :: Text
 defaultModuleName = "SabelaCompiled"
 
-{- | Per-module GHC options that compile a generated @-- compile@ module to
-native @-O2@ object code. The repl prompt itself runs interpreted (the global
-@-fobject-code@ was dropped from 'Sabela.Session.Process.ghciArgs' so a plain
-notebook starts fast — incident K); each compiled module opts back into object
-code here, keeping compiled cells native-fast while the session stays cheap.
--}
 objectCodeOptions :: Text
 objectCodeOptions =
     "{-# OPTIONS_GHC -fobject-code -O2 -fexpose-all-unfoldings #-}"
@@ -67,33 +54,20 @@ directiveModule :: CompileDirective -> Text
 directiveModule CompileDefault = defaultModuleName
 directiveModule (CompileNamed n) = n
 
-{- | The pure result of planning all compiled cells of a notebook. Violating
-cells appear only in 'cpViolations'; they contribute nothing to any module.
--}
 data CompilePlan = CompilePlan
     { cpModules :: M.Map Text Text
-    -- ^ Module name → rendered module source.
     , cpCellModule :: M.Map Int Text
-    -- ^ Compiled cell id → the module it belongs to.
     , cpModuleDeps :: M.Map Text (S.Set Text)
-    -- ^ Module → modules it imports (inferred from name uses).
     , cpViolations :: M.Map Int [CellError]
-    -- ^ Cell id → why it cannot compile (skipped at execution time).
     }
     deriving (Eq, Show)
 
 emptyCompilePlan :: CompilePlan
 emptyCompilePlan = CompilePlan M.empty M.empty M.empty M.empty
 
--- | Module name → its generated file path, relative to the repl project dir.
 moduleFilePath :: Text -> FilePath
 moduleFilePath name = T.unpack (T.replace "." "/" name) <> ".hs"
 
-{- | Plan all compiled cells: validate (module name, declarations-only, no
-prompt-state uses, no cross-module cycles), group by module, infer
-inter-module imports, render sources. @posMap@ maps cell ids to 1-based
-notebook positions for error messages.
--}
 planCompiledModules :: M.Map Int Int -> [Cell] -> CompilePlan
 planCompiledModules posMap allCode =
     let (defMap, redefMap) = Topo.buildDefMap allCode
@@ -172,7 +146,6 @@ planError = bareCellError Nothing Nothing
 position :: M.Map Int Int -> Int -> Text
 position posMap cid = T.pack (show (M.findWithDefault cid cid posMap))
 
--- | Module → modules it depends on, from cross-module name uses.
 moduleDeps ::
     M.Map Text Int -> M.Map Int Text -> [(Cell, Text)] -> M.Map Text (S.Set Text)
 moduleDeps defMap cellModule valid =
@@ -189,9 +162,6 @@ moduleDeps defMap cellModule valid =
                ]
         )
 
-{- | Modules on an import cycle make every involved cell a violation (GHC
-cannot compile them; the fix is to merge them under one module name).
--}
 moduleCycleViolations ::
     M.Map Int Int ->
     M.Map Int Text ->
@@ -221,7 +191,6 @@ moduleCycleViolations _posMap _cellModule modDeps valid =
                  in if null leaves then ms else shrink (ms `S.difference` S.fromList leaves)
          in shrink (S.fromList mods)
 
--- | Render every module's source, cells in notebook order.
 renderModules :: M.Map Text (S.Set Text) -> [(Cell, Text)] -> M.Map Text Text
 renderModules modDeps valid =
     M.fromList
@@ -244,10 +213,6 @@ renderModules modDeps valid =
             , ccLines = snd (parseScriptNumbered (cellSource c))
             }
 
-{- | Drop dependency edges between cells of the same module: declaration
-order inside a module is irrelevant, so same-module mutual recursion must
-not register as a cycle (nor impose an execution order).
--}
 pruneIntraModuleDeps ::
     M.Map Int Text -> M.Map Int (S.Set Int) -> M.Map Int (S.Set Int)
 pruneIntraModuleDeps cellModule =
@@ -255,10 +220,6 @@ pruneIntraModuleDeps cellModule =
         Nothing -> deps
         Just m -> S.filter (\d -> M.lookup d cellModule /= Just m) deps
 
-{- | Extra root cells implied by a compiled-cell edit: rebuilding a module
-recompiles every module that (transitively) imports it, invalidating prompt
-bindings downstream of ALL their cells — so all those cells join the roots.
--}
 compiledRootExpansion :: CompilePlan -> S.Set Int -> S.Set Int
 compiledRootExpansion cplan affected =
     let touched =

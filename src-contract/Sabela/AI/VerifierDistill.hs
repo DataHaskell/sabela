@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The verifier-surface boundary distiller (5.2, R3.6\/R3.9\/R3.10): keep
-the writable signature line(s), drop leak-shaped trailing segments, distil a
-pure diagnostic to ONE bounded @error:@ line. Keyed on leak shape only.
--}
 module Sabela.AI.VerifierDistill (
     answerVerdict,
     distillBudget,
@@ -23,14 +19,9 @@ import Sabela.AI.Health (healthOfTypeQuery, isClean)
 import Sabela.AI.LeakShape (infoDumpLine, leakyLine)
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 
--- | The declared budget of any distilled verifier answer (R3.9).
 distillBudget :: Int
 distillBudget = 2500
 
-{- | Distil a type-query answer: the head segment keeps its clean lines, a
-trailing segment survives only if wholly clean of leak\/dump shapes, and an
-answer with nothing clean left becomes one distilled diagnostic line.
--}
 distillTypeAnswer :: Text -> Text
 distillTypeAnswer t
     | T.null (T.strip kept) = diagnosticLine t
@@ -47,19 +38,14 @@ distillTypeAnswer t
         , not (T.null cleaned)
         ]
 
-{- | Scrub the @:info@ channel: leak-shaped and provenance lines never reach
-'Sabela.AI.Capabilities.Query.recordDecl' or any composed answer.
--}
 distillInfo :: Text -> Text
 distillInfo = T.intercalate "\n\n" . filter (not . T.null) . map clean . segments
   where
     clean = T.take distillBudget . cleanSegment
 
--- | Blank-line-separated segments, blank-free.
 segments :: Text -> [Text]
 segments = filter (not . T.null . T.strip) . T.splitOn "\n\n"
 
--- | Keep a segment's writable lines: no leak shapes, no provenance comments.
 cleanSegment :: Text -> Text
 cleanSegment seg =
     T.strip . sanitizeTypeText . T.intercalate "\n" $
@@ -69,14 +55,9 @@ cleanSegment seg =
         , not ("-- Defined in" `T.isInfixOf` l)
         ]
 
--- | A trailing segment that is a dump, not an answer: any leaky or info line.
 dumpShaped :: Text -> Bool
 dumpShaped seg = any (\l -> leakyLine l || infoDumpLine l) (T.lines seg)
 
-{- | ONE bounded diagnostic line: a GHC diagnostics-as-JSON blob yields its
-message; anything else yields its first clean line. Always @error:@-tagged so
-the verdict stays in the closed vocabulary.
--}
 diagnosticLine :: Text -> Text
 diagnosticLine t = "error: " <> T.take 200 body
   where
@@ -89,7 +70,6 @@ diagnosticLine t = "error: " <> T.take 200 body
             [] -> "unreadable diagnostic (leak-shaped output suppressed)"
     stripErr l = maybe l T.stripStart (T.stripPrefix "error:" l)
 
--- | The @message@ strings of a GHC diagnostics-as-JSON segment, if it is one.
 jsonMessage :: Text -> [Text]
 jsonMessage seg = case decodeStrict (TE.encodeUtf8 (T.strip seg)) of
     Just (Object o) -> case KM.lookup "message" o of
@@ -98,9 +78,6 @@ jsonMessage seg = case decodeStrict (TE.encodeUtf8 (T.strip seg)) of
         _ -> []
     _ -> []
 
-{- | The closed-vocabulary verdict of a distilled answer (section 5.3):
-silence can never impersonate a pass.
--}
 answerVerdict :: Text -> Text
 answerVerdict t
     | T.null (T.strip t) = verdictTag VerdictCouldNotRun

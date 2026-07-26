@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Broadcasting plan-level errors (cycles, redefinitions, compile-mode
-violations) to their cells, optionally filtered to a single cell for the
-run-one-cell path. Split out of "Sabela.Handlers.Plan" for the module-size
-cap.
--}
 module Sabela.Handlers.PlanErrors (
     broadcastPlanErrors,
 ) where

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Budget-exhaustion wrap-up (R8.3, R9.8) and budget-proportional escalation
-(R5.6/R5.9): the last-turn message, the non-empty-final guarantee, and the
-curves the loop wires into the nudge and miss ladder. Silent on happy paths.
--}
 module Siza.Agent.Loop.WrapUp (
     BudgetView (..),
     budgetView,
@@ -27,10 +23,6 @@ import Sabela.AI.CellResult (CellId)
 import Siza.Agent.Loop.Support (factsBlock, nudgeFloor, nudgeK)
 import Siza.Agent.Owned (OwnedCell (..), newestFailing)
 
-{- | What is left of every episode budget dimension, read at the top of a
-turn: remaining turns, remaining and spent repair rounds, and the unspent
-fraction of the wall-clock deadline.
--}
 data BudgetView = BudgetView
     { bvTurnsLeft :: Int
     , bvRepairsLeft :: Int
@@ -39,7 +31,6 @@ data BudgetView = BudgetView
     }
     deriving (Eq, Show)
 
--- | Assemble the view from the loop's counters and clocks.
 budgetView :: Int -> Int -> Int -> Int -> Double -> Double -> BudgetView
 budgetView maxTurns turn maxRepairs repairs elapsed deadline =
     BudgetView
@@ -49,31 +40,21 @@ budgetView maxTurns turn maxRepairs repairs elapsed deadline =
         , bvTimeLeftFrac = timeLeftFrac elapsed deadline
         }
 
--- | Unspent deadline fraction; an unbounded or absurd deadline is never low.
 timeLeftFrac :: Double -> Double -> Double
 timeLeftFrac elapsed deadline
     | isInfinite deadline || isNaN deadline = 1
     | deadline <= 0 = 0
     | otherwise = max 0 ((deadline - elapsed) / deadline)
 
-{- | Is the upcoming turn the episode's last (any dimension)? The repair
-dimension counts only once repair spend exists, so a tight repair budget
-never marks a happy path's first turn as final.
--}
 wrapUpDue :: BudgetView -> Bool
 wrapUpDue bv =
     bvTurnsLeft bv <= 1
         || (bvRepairsSpent bv > 0 && bvRepairsLeft bv <= 1)
         || bvTimeLeftFrac bv <= 0.1
 
--- | The stable head of the wrap-up message, for tests and transcript audits.
 wrapUpMarker :: Text
 wrapUpMarker = "Final turn:"
 
-{- | The last-turn wrap-up (R8.3, R5.7): names the exhausted budget, asks for
-a final write or a plain summary-plus-blocker, carries the held facts, and
-never advises further searching.
--}
 wrapUpMsg :: [Text] -> BudgetView -> Value
 wrapUpMsg facts bv =
     object
@@ -91,7 +72,6 @@ wrapUpMsg facts bv =
                )
         ]
 
--- | Which budget dimension ends the episode, for the wrap-up's first line.
 budgetLine :: BudgetView -> Text
 budgetLine bv
     | bvTurnsLeft bv <= 1 = "the turn budget ends after this reply"
@@ -99,10 +79,6 @@ budgetLine bv
         "the repair budget ends after this round"
     | otherwise = "the time budget is nearly spent"
 
-{- | Inject the wrap-up exactly once per episode: fires on the first due
-view, closing the search channel via @getFacts@ (R5.7) and carrying what it
-held; every later call is silent.
--}
 wrapUpOnce :: IORef Bool -> IO [Text] -> BudgetView -> IO [Value]
 wrapUpOnce ref getFacts bv
     | not (wrapUpDue bv) = pure []
@@ -115,16 +91,11 @@ wrapUpOnce ref getFacts bv
                 facts <- getFacts
                 pure [wrapUpMsg facts bv]
 
-{- | The finish-time guarantee: a non-blank candidate passes through
-byte-identically (R9.8); a blank one becomes a summary that names the stop
-reason (R8.3) and the owned-cell state, so no stop reason can yield silence.
--}
 wrapUpFinal :: Text -> Map CellId OwnedCell -> Text -> Text
 wrapUpFinal stopped owned candidate
     | not (T.null (T.strip candidate)) = candidate
     | otherwise = "Stopped (" <> stopped <> "): " <> stateLine owned
 
--- | The owned-cell state line of a synthesised final, bounded (R3.9).
 stateLine :: Map CellId OwnedCell -> Text
 stateLine owned = case newestFailing owned of
     _ | Map.null owned -> "no cell was written before the episode ended."
@@ -141,19 +112,11 @@ stateLine owned = case newestFailing owned of
   where
     redCount = Map.size (Map.filter (not . ocHealthy) owned)
 
-{- | Budget-proportional act-nudge threshold (R5.6): consecutive read-only
-calls tolerated before the nudge. 'nudgeK' while more than half the turn
-budget remains; one — every read-only turn nudges — past mid-budget.
--}
 escalationK :: Int -> Int -> Int
 escalationK total remaining
     | 2 * remaining > total = nudgeK
     | otherwise = 1
 
-{- | Budget-proportional miss-ladder floor (R5.6): the minimum escalation
-rung of ANY miss, so a cluster-shifting spiral still hears the held facts by
-mid-budget and the act-or-blocker line near the floor.
--}
 missRungFloor :: Int -> Int -> Int
 missRungFloor total remaining
     | remaining <= nudgeFloor = 3

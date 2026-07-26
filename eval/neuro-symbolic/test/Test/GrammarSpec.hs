@@ -40,7 +40,6 @@ graniteSvgBrowse =
         , "Granite.defPlot :: Granite.Plot"
         ]
 
--- | A slice of @:browse@ for the qualified @Plot@ module (IO HtmlPlot readers).
 plotBrowse :: Text
 plotBrowse =
     T.unlines
@@ -48,9 +47,6 @@ plotBrowse =
         , "Plot.showInDefaultBrowser :: Plot.HtmlPlot -> IO ()"
         ]
 
-{- | The normalised plotter terminals :browse + normalisation surface for the
-unqualified Granite.Svg sketch.
--}
 graniteTerminals :: [Text]
 graniteTerminals =
     [ normalizeName Unqualified (beName e)
@@ -203,9 +199,6 @@ spec = describe "E1 grammar prompting" $ do
 
     describe "R9.7 completeness: a post-compile card includes every proven name" $ do
         it "a compile-proven name survives the noise filter (fixture first)" $ do
-            -- `metric` returns String (noise class) and `colE` returns internal
-            -- currency (noise class); the compiled cell uses BOTH, so the card
-            -- must include them — the revenueTotal `col` omission class.
             let browse =
                     T.unlines
                         [ "D.readCsv :: FilePath -> IO D.DataFrame"
@@ -247,9 +240,6 @@ spec = describe "E1 grammar prompting" $ do
                 )
                 completenessGrid
 
-{- | Generated surface grid for the lint property: every import style crossed
-with clean, noisy, and empty browse bodies.
--}
 surfaceGrid :: [[Surface]]
 surfaceGrid =
     [ [Surface "M" style browse]
@@ -263,10 +253,6 @@ surfaceGrid =
     ]
         ++ [[]]
 
-{- | Generated (cell, browse, style, expected-present) cases: the proven set
-is the cell's lexical uses; expectation lists each uses ∩ exports name in
-its normalised written form.
--}
 completenessGrid :: [(Text, Text, ImportStyle, [Text])]
 completenessGrid =
     [

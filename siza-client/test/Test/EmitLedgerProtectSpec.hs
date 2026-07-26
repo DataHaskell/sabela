@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R8-T1 (search-api.md 10): load-bearing fields are elision-exempt — the
-generated envelope grid, the run-20260720-181807 barChart stub fixture, and
-the bound-sheds-hits (never protected fields) property.
--}
 module Test.EmitLedgerProtectSpec (emitLedgerProtectSpec) where
 
 import Control.Monad (forM_, unless)
@@ -32,9 +28,6 @@ import Siza.Agent.EmitLedger (
 import Siza.Agent.Tools (renderOutcome)
 import Test.DiscoverFixtures (hitsOf, textField)
 
-{- | A compiler diagnostic well above 'blockFloor': the working material a
-repeated rejection must keep handing back.
--}
 longDiagnostic :: Text
 longDiagnostic =
     T.intercalate
@@ -43,14 +36,12 @@ longDiagnostic =
             : replicate 6 "    Variable not in scope: sineWaveSvg :: String"
         )
 
--- | The autofix note carrying committable source (R7.1).
 longAutofix :: Text
 longAutofix =
     "Declared build-depends: text for this trial (the module was in a hidden \
     \package). Commit this CURRENT source, which carries the dependency line:\n"
         <> T.intercalate "\n" (replicate 5 "import qualified Data.Text as T")
 
--- | A signature comfortably above 'blockFloor' (the elision-risk class).
 longSig :: Text
 longSig =
     T.intercalate " -> " (replicate 8 "Maybe (Either Text Double)")
@@ -160,7 +151,6 @@ prose =
         <> T.unwords
             (replicate 10 "This paragraph is summarisable prose and may dedup freely.")
 
--- | Every string value sitting under a load-bearing key, anywhere in v.
 protectedOf :: Value -> [Text]
 protectedOf (Object o) =
     concat
@@ -190,9 +180,6 @@ runSeq = go 1 emptyEmitLedger
         let (c', led') = dedupText turn c led
          in c' : go (turn + 1) led' cs
 
-{- | A verify verdict long enough to clear 'blockFloor', so the exemption is
-actually exercised rather than passing by the short-block rule.
--}
 verifyBody :: Text
 verifyBody =
     "The task is not done: the deliverable's check still fails. You have \
@@ -207,10 +194,6 @@ wholeReplacement oc =
     "[as established turn " `T.isPrefixOf` oc
         || "[changed since turn " `T.isPrefixOf` oc
 
-{- | The invariant: in every emission, each chunk either survives with all its
-protected values byte-complete, or is a whole-chunk back-reference\/diff (the
-honest whole-envelope repeat).
--}
 assertProtected :: [Text] -> Expectation
 assertProtected cs = do
     let outs = runSeq cs
@@ -244,12 +227,6 @@ protectSpec = describe "load-bearing fields are elision-exempt (R8-T1)" $ do
         forM_ ["type", "signature", "use", "cabal", "name", "next", "exports"] $
             \k -> loadBearingKeys `shouldSatisfy` elem k
 
-    {- G5.8: dedup may compress any payload EXCEPT the diagnostic the model is
-    being asked to act on, and the fix that resolves it. live_test8 collapsed a
-    repeated rejection to a back-reference, withdrawing the error text; it also
-    stripped the autofix note carrying the committable source. @normalized@ is
-    NOT here: G7 delivers it on first emission, and a byte-identical repeat of
-    healed source is exactly what the byte budget dedups. -}
     it "the actionable diagnostic and its resolution are exempt" $
         forM_ ["diagnostic", "error", "stderr", "autofix"] $
             \k -> loadBearingKeys `shouldSatisfy` elem k
@@ -265,10 +242,6 @@ protectSpec = describe "load-bearing fields are elision-exempt (R8-T1)" $ do
             rendered = renderOutcome (Right (ToolErr rejection))
         assertProtected [rendered, rendered]
 
-    {- G5.9: elision is not confined to diagnostics. live_test8 lost its
-    deliverable when a SUCCESSFUL try envelope was withdrawn, and live_test9
-    burned six turns on an identically-elided verify verdict. Both are the
-    payload the model is being asked to act on. -}
     it "elided-success: a successful try envelope keeps its autofix note" $ do
         let ok =
                 object
@@ -365,11 +338,6 @@ protectSpec = describe "load-bearing fields are elision-exempt (R8-T1)" $ do
   where
     tShow = T.pack . show
 
-{- | live_test36: errors are sent in full and informational output is
-contracted, but a cell can SUCCEED while printing its failure, so the failure
-lands in `oiOutput` where no `error` key marks it. The tell is what follows
-the marker's colon: prose is a diagnostic, a number is a metric.
--}
 failureOutputSpec :: Spec
 failureOutputSpec = describe "a cell's own output: errors full, info contracted" $ do
     let cellEcho out =

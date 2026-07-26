@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The post-settled consistency window (R6.4): a settle-then-immediate-write
-sequence never yields a busy denial across generated eventboard-generation
-interleavings — occupancy observed while the generation has not advanced past
-the settled one is the settling run's release tail, so admission retries
-instead of denying. A genuine busy (generation advanced, or no settle
-observed) names the locking cell and its elapsed time.
--}
 module Test.BusyWindowSpec (spec) where
 
 import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, threadDelay)
@@ -39,7 +32,6 @@ import Test.WriteAckFixture (
     withAckEnv,
  )
 
--- | A holder that IS a notebook cell, the ordinary case for these laws.
 heldBy :: Int -> Int -> Holding
 heldBy cid = Holding (OwnedByCell cid)
 
@@ -103,7 +95,6 @@ spec = describe "post-settled consistency window (R6.4)" $ do
             field "cellId" v `shouldBe` Just (Number 7)
             field "elapsedMs" v `shouldBe` Just (Number 1200)
             field "busy" v `shouldBe` Just (Bool True)
-            -- Distinguished from the own-write bounce (R6.4).
             field "cause" v `shouldBe` Just (String "other-run")
 
         it "labels the cause when the holder is unknown" $ do
@@ -119,8 +110,6 @@ spec = describe "post-settled consistency window (R6.4)" $ do
                     let rn = fastRn app
                     _ <- insertSrc app store rn "wOne = (1 :: Int)"
                     _ <- callTool app store rn "await_idle" (object [])
-                    -- The release tail: sbBusy stays up for a few samples
-                    -- after the settle, then drops — the raced interleaving.
                     remaining <- newIORef tailSamples
                     writeIORef busyRef $ do
                         n <- readIORef remaining

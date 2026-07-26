@@ -1,12 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | The compile phase: write generated module files for compiled cells,
-load them with @:add@ (GHC recompiles only what changed — see
-'Sabela.Compiled' for the pure planning), route diagnostics back to cells,
-and bring the modules into the prompt's scope. Runs before any interpreted
-cell of the same plan.
--}
 module Sabela.Handlers.Compile (
     CompileOutcome (..),
     runCompilePhase,
@@ -44,25 +38,13 @@ import Sabela.State.Environment (Environment (..))
 import Sabela.State.SessionManager (getHaskellSession)
 import qualified Sabela.Topo as Topo
 
-{- | What the compile phase did to the session. Any @:load@ — successful or
-not — resets GHCi's interactive context, wiping every prompt binding; the
-caller must then escalate to re-running all interpreted cells.
--}
 data CompileOutcome
-    = -- | No usable session; nothing was loaded, nothing was wiped.
-      CompileNoSession
-    | -- | Module set already loaded; no reload, prompt context intact.
-      CompileNoChange
-    | -- | Reload succeeded; the prompt context was wiped.
-      CompileReloaded
-    | -- | Reload failed (or crashed); the prompt context was wiped.
-      CompileFailed
+    = CompileNoSession
+    | CompileNoChange
+    | CompileReloaded
+    | CompileFailed
     deriving (Eq, Show)
 
-{- | Compile the generated modules for @affectedCells@ (the plan's
-'Sabela.Reactivity.epCellsToRun' compiled counterpart). On 'CompileFailed'
-the caller must skip interpreted dependents of compiled cells.
--}
 runCompilePhase :: App -> Int -> CompilePlan -> [Cell] -> IO CompileOutcome
 runCompilePhase app gen cplan affectedCells = do
     mSess <- getHaskellSession (appSessions app)
@@ -104,9 +86,6 @@ compileChanged app gen backend cplan affectedCells changed orphans = withBuildin
         removeQuiet (projDir </> moduleFilePath name)
     onLine <- mkCompileStreamCallback app affectedCells
     t0 <- getMonotonicTime
-    -- :load (not :add) replaces the target set: the stub Main.hs never gets
-    -- re-resolved (it would fail after the session's :cd), and modules of
-    -- deleted/renamed cells drop out without explicit unloading.
     let loadCmd =
             T.unwords $
                 ":load"
@@ -128,7 +107,6 @@ compileChanged app gen backend cplan affectedCells changed orphans = withBuildin
             if failed
                 then do
                     broadcastCompileErrors app gen affectedCells perCell loose
-                    -- Forget loaded state so a retry rewrites and reloads.
                     clearCompiledModules app
                     pure CompileFailed
                 else do
@@ -137,7 +115,6 @@ compileChanged app gen backend cplan affectedCells changed orphans = withBuildin
                     broadcastCompiled app gen affectedCells (Just (t1 - t0))
                     pure CompileReloaded
 
--- | Bring the loaded modules into the prompt's scope.
 importModules :: ST.SessionBackend -> [Text] -> IO ()
 importModules backend current =
     unless (null current) $
@@ -148,7 +125,6 @@ importModules backend current =
 removeQuiet :: FilePath -> IO ()
 removeQuiet p = void (try (removeFile p) :: IO (Either SomeException ()))
 
--- | GHC's progress lines stream into every affected cell's output area.
 mkCompileStreamCallback :: App -> [Cell] -> IO (Text -> IO ())
 mkCompileStreamCallback app cells =
     pure $ \line ->
@@ -196,9 +172,6 @@ applyCompiled cid outs err c
     | cellId c == cid = c{cellOutputs = outs, cellError = err, cellDirty = False}
     | otherwise = c
 
-{- | Interpreted cells transitively downstream of any compiled cell — the
-ones to skip when the compile phase fails.
--}
 compiledDependents :: CompilePlan -> M.Map Text Int -> [Cell] -> S.Set Int
 compiledDependents cplan defMap allCode =
     let deps = Topo.buildDepGraph defMap allCode

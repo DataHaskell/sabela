@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Export endpoints: serve a notebook as @.html@ (dashboard /
-slideshow / static notebook), @.md@, @.hs@ (cabal script), @.lhs@, or
-@reactive.hs@. The HTML shells (@dashboardHtml@ / @slideshowHtml@) come
-from "Sabela.Server.Static"; here we wrap them with content-type and
-Content-Disposition headers and produce file-download responses.
--}
 module Sabela.Server.Export (
     exportDashboardApp,
     exportSlideshowApp,
@@ -14,8 +8,6 @@ module Sabela.Server.Export (
     exportHaskellApp,
     exportLhsApp,
     exportReactiveApp,
-
-    -- * Pieces (exposed for testing / reuse)
     cellParam,
     lastHaskellCellId,
 ) where
@@ -73,11 +65,6 @@ exportSlideshowApp app _req resp = do
             (downloadHeaders "text/html; charset=utf-8" htmlName)
             body
 
-{- | Export the notebook as a self-contained, read-only "notebook" (tutorial)
-page — prose + code + rendered outputs, in document order — with the canonical
-markdown embedded for an in-page download. Served as a viewable page (no
-attachment); the hub stores this body and serves it at @\/s\/<slug>@.
--}
 exportNotebookApp :: App -> Application
 exportNotebookApp app _req resp = do
     nb <- readNotebook (appNotebook app)
@@ -105,22 +92,15 @@ exportMarkdownApp app _req resp = do
             (downloadHeaders "text/markdown; charset=utf-8" mdName)
             (LBS.fromStrict (TE.encodeUtf8 md))
 
--- | Export the pipeline ending at @?cell=<id>@ as a single-file cabal script.
 exportHaskellApp :: App -> Application
 exportHaskellApp = exportSourceApp Export.exportCabalScript "hs" "text/x-haskell"
 
--- | Export the pipeline ending at @?cell=<id>@ as literate Haskell.
 exportLhsApp :: App -> Application
 exportLhsApp = exportSourceApp Export.exportLiterate "lhs" "text/x-literate-haskell"
 
--- | Export the whole notebook as a headless reactive-banana program.
 exportReactiveApp :: App -> Application
 exportReactiveApp = exportSourceApp Reactive.exportReactive "reactive.hs" "text/x-haskell"
 
-{- | Shared download handler for the source exporters. Reads an optional
-@?cell=<id>@ slice target (defaulting to the last Haskell code cell), renders,
-and serves the result as a file download named after the notebook.
--}
 exportSourceApp ::
     (App -> Int -> IO Text) -> Text -> BS.ByteString -> App -> Application
 exportSourceApp render ext mime app req resp = do
@@ -146,14 +126,12 @@ downloadHeaders contentType filename =
         )
     ]
 
--- | Parse @?cell=<id>@ from the request query string.
 cellParam :: Request -> Maybe Int
 cellParam req = do
     mv <- lookup "cell" (queryString req)
     bs <- mv
     readMaybe (T.unpack (TE.decodeUtf8 bs))
 
--- | The last Haskell code cell's id (the default slice target), or -1 if none.
 lastHaskellCellId :: Notebook -> Int
 lastHaskellCellId nb =
     case [cellId c | c <- nbCells nb, cellType c == CodeCell, cellLang c == ST.Haskell] of

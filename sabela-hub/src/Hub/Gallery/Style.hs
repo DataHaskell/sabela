@@ -1,11 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | The gallery pages' inline stylesheet (Warm Paper palette + notebook cells).
 module Hub.Gallery.Style (styleBlock) where
 
 import Data.Text (Text)
 
--- | Nord palette + notebook-cell language, matched to the editor's default.
 styleBlock :: Text
 styleBlock =
     "<style>"

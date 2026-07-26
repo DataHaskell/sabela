@@ -8,7 +8,6 @@ import qualified Data.Text as T
 import Hub.Types
 import System.Process (readProcess)
 
--- | ECS backend that uses the AWS CLI.
 cliEcsBackend :: EcsBackend
 cliEcsBackend =
     EcsBackend
@@ -26,7 +25,6 @@ cliRunTask cfg (UserId email) = do
                 <> "],securityGroups=["
                 <> T.intercalate "," (tcSecurityGroups cfg)
                 <> "],assignPublicIp=DISABLED}"
-        -- Sanitize email for use as directory name (replace @ and . with _)
         userDir = "/mnt/sabela/users/" <> sanitize email
         overrides =
             "{\"containerOverrides\":[{\"name\":\"sabela\",\"command\":"
@@ -118,7 +116,6 @@ cliListRunningTasks cfg = do
             ]
     pure $ map TaskId $ filter (not . T.null) $ T.words (T.pack out)
 
--- | Run an AWS CLI command with cluster and region from config.
 aws :: TaskConfig -> [String] -> IO String
 aws cfg args =
     readProcess

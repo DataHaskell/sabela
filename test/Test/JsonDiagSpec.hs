@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The GHC-version gate behind @-fdiagnostics-as-json@. Below GHC 9.8 the flag
-does not exist, so 'detectJsonDiagnostics' must say no and the session falls back
-to the textual 'Sabela.Errors.parseErrors' path unchanged. These pin the pure
-parse + compare so the backward-compatibility decision can't silently drift.
--}
 module Test.JsonDiagSpec (jsonDiagSpec) where
 
 import Sabela.Session (parseVersion, versionAtLeast)

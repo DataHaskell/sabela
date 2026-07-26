@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The learning-loop memory: a verified solution round-trips through the JSONL
-store, retrieval ranks by task similarity above a floor, and rendering produces one
-in-context exemplar message (imitation, not a spec).
--}
 module Test.ExemplarsSpec (spec) where
 
 import Data.Aeson (Value (..))

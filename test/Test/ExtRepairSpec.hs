@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of the server-side missing-extension repair: read the LANGUAGE
-extension GHC says it needs, and enable it in the cell's pragma. The IO loop that
-re-runs the cell is verified live; these pin the decisions it makes.
--}
 module Test.ExtRepairSpec (spec) where
 
 import Data.Text (Text)
@@ -12,7 +8,6 @@ import Sabela.AI.ExtRepair (addExtension, extFromResult)
 import Sabela.AI.Types (ExecutionResult (..))
 import Test.Hspec
 
--- | A GHC type error that carries the "intended to use" extension hint.
 extErr :: Text
 extErr =
     T.unlines

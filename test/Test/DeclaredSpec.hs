@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The repair acceptance law over declarations ('Sabela.Parse.Declared'):
-a candidate that drops a name the cell declared substituted the deliverable,
-not a reference — the run-20260721-005731 topMonth self-heal class.
--}
 module Test.DeclaredSpec (spec) where
 
 import qualified Data.Set as S
@@ -19,8 +15,6 @@ spec = describe "declaredNames / preservesDeclarations (repair acceptance law)" 
         declaredNames "f :: Int -> Int\nf x = x\ng :: Bool\n"
             `shouldBe` S.fromList ["f", "g"]
     it "rejects a repair that renames the declared binding away" $
-        -- The run-20260721-005731 topMonth class: a hole-fit substituted
-        -- an in-scope constant for the deliverable's own signature.
         preservesDeclarations
             "topMonth :: String\n"
             "_sabelaWidgetsJs :: String\n"

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The compiler-resolved-names ledger (R7-T1, search-api.md 3.3/11): a name
-proven by clean check_type or a landed compile cancels lexical not_found
-under EVERY mode/filter key until the world changes; inventory unregressed.
--}
 module Test.DiscoverResolvedSpec (discoverResolvedSpec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -22,7 +18,6 @@ import Siza.Agent.Discover.History (
 import Siza.Agent.Discover.HistoryGuard (guardDiscover, newSearchLedger)
 import Test.DiscoverFixtures (installNamesFile, runCatArgs, stateOf, textField)
 
--- | A minimal honest not_found envelope for @name@ under a mode/filter key.
 missFor :: Text -> Value
 missFor n =
     object
@@ -34,7 +29,6 @@ missFor n =
         , "total" .= (0 :: Int)
         ]
 
--- | Every ledger-key decoration a discover call can carry (modes, filters).
 keyForms :: Text -> [Text]
 keyForms n =
     [ n
@@ -44,7 +38,6 @@ keyForms n =
     , n <> " [package=frameio] [mode=inventory]"
     ]
 
--- | The generated proof events: each proves @n@ by a different mechanism.
 proofEvents :: [(Text, [Text])]
 proofEvents =
     [ ("check_type expr", ["colList"])
@@ -121,8 +114,6 @@ discoverResolvedSpec = describe "compiler-resolved-names ledger (R7-T1)" $ do
             fmap stateOfOutcome out `shouldBe` Right "not_found"
 
         it "a worldChanged wipe happens before, never after, the landed cell's proof" $ do
-            -- A dep-declaring landed write both bumps the world AND proves its
-            -- own names: the proof must survive the wipe it triggers.
             ref <- newSearchLedger
             _ <-
                 guardDiscover ref landedInsert $
@@ -148,12 +139,10 @@ discoverResolvedSpec = describe "compiler-resolved-names ledger (R7-T1)" $ do
                 )
         stateOf v `shouldBe` "found"
 
--- | A dispatch answering one clean/red check_type payload.
 cleanCheckType :: Text -> ToolCall -> IO (Either Text ToolOutcome)
 cleanCheckType result _ =
     pure (Right (ToolOk (object ["expr" .= ("x" :: Text), "result" .= result])))
 
--- | A dispatch answering an honest lexical miss for @n@.
 constMiss :: Text -> ToolCall -> IO (Either Text ToolOutcome)
 constMiss n _ = pure (Right (ToolOk (missFor n)))
 

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | C3 wrap-up integrity, both live_test2 failures: the give-up path must cite
-the newest LIVE owned red cell (never a deleted one), and "done" must never
-fire on a passed check with no owned artifact behind it.
--}
 module Test.WrapUpIntegritySpec (wrapUpIntegritySpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -26,8 +22,6 @@ import Siza.Agent.Loop (
 import Siza.Agent.Owned (bestFailing, recordOwned)
 import Test.DiscoverFixtures (textField)
 
--- Fixture: cell 8 is inserted red, then deleted; cell 10 is inserted red and
--- stays red — the exact live_test2 sequence (HANDOFF "Live probe 2", #3).
 redOutcome :: Int -> Text -> Either Text ToolOutcome
 redOutcome cid msg =
     Right . ToolOk $
@@ -74,8 +68,6 @@ giveUpCitesLiveCellSpec =
             bestFailing owned3
                 `shouldSatisfy` (not . T.isInfixOf "Variable not in scope: insert_cell")
 
--- The false-success fixture: the model never wrote a cell, and the check
--- passed on a tautology with no session binding (live_test2 #1 / HANDOFF #1).
 assistant :: Text -> Value
 assistant t = object ["role" .= ("assistant" :: Text), "content" .= t]
 
@@ -142,7 +134,6 @@ doneRequiresArtifactSpec =
                         "mean median_house_value by ocean_proximity"
                         10
                 arStopped run `shouldNotBe` "done"
-                -- the model must be told the write is missing, not congratulated
                 let contents = map (textField "content") (arTranscript run)
                 any (T.isInfixOf "written no cell yet") contents `shouldBe` True
 

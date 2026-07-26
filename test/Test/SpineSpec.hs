@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The application-spine reader behind arity repair. Every expression here is
-one gemma4 actually wrote on the revenueTotal bench task, so the parser is pinned
-to real weak-model output rather than invented shapes.
--}
 module Test.SpineSpec (spineSpec) where
 
 import Sabela.AI.Spine (Spine (..), renderSpine, splitSpine, trimTo)
@@ -28,8 +24,6 @@ spineSpec = describe "Sabela.AI.Spine" $ do
             splitSpine "putStrLn \"a (b\" x"
                 `shouldBe` Just (Spine "putStrLn" [] ["\"a (b\"", "x"])
 
-        -- Fail closed: anything not a plain application yields no candidate,
-        -- mirroring the span-less rule in Edit/HoleSearch.
         it "declines an operator application (not a plain spine)" $
             splitSpine "a + b" `shouldBe` Nothing
 

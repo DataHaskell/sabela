@@ -1,9 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | HTTP layer for published shares: the public @\/s\/<slug>@ static-serve and
-the authed @\/_hub\/{publish,shares,shares\/<slug>}@ JSON endpoints.
--}
 module Hub.Shares.Api (
     serveShare,
     serveAsset,
@@ -49,10 +46,6 @@ import Network.Wai
 import System.Directory (doesFileExist)
 import System.FilePath (takeExtension, (</>))
 
-{- | Serve a published share at @\/s\/<slug>@ with no auth and no backend.
-'lookupShareHtml' rejects non-slug input, so a crafted slug cannot traverse out
-of the shares directory.
--}
 serveShare ::
     ShareStore -> Text -> (Response -> IO ResponseReceived) -> IO ResponseReceived
 serveShare store slug respond = do
@@ -67,12 +60,6 @@ serveShare store slug respond = do
                     [(hContentType, "text/html; charset=utf-8")]
                     (BL.fromStrict (TE.encodeUtf8 shareNotFoundHtml))
 
-{- | Serve a cacheable static asset at @\/_hub\/assets\/<file>@ from the configured
-assets dir. The filename is validated to a flat @name.ext@ shape ('safeAssetName'
-rejects @\/@, @.@, and @..@), so a crafted name cannot traverse out of the assets
-dir. Unknown or missing files 404. Long @Cache-Control@; the runtime is meant to
-be content-hashed by the bundler.
--}
 serveAsset ::
     FilePath -> Text -> (Response -> IO ResponseReceived) -> IO ResponseReceived
 serveAsset assetsDir name respond
@@ -91,10 +78,6 @@ assetNotFound :: Response
 assetNotFound =
     responseLBS status404 [(hContentType, "text/plain; charset=utf-8")] "Not found"
 
-{- | A safe asset filename is a non-empty @name.ext@ of ASCII alphanumerics,
-@-@, @_@, and @.@, with no leading dot and no @..@. This is the path-traversal
-guard for @\/_hub\/assets\/<file>@.
--}
 safeAssetName :: Text -> Bool
 safeAssetName name =
     not (T.null name)
@@ -104,9 +87,6 @@ safeAssetName name =
   where
     ok c = isAlphaNum c || c == '-' || c == '_' || c == '.'
 
-{- | Content-Type by extension plus a one-year immutable @Cache-Control@; the
-served assets are content-hashed, so a stale cache can never shadow an update.
--}
 assetHeaders :: FilePath -> [Header]
 assetHeaders f =
     [ (hContentType, ctype)
@@ -124,21 +104,12 @@ assetHeaders f =
         ".map" -> "application/json; charset=utf-8"
         _ -> "application/octet-stream"
 
-{- | Validate the publish @?mode=@ against the allowlist; an absent or unknown
-mode falls back to 'ExpDashboard'. The mode is passed straight through to the
-backend's @\/api\/export\/<mode>@ as a typed value, so this is the gate on
-which export modes are publishable.
--}
 publishMode :: Query -> ExportMode
 publishMode q =
     case lookup "mode" q of
         Just (Just bs) -> fromMaybe ExpDashboard (parseExportMode (TE.decodeUtf8 bs))
         _ -> ExpDashboard
 
-{- | The notebook title from the publish POST body (@{title}@), sanitized; a
-missing or blank title falls back to @\"Untitled\"@. Kept out of the query
-string so titles never transit proxy/ALB access logs (CWE-598).
--}
 parsePublishTitle :: BL.ByteString -> Text
 parsePublishTitle body =
     maybe
@@ -146,10 +117,6 @@ parsePublishTitle body =
         sanitizeTitle
         (decode body >>= parseMaybe (withObject "publish" (.: "title")))
 
-{- | @POST \/_hub\/publish?mode=dashboard|slideshow|notebook@: fetch the owner
-container's self-contained HTML export, refuse it if it looks like it embeds a
-credential, then store it under a fresh slug. Responds @{slug,url}@.
--}
 handlePublish ::
     SessionManager ->
     ShareStore ->
@@ -214,7 +181,6 @@ handlePublish sm store mgr sess req respond = do
             respond . jsonError status409 $
                 "Your notebook is still starting; try again in a moment."
 
--- | @GET \/_hub\/shares@: the caller's published shares as JSON.
 handleListShares ::
     ShareStore ->
     Session ->
@@ -225,9 +191,6 @@ handleListShares store sess respond = do
     shares <- listShares store email
     respond . jsonResponse status200 $ toJSON (map shareToJSON shares)
 
-{- | @DELETE \/_hub\/shares\/<slug>@: unpublish one of the caller's shares.
-'deleteShare' is owner-checked, so another user's slug yields 404.
--}
 handleDeleteShare ::
     ShareStore ->
     Session ->
@@ -241,13 +204,11 @@ handleDeleteShare store sess slug respond = do
         then respond . jsonResponse status200 $ object ["deleted" .= slug]
         else respond $ jsonError status404 "No such share, or it is not yours."
 
--- | Fetch a notebook's static export over HTTP from its backend container.
 fetchExport ::
     HC.Manager -> Int -> TaskIp -> ExportMode -> IO (Either Text Text)
 fetchExport mgr port (TaskIp ip) mode =
     fetchBackend mgr port ip ("/api/export/" <> exportModeText mode)
 
--- | Fetch the notebook's reassembled source markdown (for Download/Fork).
 fetchSource :: HC.Manager -> Int -> TaskIp -> IO (Either Text Text)
 fetchSource mgr port (TaskIp ip) = fetchBackend mgr port ip "/api/export/markdown"
 

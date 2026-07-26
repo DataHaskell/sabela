@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The R10(c)-style live check for R6.5/R6.6: against a REAL GHCi kernel, a
-deliberately runaway cell (infinite, silent) draws the bounded @resource@
-line from @await_idle@, and per-cell interrupt + delete recovers the session
-WITHOUT a kernel restart (same session generation). Skipped when ghc is not
-on PATH.
--}
 module Test.ResourceLiveSpec (spec) where
 
 import Control.Exception (bracket, bracket_)
@@ -31,12 +25,6 @@ import Sabela.Server (newApp)
 import Sabela.State (App (..), forceResetAllSessions)
 import Test.Hspec
 
-{- | Shrink every budget this spec's runaway cell can wait on, so it is
-diagnosed in seconds; restored afterwards. The cell-execution cap is pinned
-too: leaving it at the production default tied the worst case of a
-deliberately non-terminating cell to whatever that default happens to be, and
-raising it to 30 minutes duly stalled the suite.
--}
 withLiveEnv :: IO a -> IO a
 withLiveEnv =
     bracket_
@@ -66,13 +54,9 @@ callTool app store rn name input = do
     ct <- newCancelToken
     toolOutcomeValue <$> executeTool app store rn ct name input
 
--- | Infinite and silent: no output progress, no termination, no task content.
 runawaySrc :: Text
 runawaySrc = "main = print (length [(1 :: Integer) ..])"
 
-{- | Call @await_idle@ up to @n@ times, returning the first reply carrying a
-@resource@ line (plus every reply seen).
--}
 huntResource ::
     App -> AIStore.AIStore -> ReactiveNotebook -> Int -> IO (Maybe Value, [Value])
 huntResource _ _ _ 0 = pure (Nothing, [])
@@ -84,9 +68,6 @@ huntResource app store rn n = do
             (hit, seen) <- huntResource app store rn (n - 1)
             pure (hit, v : seen)
 
-{- | Drain @await_idle@ until it reports a settled\/idle kernel (bounded), so
-the next insert cannot bounce off the warm write still executing under load.
--}
 settleAll :: App -> AIStore.AIStore -> ReactiveNotebook -> Int -> IO ()
 settleAll _ _ _ 0 = pure ()
 settleAll app store rn n = do
@@ -95,10 +76,6 @@ settleAll app store rn n = do
         Just w | w == "idle" || w == "settled" -> pure ()
         _ -> settleAll app store rn (n - 1)
 
-{- | Insert with a bounded busy-retry: under heavy machine load the prior
-write's release tail can outlive the admission grace, so a bounced insert
-settles and retries instead of failing the example on scheduler noise.
--}
 insertSettled ::
     App -> AIStore.AIStore -> ReactiveNotebook -> Int -> Text -> IO Value
 insertSettled app store rn n src = do
@@ -141,30 +118,21 @@ spec = describe "R10(c) live runaway-cell resource diagnostic" $
                             Just line -> do
                                 T.length line <= 200 `shouldBe` True
                                 T.isInfixOf "\n" line `shouldBe` False
-                    -- Per-cell recovery (R6.6): interrupt the runaway, then
-                    -- delete the cell — never a kernel restart.
                     _ <- callTool app store rn "interrupt" (object [])
                     settleAll app store rn 30
                     _ <-
                         callTool app store rn "delete_cell" $
                             object ["cell_id" .= mCid]
                     stAfter <- callTool app store rn "kernel_status" (object [])
-                    -- Same session generation: no restart happened.
                     ksGenOf stAfter `shouldBe` ksGenOf st0
-                    -- The session still works: a fresh cell completes.
                     done <-
                         callTool app store rn "insert_cell" $
                             object
                                 ["source" .= ("sabelaAfter = (2 :: Int)" :: Text)]
                     isJust (textField "status" done) `shouldBe` True
-                    -- R8.4 hygiene: nothing we saw carries a raw exception.
                     let rendered = T.pack (show (st0 : stAfter : done : seen))
                     T.isInfixOf "HttpExceptionRequest" rendered `shouldBe` False
 
-{- | Run the test against a fresh fixture in its own temp dir, releasing the
-kernel afterwards so a leaked GHCi cannot hold its nursery for the rest of
-the suite.
--}
 withFixture ::
     String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a
 withFixture label action =
@@ -189,7 +157,6 @@ newFixture dir = do
     store <- AIStore.newAIStore cfg mgr
     pure (app, store, rn)
 
--- | The repo's sabela-notebook dir as a local package overlay, when present.
 supportOverlay :: IO [FilePath]
 supportOverlay = do
     present <- doesFileExist ("sabela-notebook" </> "sabela-notebook.cabal")

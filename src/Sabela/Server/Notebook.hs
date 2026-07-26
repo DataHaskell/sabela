@@ -1,25 +1,15 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Notebook GET/load/save handlers plus the markdown<->cell conversion
-helpers (segment ↔ cell, MIME indicator round-tripping, prose-cell
-boundary marker) and per-cell mutation handlers (update, save source,
-insert, delete) that everything else routes through.
--}
 module Sabela.Server.Notebook (
-    -- * GET/load/save
     getNotebookH,
     loadNotebookH,
     saveNotebookH,
     safeWorkPath,
-
-    -- * Per-cell mutation handlers
     updateCellH,
     saveCellSourceH,
     insertCellH,
     deleteCellH,
-
-    -- * Cell ↔ segment conversion (exposed for testing)
     segmentToCell,
     cellToSegment,
     cellsToSegments,
@@ -98,21 +88,12 @@ loadNotebookH app _rn (LoadRequest path) = liftIO $ do
                     (segmentToCell (appNotebook app))
                     (splitProseSegments (parseMarkdown raw))
             let nb = Notebook (T.pack path) cells
-            -- Cancel in-flight execution and tear down the live session: it
-            -- holds the previous notebook's bindings, so the next run must
-            -- rebuild against this notebook rather than reuse a stale session.
             void $ bumpGeneration app
             killSessionAsync app
             modifyNotebook (appNotebook app) (const nb)
             broadcastNotebook app
             pure nb
 
-{- | Resolve a notebook path against the work directory, canonicalised and
-confined: returns 'Nothing' for any input that resolves outside @envWorkDir@
-(absolute paths to system files, @../@ traversal). The check is identical
-in shape to 'Sabela.Server.Files.isPrefixOfPath', applied to the file's
-parent so we don't require the target to exist yet.
--}
 safeWorkPath :: Environment -> FilePath -> IO (Maybe FilePath)
 safeWorkPath env path = do
     let workDir = envWorkDir env
@@ -123,7 +104,6 @@ safeWorkPath env path = do
         then pure (Just (parentCanon </> takeFileName candidate))
         else pure Nothing
 
--- | Path-component-aware @isPrefixOf@; avoids @/home/alice@ matching @/home/alice-secret@.
 isPrefixOfPath :: FilePath -> FilePath -> Bool
 isPrefixOfPath prefix p =
     let pp = splitDirectories (normalise prefix)
@@ -178,22 +158,12 @@ cellToSegment c = case cellType c of
     ProseCell -> Prose (cellSource c)
     CodeCell -> codeToSegment c
 
-{- | Markdown has no delimiter between adjacent prose blocks, so two
-consecutive prose cells would otherwise merge on reload. We separate them
-with an invisible HTML-comment marker (consistent with the existing
-@\<!-- sabela:mime ... --\>@ convention). The marker never appears in any
-cell's source — it is added on save and stripped on load.
--}
 proseMarker :: Text
 proseMarker = "<!-- sabela:cell -->"
 
 proseSep :: Text
 proseSep = "\n\n" <> proseMarker <> "\n\n"
 
-{- | Collapse each maximal run of consecutive prose cells into a single
-'Prose' segment, joining the sources with 'proseSep'. Non-prose cells are
-mapped exactly as before. Inverse of 'splitProseSegments'.
--}
 cellsToSegments :: [Cell] -> [Segment]
 cellsToSegments [] = []
 cellsToSegments (c : cs)
@@ -203,12 +173,6 @@ cellsToSegments (c : cs)
                 : cellsToSegments rest
     | otherwise = cellToSegment c : cellsToSegments cs
 
-{- | Invert 'cellsToSegments' on load: split any 'Prose' segment that
-contains boundary-marker lines back into one segment per cell. A
-whitespace-only prose run with no marker is the blank line(s) between two
-code fences, not a cell, so it is dropped rather than surfaced as a spurious
-empty prose cell.
--}
 splitProseSegments :: [Segment] -> [Segment]
 splitProseSegments = concatMap expand
   where
@@ -252,17 +216,11 @@ updateCellH ::
 updateCellH app rn cid mSession (UpdateCell src) = liftIO $ do
     rnCellEdit rn cid src
     nb <- readNotebook (appNotebook app)
-    -- External callers (siza, curl) mark themselves with X-Sabela-Session
-    -- so the browser refreshes its editor. Browser keystrokes omit the
-    -- header and thus don't echo back as SSE noise.
     for_ mSession (const (broadcastNotebook app))
     case lookupCell cid nb of
         Just c -> pure c
         Nothing -> pure (Cell cid CodeCell ST.Haskell src [] Nothing True)
 
-{- | Save cell source without triggering reactive execution.
-Used by runAll to sync editor content before running.
--}
 saveCellSourceH :: App -> Int -> Maybe Text -> UpdateCell -> Handler Cell
 saveCellSourceH app cid mSession (UpdateCell src) = liftIO $ do
     modifyNotebook (appNotebook app) $ updateCellSource cid src
@@ -281,10 +239,6 @@ insertCellH app (InsertCell at typ lang src) = liftIO $ do
     broadcastNotebook app
     pure cell
 
-{- | Delete a cell and rebuild the live session from what remains: GHCi has
-no partial-unbind primitive, so a stale binding/import/declaration would
-otherwise stay resident (the 'executeFullRestart' path other structural changes use).
--}
 deleteCellH :: App -> Int -> Handler Notebook
 deleteCellH app cid = liftIO $ do
     nb' <- modifyMVar (nsNotebook (appNotebook app)) $ \nb -> do

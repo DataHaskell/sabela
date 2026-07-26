@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | ONE repair dispatcher: the GHC diagnostic CLASS — never a library name —
-selects the repair tiers, and one notebook-scope acceptance law (keep iff the
-target heals and no sibling regresses) governs every tier. Shared by the
-agent's red-cell cascade and the property suite.
--}
 module Sabela.AI.RepairDispatch (
     DiagClass (..),
     RepairTier (..),
@@ -39,9 +34,9 @@ import Sabela.AI.Health (
     improvesHealthFor,
     isClean,
  )
+import Sabela.AI.Hints (extensionHints)
 import Sabela.AI.HoleRepair (afterInfixCI, arityFromError, goalFromError)
 
--- | The diagnostic classes the dispatcher keys on (phrase-shaped, never a name).
 data DiagClass
     = ClassHiddenPackage
     | ClassModuleNotFound
@@ -64,7 +59,6 @@ diagClassText c = case c of
     ClassRefinement -> "refinement"
     ClassOther -> "other"
 
--- | The repair tiers of the one cascade, in dispatch vocabulary.
 data RepairTier
     = TierDepAdd
     | TierExtensionAdd
@@ -89,9 +83,6 @@ tierText t = case t of
     TierHoleFit -> "hole-fit"
     TierArity -> "arity"
 
-{- | Classify one diagnostic by its GHC phrase shape alone; substituting any
-library, module or package name in the text can never change the class.
--}
 classifyDiag :: Text -> DiagClass
 classifyDiag t
     | has "hidden package" = ClassHiddenPackage
@@ -107,7 +98,6 @@ classifyDiag t
     low = T.toLower t
     has p = p `T.isInfixOf` low
 
--- | The ordered tiers a class dispatches to — a function of the class ALONE.
 tiersFor :: DiagClass -> [RepairTier]
 tiersFor c = case c of
     ClassHiddenPackage -> [TierDepAdd]
@@ -120,13 +110,9 @@ tiersFor c = case c of
     ClassRefinement -> [TierHoleFit, TierTypeDirected]
     ClassOther -> []
 
-{- | A dep-declaring rewrite restarts the kernel, so verify-and-revert cannot
-validate it; the report must disclose it as unvalidated (R7.3).
--}
 tierRequiresRestart :: RepairTier -> Bool
 tierRequiresRestart = (== TierDepAdd)
 
--- | Tokens GHC quoted with either @‘…’@ or @`…'@ style, in message order.
 quotedTokens :: Text -> [Text]
 quotedTokens t =
     concat
@@ -142,7 +128,6 @@ quotedTokens t =
         , not (T.null tok)
         ]
 
--- | The package a hidden-package diagnostic names, version stripped.
 hiddenPackageFromDiag :: Text -> Maybe Text
 hiddenPackageFromDiag err = do
     rest <- afterInfix "hidden package" err
@@ -150,7 +135,6 @@ hiddenPackageFromDiag err = do
     let p = stripPkgVersion tok
     if T.null p then Nothing else Just p
 
--- | The module a could-not-find/load-module diagnostic names.
 missingModuleFromDiag :: Text -> Maybe Text
 missingModuleFromDiag err = do
     rest <-
@@ -158,17 +142,9 @@ missingModuleFromDiag err = do
             `orElse` afterInfix "ould not load module" err
     listToMaybe (quotedTokens rest ++ take 1 (T.words rest))
 
--- | The extension GHC's "Perhaps you intended to use X" hint names.
 neededExtensionFromDiag :: Text -> Maybe Text
-neededExtensionFromDiag err = do
-    rest <- afterInfix "erhaps you intended to use" err
-    w <- listToMaybe (quotedTokens rest ++ T.words rest)
-    let ext = T.filter isAlphaNum w
-    if extLike ext then Just ext else Nothing
-  where
-    extLike e = maybe False (isUpper . fst) (T.uncons e)
+neededExtensionFromDiag = listToMaybe . extensionHints
 
--- | The (name, qualified candidates) of an ambiguous-occurrence diagnostic.
 ambiguousFromDiag :: Text -> Maybe (Text, [Text])
 ambiguousFromDiag err = do
     rest <- afterInfix "mbiguous occurrence" err
@@ -180,10 +156,6 @@ ambiguousFromDiag err = do
             ]
     if null quals then Nothing else Just (name, quals)
 
-{- | The wrong name of a not-in-scope diagnostic (with or without a goal
-type), matched casefolded so every GHC phrase variant extracts — including
-the capitalised "Not in scope: type constructor or class" form.
--}
 notInScopeFromDiag :: Text -> Maybe Text
 notInScopeFromDiag err =
     (fst <$> goalFromError err) `orElse` bare
@@ -194,7 +166,6 @@ notInScopeFromDiag err =
         let n = T.dropAround (`elem` ("\8216\8217`'()" :: String)) w
         if T.null n then Nothing else Just n
 
--- | Drop GHC's entity-descriptor prose between the phrase and the name.
 skipDescriptors :: Text -> Text
 skipDescriptors t0 = go (T.stripStart t0)
   where
@@ -205,10 +176,6 @@ skipDescriptors t0 = go (T.stripStart t0)
     descriptors =
         ["type constructor or class", "data constructor", "record field"]
 
-{- | The one acceptance law (R7.5): keep a repair iff the repaired cell ends
-clean (or strictly improved) AND no sibling regressed — compared through
-'healthMsgsFor', so knock-on echoes of the target's own names are excluded.
--}
 acceptRepair ::
     Set Text -> [(Text, Health)] -> [(Text, Health)] -> Text -> Bool
 acceptRepair defined before after target =
@@ -223,15 +190,10 @@ acceptRepair defined before after target =
         (Nothing, Just n) -> isClean n
         _ -> True
 
--- | No new diagnostic messages (knock-on excluded); equal or improved is fine.
 notRegressed :: Set Text -> Health -> Health -> Bool
 notRegressed defined old new =
     healthMsgsFor defined new `Set.isSubsetOf` healthMsgsFor defined old
 
-{- | What crossed the proposer's surface: attempts run, why the cascade
-stopped, the ONE surviving candidate — never vet transcripts or rejected
-samples (R3.9; the type cannot even hold them).
--}
 data RepairReport = RepairReport
     { rrClass :: DiagClass
     , rrAttempts :: Int
@@ -242,11 +204,9 @@ data RepairReport = RepairReport
     }
     deriving (Eq, Show)
 
--- | Hard cap on the rendered report (context-efficiency goal).
 reportCharBudget :: Int
 reportCharBudget = 400
 
--- | One bounded line: attempts, stop reason, kept candidate, R7.3 disclosure.
 renderRepairReport :: RepairReport -> Text
 renderRepairReport r =
     clamp reportCharBudget
@@ -274,7 +234,6 @@ renderRepairReport r =
 clamp :: Int -> Text -> Text
 clamp n t = if T.length t > n then T.take n t <> "…" else t
 
--- | Drop a trailing @-1.2.3@ style version from a package token.
 stripPkgVersion :: Text -> Text
 stripPkgVersion u
     | null kept = u

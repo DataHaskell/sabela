@@ -1,10 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the interrupt-timestamp filter (P1 stress case 25): a request
-stamped before the kernel's last interrupt is stale; one stamped after it
-is not. Pure logic over a dummy 'Session'; no live kernel.
--}
 module Test.InterruptTimestampFilterSpec (spec) where
 
 import Control.Concurrent (threadDelay)

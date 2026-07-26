@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Phase-1 proof: the neutral kernel represents an Ollama turn. Pins
-'turnToCompletion' — content/tool-call mapping, id synthesis, and the derived
-stop condition.
--}
 module Test.ProviderMapSpec (spec) where
 
 import Data.Aeson (object, (.=))

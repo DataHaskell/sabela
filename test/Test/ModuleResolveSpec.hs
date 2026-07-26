@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of the module-not-found repair (B1): fuzzy-match a wrong module
-name against the real installed-module list, so @Data.DataFrame@ heals to
-@DataFrame@ even when GHC offers no "Perhaps you meant".
--}
 module Test.ModuleResolveSpec (spec) where
 
 import Data.Text (Text)

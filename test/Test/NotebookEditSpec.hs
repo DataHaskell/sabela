@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The checked notebook mutations: a duplicate top-level binding cannot be
-committed through 'insertCellChecked' or 'setCellSourceChecked'. The success
-branch is the only one that yields a 'Notebook', so the conflicting state is
-unrepresentable through the constructor — every discrete add/replace path in
-the server routes through these.
--}
 module Test.NotebookEditSpec (spec) where
 
 import Data.Aeson (Value (..))
@@ -25,7 +19,6 @@ import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import Sabela.SessionTypes (CellLang (..))
 import Test.Hspec
 
--- 'codeCell' / 'proseCell' build a code or prose cell with the given source.
 codeCell :: Int -> Text -> Cell
 codeCell cid src = Cell cid CodeCell Haskell src [] Nothing True
 
@@ -87,7 +80,6 @@ spec = describe "checked notebook mutations (duplicate-def is uncommittable)" $ 
             field "binding" v `shouldBe` Just (String "housing")
             field "ownerCell" v `shouldBe` Just (Number 3)
 
--- | The @error@ string of a reject payload, or empty if absent.
 errorText :: Value -> Text
 errorText v = case field "error" v of
     Just (String s) -> s

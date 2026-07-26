@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Built-in example notebooks shown in the editor's Examples panel. Extracted
-from 'Sabela.Output' to keep modules under the size cap.
--}
 module Sabela.Output.Examples (builtinExamples) where
 
 import qualified Data.Text as T

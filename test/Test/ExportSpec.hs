@@ -78,7 +78,6 @@ spec = describe "Sabela.Export" $ do
                     ]
                 g = buildNotebookGraph (nb cells)
             ngRedefIds g `shouldBe` S.fromList [3]
-            -- even targeting the redef cell yields nothing (it's excluded)
             map cellId (backwardSlice 3 g) `shouldBe` []
 
     describe "buildNotebookGraph — widget detection" $ do
@@ -153,7 +152,6 @@ spec = describe "Sabela.Export" $ do
 
         it "neutralizes embedded comment delimiters" $ do
             let out = proseComment ["closing -} here"]
-            -- the only "-}" left should be the closing delimiter
             T.isInfixOf "-}" (T.dropEnd 2 out) `shouldBe` False
 
         it "is empty for no prose" $

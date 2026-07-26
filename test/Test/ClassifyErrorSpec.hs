@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins how raw cell stderr becomes (or doesn't become) a cell error:
-harmless linker noise must not flag an otherwise successful cell.
--}
 module Test.ClassifyErrorSpec (spec) where
 
 import qualified Data.Text as T

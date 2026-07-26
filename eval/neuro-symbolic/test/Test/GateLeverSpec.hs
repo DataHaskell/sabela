@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The A/B lever env mapping: pins that a default-ON server flag lever sets
-its var explicitly in BOTH arms, so the OFF arm actually disables the feature
-rather than inheriting the default.
--}
 module Test.GateLeverSpec (spec) where
 
 import qualified Data.Text as T
@@ -37,9 +33,6 @@ spec = describe "Eval.Gate.searchEnv" $ do
             searchEnv CapabilityLever SearchOff `shouldBe` []
 
     describe "armOrder (cold-install bias)" $ do
-        -- Off always ran first, so dep-heavy tasks paid the cold cabal install
-        -- in the OFF arm and reused the warm store in ON — a measured bias
-        -- (thumbInfo/shortest flipped on exactly this pattern).
         it "alternates which arm runs first per (task, seed) pair" $ do
             armOrder 0 `shouldBe` [SearchOff, SearchOn]
             armOrder 1 `shouldBe` [SearchOn, SearchOff]

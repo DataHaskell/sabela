@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins R6.1/R6.2/R6.4 at the real @executeTool@ dispatch: an insert whose
-cell runs long acks @{cellId, status: executing}@ well under the transport
-timeout; retrying the byte-identical write never duplicates the cell (the
-retry says the original landed); a kernel-needing call during one's own
-in-flight write is bounced with the writing cell named plus elapsed time;
-and @await_idle@ later reconciles the settled outcome. The slow/fast class
-is decided purely by a wall-clock race — never by cell content.
--}
 module Test.WriteAckSpec (spec) where
 
 import Control.Concurrent (
@@ -50,7 +42,6 @@ import Sabela.State (App (..), broadcast, readNotebook)
 import Sabela.State.SessionManager (setHaskellSession)
 import Test.Hspec
 
--- | 1s ack deadline + zero repair budget, restored after each example.
 withAckEnv :: IO a -> IO a
 withAckEnv =
     bracket_
@@ -91,8 +82,6 @@ inertBackend = do
 mkFixture :: IO (App, AIStore.AIStore)
 mkFixture = do
     mgr <- newManager defaultManagerSettings
-    -- G1's compile gate always reconstructs a disposable session, which
-    -- (like the live kernel) needs the sabela-notebook overlay to spawn.
     app <- newApp "." Set.empty (Just mgr) Nothing [buildTimeSupportDir]
     backend <- inertBackend
     setHaskellSession (appSessions app) (Just backend)
@@ -105,9 +94,6 @@ mkFixture = do
     store <- AIStore.newAIStore cfg mgr
     pure (app, store)
 
-{- | A reactive notebook whose forced run completes (broadcasts the cell's
-result) only once the barrier fills — a deliberately long-running cell.
--}
 slowRn :: App -> MVar () -> ReactiveNotebook
 slowRn app barrier =
     (fastRn app)
@@ -116,7 +102,6 @@ slowRn app barrier =
             broadcast (appEvents app) (EvCellResult cid [] Nothing [] [])
         }
 
--- | A reactive notebook whose forced run settles almost immediately.
 fastRn :: App -> ReactiveNotebook
 fastRn app =
     ReactiveNotebook
@@ -154,15 +139,11 @@ insertSrc app store rn src =
 cellCount :: App -> IO Int
 cellCount app = length . nbCells <$> readNotebook (appNotebook app)
 
--- | Insert against a never-released barrier and hand back the executing ack.
 ackExecuting :: IO (App, AIStore.AIStore, ReactiveNotebook, MVar (), Value)
 ackExecuting = do
     (app, store) <- mkFixture
     barrier <- newEmptyMVar
     let rn = slowRn app barrier
-    -- G1's compile gate pays a real disposable GHCi spawn before the ack
-    -- path even starts; the bound is loosened to absorb that, not to admit
-    -- waiting on the barrier — a stuck wait would hang, not merely run long.
     mv <- timeout 30000000 (insertSrc app store rn "x = 1")
     case mv of
         Nothing -> do

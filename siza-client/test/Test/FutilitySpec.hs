@@ -23,7 +23,6 @@ call src = ToolCall "insert_cell" (object ["source" .= src])
 failingWith :: Text -> ToolCall -> IO (Either Text ToolOutcome)
 failingWith e _ = pure (Left e)
 
--- | The futility note a guarded outcome carries, if any.
 noteOf :: Either Text ToolOutcome -> Maybe Text
 noteOf (Left e) = Just e
 noteOf (Right (ToolErr (Object o))) = case KM.lookup "futility" o of
@@ -58,9 +57,6 @@ futilitySpec = describe "Siza.Agent.Futility (retry-futility guard)" $ do
         futilityNote `shouldSatisfy` T.isInfixOf "not the fault"
         futilityNote `shouldSatisfy` T.isInfixOf "Change approach"
 
-    {- G5.7: a deterministic rejection's fault IS the payload. live_test5 told
-    the model "the payload is not the fault" about a compile-gate rejection and
-    steered it at kernel_status, away from the one-character fix. -}
     describe "truthful futility for a deterministic rejection" $ do
         let gateRejection =
                 ToolErr

@@ -59,33 +59,16 @@ whenCurrentGen eb gen action = do
 subscribeBroadcast :: EventBus -> IO (TChan NotebookEvent)
 subscribeBroadcast eb = atomically $ dupTChan (ebBroadcast eb)
 
-{- | Why 'awaitExecutionDone' returned. 'AwaitSettled' is the @EvExecutionDone@
-fence firing for the cascade in flight; 'AwaitKernelDead' is the kill-aware
-exit (the kernel went absent, so no fence will ever come); 'AwaitTimedOut' is
-the bounded budget elapsing — the caller re-loops in all but 'AwaitSettled'.
--}
 data AwaitResult
     = AwaitSettled
     | AwaitKernelDead
     | AwaitTimedOut
     deriving (Eq, Show)
 
-{- | Lock-free bounded long-poll: subscribe, then block on the broadcast
-channel until @EvExecutionDone@ fires (the cascade releases the run-lock
-between cells, so a @running == false@ sample would settle too early —
-the fence is the only reliable signal). Bounded by a wall-clock deadline
-@budgetUs@ from now, so a flood of non-fence events cannot defeat the
-ceiling; @kernelAlive@ is probed on every iteration (not only the quiet
-branch) so a mid-stream kernel death returns 'AwaitKernelDead' at once.
--}
 awaitExecutionDone :: EventBus -> Int -> IO Bool -> IO AwaitResult
 awaitExecutionDone eb budgetUs kernelAlive =
     fst <$> awaitExecutionDoneCounting eb budgetUs kernelAlive
 
-{- | As 'awaitExecutionDone', but also reports how many broadcast events the
-poll observed — the progress evidence the @resource@ runaway diagnostic keys
-on (a silent runaway shows zero events across a whole poll window).
--}
 awaitExecutionDoneCounting ::
     EventBus -> Int -> IO Bool -> IO (AwaitResult, Int)
 awaitExecutionDoneCounting eb budgetUs kernelAlive = do
@@ -112,7 +95,6 @@ awaitExecutionDoneCounting eb budgetUs kernelAlive = do
                             Just _ -> loop chan (seen + 1) deadline
                             Nothing -> loop chan seen deadline
 
--- | Microseconds left until @deadline@ (a monotonic-clock instant in ns).
 remainingUs :: Word64 -> IO Int
 remainingUs deadline = do
     now <- getMonotonicTimeNSec

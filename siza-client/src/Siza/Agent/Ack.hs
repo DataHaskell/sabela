@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Client-side write-ack reconciliation (R6.1): when a mutation write acks
-@executing@ (the server's ack outran the cell's execution), follow up with
-bounded @await_idle@ calls and merge the settled outcome back into the ack,
-so every downstream consumer — the health gate ('Siza.Agent.Owned'), the
-repair cascade and rejection sampling — sees a settled execution status
-instead of misreading the ack as a red cell.
--}
 module Siza.Agent.Ack (
     reconcileWrite,
     settledWriteFor,
@@ -24,14 +17,9 @@ import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..), toolOutcomeValue)
 import Sabela.AI.WriteAck (executingAckCell)
 
--- | Bounded @await_idle@ follow-ups before the honest executing ack is kept.
 maxAwaitRounds :: Int
 maxAwaitRounds = 8
 
-{- | Reconcile an @executing@ write ack through the injected tool caller.
-Any other outcome (settled ack, error, transport failure) passes through
-untouched; a write that never settles keeps its truthful executing ack.
--}
 reconcileWrite ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     Either Text ToolOutcome ->
@@ -50,7 +38,6 @@ reconcileWrite call out = case out of
                 Just entry -> pure (Right (ToolOk (mergeSettled v entry)))
                 Nothing -> loop cid (n - 1) v
 
--- | The @writes@ reconciliation entry for a cell in an @await_idle@ reply.
 settledWriteFor :: Int -> Value -> Maybe Value
 settledWriteFor cid (Object o) = case KM.lookup "writes" o of
     Just (Array ws) ->
@@ -64,10 +51,6 @@ settledWriteFor cid (Object o) = case KM.lookup "writes" o of
     headMaybe [] = Nothing
 settledWriteFor _ _ = Nothing
 
-{- | Merge a settled reconciliation entry into the original executing ack:
-status becomes the settled one and the execution summary rides along, so the
-merged value reads exactly like an inline completed ack.
--}
 mergeSettled :: Value -> Value -> Value
 mergeSettled (Object ack) (Object entry) =
     Object

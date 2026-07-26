@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Client-side write-ack reconciliation (R6.1): an @executing@ insert ack is
-settled through bounded @await_idle@ follow-ups and merged so the health gate
-('ownedCellOutcome') reads the settled execution, not a false red; settled
-and error outcomes pass through untouched.
--}
 module Test.WriteAckClientSpec (writeAckClientSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -42,9 +37,6 @@ settledReply =
 emptyReply :: Value
 emptyReply = object ["waited" .= ("timedOut" :: Text)]
 
-{- | A fake tool caller that answers @await_idle@ from a scripted list and
-counts every call it receives.
--}
 scriptedCaller ::
     [Value] -> IO (ToolName -> Value -> IO (Either Text ToolOutcome), IO Int)
 scriptedCaller replies = do

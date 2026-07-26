@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Denial-legal closure (docs/discover/search-api.md section 8.2): the
-ledger records the best hit each answered cluster held, and every close or
-give-up envelope runs one final union sweep over that recorded evidence —
-a close either hands the held hit over (name, signature, provenance,
-install state, cabal line) or is provably over an empty merged catalogue.
--}
 module Siza.Agent.Discover.Closure (
     bestHeldFor,
     blockedDenial,
@@ -33,18 +27,15 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
--- | The entity a ledger key names: its head word, scope brackets dropped.
 entityOf :: Text -> Text
 entityOf = T.toLower . T.takeWhile (/= ' ') . T.strip
 
--- | The world-change announcement riding the first post-change answer (R1.4).
 worldNote :: Text
 worldNote =
     "world changed: a dependency install or kernel restart landed since the \
     \last search — earlier install-state answers may be stale; this answer \
     \re-checked the live catalogue"
 
--- | Remove already-tried names from the nearest-names suggestion (R5.5).
 stripTried :: Set Text -> Text -> Text
 stripTried tried next = case T.breakOn marker next of
     (_, rest) | T.null rest -> next
@@ -63,7 +54,6 @@ stripTried tried next = case T.breakOn marker next of
   where
     marker = "Nearest held names:"
 
--- | Stratum rank of a hit's matchKind; lower is stronger evidence.
 kindRank :: Value -> Int
 kindRank h = case topText "matchKind" h of
     "exact" -> 0
@@ -75,10 +65,6 @@ kindRank h = case topText "matchKind" h of
     "semantic" -> 6
     _ -> 7
 
-{- | Record the best hit of a found envelope under its cluster name. Weaker
-tiers are recorded too (section 8.2 hands over even weaker-tier evidence);
-a stronger hit for the same cluster replaces a weaker one.
--}
 recordEvidence :: Text -> Value -> Map Text Value -> Map Text Value
 recordEvidence cluster v acc = case bestHit (hitsOf v) of
     Nothing -> acc
@@ -89,11 +75,6 @@ recordEvidence cluster v acc = case bestHit (hitsOf v) of
         (h : _) -> Just h
         [] -> Nothing
 
-{- | The final ledger-union sweep for an entity a query named: a direct
-cluster lookup, else any recorded hit whose name, module or package matches
-the entity — so "no answer held anywhere" is quantified over everything the
-session was ever told, never over one scope's record.
--}
 bestHeldFor :: Map Text Value -> Text -> Maybe Value
 bestHeldFor evidence entity = case Map.lookup e evidence of
     Just h -> Just h
@@ -108,11 +89,6 @@ bestHeldFor evidence entity = case Map.lookup e evidence of
                    | k <- ["name", "module", "package"]
                    ]
 
-{- | One bounded line carrying a held hit's full provenance: name, signature,
-module, package+version, install state, and its cabal line. A signature over
-'sigClamp' chars is clamped WITH disclosure — the omission and its recovery
-call are named, never bare-truncated (section 10 protect-by-key).
--}
 heldHitLine :: Value -> Text
 heldHitLine h =
     "`"
@@ -140,28 +116,15 @@ heldHitLine h =
     pkgVer = T.strip (topText "package" h <> " " <> topText "version" h)
     cabal = topText "cabal" h
 
--- | The held-hit signature clamp; past it the line discloses and recovers.
 sigClamp :: Int
 sigClamp = 200
 
-{- | The post-close reference for a SEEN key: leads with the held hit when
-the sweep finds one, else replays the key's own summary — never a foreign
-scope's. @factsText@ is the caller's pre-rendered held-facts clause (kept out
-of this module's dependencies).
-
-It used to end \"Searching further cannot help ... act on it, or state the
-blocker plainly\", which asserts the search was sufficient — the one thing a
-miss record cannot know.
--}
 closedSummary :: Maybe Value -> Text -> Text -> Text
 closedSummary (Just h) _ ownSummary =
     heldHitLine h <> " — already answered (" <> ownSummary <> ")."
 closedSummary Nothing factsText ownSummary =
     ownSummary <> ". Already held" <> factsText <> "."
 
-{- | What a repeated miss has to report (R5.4): the held hit for the entity,
-or the scoped emptiness naming which sources were consulted.
--}
 giveUpLine :: Maybe Value -> [Text] -> Text
 giveUpLine (Just h) _ = "already held: " <> heldHitLine h <> "."
 giveUpLine Nothing consulted =
@@ -169,10 +132,6 @@ giveUpLine Nothing consulted =
         <> T.intercalate ", " (if null consulted then ["none"] else consulted)
         <> ")."
 
-{- | Why a denial of cluster @c@ is illegal, if it is (section 11.1): a
-turn-0 environment fact, or an asserted fact whose scope COVERS the denial's
-— a scoped find covers a global denial, never the reverse.
--}
 protectedBy :: Set Text -> Map Text (Int, Text) -> Text -> Maybe Text
 protectedBy seeded asserted c
     | global
@@ -196,7 +155,6 @@ protectedBy seeded asserted c
             <> s
             <> ") and the catalogue has not changed since"
 
--- | The blocked-denial reference: the held assertion, never the false miss.
 blockedDenial :: Text -> Text -> Value
 blockedDenial qn why =
     object
@@ -207,7 +165,6 @@ blockedDenial qn why =
             .= ("'" <> qn <> "' is " <> why <> ". Trust the held fact and act on it.")
         ]
 
--- | The source names an envelope's consulted rows carry.
 consultedOf :: Value -> [Text]
 consultedOf v = case v of
     Object o

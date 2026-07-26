@@ -222,8 +222,6 @@ spec = describe "disposable notebook materialization" $ do
 
             let firstSeconds = nsToSeconds (firstEnd - firstStart)
                 secondSeconds = nsToSeconds (secondEnd - secondStart)
-            -- The warm hit reuses the built dist-newstyle/store outright, so it
-            -- comfortably beats the plan's 10s warm-hit target and the cold build.
             secondSeconds `shouldSatisfy` (< 10)
             secondSeconds `shouldSatisfy` (< firstSeconds)
 
@@ -251,13 +249,6 @@ spec = describe "disposable notebook materialization" $ do
                     isNothing <$> getHaskellSession (appSessions app) `shouldReturn` True
                     isNothing liveBefore `shouldBe` True
 
-                    {- The store SURVIVES a budget breach so the next attempt
-                    resumes: discarding it is what made a heavy dependency
-                    unreachable rather than merely slow (the
-                    heavy-dep-never-converges regression in
-                    'Test.TryCacheSpec'). The bucket must still not be a
-                    usable hit, which 'acquireCacheEntry' enforces via the
-                    completion marker. -}
                     let cacheRoot = tryCacheRoot (envTmpDir (appEnv app))
                     buckets <- listCacheBuckets cacheRoot
                     buckets `shouldNotBe` []

@@ -1,16 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | C6: deleting a cell must not leave its bindings, imports, or
-type-level declarations resident in the live GHCi session — GHCi has no
-partial-unbind primitive, so 'Sabela.Server.Notebook.deleteCellH' must
-trigger the same full-rebuild path ('Sabela.Handlers.Plan.executeFullRestart')
-already used for other structural changes. Distinct from
-'Test.KernelStateWireSpec', which only pins the @kernel_status@ JSON shape;
-this drives a real GHCi-backed session and checks actual session-content
-consistency after a delete, table-driven across the ways interpreter state
-can outlive the notebook that produced it.
--}
 module Test.KernelStateIntegritySpec (spec) where
 
 import Control.Concurrent (threadDelay)
@@ -49,28 +39,17 @@ import Sabela.State.SessionManager (
     getHaskellSession,
  )
 
--- | A dirty code cell ready to be picked up by the next run-all/rebuild.
 cell :: Int -> Text -> Cell
 cell cid src = Cell cid CodeCell ST.Haskell src [] Nothing True
 
--- | Replace the whole cell list and trigger the reactive run-all path.
 seedAndRun :: App -> ReactiveNotebook -> [Cell] -> IO ()
 seedAndRun app rn cells = do
     modifyNotebook (appNotebook app) (\nb -> nb{nbCells = cells})
     runAndSettle app (rnRunAll rn)
 
-{- | Delete a cell through the real HTTP handler and let any triggered
-rebuild settle before the caller inspects session state.
--}
 deleteAndSettle :: App -> Int -> IO ()
 deleteAndSettle app cid = runAndSettle app (void (runHandler (deleteCellH app cid)))
 
-{- | Subscribe to the broadcast bus BEFORE triggering the action (so the
-fence cannot fire unseen), run it, then block for @EvExecutionDone@ up to
-'settleBudgetUs'. The pre-fix bug triggers no cascade at all, so this
-simply exhausts the budget once and proves the bug rather than hanging
-forever — the bounded timeout is what keeps that proof affordable.
--}
 runAndSettle :: App -> IO () -> IO ()
 runAndSettle app act = do
     chan <- subscribeBroadcast (appEvents app)
@@ -92,15 +71,12 @@ runAndSettle app act = do
 settleBudgetUs :: Int
 settleBudgetUs = 90_000_000
 
--- | Ask the live GHCi session for the type of an expression.
 queryType :: App -> Text -> IO Text
 queryType app expr = withBackend app "<no live session>" (`ST.sbQueryType` expr)
 
--- | Run an expression against the live GHCi session, returning (stdout, stderr).
 runExpr :: App -> Text -> IO (Text, Text)
 runExpr app expr = withBackend app ("", "<no live session>") (`ST.sbRunBlock` expr)
 
--- | Raw GHCi introspection command (e.g. @:show imports@) via runBlock.
 showCommand :: App -> Text -> IO Text
 showCommand app cmd = fst <$> runExpr app cmd
 
@@ -109,28 +85,17 @@ withBackend app onNone act = do
     mSess <- getHaskellSession (appSessions app)
     maybe (pure onNone) act mSess
 
-{- | GHCi failure signal: the textual diagnostic marker shared with
-'Sabela.Session.Query.typecheckValueWith', plus the @-fdiagnostics-as-json@
-severity field this GHC emits instead ('Sabela.Errors.Json').
--}
 isFailure :: Text -> Bool
 isFailure out =
     "error:" `T.isInfixOf` out
         || "\"severity\":\"Error\"" `T.isInfixOf` out
 
-{- | The @sabela-notebook@ support source overlay 'installAndRestart' always
-needs (it targets @WithNotebookSupport@ unconditionally); without it a
-fresh session can never resolve @sabela-notebook@ from Hackage.
--}
 newLiveApp :: IO App
 newLiveApp = do
     app <- newApp "." Set.empty Nothing Nothing [buildTimeSupportDir]
     _ <- setupReactive app
     pure app
 
-{- | Run one test against a fresh kernel, releasing it afterwards so a leaked
-GHCi cannot hold its nursery for the rest of the suite.
--}
 withLiveApp :: (App -> IO a) -> IO a
 withLiveApp = bracket newLiveApp (forceResetAllSessions . appSessions)
 
@@ -206,7 +171,6 @@ spec = describe "delete-cell session integrity (C6)" $ do
 
             afterInstance <- queryType app "show (Bar 1)"
             afterInstance `shouldSatisfy` isFailure
-            -- The surviving type itself must be untouched by deleting the instance.
             afterType <- queryType app "Bar 1"
             afterType `shouldSatisfy` T.isInfixOf "Bar 1 :: Bar"
 

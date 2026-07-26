@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | C2 task 5: the structural artifact combinators. The point of these is
-that they cannot be weakened into a tautology — a render that ignores its
-data, or a table whose shape disagrees with the caller's own recount, fails.
--}
 module Test.NotebookCheckSpec (spec) where
 
 import Test.Hspec
@@ -15,14 +11,12 @@ import Sabela.Notebook.Check (
     tableShape,
  )
 
--- | A three-point line chart, as the Picture renderer emits one.
 chartSvg :: String
 chartSvg =
     "<svg xmlns=\"http://www.w3.org/2000/svg\">\
     \<path d=\"M0,0 L1,1\"/><circle cx=\"1\" cy=\"1\"/><circle cx=\"2\" cy=\"4\"/>\
     \</svg>"
 
--- | A decoration that parses but draws nothing tied to the data.
 emptyFrame :: String
 emptyFrame = "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
 

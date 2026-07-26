@@ -21,9 +21,6 @@ import Sabela.AI.Handles (
     summarizeForLLM,
  )
 
-{- | Mirrors @Orchestrator.compactToolResult@ closely enough for unit tests.
-Keep the threshold in sync with that function.
--}
 compactToolResultThreshold :: Int
 compactToolResultThreshold = 8000
 

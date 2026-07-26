@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Bench statistics and report rendering, split from "Eval.Bench" (module
-size cap): arm tallies, the two-proportion z, per-task splits, and the
-cost-to-pass table. "Eval.Bench" re-exports everything here.
--}
 module Eval.BenchReport (
     ArmResult (..),
     Comparison (..),
@@ -32,7 +28,6 @@ import qualified Data.Text as T
 import Eval.Agent (GrammarMode (..))
 import Eval.Applicability (excludeFlagged)
 
--- | Passes out of runs for one arm.
 data ArmResult = ArmResult
     { arPasses :: Int
     , arRuns :: Int
@@ -52,10 +47,6 @@ passRate (ArmResult p n)
     | n == 0 = 0
     | otherwise = fromIntegral p / fromIntegral n
 
-{- | The two-proportion z statistic for arm B over arm A under the pooled-variance
-null. Zero when either arm has no runs or the pooled rate is degenerate, so a
-caller never divides by zero. @|z| > 1.96@ is the usual 5% two-sided threshold.
--}
 twoProportionZ :: ArmResult -> ArmResult -> Double
 twoProportionZ a@(ArmResult xa na) b@(ArmResult xb nb)
     | na == 0 || nb == 0 || se == 0 = 0
@@ -64,7 +55,6 @@ twoProportionZ a@(ArmResult xa na) b@(ArmResult xb nb)
     p = fromIntegral (xa + xb) / fromIntegral (na + nb)
     se = sqrt (p * (1 - p) * (1 / fromIntegral na + 1 / fromIntegral nb))
 
--- | Aggregate (arm, passed) outcomes into the A-vs-B comparison.
 summariseRuns :: [(GrammarMode, Bool)] -> Comparison
 summariseRuns outcomes =
     Comparison a b (passRate b - passRate a) (twoProportionZ a b)
@@ -76,7 +66,6 @@ summariseRuns outcomes =
             (length [() | (m, ok) <- outcomes, m == mode, ok])
             (length [() | (m, _) <- outcomes, m == mode])
 
--- | A one-block report of a comparison, with the 5% significance verdict.
 renderComparison :: Comparison -> Text
 renderComparison (Comparison a b diff z) =
     T.unlines
@@ -90,7 +79,6 @@ renderComparison (Comparison a b diff z) =
   where
     rate r = tshow (arPasses r) <> "/" <> tshow (arRuns r)
 
--- | The line that stops a small-n coin flip being read as a lever effect.
 noiseCaveat :: Double -> Int -> [Text]
 noiseCaveat z n
     | abs z > 1.96 = []
@@ -154,11 +142,6 @@ renderReportFull outcomes =
         <> "\n"
         <> renderCost outcomes
 
-{- | The full report with flagged pairs handled per R8.2: a VOID pair appears
-in NO row (it measured nothing); NA and lever-saturated pairs print BOTH
-per-arm outcomes in the Per task table as category rows, excluded from every
-lever number (overall comparison and cost) — a grade is not a measurement.
--}
 renderReportFlagged ::
     [(Text, Int)] ->
     [(Text, Int)] ->

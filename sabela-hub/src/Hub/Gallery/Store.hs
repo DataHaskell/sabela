@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 
-{- | The gallery store's data types and disk layer: the @index@ /
-@collections/<cid>/meta@ / @tags@ files, hydrate, and the persist helpers. The
-operations on top live in "Hub.Gallery". All writes are serialized through one
-'MVar' lock because the @index@ and @tags@ files are shared.
--}
 module Hub.Gallery.Store (
     GalleryStore (..),
     IndexEntry (..),
@@ -45,7 +40,6 @@ import Hub.Meta (parseMeta, writeMetaLine)
 import Hub.Share (Share (..), ShareStore, listAllShares, validSlug)
 import Hub.Types (isLowerHex)
 
--- | A top-level @index@ entry: a featured share slug, or a collection cid.
 data IndexEntry = IxShare Text | IxCollection Text
     deriving (Eq)
 
@@ -56,15 +50,11 @@ data Collection = Collection
     , colMembers :: [Text]
     }
 
-{- | A resolved feed entry: a featured share with its tags and an optional
-author byline (curation metadata), or a collection.
--}
 data GalleryItem
     = GItemShare Share [Text] (Maybe Text)
     | GItemCollection CollectionView
     deriving (Eq, Show)
 
--- | A collection with its members resolved to live shares (drop order kept).
 data CollectionView = CollectionView
     { cvCid :: Text
     , cvTitle :: Text
@@ -98,10 +88,6 @@ data GalleryStore = GalleryStore
 
 galleryDir :: GalleryStore -> FilePath
 galleryDir = gsDir
-
--- ---------------------------------------------------------------------------
--- Hydrate
--- ---------------------------------------------------------------------------
 
 newGalleryStore :: FilePath -> IO GalleryStore
 newGalleryStore dir = do
@@ -163,7 +149,6 @@ loadTags dir = do
         then pure Map.empty
         else Map.fromList . map (fmap splitTags) . parseMeta <$> TIO.readFile f
 
--- | Per-slug author byline (curation metadata, like tags): @<id>=Name@.
 loadAttr :: FilePath -> IO (Map Text Text)
 loadAttr dir = do
     let f = dir </> "attribution"
@@ -177,10 +162,6 @@ splitMembers = filter validSlug . T.splitOn ","
 
 splitTags :: Text -> [Text]
 splitTags = filter (not . T.null) . T.splitOn ","
-
--- ---------------------------------------------------------------------------
--- Persist + shared helpers
--- ---------------------------------------------------------------------------
 
 withWrite :: GalleryStore -> IO a -> IO a
 withWrite gs act = withMVar (gsLock gs) (const act)
@@ -211,9 +192,6 @@ persistCollection gs cid col = do
             , writeMetaLine "members" (T.intercalate "," (colMembers col))
             ]
 
-{- | Persist the tags file, dropping any id no longer in the index (soft
-prune) and keeping the in-memory map index-consistent.
--}
 persistTags :: GalleryStore -> IO ()
 persistTags gs = do
     ix <- readTVarIO (gsIndex gs)
@@ -228,7 +206,6 @@ persistTags gs = do
             , not (null v)
             ]
 
--- | Persist the per-slug author bylines.
 persistAttr :: GalleryStore -> IO ()
 persistAttr gs = do
     attr <- readTVarIO (gsAttr gs)

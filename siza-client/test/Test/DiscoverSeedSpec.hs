@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Turn-0 environment seeding (search-api.md sections 2/11, R1.5, R1.6) over
-GENERATED notebooks: any module imported by a cell and any
-'Sabela.AI.PromptCore.builtinNames' entry is never deniable, and module-shaped
-queries answer from the notebook env ("imported by cell 0 as D") — structural
-impossibility, proven with every backend answering empty.
--}
 module Test.DiscoverSeedSpec (discoverSeedSpec) where
 
 import Control.Monad (forM, replicateM)
@@ -65,7 +59,6 @@ cellSrcT (PlainImport m) = "import " <> m
 cellSrcT Binding = "total = 1"
 cellSrcT Prose = "-- notes"
 
--- | Each imported module with its first importing cell and any alias.
 firstImports :: [CellT] -> [(Text, Int, Maybe Text)]
 firstImports cells =
     nubBy (\(m, _, _) (m', _, _) -> m == m') $
@@ -82,7 +75,6 @@ firstImports cells =
             (a : _) -> Just a
             [] -> Nothing
 
--- | Every backend empty: only the environment layer can answer.
 nbCall :: [CellT] -> ToolName -> Value -> IO (Either Text ToolOutcome)
 nbCall cells ListCells _ =
     pure . Right . ToolOk $ object ["cells" .= map cellJson cells]

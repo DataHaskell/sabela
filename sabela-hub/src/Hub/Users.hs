@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Persisted user roles (admin or not), mirroring the 'Hub.Share' store
-shape: one dir per user at @<usersDir>\/<emailHash>\/meta@ plus a 'TVar'
-cache keyed by normalized email. Per-user dirs need no write lock.
--}
 module Hub.Users (
     UserRecord (..),
     UserStore,
@@ -12,8 +8,6 @@ module Hub.Users (
     isAnyAdmin,
     grantAdmin,
     revokeAdmin,
-
-    -- * Pure helpers (exported for testing)
     emailHash,
 ) where
 
@@ -47,21 +41,12 @@ data UserRecord = UserRecord
     }
     deriving (Eq, Show)
 
-{- | Per-user dirs keyed by a deterministic 'emailHash', so two writers CAN
-target the same dir; 'usLock' serializes every disk+cache mutation so a
-grant racing a revoke can't leave the two out of sync (cf. 'Hub.Share', whose
-fresh-slug-per-write makes that safe without a lock).
--}
 data UserStore = UserStore
     { usBaseDir :: FilePath
     , usCache :: TVar (Map Text UserRecord)
     , usLock :: MVar ()
     }
 
-{- | Open the store, hydrate from disk, and ensure the bootstrap admin (if
-given and non-blank) holds the role — without it and with no admin on disk,
-the admin surface is unreachable (granting requires being admin).
--}
 newUserStore :: FilePath -> Maybe Text -> IO UserStore
 newUserStore dir bootstrap = do
     createDirectoryIfMissing True dir
@@ -80,15 +65,11 @@ newUserStore dir bootstrap = do
     mfilterNonBlank (Just e) | not (T.null e) = Just e
     mfilterNonBlank _ = Nothing
 
-{- | Whether the (normalized) email holds the admin role. Every lookup goes
-through 'normalizeEmail' so a casing mismatch can't shed the role.
--}
 isAdmin :: UserStore -> Text -> IO Bool
 isAdmin store email = do
     m <- readTVarIO (usCache store)
     pure $ maybe False urIsAdmin (Map.lookup (normalizeEmail email) m)
 
--- | Whether any admin exists (for the startup inert-surface warning).
 isAnyAdmin :: UserStore -> IO Bool
 isAnyAdmin store = any urIsAdmin . Map.elems <$> readTVarIO (usCache store)
 
@@ -98,10 +79,6 @@ grantAdmin store email = setAdmin store email True
 revokeAdmin :: UserStore -> Text -> IO ()
 revokeAdmin store email = setAdmin store email False
 
-{- | The directory key: hex-encoded UTF-8 bytes of the normalized email.
-Dependency-free and injective (no digest, no collision class), lowercase hex
-only, so it passes the same path guard as share slugs.
--}
 emailHash :: Text -> Text
 emailHash email =
     T.pack $ concatMap hexByte (BS.unpack (TE.encodeUtf8 (normalizeEmail email)))
@@ -110,13 +87,6 @@ emailHash email =
         let n = fromIntegral w :: Int
          in [intToDigit (n `div` 16), intToDigit (n `mod` 16)]
 
--- ---------------------------------------------------------------------------
--- Internal
--- ---------------------------------------------------------------------------
-
-{- | Upsert the role under 'usLock' so disk and cache stay consistent.
-Keeps an existing record's createdAt, mints one otherwise.
--}
 setAdmin :: UserStore -> Text -> Bool -> IO ()
 setAdmin store email admin = withMVar (usLock store) $ \_ -> do
     let norm = normalizeEmail email
@@ -139,10 +109,6 @@ metaText u =
         , writeMetaLine "createdAt" (urCreatedAt u)
         ]
 
-{- | Load one record. @isAdmin@ is exact-match @true@ — never key presence —
-and the email inside @meta@ is authoritative (re-normalized defensively);
-the hash is only the directory key.
--}
 loadUser :: FilePath -> FilePath -> IO (Maybe UserRecord)
 loadUser baseDir entry = do
     let metaF = baseDir </> entry </> "meta"

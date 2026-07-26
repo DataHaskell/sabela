@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @check_type@ record-surfacing helpers: 'typeConstructors' (the
-type-constructor atoms in a resolved @name :: ty@) and 'recordDecl' (filtering a
-GHCi @:info@ dump to the data/newtype declaration with its fields). Together they
-let @check_type@ on a value reveal its record fields in one call, so the weak
-model can record-update without a multi-call hunt for the field names.
--}
 module Test.CheckTypeStructSpec (spec) where
 
 import Data.Maybe (fromMaybe)
@@ -17,7 +11,6 @@ import Sabela.AI.Capabilities.Query (
  )
 import Test.Hspec
 
--- A representative GHCi @:info TreeConfig@ dump (record + an instance + provenance).
 treeConfigInfo :: T.Text
 treeConfigInfo =
     T.unlines
@@ -63,9 +56,6 @@ spec = do
             recordDecl (T.unlines ["data Direction = GoLeft | GoRight"])
                 `shouldBe` Nothing
 
-    -- live_test20: asked to superimpose a curve, the model never learned that
-    -- Picture is a Semigroup, so `<>` — the answer — stayed invisible. A
-    -- type's instances ARE its composition vocabulary.
     describe "instanceClasses" $ do
         it "names the classes a type belongs to" $
             instanceClasses treeConfigInfo `shouldBe` ["Show"]

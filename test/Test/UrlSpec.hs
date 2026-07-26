@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Tests for 'rewriteGitHubUrl', the pure GitHub/gist → raw rewrite behind
-the import-from-URL feature. Pins each recognised shape and the
-pass-through for everything else.
--}
 module Test.UrlSpec (spec) where
 
 import Sabela.Url (rewriteGitHubUrl)

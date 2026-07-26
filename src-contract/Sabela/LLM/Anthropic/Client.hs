@@ -28,7 +28,6 @@ import Network.HTTP.Client (
 import Network.HTTP.Types (statusCode)
 import Sabela.Anthropic.Types
 
--- | Default configuration (needs API key).
 defaultConfig :: Text -> AnthropicConfig
 defaultConfig apiKey =
     AnthropicConfig
@@ -37,10 +36,6 @@ defaultConfig apiKey =
         , acBaseUrl = "https://api.anthropic.com"
         }
 
-{- | Stream a Messages API request. Calls the callback for each SSE event.
-Returns the final assembled MessageResponse, or an error message.
-The CancelToken is checked between chunks to support cancellation.
--}
 streamMessages ::
     Manager ->
     AnthropicConfig ->
@@ -84,7 +79,6 @@ streamMessages mgr cfg req cancelTok onEvent = do
         Left (e :: SomeException) -> pure (Left (T.pack (show e)))
         Right r -> pure r
 
--- | Drain a response body into a single ByteString.
 drainBody :: IO BS.ByteString -> IO BS.ByteString
 drainBody readChunk = do
     chunks <- go []
@@ -96,9 +90,6 @@ drainBody readChunk = do
             then pure acc
             else go (chunk : acc)
 
-{- | Parse an SSE stream from an HTTP response body.
-Reads chunks, splits into SSE frames, and dispatches events.
--}
 parseSSEStream ::
     IO BS.ByteString ->
     CancelToken ->
@@ -116,7 +107,6 @@ parseSSEStream readChunk cancelTok onEvent responseRef = do
             chunk <- readChunk
             if BS.null chunk
                 then do
-                    -- End of stream — process remaining buffer
                     buf <- readIORef bufRef
                     unless (BS.null (BS8.strip buf)) $
                         processFrame buf onEvent responseRef
@@ -127,7 +117,6 @@ parseSSEStream readChunk cancelTok onEvent responseRef = do
                     modifyIORef' bufRef (const remaining)
                     go bufRef
 
--- | Process a buffer looking for complete SSE frames (separated by "\n\n").
 processBuffer ::
     BS.ByteString ->
     (StreamEvent -> IO ()) ->
@@ -138,11 +127,9 @@ processBuffer buf onEvent responseRef = do
         (_, rest) | BS.null rest -> pure buf
         (frame, rest) -> do
             processFrame frame onEvent responseRef
-            -- Skip the "\n\n" delimiter
             let remaining = BS.drop 2 rest
             processBuffer remaining onEvent responseRef
 
--- | Process a single SSE frame (may have multiple "data:" lines).
 processFrame ::
     BS.ByteString ->
     (StreamEvent -> IO ()) ->
@@ -157,12 +144,10 @@ processFrame frame onEvent responseRef = do
         case eitherDecodeStrict jsonBs of
             Left _ -> pure ()
             Right ev -> do
-                -- Update the response ref on message_start
                 case ev of
                     SEMessageStart resp ->
                         modifyIORef' responseRef (const (Just resp))
                     SEMessageDelta md -> do
-                        -- Update stop_reason on the stored response
                         modifyIORef' responseRef $ fmap $ \r ->
                             r
                                 { mrsStopReason =
@@ -172,42 +157,32 @@ processFrame frame onEvent responseRef = do
                                     mdUsage md `orElse` mrsUsage r
                                 }
                     SEContentBlockStart idx cb -> do
-                        -- Place content block at the correct index
                         modifyIORef' responseRef $ fmap $ \r ->
                             r{mrsContent = setAt idx cb (mrsContent r)}
                     SEContentBlockDelta idx delta -> do
-                        -- Merge delta into the content block at idx
                         modifyIORef' responseRef $ fmap $ \r ->
                             r{mrsContent = applyDelta idx delta (mrsContent r)}
                     _ -> pure ()
-                -- Notify the callback
                 handleEvent eventType ev onEvent
   where
     orElse (Just x) _ = Just x
     orElse Nothing y = y
 
--- | Extract a field value from SSE lines (e.g., "event: message_start").
 extractField :: BS.ByteString -> [BS.ByteString] -> Maybe BS.ByteString
 extractField prefix ls =
     case [BS.drop (BS.length prefix + 1) l | l <- ls, prefix `BS.isPrefixOf` l] of
         (x : _) -> Just (BS8.strip x)
         [] -> Nothing
 
--- | Handle an event, potentially filtering based on event type.
 handleEvent ::
     Maybe BS.ByteString -> StreamEvent -> (StreamEvent -> IO ()) -> IO ()
 handleEvent _ ev onEvent = onEvent ev
 
--- | Set a content block at the given index, extending the list if needed.
 setAt :: Int -> ContentBlock -> [ContentBlock] -> [ContentBlock]
 setAt idx cb xs
     | idx < length xs = take idx xs ++ [cb] ++ drop (idx + 1) xs
     | otherwise = xs ++ [cb]
 
-{- | Apply a content delta to the block at @idx@. Forces the merged
-text/JSON before re-wrapping so a long stream of 'TextDelta's doesn't
-build a deep @<>@-tree on the target block.
--}
 applyDelta :: Int -> ContentDelta -> [ContentBlock] -> [ContentBlock]
 applyDelta idx delta blocks =
     [ if i == idx then merge b delta else b

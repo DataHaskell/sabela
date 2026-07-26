@@ -166,8 +166,6 @@ spec = describe "Eval.Episode (R8.1-R8.3 measurement plumbing)" $ do
                 fmap emModel m `shouldBe` Just "test-model"
                 fmap emStopped m `shouldBe` Just "done"
                 fmap emLevers m `shouldBe` Just [("grammar", arm)]
-            -- Byte-identical SEARCH-FREE arms (GrammarOff makes no discover
-            -- call): not-applicable, never VOID (section 13 applicability).
             _ <-
                 saveEpisodeIn
                     dir
@@ -183,8 +181,6 @@ spec = describe "Eval.Episode (R8.1-R8.3 measurement plumbing)" $ do
             nas `shouldBe` [("nadup", 1)]
             naNote nas `shouldSatisfy` T.isInfixOf "nadup s1"
             readVoidFlags dir >>= \vs -> ("nadup", 1) `notElem` vs `shouldBe` True
-            -- Byte-identical SEARCH-USING arms whose discover surface ANSWERED
-            -- (GrammarOn proactively discovers): lever-saturated, never VOID.
             _ <-
                 saveEpisodeIn
                     dir
@@ -200,8 +196,6 @@ spec = describe "Eval.Episode (R8.1-R8.3 measurement plumbing)" $ do
             ("vdup", 1) `elem` sats `shouldBe` True
             saturatedNote sats `shouldSatisfy` T.isInfixOf "vdup s1"
             readVoidFlags dir >>= \vs -> ("vdup", 1) `notElem` vs `shouldBe` True
-            -- Byte-identical arms whose discover CALL got no answer: the lever
-            -- surface never fired — dead, flagged VOID.
             let deadMsgs =
                     [ object
                         [ "role" .= ("assistant" :: Text)
@@ -225,8 +219,6 @@ spec = describe "Eval.Episode (R8.1-R8.3 measurement plumbing)" $ do
             voids <- readVoidFlags dir
             ("deadlever", 1) `elem` voids `shouldBe` True
             voidNote voids `shouldSatisfy` T.isInfixOf "deadlever s1"
-            -- The lever-effect tripwire compares BODIES: the identical "vdup"
-            -- pair reads inert even though its arm headers differ.
             metrics <- renderGateMetrics dir (gateRows "vdup")
             metrics `shouldSatisfy` T.isInfixOf "0/1"
             metrics `shouldSatisfy` T.isInfixOf "LEVER INERT"
@@ -239,9 +231,6 @@ spec = describe "Eval.Episode (R8.1-R8.3 measurement plumbing)" $ do
         , GateResult task 1 SearchOn True 2 1 "done" 0
         ]
 
-{- | The arm-lever fixture: a notebook whose cell 0 declares deps, so the
-GrammarOn proactive discover produces messages GrammarOff never emits.
--}
 fixtureEpisode :: GrammarMode -> IO AgentRun
 fixtureEpisode mode = do
     turns <- newIORef (0 :: Int)
@@ -322,7 +311,6 @@ fixtureMeta arm run =
         , emRelinkProbe = "ok: binary 2026-07-19T10:00:00Z >= newest source"
         }
 
--- | Does a list_cells argument object carry @full: true@ (the M1 fix)?
 fullTrue :: Value -> Bool
 fullTrue (Object o) = KM.lookup "full" o == Just (Bool True)
 fullTrue _ = False

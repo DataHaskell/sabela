@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the JSON envelope 'execTry' returns for each verdict class it can
-answer with (route\/verdict\/outcome\/reason style fields), driven through
-the real dispatch with a fake session backend — no live GHCi or cabal build,
-mirroring 'Test.ToolOutcomeWireSpec'. A field rename here is a wire break.
--}
 module Test.TryOutcomeWireSpec (spec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -31,7 +26,6 @@ import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.SessionManager (setHaskellSession)
 
--- | A fake backend whose pure-eval answer is fixed by the caller.
 fakePureBackend :: ST.PureEvalResult -> IO ST.SessionBackend
 fakePureBackend result = do
     uid <- newUnique
@@ -58,9 +52,6 @@ fakePureBackend result = do
             , ST.sbEvalPureLive = \_ -> pure result
             }
 
-{- | An empty-notebook app (so 'liveFastPathReady' matches trivially) wired
-to a fake backend answering every pure-eval request with 'result'.
--}
 appWithPureResult :: ST.PureEvalResult -> IO App
 appWithPureResult result = do
     app <- newApp "." Set.empty Nothing Nothing []
@@ -90,7 +81,6 @@ textField key value = case field key value of
     Just (String text) -> Just text
     _ -> Nothing
 
--- | A disposable result with no failure, overriding only the fields a test names.
 disposableSample :: DisposableResult
 disposableSample =
     DisposableResult
@@ -173,9 +163,6 @@ spec = describe "try outcome envelope wire pins" $ do
                     \one result and cannot follow more than one final expression; a \
                     \committed cell may run as many statements as it likes; no code ran"
 
-    {- The trial's containment is isolation plus the non-IO admission proof.
-    live_test33_wine: -XSafe additionally rejected Data.Csv and
-    Network.HTTP.Simple outright, so it was dropped. -}
     it "disposable: the route reports isolation as its contract" $ do
         let v = disposablePayload disposableSample
         textField "purityAssurance" v `shouldBe` Just "type_only"
@@ -219,13 +206,10 @@ spec = describe "try outcome envelope wire pins" $ do
             textField "outcome" v `shouldBe` Just "replay_blocked"
             textField "verdict" v `shouldBe` Just "could-not-run"
             field "candidateReached" v `shouldBe` Just (Bool False)
-            -- The attribution names the failing cell and says the candidate was not reached.
             textField "attribution" v `shouldSatisfy` maybe False ("cell 4" `T.isInfixOf`)
             textField "attribution" v
                 `shouldSatisfy` maybe False ("never reached" `T.isInfixOf`)
-            -- The raw diagnostic is NOT surfaced as the candidate's own stderr.
             textField "stderr" v `shouldBe` Just ""
-            -- It is retained, cell-labelled, under the failure field for reference.
             let failureMsg = field "failure" v >>= textField "message"
             failureMsg
                 `shouldSatisfy` maybe False ("Expecting two more arguments" `T.isInfixOf`)

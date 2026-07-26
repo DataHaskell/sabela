@@ -1,24 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | The agentic loop: send one 'CompletionRequest' to the notebook's
-'ModelProvider', accumulate the 'Completion', dispatch any tool calls, and
-iterate until the model stops asking for tools (or we hit the tool budget). The
-provider — Anthropic or a local model — is chosen at the composition root and
-lives in the 'AIStore'; this loop is provider-neutral and never names a wire
-format.
-
-Tool dispatch, the accept gate, and usage folding live in @Loop.Dispatch@,
-@Loop.Accept@, and @Loop.Usage@; this module is the loop itself and re-exports
-their public surface. The entry points in 'Sabela.AI.Orchestrator' are the only
-callers.
--}
 module Sabela.AI.Orchestrator.Loop (
-    -- * Loop
     agenticLoop,
     maxToolIterations,
-
-    -- * Helpers (re-exported for callers and tests)
     mergeUsage,
     downstreamDependents,
     looksLikeToolCallText,
@@ -84,23 +69,14 @@ import Sabela.State (
  )
 import Sabela.State.EventBus (broadcast)
 
-{- | Default per-turn cap on tool-call rounds. The live cap is read from
-'appAIToolLimit' (configurable in the AI settings modal); this is its default.
--}
 maxToolIterations :: Int
 maxToolIterations = defaultToolLimit
 
-{- | The synthetic @insert_cell@ a salvaged fenced block is routed through, so it
-gets the same dispatch, audit, and progress events as a real tool call.
--}
 salvageInsertPart :: Text -> ContentPart
 salvageInsertPart src =
     ToolCallPart
         (ToolCall (ToolCallId "salvage") "insert_cell" (object ["source" .= src]))
 
-{- | The live grammar for this turn: browse the notebook's imports and synthesise
-their signatures. On by default; disabled by @SABELA_LIVE_GRAMMAR=0@ or no session.
--}
 discoverLiveGrammar :: App -> IO (Maybe Text)
 discoverLiveGrammar app = do
     on <- featureEnabled "SABELA_LIVE_GRAMMAR"
@@ -124,8 +100,6 @@ agenticLoop app store rn turn = do
   where
     tid = turnId turn
 
-    -- Threads the per-turn live grammar, the once-per-turn salvage flag, and the
-    -- bounded re-enter count; owned cells accumulate in @ownedRef@.
     go ownedRef liveGrammar salvaged reenters = do
         cancelled <- isCancelled (turnCancel turn)
         when cancelled $ atomically $ writeTVar (turnPhase turn) TurnCancelled
@@ -153,13 +127,8 @@ agenticLoop app store rn turn = do
                     atomically $ writeTVar (turnPhase turn) (TurnFailed err)
                 Right comp -> onCompletion ownedRef liveGrammar salvaged reenters provider comp
 
-    -- One model reply: surface its text, bank it, then either dispatch the tools
-    -- it asked for or fall through to the accept gate.
     onCompletion ownedRef liveGrammar salvaged reenters provider comp = do
         let parts = compParts comp
-        -- A non-streaming provider (Ollama) never fed the ChunkSink, so the UI
-        -- has no assistant text yet — surface it as one delta now, or the reply
-        -- is invisible (only chatDone shows).
         unless (capStreaming (mpCaps provider)) $
             let txt = T.concat [t | TextPart t <- parts]
              in unless (T.null txt) $
@@ -183,7 +152,6 @@ agenticLoop app store rn turn = do
                 atomically $
                     writeTVar (turnPhase turn) (TurnComplete (toStopReason stop))
 
-    -- Dispatch this round's tool calls, unless the turn's tool budget is spent.
     onWantsTools ownedRef liveGrammar salvaged reenters toolCount parts = do
         limit <- readIORef (appAIToolLimit app)
         if toolCount >= limit
@@ -198,14 +166,9 @@ agenticLoop app store rn turn = do
                 executeToolCalls app store rn turn ownedRef parts
                 go ownedRef liveGrammar salvaged reenters
 
-    -- At the model's natural stop: first the narrate-then-stop salvage, then the
-    -- closure-verified accept — re-verify owned cells live and, when re-enter is
-    -- on and budget remains, nudge on the red ones instead of accepting them.
     handleDone ownedRef liveGrammar salvaged reenters parts = do
         owned <- readIORef ownedRef
         let content = T.concat [t | TextPart t <- parts]
-            -- Salvage keys off whether a MUTATING tool wrote a cell this turn
-            -- (@owned@), not total tool calls: query calls must not block it.
             mSalvage =
                 if salvaged then Nothing else salvageInsertSource (Map.size owned) content
         case mSalvage of
@@ -223,13 +186,9 @@ agenticLoop app store rn turn = do
                     go ownedRef liveGrammar salvaged (reenters + 1)
                 | otherwise -> acceptOrReenter ownedRef liveGrammar salvaged reenters owned
 
-    -- The accept gate proper: live health of the owned cells plus their reactive
-    -- closure decides between finishing and one more bounded re-enter.
     acceptOrReenter ownedRef liveGrammar salvaged reenters owned = do
         reenterOn <- featureEnabled "SABELA_SELF_HEAL_REENTER"
         live <- liveOwned app owned
-        -- Fold in the reactive closure: dependents re-run for fresh health, so a
-        -- repair that broke a downstream cell is caught.
         downstream <-
             if reenterOn then verifyDownstream app rn turn owned else pure Map.empty
         let decision = stopDecision (live <> downstream)

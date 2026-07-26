@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Drives the real @await_idle@ producer (slice R2-3): a lock-free bounded
-long-poll that settles on the @EvExecutionDone@ fence for the cascade in
-flight (not a @running == false@ sample), with a kill-aware timeout that
-returns a terminal state on kernel death so the poll cannot itself wedge.
-Both the tool ('execAwaitIdle') and the EventBus primitive
-('awaitExecutionDone') are exercised through their real code paths.
--}
 module Test.AwaitIdleSpec (spec) where
 
 import Control.Concurrent (forkIO, killThread, threadDelay)
@@ -38,7 +31,6 @@ import Sabela.State.EventBus (
 import Sabela.State.SessionManager (setHaskellSession)
 import Test.Hspec
 
--- | A fake backend with the given busy state.
 fakeBackend :: Bool -> IO ST.SessionBackend
 fakeBackend busy = do
     uid <- newUnique
@@ -66,7 +58,6 @@ fakeBackend busy = do
                 }
     pure backend
 
--- | App + AI store with a fake Haskell session of the given busy state.
 liveApp :: Bool -> IO (App, AIStore.AIStore)
 liveApp busy = do
     app <- newApp "." Set.empty Nothing Nothing []
@@ -83,13 +74,9 @@ field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
--- | A non-fence event used to flood the bus (never settles the long-poll).
 floodEvent :: NotebookEvent
 floodEvent = EvCellResult 1 [] Nothing [] []
 
-{- | Fork a thread that broadcasts a steady stream of @floodEvent@ until
-killed, returning its thread id so the caller can stop it.
--}
 forkFlood :: App -> Int -> IO (IO ())
 forkFlood app gapUs = do
     tid <- forkIO $ forever $ do
@@ -107,8 +94,6 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
     it "carries a fresh kernel status snapshot in the reply" $ do
         (app, store) <- liveApp False
         v <- toolOutcomeValue <$> execAwaitIdle app store
-        -- status is the typed execKernelStatus blob; its tag is
-        -- status.state.state and the legacy kernel/running keys are gone
         (field "state" =<< field "state" =<< field "status" v)
             `shouldBe` Just (String "idle")
         (field "kernel" =<< field "status" v)
@@ -129,7 +114,6 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         done <- newEmptyMVar
         _ <- forkIO (execAwaitIdle app store >>= putMVar done . toolOutcomeValue)
         threadDelay 50000
-        -- a non-fence event must NOT settle the poll
         broadcast (appEvents app) (EvCellResult 1 [] Nothing [] [])
         threadDelay 50000
         broadcast (appEvents app) EvExecutionDone
@@ -193,8 +177,6 @@ spec = describe "await_idle long-poll (execAwaitIdle / awaitExecutionDone)" $ do
         _ <- awaitExecutionDone (appEvents app) 200000 (pure True)
         end <- getMonotonicTimeNSec
         stop
-        -- the slice cap is 200ms; under flood the bound must still hold near
-        -- budget, well under any 60s curl ceiling (generous 2s upper guard)
         let elapsedUs = fromIntegral ((end - start) `div` 1000) :: Int
         elapsedUs `shouldSatisfy` (< 2000000)
 

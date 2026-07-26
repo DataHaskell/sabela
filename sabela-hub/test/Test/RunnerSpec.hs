@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The WASM-runner splice: it inserts the runtime loader and an inert source
-data island after @\<body\>@, interpolates the slug into the bootstrap, is
-idempotent, leaves every byte outside the inserted block untouched, no-ops on
-bodyless fragments, and HTML-escapes the source so a notebook containing
-@\</script\>@ cannot break out of the island. Also covers the directory backfill
-('republishRunners') on a temp shares dir.
--}
 module Test.RunnerSpec (spec) where
 
 import Control.Exception (SomeException, try)
@@ -59,11 +52,9 @@ spec = do
         it "escapes the source so </script> cannot break out of the island" $ do
             let evil = "before </script><img src=x onerror=alert(1)> after"
                 out = TE.decodeUtf8 (spliceRunner "ab12" evil page)
-            -- The raw closing tag never survives into the page.
             ("</script><img" `T.isInfixOf` out) `shouldBe` False
             ("&lt;/script&gt;" `T.isInfixOf` out) `shouldBe` True
             ("onerror=alert(1)" `T.isInfixOf` out) `shouldBe` True
-            -- Exactly the three runner scripts close: island + loader + bootstrap.
             T.count "</script>" out `shouldBe` 3
 
         it "is idempotent (re-splicing changes nothing)" $ do

@@ -26,10 +26,6 @@ data NotebookDocOpts = NotebookDocOpts
 defaultDocOpts :: NotebookDocOpts
 defaultDocOpts = NotebookDocOpts{ndoIncludeFirstLine = True, ndoFirstLineLen = 80}
 
-{- | Stable-within-process hash of a cell's identity inputs.
-Used to (a) detect external drift under optimistic-concurrency edits
-and (b) give the LLM a compact identity it can reason about.
--}
 cellHash :: Cell -> Text
 cellHash c =
     let h = hash (show (cellLang c), show (cellType c), cellSource c)
@@ -37,7 +33,6 @@ cellHash c =
         bits = fromIntegral (abs h) :: Integer
      in T.pack (sign : showHex bits "")
 
--- | Render a compact JSON document summarizing the notebook for the LLM.
 renderNotebookDoc :: NotebookDocOpts -> Notebook -> Value
 renderNotebookDoc opts nb =
     object

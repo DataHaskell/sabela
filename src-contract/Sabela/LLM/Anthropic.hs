@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The Anthropic 'ModelProvider' adapter: the anti-corruption layer between the
-neutral kernel and Anthropic's Messages API. Outbound it renders the neutral
-request into a 'A.MessagesRequest', applying the prompt-cache policy that used to
-live in the notebook loop (stable system prefix on the 1-hour TTL, the volatile
-block on the default, the last tool cached). Inbound it streams text deltas to
-the sink and maps the final 'A.MessageResponse' to a 'Completion'. @cache_control@
-and @tool_use_id@ never escape this module.
--}
 module Sabela.LLM.Anthropic (
     anthropicProvider,
     buildRequest,
@@ -43,9 +35,6 @@ import Sabela.LLM.Provider (
 import Sabela.LLM.Tool (ToolSpec (..))
 import Sabela.LLM.Usage (TokenUsage (..))
 
-{- | An Anthropic-backed provider. The config supplies the API key, base URL,
-and the model ('A.acModel') this provider speaks; the request carries no model.
--}
 anthropicProvider :: Manager -> A.AnthropicConfig -> ModelProvider
 anthropicProvider mgr cfg =
     ModelProvider
@@ -67,11 +56,6 @@ anthropicProvider mgr cfg =
         A.SEContentBlockDelta _ (A.TextDelta t) -> onTextDelta sink t
         _ -> pure ()
 
-{- | Render the neutral request into Anthropic's wire body, applying the
-prompt-cache policy: the first system block takes the 1-hour TTL (stable prompt),
-later blocks the default TTL (volatile), and the last tool is cached so the whole
-schema block joins the cached prefix.
--}
 buildRequest :: Text -> CompletionRequest -> A.MessagesRequest
 buildRequest model req =
     A.MessagesRequest
@@ -137,22 +121,12 @@ responseToCompletion resp =
         , compUsage = maybe mempty fromUsage (A.mrsUsage resp)
         }
 
-{- | Response blocks are only text or tool_use; a stray tool_result is dropped.
-An empty text block is dropped too — Anthropic streams a leading empty one, and
-re-sending an empty @text@ block on the next turn is rejected.
--}
 fromBlock :: A.ContentBlock -> [ContentPart]
 fromBlock (A.TextBlock t) = [TextPart t | not (T.null t)]
 fromBlock (A.ToolUseBlock tid name input) =
     [ToolCallPart (ToolCall (ToolCallId tid) name (decodeToolInput input))]
 fromBlock A.ToolResultBlock{} = []
 
-{- | A streamed @tool_use@ block's @input@ arrives as an accumulated JSON
-*string* (the @input_json_delta@ path), not an object; decode it. A decode
-failure is almost always a @max_tokens@-clipped payload, so surface an actionable
-@_parseError@ (as the old @finalizeContent@ did) rather than forwarding a broken
-string that would then be re-serialised as an invalid @tool_use.input@.
--}
 decodeToolInput :: Value -> Value
 decodeToolInput (String s) =
     case decode (TLE.encodeUtf8 (TL.fromStrict s)) of

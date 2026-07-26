@@ -1,13 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Session-lifecycle handlers: spawn, restart, kill, install dependencies,
-inject the display prelude, and recover from kernel crashes. Used by both
-the entry-point handlers and the planning module to keep a working GHCi
-backend behind the reactive engine.
--}
 module Sabela.Handlers.Lifecycle (
-    -- * Top-level lifecycle
     killAllSessions,
     shutdownAllSessions,
     killSession,
@@ -18,8 +12,6 @@ module Sabela.Handlers.Lifecycle (
     hardResetKernel,
     handleKernelCrash,
     loadSabelaPrelude,
-
-    -- * Install + REPL setup (also exposed for tests)
     setupReplProject,
     resolveLocalPackages,
 ) where
@@ -87,14 +79,10 @@ import System.Timeout (Timeout, timeout)
 
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 
--- | Runtime reset of the managed backends (notebook reset/restart).
 killAllSessions :: App -> IO ()
 killAllSessions app =
     forceResetAllSessions (appSessions app)
 
-{- | Hard-reset the kernel: SIGKILL the GHCi process group ('killAllSessions',
-past a wedged cell's run-lock) and respawn reusing the built env, no rebuild/re-run.
--}
 hardResetKernel :: App -> Int -> IO ()
 hardResetKernel app gen =
     withHaskellLifecycle (appSessions app) $
@@ -111,29 +99,17 @@ hardResetKernel app gen =
                             =<< readNotebook (appNotebook app)
                 when ok $ broadcast app EvExecutionDone
 
-{- | Server-exit teardown: polite closes plus the registry sweep that
-reclaims sessions no manager slot references (scratchpad, half-spawns).
-Shutdown only — at runtime the sweep would kill live scratchpad sessions.
--}
 shutdownAllSessions :: App -> IO ()
 shutdownAllSessions app = do
     forceResetAllSessions (appSessions app)
     killLeftoverSessions
 
-{- | Swap the slot out first, then close outside the manager MVar so
-session queries never stall behind a multi-second teardown.
--}
 killSession :: App -> IO ()
 killSession app = do
     mSess <- takeHaskellSession (appSessions app)
     forM_ mSess $ \s ->
         void (try (ST.sbClose s) :: IO (Either SomeException ()))
 
-{- | Detach the live session from the slot at once, then close it off-thread.
-Used on a notebook switch so the next run rebuilds against the newly-loaded
-notebook rather than silently reusing the previous notebook's session, without
-blocking the load response on GHCi teardown.
--}
 killSessionAsync :: App -> IO ()
 killSessionAsync app = do
     mSess <- takeHaskellSession (appSessions app)
@@ -145,10 +121,6 @@ ensureSessionAlive app gen metas = do
     ok <- sessionMetaMatches app metas
     if ok then pure True else installAndRestart app gen metas
 
-{- | Is there a live session whose installed state covers the notebook's
-metadata — dep names, extensions, and the project signature (local
-packages, git pins, ghc-options)?
--}
 sessionMetaMatches :: App -> CabalMeta -> IO Bool
 sessionMetaMatches app metas = do
     installed <- getHaskellDeps (appDeps app)
@@ -168,9 +140,6 @@ sessionMetaMatches app metas = do
         Just _ -> pure metaMatch
         Nothing -> pure False
 
-{- | The project signature the notebook's metadata asks for, resolved the
-same way 'installDepsAndStartSession' resolves it before installing.
--}
 neededProjectSig :: App -> CabalMeta -> ProjectSig
 neededProjectSig app metas =
     let merged = mergedMeta (envGlobalDeps (appEnv app)) metas
@@ -193,10 +162,6 @@ installAndRestartUnlocked app gen metas = do
         then pure False
         else installDepsAndStartSession app gen metas
 
-{- | Install deps and (re)start the kernel, bounded by 'tcBuildUs' — no per-cell
-timeout covers this phase, so a wedged install would otherwise hang forever. The
-masked spawn reaps the half-built process, so a timeout stays recoverable.
--}
 installDepsAndStartSession :: App -> Int -> CabalMeta -> IO Bool
 installDepsAndStartSession app gen metas = withBuilding app $ do
     budgetUs <- tcBuildUs <$> readTimeoutConfig
@@ -208,7 +173,6 @@ installDepsAndStartSession app gen metas = withBuilding app $ do
             broadcast app (EvSessionStatus SReset)
             pure False
 
--- | The dep-install + cold-start body, run under the 'tcBuildUs' bound above.
 runInstallAndStart :: App -> Int -> CabalMeta -> IO Bool
 runInstallAndStart app gen metas = do
     broadcastDepsStatus app metas
@@ -243,11 +207,6 @@ broadcastDepsStatus app metas = do
                 if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
         setHaskellDeps (appDeps app) notebookDeps
 
-{- | Combine the operator's @SABELA_LOCAL_PACKAGES@ overlays with the notebook's
-own @-- cabal: packages:@ directive. Operator overlays come first (and win on
-dedupe); notebook-relative dirs resolve against the working directory, absolute
-dirs pass through.
--}
 resolveLocalPackages :: FilePath -> [FilePath] -> CabalMeta -> [FilePath]
 resolveLocalPackages workDir envLocals meta =
     nub (envLocals ++ map resolve (metaPackages meta))
@@ -270,9 +229,6 @@ startSessionWith app projDir = do
     sessResult <-
         try (newSessionStreaming cfg onLine) :: IO (Either SomeException Session)
     case sessResult of
-        -- Re-raise the build-budget Timeout ('installDepsAndStartSession' handles
-        -- it): a blanket SomeException catch here would otherwise swallow it and
-        -- mis-report a wedged cold start as an ordinary session failure.
         Left e
             | Just t <- (fromException e :: Maybe Timeout) -> throwIO t
             | otherwise -> reportSessionFailure app "Session startup failed" e
@@ -323,10 +279,6 @@ loadSabelaPrelude app = do
                     ("Kernel crashed during prelude: " <> T.pack (show e))
             Right _ -> pure ()
 
-{- | Clear the manager slot only if it still holds the crashed backend,
-then unconditionally tear the crashed backend down (idempotent), so a
-late crash event can never drop or leak a fresh replacement session.
--}
 handleKernelCrash :: App -> ST.SessionBackend -> Text -> IO ()
 handleKernelCrash app crashed msg = do
     debugLog app $ "[handler] Kernel crash detected: " <> msg

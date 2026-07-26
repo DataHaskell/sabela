@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of the Phase-0.2 local-Hoogle resolver: parse the hoogle
-CLI blob into hits, rank an exact-name match to a (package, module), and the
-'addImport' rewrite that feeds the repair loop. The IO shell is verified live
-against a generated database; these pin the decisions it makes. No network.
--}
 module Test.HoogleResolveSpec (spec) where
 
 import Data.Text (Text)
@@ -19,9 +14,6 @@ import Sabela.AI.ImportRepair (addImport)
 import Sabela.Diagnose (notInScopeName)
 import Test.Hspec
 
-{- | A hoogle @search --json@ array blob: an exact @runConduit@ hit in conduit,
-a near-miss in a different module, and an @.Internal@ hit that must be dropped.
--}
 jsonBlob :: Text
 jsonBlob =
     T.concat
@@ -36,7 +28,6 @@ jsonBlob =
         , ",\"package\":{\"name\":\"conduit\"}}]"
         ]
 
--- | The same three hits as JSONL (one JSON object per line).
 jsonlBlob :: Text
 jsonlBlob =
     T.unlines
@@ -45,9 +36,6 @@ jsonlBlob =
         , "{\"item\":\"runConduit :: a\",\"module\":{\"name\":\"Data.Conduit.Internal\"},\"package\":{\"name\":\"conduit\"}}"
         ]
 
-{- | An ambiguous @decode@: a well-known ecosystem hit (aeson) alongside a
-niche, long-hyphenated package (pusher-http-haskell) and an .Internal hit.
--}
 ambiguousBlob :: Text
 ambiguousBlob =
     T.concat
@@ -64,6 +52,33 @@ ambiguousBlob =
 
 spec :: Spec
 spec = describe "Sabela.AI.HoogleResolve" $ do
+    describe "a type hit is indexed under its own name" $ do
+        let typeBlob =
+                "[{\"item\":\"data TBQueue a\",\
+                \\"module\":{\"name\":\"Control.Concurrent.STM.TBQueue\"},\
+                \\"package\":{\"name\":\"stm\"},\"docs\":\"\"},\
+                \{\"item\":\"type POSIXTime = NominalDiffTime\",\
+                \\"module\":{\"name\":\"Data.Time.Clock.POSIX\"},\
+                \\"package\":{\"name\":\"time\"},\"docs\":\"\"},\
+                \{\"item\":\"newtype Down a\",\
+                \\"module\":{\"name\":\"Data.Ord\"},\
+                \\"package\":{\"name\":\"base\"},\"docs\":\"\"},\
+                \{\"item\":\"class Ord a\",\
+                \\"module\":{\"name\":\"Data.Ord\"},\
+                \\"package\":{\"name\":\"base\"},\"docs\":\"\"},\
+                \{\"item\":\"atomically :: STM a -> IO a\",\
+                \\"module\":{\"name\":\"Control.Monad.STM\"},\
+                \\"package\":{\"name\":\"stm\"},\"docs\":\"\"}]"
+        it "names a data/type/newtype/class hit by the type, not the keyword" $
+            map hhName (parseHoogleBlob typeBlob)
+                `shouldBe` ["TBQueue", "POSIXTime", "Down", "Ord", "atomically"]
+        it "keeps each type's own module, which is what an import needs" $
+            take 2 (map hhModule (parseHoogleBlob typeBlob))
+                `shouldBe` ["Control.Concurrent.STM.TBQueue", "Data.Time.Clock.POSIX"]
+        it "a type name resolves to its package" $
+            map hhPackage (parseHoogleBlob typeBlob)
+                `shouldBe` ["stm", "time", "base", "base", "stm"]
+
     describe "parseHoogleBlob" $ do
         it "parses a JSON array into name/package/module hits" $ do
             let hits = parseHoogleBlob jsonBlob
@@ -147,10 +162,6 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
             notInScopeName "Variable not in scope: runConduit :: ConduitT a b m r"
                 `shouldBe` Just "runConduit"
 
-    -- G2 regression `unionfind-point` (live_test4): resolving `Point` by
-    -- lexical name match must never surface the compiler's OWN toolchain
-    -- package (`ghc`'s `GHC.Data.UnionFind`), the exact sabotage that
-    -- rewrote the harness's hole probe before it ran.
     describe "unionfind-point (G2 hard rule 2 — never resolve out-of-scope)" $ do
         let unionfindBlob =
                 T.concat

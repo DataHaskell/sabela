@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Render a notebook's Markdown to the gallery's self-contained "Warm Paper"
-notebook page, and brand a pre-built dashboard export. Port of the rendering
-half of the former @sabela-hub\/scripts\/seed-gallery.py@.
-
-The Markdown subset matches what the seeder needs: fenced code blocks, quoted
-output blocks (@\> \<!-- scripths:mime … --\>@), headings, and paragraphs with
-inline bold\/code\/link\/image.
--}
 module Hub.Gallery.SeedRender (
     inline,
     renderBody,
@@ -18,11 +10,6 @@ module Hub.Gallery.SeedRender (
 import Data.Text (Text)
 import qualified Data.Text as T
 
--- ---------------------------------------------------------------------------
--- Inline markdown
--- ---------------------------------------------------------------------------
-
--- | Escape, then images, links, bold, code (in that order, as the Python did).
 inline :: Text -> Text
 inline =
     T.pack
@@ -33,16 +20,12 @@ inline =
         . T.unpack
         . escapeHtml
 
--- | @html.escape(quote=False)@: ampersands and angle brackets only.
 escapeHtml :: Text -> Text
 escapeHtml =
     T.replace ">" "&gt;"
         . T.replace "<" "&lt;"
         . T.replace "&" "&amp;"
 
-{- | Match a @(open … close)@ span. @nonEmpty@ requires the captured body to be
-non-empty (the regex @+@); when 'False' an empty body is allowed (@*@).
--}
 spanBetween :: Char -> Char -> Bool -> String -> Maybe (String, String)
 spanBetween _ close nonEmpty s = case break (== close) s of
     (body, _ : rest)
@@ -74,7 +57,6 @@ boldSpans = delimited "**" "<strong>" "</strong>"
 codeSpans :: String -> String
 codeSpans = delimited "`" "<code>" "</code>"
 
--- | Wrap each @open … open@ (same delimiter, non-empty body) pair in tags.
 delimited :: String -> String -> String -> String -> String
 delimited delim openTag closeTag = go
   where
@@ -96,7 +78,6 @@ stripPrefix' [] s = Just s
 stripPrefix' (p : ps) (c : cs) | p == c = stripPrefix' ps cs
 stripPrefix' _ _ = Nothing
 
--- | Split at the first occurrence of @delim@; 'Nothing' if absent.
 breakOn' :: String -> String -> Maybe (String, String)
 breakOn' delim = go []
   where
@@ -105,13 +86,6 @@ breakOn' delim = go []
         Just rest -> Just (reverse acc, rest)
         Nothing -> go (c : acc) cs
 
--- ---------------------------------------------------------------------------
--- Body
--- ---------------------------------------------------------------------------
-
-{- | Render a notebook's Markdown to the gallery's notebook-cell HTML (the
-inner @\<main\>@ body). Line-oriented, matching the Python @render_body@.
--}
 renderBody :: Text -> Text
 renderBody md = T.intercalate "\n" (go (T.splitOn "\n" md))
   where
@@ -160,15 +134,11 @@ dequote l = case T.uncons (T.drop 1 l) of
 isComment :: Text -> Bool
 isComment = T.isPrefixOf "<!--" . T.strip
 
-{- | A line that is wholly an HTML comment — the @sabela:cell@ separator, the
-@scripths:@ version banner, or any other tooling marker. Skipped in prose flow.
--}
 isCellMarker :: Text -> Bool
 isCellMarker l = "<!--" `T.isPrefixOf` s && "-->" `T.isSuffixOf` s
   where
     s = T.strip l
 
--- | Parse an ATX heading: 1–6 @#@ then whitespace then the text.
 heading :: Text -> Maybe (Int, Text)
 heading line
     | n >= 1 && n <= 6 && hasSpace = Just (n, T.dropWhile isSp afterHashes)
@@ -189,11 +159,6 @@ headOr :: a -> [a] -> a
 headOr d [] = d
 headOr _ (x : _) = x
 
--- ---------------------------------------------------------------------------
--- Page shell + dashboard branding
--- ---------------------------------------------------------------------------
-
--- | A self-contained notebook page in the gallery's Warm Paper palette.
 page :: Text -> Text -> Text -> Text -> Text
 page title author slug body =
     T.concat
@@ -267,9 +232,6 @@ pageCss =
         , "img{max-width:100%;border-radius:8px}"
         ]
 
-{- | Inject the warm-lambda brand mark into a pre-built dashboard export's
-header. Idempotent: a dashboard already carrying the brand is left untouched.
--}
 brandDashboard :: Text -> Text
 brandDashboard html
     | "db-brand" `T.isInfixOf` html = html

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G6 task 7's definitive proof: one cell seeded with FOUR independent
-defects at once. Asserts the loop iterates across rounds rather than
-stopping after one fix, and that a fifth unrepairable defect stops honestly.
--}
 module Test.DiagnosticMitigationCompoundSpec (spec) where
 
 import Data.Aeson (Value (..))
@@ -19,9 +15,6 @@ import Test.DiagnosticMitigationFixtures (
     textField,
  )
 
-{- | Four independent defects — missing TupleSections, a typo, an ambiguous
-@uncons@, a fractional-int mismatch — none a knock-on of another.
--}
 compoundFourSrc :: T.Text
 compoundFourSrc =
     "import Data.List (uncons)\n\
@@ -33,9 +26,6 @@ compoundFourSrc =
     \sineY = pi / w\n\
     \tup = (1,) (2 :: Int)"
 
-{- | 'compoundFourSrc' plus a fifth, genuinely unrelated defect with no
-matching table row — a plain type mismatch (@Couldn't match type@).
--}
 roundCapSrc :: T.Text
 roundCapSrc = compoundFourSrc <> "\nbadMatch = (5 :: Int) == \"five\""
 

@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Server-sent event types for streaming Anthropic Messages responses:
-the @StreamEvent@ envelope plus the deltas it carries.
--}
 module Sabela.Anthropic.Types.Stream (
     StreamEvent (..),
     ContentDelta (..),

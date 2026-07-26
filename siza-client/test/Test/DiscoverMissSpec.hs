@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The discover miss protocol after the union-merge redesign: a genuine
-absence is a firm, actionable answer (R5.4); a miss names what was consulted
-(R1.2); and the retry-loop boilerplate ("retry discover with a different
-shape", "Do not invent") is gone (R5.8).
--}
 module Test.DiscoverMissSpec (discoverMissSpec) where
 
 import Data.Aeson (Value)

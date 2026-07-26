@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Phase 3a acceptance tests for the static share store: publish/lookup
-round-trip, owner-scoped listing + deletion, slug path-traversal guard,
-secret scrubbing, header hardening, reload-from-disk, titles, and the
-meta-line write chokepoint.
--}
 module Test.ShareSpec (spec) where
 
 import Control.Exception (SomeException, try)
@@ -27,7 +22,6 @@ import System.FilePath ((</>))
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 
--- | Run with a fresh store in a wiped temp dir.
 withStore :: (ShareStore -> FilePath -> IO a) -> IO a
 withStore act = do
     base <- getTemporaryDirectory

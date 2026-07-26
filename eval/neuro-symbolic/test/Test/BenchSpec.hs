@@ -268,8 +268,6 @@ spec = describe "Step-5 benchmark stats" $ do
                 , satFlag <- [False, True]
                 ]
   where
-    -- Sound-row A tallies for the grid: soundT always measured (pass);
-    -- each of naT/satT adds a pass when unflagged; voidT a fail when unflagged.
     armA naFlag voidFlag satFlag =
         tshow passes <> "/" <> tshow runs
       where

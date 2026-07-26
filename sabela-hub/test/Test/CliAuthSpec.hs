@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @siza login@ device-authorization flow, driven end to end through the
-hub WAI app: start → authorize page → approve → poll → resolve the minted token
-at the proxy boundary. The test session ("usersid") is 'SStarting', so a request
-that resolves to it returns the "Starting your notebook environment" page —
-which is how we assert a token (or cookie) resolved without a live backend.
--}
 module Test.CliAuthSpec (spec) where
 
 import Data.Aeson (Value (..), decode, encode, object, (.=))
@@ -76,7 +70,7 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
 
     it "405s a wrong-method cli-auth request instead of proxying it" $ do
         app <- makeAppSess
-        r <- get app "/_hub/cli-auth/start" [] -- GET on a POST-only route
+        r <- get app "/_hub/cli-auth/start" []
         simpleStatus r `shouldBe` status405
 
     it "approve binds a token that resolves to the approver's session" $ do
@@ -84,7 +78,6 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
         token <- mintToken app
         viaToken <- get app "/" [bearer token]
         body viaToken `shouldSatisfy` isInfixOf "Starting your notebook environment"
-        -- Control: no credential at all does NOT resolve to a session.
         anon <- get app "/" []
         body anon `shouldNotSatisfy` isInfixOf "Starting your notebook environment"
 
@@ -137,10 +130,6 @@ spec = describe "Hub.CliAuth: siza login device flow" $ do
                 (encode (object ["userCode" .= ("X" :: Text), "csrf" .= ("Y" :: Text)]))
         simpleStatus appr `shouldBe` status401
 
--- ---------------------------------------------------------------------------
--- request helpers
--- ---------------------------------------------------------------------------
-
 post :: Application -> Text -> [Header] -> BL.ByteString -> IO SResponse
 post app path hdrs bdy =
     runSession
@@ -169,9 +158,6 @@ cookie sid = ("Cookie", "_sabela_session=" <> TE.encodeUtf8 sid)
 bearer :: Text -> Header
 bearer tok = ("Authorization", "Bearer " <> TE.encodeUtf8 tok)
 
-{- | Drive the full flow (start -> authorize page -> approve -> poll) as the
-"usersid" session and return the minted token.
--}
 mintToken :: Application -> IO Text
 mintToken app = do
     start <- post app "/_hub/cli-auth/start" [] ""
@@ -202,7 +188,6 @@ jstr k r = case decode (simpleBody r) of
         _ -> Nothing
     _ -> Nothing
 
--- | Pull the CSRF nonce the authorize page embeds in @data-csrf="<nonce>"@.
 csrfFrom :: SResponse -> Maybe Text
 csrfFrom r =
     let t = TE.decodeUtf8 (BL.toStrict (simpleBody r))

@@ -1,13 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | The write-ack seam (R6.1/R6.2/R6.4): a durable mutation write is acked
-within 'writeAckDeadlineUs' whether or not its execution has settled; a
-byte-identical retry answers idempotently from the registry instead of
-duplicating the cell; a kernel-needing call during one's own in-flight write
-bounces with the writing cell named; @await_idle@ reconciles settled writes
-exactly once via 'settledWritesField'.
--}
 module Sabela.AI.Capabilities.Edit.Ack (
     ackWriteAndRun,
     writeGate,
@@ -41,25 +34,15 @@ import Sabela.Handlers (ReactiveNotebook)
 import Sabela.Model (Cell (..), lookupCell)
 import Sabela.State (App (..), readNotebook)
 
-{- | Seconds a mutation write may spend executing before the tool response
-stops waiting and acks @executing@ (default 25s, well under the 60s transport
-timeout); @SABELA_WRITE_ACK_SECS@ overrides.
--}
 writeAckDeadlineUs :: IO Int
 writeAckDeadlineUs = do
     m <- lookupEnv "SABELA_WRITE_ACK_SECS"
     let secs = fromMaybe 25 (m >>= readMaybe) :: Double
     pure (round (secs * 1000000))
 
--- | How long @await_idle@ waits for a still-running write's summary to settle.
 writeSettleGraceUs :: Int
 writeSettleGraceUs = 15000000
 
-{- | Register the just-landed cell and race its execution against the ack
-deadline: settled in time answers @completed@ inline; otherwise the response
-is the immediate @executing@ ack and @await_idle@ reconciles later. A cell
-class that never executes settles at once (so its retry still dedupes).
--}
 ackWriteAndRun ::
     App ->
     AIStore ->
@@ -88,8 +71,6 @@ ackWriteAndRun app store rn cancelTok input cell runnable notes = do
             case mSummary of
                 Just s -> do
                     markDelivered pw
-                    -- The inline-completed ack IS a settle observation: open
-                    -- the post-settled consistency window (R6.4).
                     noteSettled app store
                     pure (okOutcome (ackJson cell AckCompleted (Just s) False notes))
                 Nothing ->
@@ -104,7 +85,6 @@ ackWriteAndRun app store rn cancelTok input cell runnable notes = do
                             )
                         )
 
--- | A crashed execution thread still settles, as a bounded error summary.
 exceptionSummary :: SomeException -> Value
 exceptionSummary e =
     object
@@ -125,11 +105,6 @@ ackJson cell status mExec dup notes =
                 if null notes then Nothing else Just (T.unwords notes)
             }
 
-{- | The pre-dispatch write gate. A byte-identical retry of a registered write
-whose cell still exists answers idempotently (R6.2); any other kernel-needing
-call while a write is still executing bounces naming the writing cell and its
-elapsed time (R6.4). 'Nothing' lets the dispatch proceed normally.
--}
 writeGate ::
     App -> AIStore -> Bool -> Bool -> Value -> IO (Maybe ToolOutcome)
 writeGate app store isInsert isKernelTool input
@@ -167,10 +142,6 @@ writeGate app store isInsert isKernelTool input
                 ms <- elapsedMsOf pw
                 pure (Just (errOutcome (busyAckJson (BusyAck (pwCellId pw) ms))))
 
-{- | The @await_idle@ reconciliation field: every settled-but-undelivered
-write as @{cellId, status, execution}@, delivered exactly once; empty when
-nothing is pending (the field is then omitted entirely).
--}
 settledWritesField :: AIStore -> IO [Pair]
 settledWritesField store = do
     ws <- drainSettledWrites (aiWriteReg store) writeSettleGraceUs
@@ -191,7 +162,6 @@ settledWritesField store = do
           ]
         )
 
--- | Attach a note to a successful outcome; errors pass through untouched.
 withNote :: Text -> ToolOutcome -> ToolOutcome
 withNote n (ToolOk (Object o)) = ToolOk (Object (KM.insert "note" (String n) o))
 withNote _ out = out

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R3.9: the envelope budget holds at EVERY emitting seam, including the
-ledger-record annotations (worldChange note, steer text) applied after the
-tool's own bound — the run-20260720-195038 topMonth-on 2631b breach class.
--}
 module Test.DiscoverRecordBudgetSpec (discoverRecordBudgetSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -19,7 +15,6 @@ import Siza.Agent.Discover.Envelope (envelopeCharBudget, envelopeChars)
 import Siza.Agent.Discover.History (ledgerWorldChanged)
 import Siza.Agent.Discover.HistoryGuard (guardDiscover, newSearchLedger)
 
--- | A found envelope tuned to sit just under the budget before annotation.
 nearBudgetEnvelope :: Value
 nearBudgetEnvelope =
     object
@@ -49,15 +44,12 @@ discoverRecordBudgetSpec =
             ref <- newSearchLedger
             let inner _ = pure (Right (ToolOk nearBudgetEnvelope))
                 callQ q = ToolCall "discover" (object ["query" .= q])
-            -- A prior recorded answer, so the world change legally announces
-            -- (R10-T4: a first-of-session change has nothing to stale).
             _ <- guardDiscover ref inner (callQ ("seedq" :: Text))
             atomicModifyIORef' ref (\l -> (ledgerWorldChanged l, ()))
             r <- guardDiscover ref inner (callQ ("maxBy" :: Text))
             case r of
                 Right (ToolOk v) -> do
                     envelopeChars v `shouldSatisfy` (<= envelopeCharBudget)
-                    -- The annotation survives; the bound sheds hits instead.
                     hasKey "worldChange" v `shouldBe` True
                 other -> expectationFailure (show other)
   where

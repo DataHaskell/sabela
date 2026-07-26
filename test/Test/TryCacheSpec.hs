@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Unit-level coverage of 'Sabela.Session.TryCache': the disposable-route
-build cache never touches cabal itself, so these run purely against the
-filesystem and stay fast. 'Test.MaterializeSpec' covers the live-build
-integration (warm-hit timing, budget breach) end to end.
--}
 module Test.TryCacheSpec (spec) where
 
 import Control.Monad (forM, forM_)
@@ -39,10 +34,6 @@ metaWithDeps deps = emptyMeta{metaDeps = map T.pack deps}
 
 spec :: Spec
 spec = describe "Sabela.Session.TryCache" $ do
-    {- live_test21-23: `dataframe` never installed. A budget-breached build
-    was torn down store and all, and the next attempt's acquire wiped the
-    bucket again — so every attempt rebuilt from empty and re-breached the
-    same ceiling. A heavy dependency was not slow, it was unreachable. -}
     describe "heavy-dep-never-converges" $ do
         it "a budget breach keeps the store so the next attempt resumes" $
             withSystemTempDirectory "try-cache-spec" $ \root -> do
@@ -53,10 +44,8 @@ spec = describe "Sabela.Session.TryCache" $ do
 
                 shelveCacheEntry (ceBucketDir first)
 
-                -- Never served as a usable environment ...
                 second <- acquireCacheEntry root key
                 ceOutcome second `shouldBe` CacheMiss
-                -- ... but the partial build survives for it to resume from.
                 doesFileExist (ceStoreDir second </> "built.pkg")
                     `shouldReturn` True
 
@@ -126,7 +115,6 @@ spec = describe "Sabela.Session.TryCache" $ do
         withSystemTempDirectory "try-cache-spec" $ \root -> do
             let key = cacheKeyText (metaWithDeps ["text"]) "9.12.2"
             first <- acquireCacheEntry root key
-            -- No commitCacheEntry: the "build" never finished.
             second <- acquireCacheEntry root key
             ceOutcome second `shouldBe` CacheMiss
             ceBucketDir second `shouldBe` ceBucketDir first
@@ -147,7 +135,6 @@ spec = describe "Sabela.Session.TryCache" $ do
                     case bucketDirs of
                         [] -> expectationFailure "unreachable: same length as keys"
                         oldestDir : _ -> do
-                            -- The oldest (first-committed) key was pushed out by the cap.
                             doesFileExist (oldestDir </> ".complete") `shouldReturn` False
 
                             rebuilt <- acquireCacheEntry root oldestKey

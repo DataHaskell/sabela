@@ -46,11 +46,6 @@ newSessionManager ecs cfg = do
             , smConfig = cfg
             }
 
-{- | Look up a session by session ID. Updates lastActivity if found.
-'ReattachPlaceholder' entries live under a different constructor of
-'SessionKey' so a forged cookie cannot adopt one — the safety guard is
-now structural (formerly a "reattach:"-prefix runtime check).
--}
 lookupBySessionId :: SessionManager -> SessionId -> IO (Maybe Session)
 lookupBySessionId sm sid = do
     let key = UserSession sid
@@ -64,14 +59,10 @@ lookupBySessionId sm sid = do
                 pure (Just sess')
             Nothing -> pure Nothing
 
--- | Insert a new session mapping.
 insertSession :: SessionManager -> SessionKey -> Session -> IO ()
 insertSession sm key sess =
     atomically $ modifyTVar' (smSessions sm) $ Map.insert key sess
 
-{- | Start a session in the background. Inserts a SStarting entry immediately
-so the session is visible to lookups, then spawns the task asynchronously.
--}
 startSessionAsync :: SessionManager -> SessionId -> UserId -> IO ()
 startSessionAsync sm sid uid = do
     now <- getCurrentTime
@@ -88,7 +79,6 @@ startSessionAsync sm sid uid = do
     _ <- forkIO $ void $ createSession sm sid uid
     pure ()
 
--- | Get or create a session for a user. Returns the task IP.
 getOrCreateSession ::
     SessionManager -> SessionId -> UserId -> IO (Either Text Text)
 getOrCreateSession sm sid uid = do
@@ -124,9 +114,6 @@ createSession sm sid uid = do
                         , sessionIdleOverride = Nothing
                         }
             insertSession sm (UserSession sid) sess
-            -- The container is per-user but sessions are per-SessionId; clear
-            -- any reattach placeholder for this container so the real session
-            -- (not the placeholder) drives its idle/liveness tracking.
             purgeReattachPlaceholders sm taskId
             logHub $ "Started task " <> taskIdText taskId <> " for " <> userIdText uid
             waitForReady sm sid
@@ -178,10 +165,6 @@ waitForReady sm sid = go (0 :: Int)
 cleanupSession :: SessionManager -> SessionId -> IO ()
 cleanupSession sm sid = cleanupByKey sm (UserSession sid)
 
-{- | Drop any session (real or placeholder) from the manager and stop its
-backing container. The reaper uses this to clean up by 'SessionKey' so
-both kinds of entry get the same idle-timeout treatment.
--}
 cleanupByKey :: SessionManager -> SessionKey -> IO ()
 cleanupByKey sm key = do
     mSess <- atomically $ do
@@ -201,24 +184,12 @@ cleanupByKey sm key = do
 listSessions :: SessionManager -> IO (Map SessionKey Session)
 listSessions sm = readTVarIO (smSessions sm)
 
-{- | Drop the reattach placeholder (see 'reattachSessions') for the given
-task. Real sessions are left intact, and the container is not stopped —
-the adopting session still uses it. Constant-time delete now that the
-placeholder lives under a distinct 'SessionKey' constructor.
--}
 purgeReattachPlaceholders :: SessionManager -> TaskId -> IO ()
 purgeReattachPlaceholders sm tid =
     atomically $
         modifyTVar' (smSessions sm) $
             Map.delete (ReattachPlaceholder tid)
 
-{- | Rebuild tracked sessions from containers already running at hub startup,
-instead of reaping them. Keyed by a deterministic @reattach:<name>@ id so the
-idle reaper and liveness reconciler manage them; a returning user re-auths and
-'createSession' adopts the same container (and 'purgeOtherSessionsWithTask'
-clears this placeholder). Intended for the Docker backend, where containers
-outlive the hub process.
--}
 reattachSessions :: SessionManager -> IO ()
 reattachSessions sm = do
     let cfg = hcTaskConfig (smConfig sm)
@@ -250,10 +221,6 @@ taskIdText (TaskId t) = t
 userIdText :: UserId -> Text
 userIdText (UserId t) = t
 
-{- | Render a 'SessionKey' for logs. Real sessions print their cookie ID;
-placeholders print @reattach:<task>@ so the existing log shape stays
-recognisable. The wire/in-cookie strings are unaffected.
--}
 sessionKeyText :: SessionKey -> Text
 sessionKeyText (UserSession (SessionId t)) = t
 sessionKeyText (ReattachPlaceholder (TaskId t)) = "reattach:" <> t

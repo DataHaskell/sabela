@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Report withholding over the measurement substrate (R8.4), scoped to the
-reported run: only defects in the REPORTED run-id's transcripts withhold its
-numbers; defects in sibling runs sharing the directory are demoted to a named
-warning (the run-132942 over-withholding shape). A transcript with no header
-cannot be attributed to any run and withholds conservatively.
--}
 module Eval.ReportGuard (
     guardReport,
     guardReportRun,
@@ -23,10 +17,6 @@ import System.FilePath ((</>))
 
 import Eval.Episode (EpisodeMeta (..), parseEpisodeMeta)
 
-{- | Withhold a report when ANY transcript given is an unsound measurement:
-no config header, missing provenance, a run stamp predating the binary's
-build, a missing arm label, or a failed lint. The dir-wide (unscoped) sweep.
--}
 guardReport :: [(String, Text)] -> Text -> Text
 guardReport files report
     | null problems = report
@@ -34,10 +24,6 @@ guardReport files report
   where
     problems = map snd (fileProblems files)
 
-{- | 'guardReport' scoped to one run: the reported run-id's defects (plus any
-unattributable header-less transcript) withhold; sibling runs' defects append
-a warning instead of suppressing a sound run's numbers.
--}
 guardReportRun :: Text -> [(String, Text)] -> Text -> Text
 guardReportRun runId files report
     | not (null own) = withheldBlock own
@@ -50,11 +36,8 @@ guardReportRun runId files report
         , [p | (rid, p) <- ps, maybe False (/= runId) rid]
         )
 
-{- | Each defect with the run-id it belongs to ('Nothing' = header-less, so
-unattributable), named by file.
--}
 fileProblems :: [(String, Text)] -> [(Maybe Text, Text)]
-fileProblems files = concatMap check files
+fileProblems = concatMap check
   where
     check (name, content) = case parseEpisodeMeta content of
         Nothing ->
@@ -68,7 +51,6 @@ fileProblems files = concatMap check files
             | p <- metaProblems m
             ]
 
--- | Every way one parsed header can be unsound; empty means sound.
 metaProblems :: EpisodeMeta -> [Text]
 metaProblems m =
     [ "missing provenance (commit/run-id/build-time/run-time/endpoint/relink-probe)"
@@ -109,11 +91,9 @@ warningBlock problems =
             : map ("  " <>) problems
         )
 
--- | The unscoped 'guardReport' over every @.md@ transcript in a directory.
 guardReportDir :: FilePath -> Text -> IO Text
 guardReportDir dir report = withDirFiles dir report (`guardReport` report)
 
--- | 'guardReportRun' over every @.md@ transcript in a directory.
 guardReportDirFor :: FilePath -> Text -> Text -> IO Text
 guardReportDirFor dir runId report =
     withDirFiles dir report (\fs -> guardReportRun runId fs report)

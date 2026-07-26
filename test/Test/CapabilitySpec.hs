@@ -1,14 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure capability search: a free-text query lands on the right function
-across the indexed modules — by name, type fragment, synonym, or module. These
-are the three transcript failures (logistic, lineGraph, animate) plus a type
-query, run against a hand-built index so no kernel is needed.
--}
 module Test.CapabilitySpec (spec) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
+import Sabela.AI.Capabilities.ModuleCard (importLineFor)
 import Sabela.AI.Capability (
     Capability (..),
     Hit (..),
@@ -52,7 +48,6 @@ idx =
     , Capability "Sabela.Notebook" "displayPicture" "Picture -> IO ()"
     ]
 
--- | The (module, name) of the top hit for a query, with the default synonyms.
 top :: Text -> Maybe (Text, Text)
 top q = case searchCapabilities defaultSynonyms idx q of
     (h : _) -> Just (capModule (hitCap h), capName (hitCap h))
@@ -64,13 +59,9 @@ via q = case searchCapabilities defaultSynonyms idx q of
     [] -> Nothing
 
 spec :: Spec
-spec = unqualifySpec >> relevanceSpec >> searchSpec
+spec =
+    unqualifySpec >> relevanceSpec >> typeIndexSpec >> importLineSpec >> searchSpec
 
-{- | The card ranks its exports with the SAME scorer every search ranks with,
-so "relevant" cannot mean two things. A bounded card only helps if the few
-exports it carries are the ones the question was about — ranking, not more
-context, is what makes the floor-of-8 carry the right 8.
--}
 relevanceSpec :: Spec
 relevanceSpec = describe "one relevance scale for search and cards" $ do
     let summarize = Capability "DataFrame" "summarize" "DataFrame -> DataFrame"
@@ -85,9 +76,6 @@ relevanceSpec = describe "one relevance scale for search and cards" $ do
 
 searchSpec :: Spec
 searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
-    {- live_test20: asked to superimpose a cosine, the model searched
-    `overlay` and `pictures`, found neither, and guessed the gloss package —
-    while `group` and the Semigroup instance were in scope throughout. -}
     describe "composition vocabulary reaches the combining API" $ do
         it "finds group for the words a caller actually uses" $
             mapM_
@@ -97,8 +85,6 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
         it "finds the picture API for a pluralised query" $
             fmap fst (top "pictures") `shouldBe` Just "Sabela.Notebook"
 
-    {- live_test33_wine: "summary" is neither a prefix nor an infix of
-    "summarize", so the function the query wanted scored nothing at all. -}
     describe "a near-spelling query still reaches the name" $ do
         it "finds summarize for summary" $
             fmap snd (top "summary") `shouldBe` Just "summarize"
@@ -130,10 +116,6 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
         via "granite" `shouldBe` Just ByModule
 
     describe "context economy — focused hits, not walls" $ do
-        -- Measured live: low-confidence token walls buried the exact hit and
-        -- burned a small model's context. Laws tested on shapes the model
-        -- used (name + type application, name + literal arg, bare name), over
-        -- a synthetic index so the laws generalise beyond the eval corpus.
         let wallIdx =
                 Capability "Synth.Osc" "osc" "Wave a => Text -> Gen a"
                     : Capability "Synth.Patch.Deep.Internal.Wire" "oscillator" "Patch -> Int"
@@ -151,8 +133,6 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
             let hits = searchCapabilities defaultSynonyms wallIdx "osc \"a440\""
             (capName . hitCap <$> take 1 hits) `shouldBe` ["osc"]
         it "an exact hit silences the token-noise tail" $ do
-            -- Exact + prefix are both high-confidence (2 rows is fine); the
-            -- law is that the 19-entry token-noise wall disappears.
             let hits = searchCapabilities defaultSynonyms wallIdx "osc @"
             (capName . hitCap <$> take 1 hits) `shouldBe` ["osc"]
             length hits `shouldSatisfy` (<= 5)
@@ -164,8 +144,6 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
             let hits = searchCapabilities defaultSynonyms wallIdx "internal"
             length hits `shouldSatisfy` (<= 8)
         it "ties prefer the SHORTER module path (public API over internals)" $ do
-            -- Same tier: the umbrella-module export must outrank the
-            -- deep-internal one (measured inversion buried the public name).
             let idx2 =
                     [ Capability "Geo.Shape.Internal.Mesh.Raw" "areaOf" "Mesh -> Double"
                     , Capability "Geo" "area" "Shape -> Double"
@@ -174,21 +152,12 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
             (capModule . hitCap <$> take 1 hits) `shouldBe` ["Geo"]
 
     describe "synonyms match whole tokens, never substrings" $ do
-        -- Measured live: a synonym key that is a SUBSTRING of a query word
-        -- injected unrelated-domain hits, which then counted as a "hit" and
-        -- blocked the fallthrough ladder.
         let idx =
                 [ Capability "Sound.Fx" "reverb" "Time -> Audio -> Audio"
                 , Capability "Mail.Send" "sendMail" "Message -> IO ()"
                 ]
-            -- synonym key "mail" would substring-match "mailbox"-style words
-            -- inside longer domain tokens; token matching must not fire then.
             syns = [("email", ["sendmail"]), ("verb", ["sendmail"])]
         it "a substring of a query word does not trigger the synonym tier" $
-            -- "verb" ⊂ "reverbnation" must not bridge to mail functions; with
-            -- no other tier firing either, the result is a clean MISS — which
-            -- lets the discover fallthrough consult the next backend instead
-            -- of stopping on a confident wrong-domain answer.
             searchCapabilities syns idx "reverbnation upload client"
                 `shouldBe` []
         it "the synonym still fires on the whole token" $ do
@@ -207,9 +176,9 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
             lookup "animate" [(capName c, capType c) | c <- caps]
                 `shouldBe` Just "Time -> (Time -> Picture) -> IO ()"
 
-        it "strips the module qualifier and skips data/type decls" $ do
+        it "strips the module qualifier and indexes type decls alongside values" $ do
             ("defaultAnim" `elem` names) `shouldBe` True
-            ("AnimOpts" `elem` names) `shouldBe` False
+            ("AnimOpts" `elem` names) `shouldBe` True
             all (\c -> not ("." `T.isInfixOf` capName c)) caps `shouldBe` True
 
         it "the parsed index finds animate by name (the transcript failure)" $
@@ -261,9 +230,6 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
             map capName cs `shouldContain` ["predict"]
             map capName cs `shouldContain` ["predictProba"]
 
-{- | Real @:browse Sabela.Notebook.Anim@ output: fully-qualified names, the
-'animate' signature wrapped across continuation lines, package-qualified atoms.
--}
 animBrowse :: Text
 animBrowse =
     T.unlines
@@ -279,10 +245,6 @@ animBrowse =
         , "Sabela.Notebook.Anim.defaultAnim :: Sabela.Notebook.Anim.AnimOpts"
         ]
 
-{- | live_test40: the DataFrame card led with @&&)@ and bare @)@ — a qualified
-operator's own name contains dots, so unqualifying at the last dot splits
-inside it; and re-exports carry a @pkg-1.2.3:@ unit prefix no caller writes.
--}
 unqualifySpec :: Spec
 unqualifySpec = describe "browse names unqualify structurally" $ do
     it "a qualified operator keeps its whole name" $
@@ -296,3 +258,50 @@ unqualifySpec = describe "browse names unqualify structurally" $ do
     it "a plain qualified name still unqualifies" $
         parseCapabilities "M" "DataFrame.readCsv :: FilePath -> IO DataFrame"
             `shouldBe` [Capability "M" "readCsv" "FilePath -> IO DataFrame"]
+
+typeIndexSpec :: Spec
+typeIndexSpec = describe "a type declaration is indexed like any other name" $ do
+    let browse =
+            "type TBQueue :: * -> *\n\
+            \data TBQueue a = TBQueue {-# UNPACK #-}(TVar Natural)\n\
+            \type CharBuffer = Buffer Char\n\
+            \newtype Down a = Down {getDown :: a}\n\
+            \class Eq a => Ord a where\n\
+            \  compare :: a -> a -> Ordering\n\
+            \atomically :: STM a -> IO a\n"
+        caps = parseCapabilities "M" browse
+        named n = [c | c <- caps, capName c == n]
+    it "indexes a data declaration's type" $
+        map capName (named "TBQueue") `shouldBe` ["TBQueue"]
+    it "indexes a type synonym" $
+        map capName (named "CharBuffer") `shouldBe` ["CharBuffer"]
+    it "indexes a newtype" $
+        map capName (named "Down") `shouldBe` ["Down"]
+    it "indexes a class, past its context" $
+        map capName (named "Ord") `shouldBe` ["Ord"]
+    it "does not double-index a standalone kind signature" $
+        length (named "TBQueue") `shouldBe` 1
+    it "still indexes value bindings" $
+        map capName (named "atomically") `shouldBe` ["atomically"]
+    it "still indexes a record selector" $
+        map capName (named "getDown") `shouldBe` ["getDown"]
+    it "still indexes a class method" $
+        map capName (named "compare") `shouldBe` ["compare"]
+    it "a type is findable by name, which is what the error names" $
+        (capName . hitCap <$> take 1 (searchCapabilities defaultSynonyms caps "TBQueue"))
+            `shouldBe` ["TBQueue"]
+
+importLineSpec :: Spec
+importLineSpec = describe "a hit carries the import that uses it" $ do
+    let impOf = importLineFor
+    it "a type imports scoped to itself" $
+        impOf (Capability "Control.Concurrent.STM" "TBQueue" "TBQueue a")
+            `shouldBe` Just "import Control.Concurrent.STM (TBQueue)"
+    it "a value imports the same way" $
+        impOf (Capability "Control.Monad.STM" "atomically" "STM a -> IO a")
+            `shouldBe` Just "import Control.Monad.STM (atomically)"
+    it "an operator is wrapped in parens" $
+        impOf (Capability "Data.Csv" "!" "Record -> Int -> Parser a")
+            `shouldBe` Just "import Data.Csv ((!))"
+    it "a hit with no module carries no import" $
+        impOf (Capability "" "orphan" "Int") `shouldBe` Nothing

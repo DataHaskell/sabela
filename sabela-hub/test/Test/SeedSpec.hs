@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The Learn You a Haskell gallery collection: its identity and that every
-chapter is wired in as a member. Pins the collection the seeder writes to
-@/c/1ea40000@ so a chapter dropped from the table (or a renamed cid) is caught.
-The per-share WASM-runner splice is exercised by 'Test.RunnerSpec'; here we pin
-the collection wiring the seed task delivers.
--}
 module Test.SeedSpec (spec) where
 
 import Data.Char (isAscii)

@@ -123,7 +123,6 @@ spec = describe "plotting/dataframe tasks" $ do
         it "withholds on an empty notebook" $
             fst (renderVerdict []) `shouldSatisfy` isWithheld
         it "rejects a cell that counterfeits the SVG in its source" $
-            -- the payload is a real SVG but the SOURCE embeds <svg, so it is faked
             fst
                 ( renderVerdict
                     [("displayHtml \"<svg><rect/></svg>\"", outcomeWith "text/html" drawnSvg)]

@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Gallery + admin route tests, split out of 'Test.ProxySpec' for the module-size cap.
 module Test.ProxyRoutesSpec (spec) where
 
 import Control.Exception (SomeException, try)
@@ -152,7 +151,6 @@ spec =
             resp <- runSession (request req) app
             simpleStatus resp `shouldBe` status200
             LC8.unpack (simpleBody resp) `shouldSatisfy` isInfixOf "forked-"
-            -- the source landed in the forker's (user@x → user_x) work dir
             files <- listDirectory (root </> "users" </> "user_x")
             length (filter (isInfixOf "forked-") files) `shouldBe` 1
 

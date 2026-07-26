@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for LOUD + CONSERVATIVE self-heal.
-
-Gate transcripts showed the two failure modes these pin: a silent hole-fit
-substitution (@customers@ → @mempty@) produced a compile-green cell with a
-wrong value and cost the model its remaining turns in confusion; and gemma
-re-submitted @takeWhile1@ three times past GHC's own \"Perhaps use:
-takeWhileP\" hint. So: (1) a repair must NAME what it changed in the tool
-response; (2) a rename lexically far from the wrong name is declined; (3) the
-re-enter rail contrasts the wrong name with the real candidates.
--}
 module Test.SelfHealSpec (spec) where
 
 import Data.Aeson (Value (..), object, toJSON, (.=))
@@ -30,7 +20,6 @@ import Sabela.AI.SelfHeal (
     sourceDelta,
  )
 
--- | The real gemma gate error (evalExpr task), verbatim shape.
 gemmaErr :: Text
 gemmaErr =
     T.unlines
@@ -72,17 +61,12 @@ spec = describe "loud + conservative self-heal (intention)" $ do
             contrastLine "cell 0, line 2: Variable not in scope: frobnicate"
                 `shouldBe` Nothing
         it "unescapes a JSON-escaped diagnostic (no literal \\n in the name)" $
-            -- Client-side rails receive the diagnostic JSON-escaped; the
-            -- contrast must not render `takeWhile1\n` as the phantom name.
             case contrastLine (T.replace "\n" "\\n" gemmaErr) of
                 Nothing -> expectationFailure "no contrast from escaped blob"
                 Just line -> do
                     line `shouldSatisfy` T.isInfixOf "`takeWhile1`"
                     line `shouldSatisfy` (not . T.isInfixOf "takeWhile1\\n")
         it "is Nothing on a module-load cascade (the names are not phantoms)" $ do
-            -- Measured misfire: \"do not write `parse` again\" while parse was
-            -- exactly what was needed — the not-in-scope was hidden-package
-            -- collateral, not a phantom name.
             let cascade =
                     T.unlines
                         [ "cell 0: Could not load module `Text.Megaparsec'."
@@ -191,11 +175,9 @@ spec = describe "loud + conservative self-heal (intention)" $ do
             lookupKey "self_heal_suggestions" (attachSelfHealSuggestions [sug] cr)
                 `shouldBe` Just (toJSON [sug])
 
--- | Top-level field lookup on an object payload.
 lookupKey :: Text -> Value -> Maybe Value
 lookupKey k (Object o) = KM.lookup (K.fromText k) o
 lookupKey _ _ = Nothing
 
--- | A JSON array of strings.
 toStrings :: [Text] -> Value
 toStrings = toJSON

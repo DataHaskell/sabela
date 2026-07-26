@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The honest request boundary (R1.7, the M8 laundering class): over ALL
-catalogue tool names x wrapper shapes (flat, {input:{...}}, {arguments:{...}},
-doubly-nested, junk keys) an offered name NEVER routes to "unknown tool"; a
-still-wrong shape yields one shape-correcting bad-args hint naming the
-wrapper; a genuinely unknown name still says so (no over-acceptance).
--}
 module Test.ToolRouteSpec (toolRouteSpec) where
 
 import Control.Monad (forM_)
@@ -23,7 +17,6 @@ import Siza.Agent.ToolRoute (
  )
 import Siza.Agent.Tools (offeredNames)
 
--- | A representative flat argument object accepted by any catalogue tool.
 flatArgs :: Value
 flatArgs =
     object

@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Valid-hole-fits (D2): parse GHC's "Valid hole fits include" blob into a
-list of @(name, type)@ pairs, and turn a not-in-scope error that already
-carries a printed type into the @_ :: <type>@ goal we feed to the query.
-
-The parser is pinned against a captured-real GHC 9.12 blob; it is
-GHC-version sensitive, so a large unexpected diff signals the upstream
-format moved.
--}
 module Test.HoleFitsSpec (spec) where
 
 import Data.List (find)
@@ -17,9 +9,6 @@ import Sabela.AI.HoleFits (HoleFit (..), holeFitsJson, parseHoleFits)
 import Sabela.Diagnose (holeFitGoal)
 import Test.Hspec
 
-{- | A real blob captured from GHCi 9.12.2 with the three D2 flags set, for
-the goal @_ :: [Int] -> Int@ after @import Data.List@.
--}
 realBlob :: Text
 realBlob =
     T.unlines
@@ -60,10 +49,6 @@ realBlob =
         , "           (and originally defined in \8216GHC.Internal.List\8217))"
         ]
 
-{- | A harder real blob (GHC 9.12.2, same flags) for @_ :: Maybe Int -> Int@,
-trimmed to fits that exercise multi-hole refinement skeletons and a refinement
-type that wraps across three lines.
--}
 multiHoleBlob :: Text
 multiHoleBlob =
     T.unlines
@@ -95,11 +80,6 @@ multiHoleBlob =
         , "           (and originally defined in \8216GHC.Internal.Data.Foldable\8217))"
         ]
 
-{- | A real blob (GHC 9.12.2, same flags) for
-@_ :: (Int -> Maybe Int) -> [Int] -> Maybe [Int]@, where each plain fit's type
-wraps across three lines, exercising the type-continuation fold. It carries no
-refinement section, so it also covers the plain-only path.
--}
 wrappedTypeBlob :: Text
 wrappedTypeBlob =
     T.unlines
@@ -155,8 +135,6 @@ spec = describe "Sabela hole-fits (D2)" $ do
         it "returns nothing for a blob without the header" $
             parseHoleFits "just some text\nno fits here" `shouldBe` []
 
-        -- Provenance is not noise: the module is where the fit comes FROM,
-        -- which is the half of the answer that tells the model what to import.
         it "keeps the defining module of each fit" $ do
             (hfModule <$> find ((== "genericLength") . hfWrite) plain)
                 `shouldBe` Just (Just "Data.List")

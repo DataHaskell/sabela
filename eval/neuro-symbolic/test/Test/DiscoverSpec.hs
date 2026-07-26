@@ -80,7 +80,6 @@ spec = describe "D1 discover stage" $ do
                     [ object ["source" .= installSrc]
                     , object ["source" .= ("plain = 1" :: Text)]
                     ]
-                -- Mirrors the server: `source` is only present under full:true.
                 disp tc@(ToolCall name a) = do
                     modifyIORef' calls (++ [tc])
                     pure $ case name of
@@ -204,7 +203,6 @@ openBudget = defaultBudget{ebMaxRepairs = maxBound, ebDeadlineSecs = 1 / 0}
 dummyTask :: Task
 dummyTask = Task "t" "plot something with granite" (ByValue "True")
 
--- | A fake :browse result naming a real-looking signature for the asked module.
 browseResult :: Text -> ToolOutcome
 browseResult m =
     ToolOk $
@@ -220,7 +218,6 @@ argOf (Object o) = case KM.lookup "query" o of
     _ -> ""
 argOf _ = ""
 
--- | Does a list_cells argument object carry @full: true@ (the M1 fix)?
 fullTrue :: Value -> Bool
 fullTrue (Object o) = KM.lookup "full" o == Just (Bool True)
 fullTrue _ = False

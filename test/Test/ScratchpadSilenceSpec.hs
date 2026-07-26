@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6.7: the scratchpad never returns silence. For any snippet outcome the
-response carries output, a diagnostic, or a typed statement of what the
-scratchpad cannot do (isolation, own cabal line) with the in-session
-alternative — empty-and-empty is unrepresentable.
--}
 module Test.ScratchpadSilenceSpec (spec) where
 
 import Data.Maybe (isJust, isNothing)
@@ -14,7 +9,6 @@ import Test.Hspec
 
 import Sabela.AI.Capabilities.Scratchpad (isolationDiagnostic, silentDiagnostic)
 
--- | The observable outcome classes a snippet can produce (R10 test method).
 outcomeCases :: [(String, Text, Text)]
 outcomeCases =
     [ ("unresolvable import", "", "error: Could not load module 'DataFrame'")

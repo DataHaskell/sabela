@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The pure core of the server-side wrong-module repair: read GHC's
-"Perhaps you meant Y" correction and rename the module as a whole dotted token.
-The IO loop that re-runs the cell is verified live; these pin the decisions it makes.
--}
 module Test.ImportRepairSpec (spec) where
 
 import Data.Text (Text)
@@ -19,7 +15,6 @@ import Sabela.AI.ImportRepair (
 import Sabela.AI.Types (ExecutionResult (..))
 import Test.Hspec
 
--- | The real GHC wrong-module wall (multiple version suggestions, same module).
 moduleErr :: Text
 moduleErr =
     T.unlines
@@ -78,9 +73,6 @@ spec = describe "Sabela.AI.ImportRepair" $ do
             addScopedImport "Conduit" "runConduit" "-- cabal: build-depends: conduit\nx = 1"
                 `shouldBe` "-- cabal: build-depends: conduit\nimport Conduit (runConduit)\nx = 1"
 
-    {- live_test35_wine, GHC-76037: the cell used `T.lines` and `TE.decodeUtf8`
-    having never bound either alias. GHC names the unimported alias itself, so
-    the repair never has to guess that T means Data.Text. -}
     describe "unboundAliasUses" $ do
         it "pairs the alias with the bare name from GHC's two-line form" $
             unboundAliasUses ghcAliasError
@@ -117,7 +109,6 @@ spec = describe "Sabela.AI.ImportRepair" $ do
                 "import qualified Data.Text as T\nimport qualified Data.Map as M\nx = 1"
                 `shouldBe` ["T", "M"]
 
--- | The diagnostic exactly as live_test35_wine received it.
 ghcAliasError :: Text
 ghcAliasError =
     "<interactive>:365:20: error: [GHC-76037]\n\

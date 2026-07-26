@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the notebook-switch contract: loading a different notebook tears
-down the live Haskell session, so the next run rebuilds against the loaded
-notebook. Previously the load left the session alive (only @:reload@-ing it,
-which wiped its bindings) while the dependency tracker still matched, so the
-next Run All took the stale path, found every freshly-loaded cell clean, and
-executed nothing.
--}
 module Test.SwitchNotebookSpec (spec) where
 
 import Control.Concurrent (threadDelay)
@@ -29,7 +22,6 @@ import Sabela.State (App (..))
 import Sabela.State.SessionManager (getHaskellSession, setHaskellSession)
 import Test.Hspec
 
--- | A fake backend that records when it is closed.
 fakeBackend :: IORef Bool -> IO ST.SessionBackend
 fakeBackend closed = do
     uid <- newUnique
@@ -57,7 +49,6 @@ fakeBackend closed = do
                 }
     pure backend
 
--- | Retry @check@ briefly so an off-thread teardown is not raced.
 waitFor :: IO Bool -> IO Bool
 waitFor check = go (50 :: Int)
   where

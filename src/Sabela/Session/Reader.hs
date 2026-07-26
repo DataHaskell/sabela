@@ -1,12 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Bounded, binary-safe output capture shared by all interpreter
-backends: a byte-budgeted queue of decoded lines with an out-of-band
-EOF tombstone, fed by a chunked reader that caps line length.
--}
 module Sabela.Session.Reader (
-    -- * Queue
     SessLine (..),
     OutQueue (..),
     newOutQueue,
@@ -14,21 +9,15 @@ module Sabela.Session.Reader (
     enqueueEof,
     dequeueLine,
     drainToEof,
-
-    -- * Loops
     readLoop,
     errLoop,
     boundedLines,
     scanDiscarded,
-
-    -- * Markers
     markerPrefix,
     markerSuffix,
     mkMarkerText,
     markerNumberIn,
     markerNonceBase,
-
-    -- * Limits
     lineCapBytes,
     errLineCapBytes,
     queueBytesCap,
@@ -63,13 +52,8 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TE
 import System.IO (Handle)
 
--- | One captured output line (with its byte cost) or the EOF tombstone.
 data SessLine = SessLine !Int !Text | SessEof
 
-{- | Line queue plus a byte budget. Producers block on either bound;
-consumers credit the budget back. 'SessEof' is sticky: it is peeked,
-never popped, so every later drain observes it immediately.
--}
 data OutQueue = OutQueue
     { oqItems :: TBQueue SessLine
     , oqBytes :: TVar Int
@@ -88,7 +72,6 @@ newOutQueue =
         <$> newTBQueueIO (fromIntegral queueEntryCap)
         <*> newTVarIO 0
 
--- | Producer enqueue: one transaction blocking on both bounds.
 enqueueLine :: OutQueue -> Int -> Text -> STM ()
 enqueueLine (OutQueue q b) c t = do
     used <- readTVar b
@@ -96,9 +79,6 @@ enqueueLine (OutQueue q b) c t = do
     writeTBQueue q (SessLine c t)
     writeTVar b (used + c)
 
-{- | Enqueue the EOF tombstone without ever blocking: drops the oldest
-line (crediting its bytes back) when the queue is full.
--}
 enqueueEof :: OutQueue -> STM ()
 enqueueEof (OutQueue q b) = do
     full <- isFullTBQueue q
@@ -112,9 +92,6 @@ enqueueEof (OutQueue q b) = do
                     modifyTVar' b (subtract c)
                     writeTBQueue q SessEof
 
-{- | Pop the next line, or return Nothing on the EOF tombstone (which
-stays in place). Pop and budget credit happen in this one transaction.
--}
 dequeueLine :: OutQueue -> STM (Maybe Text)
 dequeueLine (OutQueue q b) = do
     item <- peekTBQueue q
@@ -125,7 +102,6 @@ dequeueLine (OutQueue q b) = do
             modifyTVar' b (subtract c)
             pure (Just t)
 
--- | Pop lines until the tombstone is observed; used by session teardown.
 drainToEof :: OutQueue -> IO ()
 drainToEof q = do
     r <- atomically (dequeueLine q)
@@ -133,9 +109,6 @@ drainToEof q = do
         Nothing -> pure ()
         Just _ -> drainToEof q
 
-{- | Capture an interpreter's stdout into the queue; on any exit
-(EOF or exception) the tombstone is guaranteed to land.
--}
 readLoop :: Handle -> OutQueue -> IO ()
 readLoop h q =
     swallow (boundedLines lineCapBytes h emit)
@@ -143,7 +116,6 @@ readLoop h q =
   where
     emit c t = atomically (enqueueLine q c t)
 
--- | Capture stderr into a bounded ring, echoing each line to a callback.
 errLoop :: Handle -> IORef [Text] -> IORef (Text -> IO ()) -> IO ()
 errLoop h ref cbRef = swallow (boundedLines errLineCapBytes h emit)
   where
@@ -159,10 +131,6 @@ swallow act = do
     _ <- try act :: IO (Either SomeException ())
     pure ()
 
-{- | Stream a handle line-by-line in raw chunks, leniently decoded, with
-@cap@ bytes per line; the over-cap remainder is discarded without
-accumulation but still scanned for markers (emitted as synthetic lines).
--}
 boundedLines :: Int -> Handle -> (Int -> Text -> IO ()) -> IO ()
 boundedLines cap h emit = go [] 0 False BS.empty
   where
@@ -216,9 +184,6 @@ boundedLines cap h emit = go [] 0 False BS.empty
 chunkSize :: Int
 chunkSize = 32768
 
-{- | Scan discarded bytes for complete markers, emitting each as its own
-synthetic line; returns the carry (a possibly-incomplete marker tail).
--}
 scanDiscarded :: (Int -> Text -> IO ()) -> BS.ByteString -> IO BS.ByteString
 scanDiscarded emit win =
     case BS.breakSubstring markerPrefixBS win of
@@ -257,16 +222,9 @@ markerPrefixBS = TE.encodeUtf8 markerPrefix
 mkMarkerText :: Int -> Text
 mkMarkerText n = markerPrefix <> T.pack (show n) <> markerSuffix
 
-{- | Multiplier separating a session's per-run counter from its nonce in a
-marker number: @nonce * markerNonceBase + run@. The nonce occupies the high
-digits, so notebook output cannot forge a live marker without knowing it.
--}
 markerNonceBase :: Int
 markerNonceBase = 100000
 
-{- | The number of the first well-formed marker in a line; lines with a
-marker prefix but no parsable @n---@ tail are ordinary output.
--}
 markerNumberIn :: Text -> Maybe Int
 markerNumberIn line = do
     let (_, rest) = T.breakOn markerPrefix line

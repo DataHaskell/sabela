@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @eval_live@ tool: evaluate a single, read-only Haskell expression
-against the LIVE notebook kernel and return its type and (for a pure, Showable
-expression) its value. The piece scratchpad cannot do — it sees the notebook's
-in-scope bindings (a cell's @df@) that the isolated scratchpad session cannot.
-
-Guarded to stay read-only: the input must bind no top-level name (so nothing
-persists in the session), and an @IO@-typed expression returns its type only,
-never run. A timeout bounds a pure-but-diverging expression.
--}
 module Sabela.AI.Capabilities.EvalLive (execEvalLive) where
 
 import Control.Exception (SomeException, try)
@@ -26,13 +17,9 @@ import Sabela.SessionTypes (SessionBackend (..))
 import Sabela.State (App (..))
 import Sabela.State.SessionManager (getHaskellSession)
 
-{- | How long a read-only probe may run before it is abandoned, so a pure but
-diverging expression (@length [1..]@) cannot wedge the tool.
--}
 evalTimeoutMicros :: Int
 evalTimeoutMicros = 30 * 1000000
 
--- | Cap on returned value text so a huge structure does not flood context.
 valueCap :: Int
 valueCap = 4000
 
@@ -99,7 +86,6 @@ execEvalLive app input
         (n : _) -> Just n
         [] -> Nothing
 
--- | True when @:type@ actually resolved (not a not-in-scope / error reply).
 typeResolved :: Text -> Bool
 typeResolved t =
     let lt = T.toLower t
@@ -107,7 +93,6 @@ typeResolved t =
             && not ("not in scope" `T.isInfixOf` lt)
             && not ("error:" `T.isInfixOf` lt)
 
--- | Whether the resolved type's head (after any @=>@ context) is @IO@.
 isIOType :: Text -> Bool
 isIOType ty =
     let rhs = T.strip (snd (T.breakOnEnd "::" ty))

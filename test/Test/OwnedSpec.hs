@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Ownership of the cells an agent turn wrote: what gets owned, when the accept
-gate stops vs re-enters, and when a concurrent edit makes ownership stale.
--}
 module Test.OwnedSpec (spec) where
 
 import qualified Data.Map.Strict as Map

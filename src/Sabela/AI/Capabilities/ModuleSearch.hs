@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @find_function@ tool: a Hoogle-style search over the live session's
-installed modules. A keyword query ranks every exposed function with
-"Sabela.AI.Capability"; an exact module-name query returns that module's raw
-@:browse@ listing (all exports — values, types, classes — not just value bindings).
--}
 module Sabela.AI.Capabilities.ModuleSearch (
     execFindFunction,
     usableCard,
@@ -23,6 +18,7 @@ import qualified Data.Text as T
 import Sabela.AI.Capabilities.BrowseCard (browseCard, browseCardFor)
 import Sabela.AI.Capabilities.ModuleCard (
     hiddenModuleCard,
+    hiddenPackageCard,
     matchesOutcomeWithDocs,
  )
 import Sabela.AI.Capabilities.Resolve (lookupByName)
@@ -44,10 +40,6 @@ import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
 import System.Environment (lookupEnv)
 
-{- | @query@ is a keyword (@animate@) or a module name (which returns that
-module's raw exports). Ranks the installed modules' functions; returns nothing
-on a true miss — no misleading near-match. To search by TYPE use @find_by_type@.
--}
 execFindFunction :: App -> Value -> IO ToolOutcome
 execFindFunction app input =
     if T.null q
@@ -66,18 +58,12 @@ execFindFunction app input =
                         )
                 Just backend -> do
                     mods <- sbQueryComplete backend "import "
-                    -- A module-name query browses that module DIRECTLY — :browse works
-                    -- on any installed module even when absent from the import-completion
-                    -- list. Applicability is decided by TRYING the oracle: any
-                    -- module-shaped query attempts :browse, and only a usable card is
-                    -- kept — an unusable one falls back to keyword search.
                     if q `elem` mods || looksLikeModule q
                         then do
                             raw <- sbQueryBrowse backend q
                             let card = browseCard q raw
                             if browseEmpty raw || not (usableCard card)
-                                then -- The session cannot browse a module whose
-                                -- package it does not expose; the store can.
+                                then
                                     hiddenModuleCard Nothing q
                                         >>= maybe (keywordSearch backend mods) (pure . okOutcome)
                                 else pure (okOutcome card)
@@ -85,27 +71,14 @@ execFindFunction app input =
   where
     keywordSearch backend _mods
         | not (T.null qModule) && qModule /= q = do
-            -- module+query together SCOPE the keyword search to that module
-            -- instead of being silently ignored (measured: a refinement call
-            -- had zero effect and no signal).
             caps <- buildIndex backend [qModule]
             case searchCapabilities defaultSynonyms caps q of
-                -- A scoped miss asked about a MODULE, so answer about the
-                -- module: an empty result sends the caller back to guessing
-                -- (live_test36 probed Data.Csv for "!?" then "!.").
                 [] -> moduleExports backend qModule q
                 hits -> matchesOutcomeWithDocs backend q hits
     keywordSearch backend mods = do
         surfacing <- isJust <$> lookupEnv "SABELA_INSTANCE_SURFACING"
-        -- Always index the notebook's own vocabulary: the bare completion
-        -- list is alphabetical and truncated, so `Sabela.*` fell off the end
-        -- and no builtin was keyword-findable at all.
         builtin <- filter interesting <$> sbQueryComplete backend "import Sabela"
         let baseMods = filter interesting mods
-        -- ON: also index the submodules of the session's own namespaces (e.g.
-        -- DataFrame.*), enumerated via prefixed :complete — the bare import-completion
-        -- caps at ~250 and omits RE-EXPORTED modules, so the generic `fit` is otherwise
-        -- undiscoverable by keyword. OFF: the capped bare list (the status-quo baseline).
         toBrowse <-
             if surfacing
                 then do
@@ -114,16 +87,18 @@ execFindFunction app input =
                     pure (nub (baseMods ++ filter interesting extra))
                 else pure (take maxIndexModules baseMods)
         caps <- buildIndex backend (nub (builtin ++ toBrowse))
-        matchesOutcomeWithDocs backend q (searchCapabilities defaultSynonyms caps q)
+        case searchCapabilities defaultSynonyms caps q of
+            [] ->
+                hiddenPackageCard q
+                    >>= maybe
+                        (matchesOutcomeWithDocs backend q [])
+                        (pure . okOutcome)
+            hits -> matchesOutcomeWithDocs backend q hits
     q =
         let qq = fieldText "query" input
          in if T.null qq then fieldText "module" input else qq
     qModule = fieldText "module" input
 
-{- | Installed modules exporting @name@, over the same bounded browse-index
-@find_function@ uses. Lets the add-import repair resolve an unimported name
-(e.g. @Picture@) without the model naming its module.
--}
 resolveNameToModules :: App -> Text -> IO [Capability]
 resolveNameToModules app name = do
     mBackend <- getHaskellSession (appSessions app)
@@ -137,21 +112,11 @@ resolveNameToModules app name = do
             caps <- buildIndex backend mods
             pure (lookupByName name caps)
 
-{- | An uppercase-headed token with no spaces — a module-shaped query worth
-ATTEMPTING to browse (@DataFrame.Model@, but also dotless umbrella modules
-like @DataFrame@ or @Granite@). The oracle decides: an unusable browse falls
-back to keyword search, so a capitalized non-module costs one cheap query.
--}
 looksLikeModule :: Text -> Bool
 looksLikeModule t =
     not (T.any (== ' ') t)
         && maybe False (isUpper . fst) (T.uncons t)
 
-{- | Everything a module exports, for a scoped query that matched nothing.
-Uses the raw @:browse@ card, so TYPES and classes are listed alongside the
-functions; falls through to the store when the session cannot see the module.
-The @matched@ field states the miss as a fact, without prescribing a next move.
--}
 moduleExports :: SessionBackend -> Text -> Text -> IO ToolOutcome
 moduleExports backend modName q = do
     raw <- sbQueryBrowse backend modName
@@ -162,13 +127,11 @@ moduleExports backend modName q = do
                 <$> hiddenModuleCard (Just q) modName
         else pure (okOutcome (noteMiss q card))
 
--- | Record which query missed, on the card that answers instead.
 noteMiss :: Text -> Value -> Value
 noteMiss q (Object o) =
     Object (KM.insert "matched" (String ("no export matched '" <> q <> "'")) o)
 noteMiss _ v = v
 
--- | The module itself could not be read, so report that rather than nothing.
 missOutcome :: Text -> Text -> ToolOutcome
 missOutcome modName q =
     okOutcome
@@ -179,36 +142,20 @@ missOutcome modName q =
             ]
         )
 
-{- | A card that ANSWERS the query, rather than reporting why it could not be
-answered here. An @error@ card falls back; so does @hidden-package@, which
-names the package but lists nothing — the session cannot browse what its
-environment does not expose, and the store can (live_test38 asked for
-@DataFrame@ and received a four-field card with no exports, because a
-hidden-package card counted as usable and short-circuited the store lookup).
--}
 usableCard :: Value -> Bool
 usableCard (Object o) = case KM.lookup "status" o of
     Just (String st) -> st `notElem` ["error", "hidden-package"]
     _ -> False
 usableCard _ = False
 
--- | A @:browse@ that resolved to nothing usable (empty or a scope/parse error).
 browseEmpty :: Text -> Bool
 browseEmpty raw =
     let s = T.toLower (T.strip raw)
      in T.null s || "not in scope" `T.isInfixOf` s || "error:" `T.isInfixOf` s
 
-{- | Cap on modules browsed per keyword search (the OFF / baseline arm), to bound
-the round-trip cost. Surfacing ON lifts it to index every importable module.
--}
 maxIndexModules :: Int
 maxIndexModules = 120
 
-{- | The top-level namespaces the NOTEBOOK imports (the first dotted component of
-each @import@ in any cell — e.g. @DataFrame@ from @import DataFrame@). The bare
-import-completion only lists boot/base modules, so these come from the notebook's
-own imports, not from completion. No module names are hardcoded.
--}
 notebookNamespaces :: App -> IO [Text]
 notebookNamespaces app = do
     nb <- readNotebook (appNotebook app)
@@ -220,7 +167,6 @@ notebookNamespaces app = do
             ]
     pure (nub (map (T.takeWhile (/= '.')) imports))
 
--- | The module a one-line @import [qualified] M ...@ brings in, if any.
 importedModule :: Text -> Maybe Text
 importedModule line = case T.words (T.strip line) of
     ("import" : rest) -> case dropWhile (== "qualified") rest of
@@ -228,26 +174,14 @@ importedModule line = case T.words (T.strip line) of
         _ -> Nothing
     _ -> Nothing
 
-{- | Submodules under each given namespace, enumerated via prefixed @:complete@
-(e.g. @import DataFrame@ → every @DataFrame.*@). A namespace-prefixed completion
-returns RE-EXPORTED modules the bare list omits, so @find_function@ can discover
-a re-exported verb like @fit@.
--}
 namespaceSubmodules :: SessionBackend -> [Text] -> IO [Text]
 namespaceSubmodules backend namespaces =
     concat <$> mapM (\ns -> sbQueryComplete backend ("import " <> ns)) namespaces
 
-{- | Browse each module once and parse its value bindings into capabilities: the
-per-call index the keyword search ranks over.
--}
 buildIndex :: SessionBackend -> [Text] -> IO [Capability]
 buildIndex backend mods =
     concat <$> mapM (\m -> parseCapabilities m <$> sbQueryBrowse backend m) mods
 
-{- | Keep the discovery-relevant modules: drop the base/boot namespaces the model
-already knows, by first path component (keeps @DataFrame.*@, @Granite.*@,
-@Sabela.Notebook.*@ and declared deps; drops @Data.*@, @Control.*@, @GHC.*@).
--}
 interesting :: Text -> Bool
 interesting m = T.takeWhile (/= '.') m `notElem` baseNamespaces
 

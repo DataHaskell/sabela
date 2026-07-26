@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @resource@ runaway diagnostic class (R3.9/R6.5): ONE bounded line,
-triggered as a function of wall\/heap\/progress evidence only — never cell
-content — over generated (elapsed, progress-evidence) grids. The line lets
-the proposer shrink its own proposal; it never recognises a task.
--}
 module Test.ResourceSpec (spec) where
 
 import Control.Monad (forM_)
@@ -22,7 +17,6 @@ import Test.Hspec
 budget :: Int
 budget = 30000
 
--- | The full evidence grid: elapsed × heap shape × progress events.
 evidenceGrid :: [ResourceEvidence]
 evidenceGrid =
     [ ResourceEvidence elapsed heap events
@@ -64,9 +58,6 @@ spec = describe "resource runaway diagnostic (R3.9/R6.5)" $ do
         heapClimbing [512000] `shouldBe` False
 
     it "the line is a function of the evidence alone (task-independence)" $ do
-        -- Two 'tasks' with identical resource evidence produce the identical
-        -- line: the function takes no cell content, and equal evidence maps
-        -- to equal text — only the holder label may differ.
         let e = ResourceEvidence (4 * budget) [512000, 901000] 0
         resourceLine budget (Just "cell 2") e
             `shouldBe` resourceLine budget (Just "cell 2") e

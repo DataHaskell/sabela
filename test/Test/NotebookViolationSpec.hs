@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The AI insert contract as an illegal-states-unrepresentable chokepoint:
-'checkedAppend' appends a cell at the end and refuses when the notebook has a
-cell with a settled error (fix/delete it first) or the candidate duplicates a
-definition. Pure, so no kernel is needed.
--}
 module Test.NotebookViolationSpec (spec) where
 
 import Data.Either (isRight)

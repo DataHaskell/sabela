@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for scratch-session candidate vetting (plan v2 Phase D).
-
-Gate transcripts showed resolver candidates being EXECUTED into the live GHCi
-scope to vet them — a rejected attoparsec import leaked into both arms'
-sessions. The fix: vet in the isolated scratchpad with the compiler as the
-oracle. These pin the pure pieces: the collision-free import alias, the cell
-import replay, and the goal sanitizer that turns GHC's package-qualified noise
-into type variables GHCi can parse (a pkg-qualified name in a @::@ annotation
-is a parse error, which would false-decline every candidate).
--}
 module Test.ScratchVetSpec (spec) where
 
 import qualified Data.Text as T
@@ -73,10 +63,6 @@ spec = describe "scratch-session candidate vetting (intention)" $ do
             splitArrows "[[Int]]" `shouldBe` ["[[Int]]"]
 
     describe "vetProbe — apply-and-unify, not annotate" $ do
-        -- A :: annotation would skolemize the goal's inferred type variables
-        -- and demand the candidate be at least that polymorphic — declining
-        -- legitimate candidates (measured live: divvy). Applying to typed
-        -- undefineds unifies instead, and arity mismatches still decline.
         it "applies the candidate to each goal argument and unifies the result" $
             vetProbe "Data.List.Split" "divvy" "Int -> Int -> [a] -> [[a]]"
                 `shouldBe` "(V_Data_List_Split.divvy (undefined :: Int) (undefined :: Int) (undefined :: [a])) `asTypeOf` (undefined :: [[a]])"

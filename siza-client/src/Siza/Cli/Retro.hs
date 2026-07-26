@@ -1,9 +1,3 @@
-{- | The CLI adapter for @siza retro@: read a session JSONL log, fold it with
-'Siza.Retro', and print the metrics as JSON (redesign 7.5).
-
-The log argument is either an explicit file path, or a @notebook/session@ pair
-resolved under the same @sessions/@ tree 'Siza.Provenance' writes.
--}
 module Siza.Cli.Retro (
     RetroTarget,
     retroTargetParser,
@@ -20,14 +14,8 @@ import System.Directory (doesFileExist)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
-{- | What @siza retro@ reads: an explicit log path, or a @(notebook, session)@
-pair resolved under the @sessions/@ tree.
--}
 type RetroTarget = Either FilePath (Text, Text)
 
-{- | @siza retro FILE@, or @siza retro --notebook N --session S@. An explicit
-path wins; otherwise the notebook/session pair resolves under the tree.
--}
 retroTargetParser :: Parser RetroTarget
 retroTargetParser = byFile <|> byPair
   where
@@ -40,10 +28,6 @@ retroTargetParser = byFile <|> byPair
                 <$> strOption (long "notebook" <> metavar "NB" <> help "Notebook id")
                 <*> strOption (long "session" <> metavar "SID" <> help "Session id")
 
-{- | Resolve the log (an explicit path, or a notebook/session pair under the
-@sessions/@ tree), decode its events, and print the metrics. Exits non-zero
-when the log is missing.
--}
 runRetro :: RetroTarget -> IO ()
 runRetro target = do
     path <- either pure (uncurry sessionLogPath) target

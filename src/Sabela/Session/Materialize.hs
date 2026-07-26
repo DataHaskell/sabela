@@ -1,24 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Disposable, contextful notebook materialization.
-
-This module reconstructs a notebook in a fresh GHCi process and a fresh Cabal
-project, then optionally evaluates one compiler-admitted pure expression.  It
-never installs into, queries, or mutates the managed live kernel.  Every call
-owns its project, process, and build directory and tears all three down before
-returning.
-
-The caller splits a trial into:
-
-* metadata source, used only to extend the disposable Cabal environment;
-* setup, containing already-rendered non-executing imports/declarations; and
-* an optional final expression.
-
-The final expression goes through 'sbEvalPureLive', which owns the
-@_sabelaPureWitness@ admission, timeout/recovery, @it@ restoration, and binding
-fingerprint checks.  An unrestricted @IO@ expression is therefore never run.
--}
 module Sabela.Session.Materialize (
     CandidateSpec (..),
     expressionCandidate,
@@ -28,13 +10,9 @@ module Sabela.Session.Materialize (
     SkippedCell (..),
     DisposableResult (..),
     runDisposableTry,
-
-    -- * Snapshot fence
     MaterializeSnapshot,
     captureMaterializeSnapshot,
     snapshotStillCurrent,
-
-    -- * Pure pieces used by focused tests
     buildBudgetFor,
     candidateSafetyPrelude,
     candidateProjectMeta,
@@ -116,38 +94,15 @@ import ScriptHs.Parser (
  )
 import ScriptHs.Render (toGhciScript)
 
--- | The candidate pieces supplied by the internal @try@ router.
 data CandidateSpec = CandidateSpec
     { candidateMetadataSource :: Text
-    {- ^ Full source used to collect Cabal directives.  It is never executed
-    by this field alone.
-    -}
     , candidateSetup :: Text
-    {- ^ Already-rendered, non-executing imports and declarations.  The public
-    router is responsible for declining GHCi commands and executable setup.
-    -}
     , candidateExpression :: Maybe Text
-    {- ^ A final expression to admit and evaluate.  'Nothing' means the setup
-    is a declarations-only compile trial.
-    -}
     , candidateReplacesCellId :: Maybe Int
-    {- ^ The cell id a replace candidate supersedes, dropped from the
-    reconstructed prefix so the candidate replays against the notebook AFTER
-    the edit, not alongside its own stale predecessor. 'Nothing' for an insert.
-    -}
     , candidateDeliberate :: Bool
-    {- ^ Is this a deliberate COMMIT rather than a speculative trial? A
-    commit gets the live build budget ('tcBuildUs'), a trial the tighter
-    disposable one ('tcTryBuildUs'). Without the distinction a cell whose
-    first line declares a heavy dependency can never be gate-compiled: the
-    trial budget expires, the gate refuses, and its own guidance ("commit it
-    deliberately with a @-- cabal:@ line") names the move it just refused.
-    live_test21 died in exactly that loop.
-    -}
     }
     deriving (Eq, Show)
 
--- | A one-expression trial with no separate setup.
 expressionCandidate :: Text -> CandidateSpec
 expressionCandidate source =
     CandidateSpec
@@ -187,10 +142,6 @@ data MaterializeFailure = MaterializeFailure
     }
     deriving (Eq, Show)
 
-{- | A prefix cell the disposable replay declined to materialize because it does
-not compile in the notebook (its stored 'cellError'). Skipping it keeps a known-
-red cell from failing the whole replay and misattributing to the candidate.
--}
 data SkippedCell = SkippedCell
     { skippedCellId :: Int
     , skippedReason :: Text
@@ -210,11 +161,6 @@ data DisposableResult = DisposableResult
     }
     deriving (Eq, Show)
 
-{- | The env-build budget for a candidate. A deliberate commit is allowed
-the live build ceiling, because for a cell whose first line declares a
-dependency the build IS the deliverable; a speculative trial keeps the
-tighter budget so it fails fast (G1 task 2).
--}
 buildBudgetFor :: CandidateSpec -> TimeoutConfig -> Int
 buildBudgetFor spec tc
     | candidateDeliberate spec = tcBuildUs tc
@@ -223,7 +169,6 @@ buildBudgetFor spec tc
 disposableRouteName :: Text
 disposableRouteName = "disposable_scratch"
 
--- | The wire text for a 'MaterializeStage', shared by every disposable-route caller.
 materializeStageText :: MaterializeStage -> Text
 materializeStageText stage = case stage of
     StagePlan -> "plan"
@@ -238,10 +183,6 @@ materializeStageText stage = case stage of
     StageCandidateTypecheck -> "candidate_typecheck"
     StageCandidateRun -> "candidate_run"
 
-{- | Reconstruct the supplied notebook snapshot and run a disposable trial.
-The snapshot is read exactly once; the built package environment is served
-from 'Sabela.Session.TryCache' (fresh scratch process every call regardless).
--}
 runDisposableTry :: App -> CandidateSpec -> IO DisposableResult
 runDisposableTry app spec = do
     captured <- captureMaterializeSnapshot app
@@ -296,20 +237,11 @@ runDisposableTry app spec = do
   where
     env = appEnv app
 
-{- | The notebook a candidate replays against: unchanged for an insert, or
-with 'candidateReplacesCellId' dropped for a replace, so the stale copy
-never also compiles (or double-defines) alongside the candidate.
--}
 prefixFor :: CandidateSpec -> Notebook -> Notebook
 prefixFor spec nb = case candidateReplacesCellId spec of
     Nothing -> nb
     Just cid -> nb{nbCells = filter ((/= cid) . cellId) (nbCells nb)}
 
-{- | Merge the complete candidate Cabal metadata with the notebook and global
-environment.  Unlike the legacy scratch path, this preserves extensions,
-options, local package declarations, source repositories, and include/lib
-directories instead of retaining only package names.
--}
 candidateProjectMeta :: Set Text -> Notebook -> CandidateSpec -> CabalMeta
 candidateProjectMeta globalDeps nb spec =
     mergedMeta globalDeps (mergeMetas [collectMetadata nb, candidateMeta])
@@ -317,10 +249,6 @@ candidateProjectMeta globalDeps nb spec =
     parsed = scriptMeta (parseScript (candidateMetadataSource spec))
     candidateMeta = parsed{metaDeps = repairDeps (metaDeps parsed)}
 
-{- | Reject notebook plans that the normal full-run planner would skip.  A
-disposable reconstruction must not silently present a partial context as a
-faithful notebook.
--}
 materializationPlanFailure :: ExecutionPlan -> Maybe MaterializeFailure
 materializationPlanFailure plan
     | Just cid <- S.lookupMin (epCycleIds plan) =
@@ -360,8 +288,6 @@ runInDisposableRoot app snapshot plan meta spec entry cacheRoot deps = do
             pure (failed base StageProject Nothing (T.pack (displayException e)))
         Right () -> do
             cfg0 <- mkSessionConfig projectDir (envWorkDir env)
-            -- Text diagnostics keep replay failures stable across supported GHC
-            -- versions and avoid leaking NDJSON into the try result.
             let cfg =
                     cfg0
                         { scJsonDiagnostics = False
@@ -371,8 +297,6 @@ runInDisposableRoot app snapshot plan meta spec entry cacheRoot deps = do
             spawned <- timeout tryBuildBudget (newSession cfg)
             case spawned of
                 Nothing -> do
-                    -- Budget breach, not a fault: keep the store so the next
-                    -- attempt resumes rather than rebuilding from empty.
                     shelveCacheEntry (ceBucketDir entry)
                     pure
                         base
@@ -498,17 +422,6 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
   where
     compiledIds = map cellId (epCompileCells plan)
 
-{- | What a candidate runs under. The containment that matters is ISOLATION:
-the process is disposable, and 'Sabela.Session.Query.evalPureLive' proves the
-candidate is non-@IO@ before executing anything.
-
-@-XSafe@ used to ride along here for speculative trials. It bought hardening
-against @unsafePerformIO@ inside a pure-typed expression and cost the entire
-library surface: most of Hackage is neither Safe nor Trustworthy, so a trial
-could not import @Data.Csv@ or @Network.HTTP.Simple@ at all (GHC-44360), and
-the tool callers are told to reach for first was unusable for library code
-(@live_test33_wine@).
--}
 candidateSafetyPrelude :: CandidateSpec -> Text
 candidateSafetyPrelude _ = ":module -System.IO.Unsafe\n"
 
@@ -575,10 +488,6 @@ evalCandidate backend expression base = do
         ST.PureEvalInvariantFailed -> pure (finish DisposableUnavailable StageCandidateRun)
         ST.PureEvalUnavailable -> pure (finish DisposableUnavailable StageCandidateRun)
 
-{- | The disposable session is thrown away, so an IO candidate runs here as a
-committed cell would. The live route keeps its purity guard
-('Sabela.Session.Query.evalPureLive'), which backs @semantic_read_only@.
--}
 runIOCandidate ::
     ST.SessionBackend ->
     Text ->
@@ -600,8 +509,6 @@ runIOCandidate backend expression inferred base = do
 candidateTimeoutUs :: Int
 candidateTimeoutUs = 30 * 1000000
 
--- The compiler-owned type family emits a stable token for the IO branch.  Keep
--- a compatibility fallback for older prelude wording during rolling upgrades.
 unrestrictedIOError :: Text -> Bool
 unrestrictedIOError raw =
     let lower = T.toLower raw
@@ -640,9 +547,6 @@ replayCells ::
         )
 replayCells backend context = go True [] (rcBridgeValues context)
   where
-    -- The caller injected the first prelude immediately before capturing the
-    -- baseline. Every later cell gets a fresh copy here, matching the normal
-    -- engine's load-before-cell contract even if an earlier cell shadowed it.
     go _ done bridge [] = pure (Right (reverse done, bridge))
     go preludeReady done bridge (cell : rest) = do
         preludeResult <-
@@ -739,11 +643,6 @@ emptyResult deps =
         , disposableDependencies = deps
         }
 
-{- | Split the interpreted replay prefix into the cells that do not compile
-(skipped, each with its own error as the reason) and the cells to replay.
-\"Does not compile\" reuses 'Sabela.AI.Health' — a cell whose stored 'cellError'
-is not clean — so the try route judges red exactly as the rest of the system.
--}
 partitionReplayCells :: [Cell] -> ([SkippedCell], [Cell])
 partitionReplayCells = foldr step ([], [])
   where

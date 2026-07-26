@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | One sanitized module-API surface (R6.10/R3.6/R3.9): module-API bytes
-attach ONLY to an install write whose execution FAILED with a diagnostic
-implicating the module — never to any executionSucceeded result (including
-the deliverable-write-that-also-installs), never to a transport error. Both
-arms render through the ONE synthesized-card path (the raw
-"Discovered API" banner is deleted), bounded by the envelope budget.
--}
 module Test.DiscoverEmissionSpec (discoverEmissionSpec) where
 
 import Control.Monad (forM_)
@@ -52,7 +45,6 @@ failedWith err =
 failedOutcome :: ToolOutcome
 failedOutcome = failedWith "Variable not in scope: bars"
 
--- | A browse dispatch answering every module query with the given text.
 browseWith :: Text -> ToolCall -> IO (Either Text ToolOutcome)
 browseWith t _ = pure (Right (ToolOk (object ["exports" .= [t]])))
 
@@ -177,15 +169,10 @@ discoverEmissionSpec = describe "discovery emission gating (R6.10)" $ do
                 (p, p `T.isInfixOf` T.toLower (contentOf out))
                     `shouldBe` (p, False)
 
--- | Exclusivity phrases banned from any synthesized card (search-api.md §6).
 bannedExclusivity :: [Text]
 bannedExclusivity =
     ["use only these", "only these names", "nothing else", "no other names"]
 
-{- | The full (call class x outcome class x mode) grid: content attaches only
-to the install write whose execution failed implicating the module — every
-executionSucceeded cell of the grid is zero-byte in both arms.
--}
 emissionGrid :: [(Text, GrammarMode, ToolCall, ToolOutcome, Bool)]
 emissionGrid =
     [ ( T.intercalate "/" [callLabel, outcomeLabel, modeLabel]
@@ -226,10 +213,6 @@ outcomeClasses =
     , ("no-execution-report", ToolOk (object ["cellId" .= (1 :: Int)]), False)
     ]
 
-{- | Compile-state grid for the seam: §9.1 trigger 2 is an unresolved
-symbol/module diagnostic — instance/type/parse errors implicate usage of
-known names, not the name surface, and a clean cell has no trigger at all.
--}
 seamGrid :: [(Text, Bool)]
 seamGrid =
     [ ("Variable not in scope: bars", True)

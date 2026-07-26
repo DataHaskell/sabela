@@ -1,23 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The AI surface served over HTTP: chat lifecycle (message / cancel /
-clear / accept-edit / revert-edit), config get/set, and the REST bridge
-external CLI clients (Siza) use to invoke individual tools.
--}
 module Sabela.Server.Ai (
-    -- * Chat
     chatMessageH,
     chatCancelH,
     chatClearH,
     chatAcceptEditH,
     chatRevertEditH,
-
-    -- * Config
     getAIConfigH,
     setAIConfigH,
     knownModels,
-
-    -- * REST bridge
     aiHealthH,
     aiToolsH,
     aiNotebookH,
@@ -65,10 +56,6 @@ import Sabela.State (
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (readNotebook)
 
-------------------------------------------------------------------------
--- AI Config handlers
-------------------------------------------------------------------------
-
 getAIConfigH :: App -> Handler Value
 getAIConfigH app = liftIO $ do
     numCtx <- getAINumCtx app
@@ -96,7 +83,6 @@ getAIConfigH app = liftIO $ do
                     ]
                         ++ knobs
 
--- | Suggested model IDs shown in the picker. Custom values are also accepted.
 knownModels :: [Value]
 knownModels =
     [ modelEntry
@@ -169,15 +155,10 @@ setAIConfigH app (Object o) = liftIO $ do
                 Left err -> pure $ errorJson err
 setAIConfigH _ _ = pure $ errorJson "Invalid request body"
 
--- | A JSON value as an @Int@ (via aeson's own decoder); 'Nothing' if not integral.
 jsonInt :: Value -> Maybe Int
 jsonInt v = case fromJSON v of
     Success i -> Just i
     Error _ -> Nothing
-
-------------------------------------------------------------------------
--- Chat (AI assistant) handlers
-------------------------------------------------------------------------
 
 chatMessageH :: App -> ReactiveNotebook -> ChatRequest -> Handler NoContent
 chatMessageH app rn (ChatRequest msg) = liftIO $ do
@@ -221,10 +202,6 @@ chatRevertEditH app editIdInt = liftIO $ do
         Just store -> revertEdit app store (EditId editIdInt)
     pure NoContent
 
-------------------------------------------------------------------------
--- AI REST bridge (for external CLI skills — e.g. Siza)
-------------------------------------------------------------------------
-
 aiHealthH :: App -> Handler Value
 aiHealthH app =
     pure $
@@ -242,10 +219,6 @@ aiNotebookH app = liftIO $ do
     nb <- readNotebook (appNotebook app)
     pure (renderNotebookDoc defaultDocOpts nb)
 
-{- | Invoke a single AI tool from an external CLI client. Body: @{ name, input }@.
-An optional @X-Sabela-Session@ header isolates @explore_result@ handles
-between concurrent clients while they still see the same notebook.
--}
 aiToolH ::
     App ->
     ReactiveNotebook ->
@@ -293,12 +266,6 @@ aiToolH app rn mSession body = liftIO $ do
                     , "result" .= toolOutcomeValue outcome
                     ]
 
-{- | Ensure an AIStore exists. The browser path requires a real API key for
-Anthropic access, but the REST bridge only uses the store as a plumbing
-object — handles, scratchpad, pending edits. If no store exists yet, we
-build one with a placeholder config so read-only/tool-only flows work even
-before the user configures a key.
--}
 ensureAIStoreForTools :: App -> IO (Maybe AIStore.AIStore)
 ensureAIStoreForTools app = do
     mStore <- getAIStore app

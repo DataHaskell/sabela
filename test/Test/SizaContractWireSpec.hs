@@ -1,24 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Golden contract-pinning for the siza/AI wire (Part 3, Track B of
-@docs/siza-redesign.md@), now that the cutover has landed the sum-typed
-contract as the SOLE wire.
-
-What is pinned here:
-
-* the set of @chatTools@ names, and each tool's required input fields and
-  enum values;
-* the typed @kernel_status@ result field set (@state@/@ksGen@/@ebGeneration@)
-  with the legacy four-field blob asserted gone;
-* the tool-result envelope keys (@isError@ / @result@) and the
-  ok-derivation (@ok@ holds iff the outcome is @Succeeded@), with the
-  execution summary pinned to the typed @CellResult@ keys only.
-
-The deeper typed shapes (@KernelState@ / @CellResult@ tags, @Admission@) are
-pinned in their own specs (@KernelStateWireSpec@, @CellResultWireSpec@,
-@ToolOutcomeWireSpec@). The @await_idle@ tool is part of the asserted
-tool-name set below.
--}
 module Test.SizaContractWireSpec (spec) where
 
 import Data.Aeson (Value (..), object, toJSON, (.=))
@@ -36,7 +17,6 @@ import Sabela.Anthropic.Types (ToolDef (..))
 import Sabela.Model (CellError (..), bareCellError)
 import Test.Hspec
 
--- | Look up a tool's schema by its wire name.
 schemaOf :: Text -> Maybe Value
 schemaOf nm =
     tdInputSchema <$> lookupBy ((== nm) . tdName) chatTools
@@ -44,14 +24,12 @@ schemaOf nm =
 lookupBy :: (a -> Bool) -> [a] -> Maybe a
 lookupBy p = foldr (\x r -> if p x then Just x else r) Nothing
 
--- | The string members of an object's named array property (e.g. @required@).
 stringsAt :: Text -> Value -> [Text]
 stringsAt k (Object o) = case KM.lookup (Key.fromText k) o of
     Just (Array xs) -> mapMaybe asString (toList xs)
     _ -> []
 stringsAt _ _ = []
 
--- | The @enum@ string members of a property nested under @properties@.
 enumOf :: Text -> Value -> [Text]
 enumOf prop (Object o) =
     case KM.lookup "properties" o of
@@ -63,7 +41,6 @@ enumOf prop (Object o) =
         _ -> []
 enumOf _ _ = []
 
--- | The @type@ of a property nested under @properties@.
 typeOf :: Text -> Value -> Maybe Text
 typeOf prop (Object o) = do
     Object props <- KM.lookup "properties" o
@@ -75,14 +52,9 @@ asString :: Value -> Maybe Text
 asString (String s) = Just s
 asString _ = Nothing
 
--- | Every wire name currently in the catalogue.
 toolNames :: [Text]
 toolNames = map tdName chatTools
 
-{- | The tool-result envelope, reconstructed exactly as
-@Sabela.Server.Ai.aiToolH@ builds it from a @ToolOutcome@. Pinning the
-@isError@/@result@ keys here catches a rename to the envelope encoding.
--}
 envelope :: Bool -> Value -> Value
 envelope isErr v = object ["isError" .= isErr, "result" .= v]
 

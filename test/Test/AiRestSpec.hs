@@ -42,21 +42,15 @@ spec = do
 
     describe "per-CLI-session handle isolation" $ do
         it "two independent stores do not share handles" $ do
-            -- Simulate what resolveCliHandleStore does for two distinct
-            -- X-Sabela-Session values: each gets its own store.
             storeA <- newHandleStore
             storeB <- newHandleStore
-            -- Use distinct lines per iteration; cleanOutput dedupes identical
-            -- consecutive lines and would otherwise compact to a single line.
             let big =
                     T.unlines
                         [ "line " <> T.pack (show i)
                         | i <- [1 :: Int .. 100]
                         ]
-            -- Stash one handle in A only.
             Stashed (HandleRef hidA _ _ _) <- storeLargeResult storeA big
             hitInA <- isPresent <$> lookupHandle storeA hidA
-            -- B must not see hidA (independent namespaces).
             hitInB <- isPresent <$> lookupHandle storeB hidA
             hitInA `shouldBe` True
             hitInB `shouldBe` False

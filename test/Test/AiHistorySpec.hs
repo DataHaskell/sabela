@@ -114,10 +114,6 @@ spec = do
                     firstTextPart (msgParts m) `shouldBe` Just "please visualize primes"
 
         it "retains multiple prior turns so demonstratives resolve" $ do
-            -- Three turns, each with a tool round (so raw message count far
-            -- exceeds the turn window). Keeping 3 turns must retain all three
-            -- user prompts — regression for the "every prompt forgets the last"
-            -- amnesia where a tool-heavy turn evicted all earlier turns.
             let turn s t =
                     [ userText s
                     , assistantToolUse t

@@ -1,17 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | The @\/api\/import-url@ endpoint: fetch a remote URL server-side (the
-browser can't, because of CORS) and write the bytes into the work
-directory under a caller-chosen name. A sibling of
-"Sabela.Server.Static"'s @uploadApp@ — same @Raw@/query-param shape, same
-path-confinement, same JSON @{path,name}@ reply — differing only in that
-the bytes come from an HTTP GET instead of the request body.
--}
 module Sabela.Server.Import (
     importUrlApp,
-
-    -- * Pieces (exposed for testing)
     isSafeRemoteUrl,
 ) where
 
@@ -48,17 +39,9 @@ import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
 import Sabela.Url (rewriteGitHubUrl)
 
-{- | Hard ceiling on an imported download (25 MiB), so a runaway URL can't
-exhaust memory.
--}
 maxImportBytes :: Int
 maxImportBytes = 25 * 1024 * 1024
 
-{- | Receive @?url=@, @?name=@, and optional @?dir=@. The URL is GitHub/gist
-rewritten, scheme/host checked, fetched (following redirects, size-capped),
-and written to @\<workDir\>\/\<dir\>\/\<name\>@ — the directory confined to
-the work dir and the name reduced to a safe basename, exactly as @uploadApp@.
--}
 importUrlApp :: App -> Application
 importUrlApp app req resp = do
     let q = queryString req
@@ -96,10 +79,6 @@ importUrlApp app req resp = do
                 [(hContentType, "application/json")]
                 (encode (object ["path" .= rel, "name" .= name]))
 
-{- | Allow only @http@/@https@ to a non-loopback, non-metadata host. A basic
-SSRF guard (not DNS-rebinding proof) so a multi-user hub can't be steered at
-@localhost@ or the cloud metadata endpoint.
--}
 isSafeRemoteUrl :: Text -> Bool
 isSafeRemoteUrl url = case schemeHost url of
     Just (scheme, host) ->
@@ -111,7 +90,6 @@ isSafeRemoteUrl url = case schemeHost url of
     blockedHosts =
         ["localhost", "0.0.0.0", "169.254.169.254", "::1", "[::1]"]
 
--- | Lower-cased scheme and host of a URL, dropping any userinfo and port.
 schemeHost :: Text -> Maybe (Text, Text)
 schemeHost url =
     let (scheme, rest) = T.breakOn "://" url
@@ -129,9 +107,6 @@ schemeHost url =
                         then Nothing
                         else Just (T.toLower scheme, host)
 
-{- | GET a URL with @http-client@, following redirects, returning the body or
-a human error. A non-2xx status and an over-cap download are both 'Left'.
--}
 fetchUrl :: Manager -> String -> IO (Either Text BS.ByteString)
 fetchUrl mgr url = do
     eReq <- try (parseRequest url) :: IO (Either SomeException Request)
@@ -161,9 +136,6 @@ fetchUrl mgr url = do
                                 )
                         Just bs -> Right bs
 
-{- | Concatenate a body reader's chunks, stopping with 'Nothing' the moment
-the running total would exceed @capBytes@.
--}
 drainCapped :: IO BS.ByteString -> Int -> IO (Maybe BS.ByteString)
 drainCapped readChunk capBytes = go [] 0
   where
@@ -177,9 +149,6 @@ drainCapped readChunk capBytes = go [] 0
                         then pure Nothing
                         else go (chunk : acc) n'
 
-{- | Confine the destination dir to the work dir, then write the bytes;
-returns the work-dir-relative path on success.
--}
 writeImport ::
     App -> Maybe Text -> Text -> BS.ByteString -> IO (Either Text Text)
 writeImport app mDir name bytes = do

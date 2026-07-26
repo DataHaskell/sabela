@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The prompt substrate shared by the product chat and the eval harness: the
-search-driven working rules and the generated tool-surface block. Both compose
-this so the two experiences stay in step and the tool list never names a tool
-the schema does not carry.
--}
 module Sabela.AI.PromptCore (
     sharedPromptCore,
     sharedPromptCoreWith,
@@ -21,14 +16,9 @@ import Sabela.AI.Capabilities.ToolName (toolWireName)
 import Sabela.AI.Grammar (grammarPromptBlock)
 import Sabela.LLM.Tool (ToolSpec (..))
 
-{- | The working rules both agents share: the live notebook is the verifier
-(write, then read the compiler's verdict — R6.8). The caller passes its own
-search cheat-sheet via 'sharedPromptCoreWith' so no phantom tool is named.
--}
 sharedPromptCore :: Text
 sharedPromptCore = sharedPromptCoreWith grammarPromptBlock
 
--- | 'sharedPromptCore' with the caller's own search cheat-sheet block.
 sharedPromptCoreWith :: Text -> Text
 sharedPromptCoreWith searchBlock =
     T.unlines
@@ -55,17 +45,6 @@ sharedPromptCoreWith searchBlock =
         , searchBlock
         ]
 
-{- | Where Sabela's own capabilities LIVE — not what they are called. The
-prompt names the modules and points at the search tools; the model finds the
-functions the same way it finds anything else.
-
-Enumerating them here was a deliberate lever, added when the session index
-could not surface `Sabela.*` by keyword at all. That is fixed (see
-'Test.BuiltinSearchLiveSpec': @find_function "chart"@ reaches @lineChart@,
-@"Picture"@ reaches @displayPicture@), so listing the names now only teaches
-the answer to the probes that grade this surface — the sine and animate
-canaries were passing on prompt recall rather than on discovery.
--}
 sabelaBuiltins :: Text
 sabelaBuiltins =
     T.unlines
@@ -81,10 +60,6 @@ sabelaBuiltins =
         , "Hackage will not have them — your session search will."
         ]
 
-{- | The builtin value names the prompt documents, as a machine-readable seed:
-discover's environment layer derives from this SAME list, so a documented
-builtin can never be denied (R1.5 — one source of truth, no drift).
--}
 builtinNames :: [Text]
 builtinNames =
     displayBuiltins
@@ -92,10 +67,6 @@ builtinNames =
         ++ drawingBuiltins
         ++ ["display", "currentValue"]
 
-{- | The drawing entry points. Named, not merely alluded to by module: the
-model reaches for what the prompt names — it used displaySvg happily and
-hand-rolled SVG in four consecutive live rounds while `plot` went unqueried.
--}
 drawingBuiltins :: [Text]
 drawingBuiltins =
     [ "displayPicture"
@@ -124,7 +95,6 @@ displayBuiltins =
 widgetBuiltins :: [Text]
 widgetBuiltins = ["slider", "dropdown", "checkbox", "textInput", "button"]
 
--- | The always-shipped notebook modules the prompt documents.
 builtinModules :: [Text]
 builtinModules =
     [ "Sabela.Notebook"
@@ -133,10 +103,6 @@ builtinModules =
     , "Sabela.Notebook.Frp"
     ]
 
-{- | The available-tools block, generated from the typed tool subset so the
-prompt names exactly the tools the schema carries. Each line is the wire name
-and the first line of the tool's description.
--}
 toolSurfaceBlock :: [ToolSpec] -> Text
 toolSurfaceBlock specs =
     T.unlines (["## Tools available", ""] ++ map line specs)

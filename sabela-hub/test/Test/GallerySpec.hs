@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Gallery store acceptance tests: soft slug references (dangling drops from
-the feed but survives in the admin view), featured/collection CRUD, coarse
-member replace-all with lazy-prune, tags (replace-all, validation, soft-prune),
-and reload-from-disk.
--}
 module Test.GallerySpec (spec) where
 
 import Control.Exception (SomeException, finally, try)
@@ -26,7 +21,6 @@ import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
 import System.FilePath ((</>))
 import Test.Hspec
 
--- | Fresh share + gallery stores in per-run temp dirs, cleaned up after.
 withStores :: (ShareStore -> GalleryStore -> IO a) -> IO a
 withStores act = do
     base <- getTemporaryDirectory
@@ -50,7 +44,6 @@ mkShare slug title =
 publish :: ShareStore -> Text -> IO ()
 publish ss slug = publishShare ss (mkShare slug ("title-" <> slug)) "<h1>x</h1>" Nothing
 
--- | Slugs of the top-level featured shares a feed resolves to, in order.
 feedShareSlugs :: [GalleryItem] -> [Text]
 feedShareSlugs items = [shareSlug s | GItemShare s _ _ <- items]
 
@@ -75,7 +68,7 @@ spec = describe "Hub.Gallery" $ do
                 mapM_ (publish ss) ["aa", "bb"]
                 addFeatured gs "aa"
                 addFeatured gs "bb"
-                addFeatured gs "aa" -- dupe: no second line
+                addFeatured gs "aa"
                 items <- listGallery gs ss
                 feedShareSlugs items `shouldBe` ["aa", "bb"]
         it "removeFeatured drops the index line" $ withStores $ \ss gs -> do
@@ -165,8 +158,7 @@ spec = describe "Hub.Gallery" $ do
                 addFeatured gs "aa"
                 addFeatured gs "bb"
                 setTags gs "aa" ["t1"] `shouldReturn` TagsOk
-                removeFeatured gs "aa" -- aa leaves the index
-                -- a later write on bb prunes aa's now-orphan tag line
+                removeFeatured gs "aa"
                 setTags gs "bb" ["t2"] `shouldReturn` TagsOk
                 gs2 <- reopen gs
                 getTags gs2 "aa" `shouldReturn` []
@@ -176,13 +168,12 @@ spec = describe "Hub.Gallery" $ do
                 addFeatured gs "aa"
                 addFeatured gs "bb"
                 setTags gs "aa" ["t1"] `shouldReturn` TagsOk
-                _ <- deleteShare ss "alice@x" "aa" -- aa dangles, index line stays
+                _ <- deleteShare ss "alice@x" "aa"
                 setTags gs "bb" ["t2"] `shouldReturn` TagsOk
                 gs2 <- reopen gs
                 getTags gs2 "aa" `shouldReturn` ["t1"]
                 dangling <- danglingFeatured gs2 ss
                 lookup "aa" dangling `shouldBe` Just ["t1"]
 
--- | Reopen the store from its on-disk dir to assert persistence.
 reopen :: GalleryStore -> IO GalleryStore
 reopen = newGalleryStore . galleryDir

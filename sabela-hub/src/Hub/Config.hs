@@ -63,9 +63,6 @@ loadConfig = do
             , hcAdminContact = adminContact
             }
 
-{- | Build the Docker-backend config. Env defaults mirror the Lean/Python
-paths from infra/task-definition.json so containers see the same layout.
--}
 loadDockerConfig :: IO DockerConfig
 loadDockerConfig = do
     image <- envText "HUB_DOCKER_IMAGE" "datahaskell/sabela:latest"

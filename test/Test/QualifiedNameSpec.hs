@@ -1,16 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Qualified-name handling across every type-parsing seam, pinned against the
-VERBATIM strings from the fixed-lever gate.
-
-GHC prints goals with package-qualified names
-(@ghc-internal-9.1202.0:GHC.Internal.Data.Functor.Identity.Identity@,
-@attoparsec-0.14.4:Data.Attoparsec.Text.Internal.Parser@). That spelling is not
-valid Haskell source, so every consumer must either PRESERVE it verbatim (the
-extraction layer) or SANITIZE it into something GHCi can parse (the query
-layer). A seam that does neither goes silently inert on exactly the errors
-that matter.
--}
 module Test.QualifiedNameSpec (spec) where
 
 import Data.Text (Text)
@@ -25,12 +14,10 @@ import Sabela.AI.Capabilities.Edit.ScratchVet (
 import Sabela.AI.CellEco (concreteHead, resultHead)
 import Sabela.AI.HoleRepair (goalFromError)
 
--- | The verbatim gemma goal for takeWhile1.
 gemmaGoal :: Text
 gemmaGoal =
     "(Char -> Bool) -> ParsecT Void String ghc-internal-9.1202.0:GHC.Internal.Data.Functor.Identity.Identity String"
 
--- | The verbatim cross-package pollution type from the earlier gate.
 attoGoal :: Text
 attoGoal =
     "attoparsec-0.14.4:Data.Attoparsec.Text.Internal.Parser Web.Simple.Templates.Types.AST -> ParsecT Void String ghc-internal-9.1202.0:GHC.Internal.Data.Functor.Identity.Identity Double"

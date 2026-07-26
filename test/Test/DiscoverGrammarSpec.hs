@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Live-grammar discovery: parsing imports, deciding when to re-browse, and
-synthesising a grammar over an injected (here, pure 'Identity') browse function.
--}
 module Test.DiscoverGrammarSpec (spec) where
 
 import Data.Functor.Identity (Identity (..))

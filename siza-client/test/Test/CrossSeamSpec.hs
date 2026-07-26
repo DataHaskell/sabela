@@ -1,14 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Cross-seam provenance interop (redesign Part 7): the server and the client
-write 'SessionEvent' records into the SAME shared JSONL log, so a record
-written by one seam MUST decode with the other's parser. Both suites otherwise
-only round-trip their own encoder; this pins the shared wire so a divergence in
-field names, the outcome inner key, the @kernelBefore@ activity encoding, the
-actor casing, or the optional @preflight@ field is caught here rather than
-silently dropped by 'Siza.Retro.decodeSession'.
--}
 module Test.CrossSeamSpec (crossSeamSpec) where
 
 import Data.Aeson (
@@ -112,8 +104,6 @@ crossSeamSpec = describe "cross-seam provenance interop (Part 7 shared log)" $ d
                     `shouldBe` object ["busy" .= True]
             Nothing -> expectationFailure "client parser dropped a server record"
 
-    -- The encoder is now ONE definition (Sabela.AI.Provenance), so the shared
-    -- fields must be byte-identical, not merely round-trippable.
     it "both seams emit byte-identical shared fields" $
         case (asObject serverEvent, asObject clientEvent) of
             (Just s, Just c) ->
@@ -130,8 +120,6 @@ crossSeamSpec = describe "cross-seam provenance interop (Part 7 shared log)" $ d
                     sharedKeys
             _ -> expectationFailure "a seam did not encode to a JSON object"
 
-    -- 'siza retro' read a server line and a client line out of one mixed log.
-    -- Before unification it silently dropped the server lines.
     it "siza retro decodes BOTH a server-seam and a client-seam line" $ do
         let blob =
                 LBS8.intercalate "\n" [encode serverEvent, encode clientEvent]
@@ -142,16 +130,10 @@ crossSeamSpec = describe "cross-seam provenance interop (Part 7 shared log)" $ d
         map Client.seActor evs
             `shouldBe` [Client.InBrowserChat, Client.InBrowserChat]
 
-{- | The fields whose encoding is shared by ONE canonical definition
-('Sabela.AI.Provenance'): the outcome envelope, the kernel-before tag, and the
-actor casing, plus the correlation key. @preflight@ is client-only data but is
-encoded as @null@ at the server seam, so it is shared too.
--}
 sharedKeys :: [Text]
 sharedKeys =
     ["actor", "tool", "outcome", "kernelBefore", "session", "gen", "preflight"]
 
--- | Re-encode any 'ToJSON' event to its JSON object for field comparison.
 asObject :: (ToJSON a) => a -> Maybe Object
 asObject x = case toJSON x of
     Object o -> Just o

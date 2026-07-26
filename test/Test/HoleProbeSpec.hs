@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | G3: the harness reads GHC's hole answer and states it plainly. Pinned to
-blobs captured from a real GHC 9.12 session (the same discipline
-'Test.HoleFitsSpec' applies), including the live_test4 shape where the goal
-type is a 0-arity tuple synonym with no producer in scope at all.
--}
 module Test.HoleProbeSpec (spec) where
 
 import Data.Aeson (Value (..))
@@ -22,7 +17,6 @@ import Sabela.AI.HoleProbe (
     holeProbeProvenance,
  )
 
--- | Captured verbatim: two holes of one type, each with two producers.
 twoHoleBlob :: Text
 twoHoleBlob =
     T.unlines
@@ -46,7 +40,6 @@ twoHoleBlob =
         , "          with maxBound @Int"
         ]
 
--- | Captured verbatim: a nominal type with a constructor and a nullary value.
 namedTypeBlob :: Text
 namedTypeBlob =
     T.unlines
@@ -60,10 +53,6 @@ namedTypeBlob =
         , "        defPlot :: Plot (defined at <interactive>:10:1)"
         ]
 
-{- | Captured verbatim for @type Point = (Double, Double)@ — GHC reports the
-hole and lists NO valid fit, which is the live_test4 target type's real
-answer today.
--}
 noProducerBlob :: Text
 noProducerBlob =
     T.unlines

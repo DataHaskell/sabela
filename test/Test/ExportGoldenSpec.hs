@@ -1,20 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Cross-platform golden for the static notebook export. A notebook
-carrying rich LaTeX + HTML + non-ASCII outputs must export
-byte-identical HTML on every OS — 'renderStaticNotebook' is pure
-(aeson JSON + placeholder replacement, no timestamps or paths), so the
-only way the bytes diverge is a platform bug (CRLF translation, a
-non-UTF-8 codepage, ordering). The golden is blessed in this
-environment and checked by the Windows CI job.
-
-Re-bless after an intentional renderer change:
-
-> SABELA_BLESS_GOLDEN=1 cabal test sabela:sabela-test \
->   --test-options='--match "rich-output export golden"'
-
-The golden file is pinned to LF in .gitattributes (@test/golden/** -text@).
--}
 module Test.ExportGoldenSpec (spec) where
 
 import qualified Data.ByteString as BS
@@ -38,15 +23,11 @@ import Sabela.SessionTypes (CellLang (..))
 goldenPath :: FilePath
 goldenPath = "test/golden/export-rich.html"
 
--- Fixed minimal template: the golden pins the renderer's bytes, not the
--- frontend-coupled real page, so it stays stable across frontend edits.
 template :: Text
 template =
     "<!doctype html><html><head><meta charset=\"utf-8\"></head>\
     \<body><script>/*__SABELA_INJECT__*/</script></body></html>"
 
--- Outputs chosen to stress the platform-fragile paths: LaTeX (backslash
--- escaping), HTML, and astral-plane / CJK / accented Unicode.
 richNotebook :: Notebook
 richNotebook =
     Notebook

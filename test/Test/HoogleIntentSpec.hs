@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The action-verb classifier (docs/discover/HANDOFF.md "exact-name-first
-is intent-blind"): table-driven over the live-failure corpus plus one
-request per action class.
--}
 module Test.HoogleIntentSpec (spec) where
 
 import Data.Text (Text)
@@ -16,7 +12,6 @@ import Sabela.AI.HoogleIntent (
     intentQueries,
  )
 
--- | (request, expected class, a query substring 'intentQueries' must include).
 corpus :: [(Text, Maybe ActionClass, Maybe Text)]
 corpus =
     [ ("plot a sine wave", Just RenderAction, Just "chart library")
@@ -66,7 +61,6 @@ spec = describe "HoogleIntent action classifier" $ do
             intentQueries "divvy" `shouldBe` []
 
         it "an earlier verb wins when a request names more than one action" $
-            -- "install" precedes the render-shaped "plotting" token.
             classifyAction "install the plotting library" `shouldBe` Just InstallAction
   where
     caseSpec (req, expected, _) =

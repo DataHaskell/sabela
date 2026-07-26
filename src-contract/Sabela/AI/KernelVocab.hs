@@ -1,14 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The closed kernel-state vocabulary and the post-settled consistency
-window (R1.7/R3.6/R6.4). Every state string any kernel\/await\/ack surface
-emits is a member of 'stateVocabulary'; producers import the constants, the
-one-shape validator ('outOfVocabStates') rejects anything else, and tool
-descriptions advertise exactly 'vocabularyLine' — so advertised and actual
-behaviour cannot drift.
--}
 module Sabela.AI.KernelVocab (
-    -- * Closed vocabulary
     stateVocabulary,
     inVocabulary,
     outOfVocabStates,
@@ -20,16 +12,12 @@ module Sabela.AI.KernelVocab (
     tagSettled,
     tagKernelDead,
     tagTimedOut,
-
-    -- * Post-settled consistency window (R6.4)
     BusyEvidence (..),
     BusyVerdict (..),
     busyVerdict,
     resolveOccupied,
     busyRetryRounds,
     busyDenyJson,
-
-    -- * Lock ownership (G8)
     LockOwner (..),
     Holding (..),
     ownerLabel,
@@ -43,7 +31,6 @@ import qualified Data.Text as T
 
 import Sabela.Api (errorJsonWith)
 
--- Individual members, imported by producers so the enum is the single source.
 tagCold, tagIdle, tagBuilding, tagExecuting :: Text
 tagCold = "cold"
 tagIdle = "idle"
@@ -55,10 +42,6 @@ tagSettled = "settled"
 tagKernelDead = "kernelDead"
 tagTimedOut = "timedOut"
 
-{- | The whole closed enum: kernel states, await tags, write-ack statuses.
-@queued@\/@completed@ belong to "Sabela.AI.WriteAck"; they are listed here so
-ONE membership check covers every state-bearing field.
--}
 stateVocabulary :: [Text]
 stateVocabulary =
     [ tagCold
@@ -75,10 +58,6 @@ stateVocabulary =
 inVocabulary :: Text -> Bool
 inVocabulary = (`elem` stateVocabulary)
 
-{- | The one-shape validator: every string under a @state@\/@waited@\/@status@
-key, at any depth, must be a vocabulary member. Returns the violations, so a
-clean payload answers @[]@.
--}
 outOfVocabStates :: Value -> [Text]
 outOfVocabStates = go
   where
@@ -93,35 +72,24 @@ outOfVocabStates = go
     go (Array a) = concatMap go (toList a)
     go _ = []
 
--- | The advertised enum, embedded in tool descriptions (R1.7).
 vocabularyLine :: Text
 vocabularyLine =
     "Kernel states: cold|idle|building|executing. await_idle waited: \
     \idle|settled|timedOut|kernelDead. Write status: queued|executing|completed."
 
-{- | What holds the run lock. A cell id is only admissible for a cell the
-notebook actually contains; everything else — a dependency install, a kernel
-restart — is a named operation, so no verdict can cite a phantom cell (G8).
--}
 data LockOwner = OwnedByCell !Int | OwnedByOp !Text
     deriving (Eq, Show)
 
--- | A lock owner and how long it has held the lock.
 data Holding = Holding
     { hdOwner :: !LockOwner
     , hdElapsedMs :: !Int
     }
     deriving (Eq, Show)
 
--- | The owner as model-facing prose, for a busy verdict's message.
 ownerLabel :: LockOwner -> Text
 ownerLabel (OwnedByCell cid) = "cell " <> tshow cid
 ownerLabel (OwnedByOp op) = op
 
-{- | One lock-free busy observation plus the settle fence it is judged
-against: the generation last observed settled, the generation now, and the
-lock holder when a registry knows it.
--}
 data BusyEvidence = BusyEvidence
     { beOccupied :: !Bool
     , beSettledGen :: !(Maybe Int)
@@ -133,25 +101,15 @@ data BusyEvidence = BusyEvidence
 data BusyVerdict = AdmitNow | RetrySoon | DenyBusy (Maybe Holding)
     deriving (Eq, Show)
 
-{- | The window law: occupancy while the generation has not advanced past the
-settled one is the settling run's release tail — retry, never deny. A busy
-denial is representable only when no settle was observed or a new run
-advanced the generation.
--}
 busyVerdict :: BusyEvidence -> BusyVerdict
 busyVerdict e
     | not (beOccupied e) = AdmitNow
     | beSettledGen e == Just (beCurrentGen e) = RetrySoon
     | otherwise = DenyBusy (beHolder e)
 
--- | Grace samples for the release tail (with a ~100ms delay each: ~2s).
 busyRetryRounds :: Int
 busyRetryRounds = 20
 
-{- | Drive 'busyVerdict' to a terminal verdict: re-sample through the release
-tail, admitting the moment occupancy drops; deny only on a genuine busy or a
-tail that outlives the whole grace window. Never returns 'RetrySoon'.
--}
 resolveOccupied :: Int -> IO () -> IO BusyEvidence -> IO BusyVerdict
 resolveOccupied rounds delay sample = go rounds
   where
@@ -163,10 +121,6 @@ resolveOccupied rounds delay sample = go rounds
                 | otherwise -> pure (DenyBusy (beHolder e))
             v -> pure v
 
-{- | The genuine-busy denial (R6.4): names the lock's actual holder and its
-elapsed time when known, labels the cause so it can never be mistaken for the
-own-write bounce, and steers to await_idle, never to a retry.
--}
 busyDenyJson :: Maybe Holding -> Value
 busyDenyJson holder =
     errorJsonWith msg (["busy" .= True, "cause" .= ("other-run" :: Text)] <> ids)

@@ -19,7 +19,6 @@ renderTranscript taskId msgs =
         ["# Session: " <> taskId, ""]
             ++ concat (zipWith section [1 :: Int ..] msgs)
 
--- | One numbered message block, the unit a live debug trace emits as it streams.
 renderMessage :: Int -> Value -> Text
 renderMessage i = T.intercalate "\n" . section i
 
@@ -73,9 +72,6 @@ enc (Just v) = TE.decodeUtf8 (LBS.toStrict (encode v))
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
 
-{- | An episode's total context spend: the summed content length of every
-message. Context is the scarcest weak-model resource — measure it per task.
--}
 contextChars :: [Value] -> Int
 contextChars = sum . map msgChars
   where

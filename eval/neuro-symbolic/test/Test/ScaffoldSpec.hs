@@ -124,12 +124,8 @@ spec = describe "Rank 1 type scaffold" $ do
                     (taskPrompt dfTask)
                     10
             firstMsgs <- head <$> readIORef seen
-            -- prior transcript carried verbatim, exactly one new user turn appended,
-            -- no re-injected system prompt.
             take (length prior) firstMsgs `shouldBe` prior
             length firstMsgs `shouldBe` length prior + 1
-            -- a dataframe task would normally scaffold-insert first; on a
-            -- continuation the scaffold is skipped.
             readIORef calls >>= (`shouldBe` [])
 
 openBudget :: EpisodeBudget

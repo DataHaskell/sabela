@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The discover-backed locators the repair cascade's tiers draw on (R7.6:
-one catalogue, two consumers — healing can never propose what search would
-deny). A qualified name queries its BARE spelling only (R3.1).
--}
 module Siza.Agent.RepairLocate (
     discoverModules,
     discoverRenames,
@@ -28,9 +24,6 @@ import Siza.Agent.RepairTiers (splitQualified)
 
 type Dispatch = ToolCall -> IO (Either Text ToolOutcome)
 
-{- | Resolve the diagnostic's wrong name through the SAME discover catalogue
-search answers from. A qualified name (@T.unpack@) queries its bare name.
--}
 discoverModules :: Dispatch -> Text -> IO [(Text, Text, Maybe Text)]
 discoverModules disp errText = case notInScopeFromDiag errText of
     Nothing -> pure []
@@ -54,9 +47,6 @@ discoverModules disp errText = case notInScopeFromDiag errText of
                 then Just (hitText "package" h)
                 else Nothing
 
-{- | Nearest catalogue modules for a could-not-find-module diagnostic, via
-the same discover path — the TierModuleRename locator (Data.Frame class).
--}
 discoverRenames :: Dispatch -> Text -> IO [(Text, Text)]
 discoverRenames disp errText = case missingModuleFromDiag errText of
     Nothing -> pure []

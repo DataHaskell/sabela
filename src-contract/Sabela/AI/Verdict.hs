@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The closed verdict vocabulary every verifier surface answers from
-(search-api.md section 5.3): ok \/ diagnostic \/ could-not-run \/ no-verdict
-(infra). 'parseVerdict' is the decoder the R8.4 lint runs — silence decodes to
-'Nothing', and a transport-swallowed answer decodes as 'VerdictInfra', so
-neither can impersonate a pass.
--}
 module Sabela.AI.Verdict (
     VerdictClass (..),
     verdictClasses,
@@ -18,7 +12,6 @@ module Sabela.AI.Verdict (
 import Data.Text (Text)
 import qualified Data.Text as T
 
--- | Every way a verifier surface can answer; there is no fifth way.
 data VerdictClass
     = VerdictOk
     | VerdictDiagnostic
@@ -26,7 +19,6 @@ data VerdictClass
     | VerdictInfra
     deriving (Bounded, Enum, Eq, Show)
 
--- | The whole enum, for totality properties.
 verdictClasses :: [VerdictClass]
 verdictClasses = [minBound .. maxBound]
 
@@ -36,19 +28,12 @@ verdictTag VerdictDiagnostic = "diagnostic"
 verdictTag VerdictCouldNotRun = "could-not-run"
 verdictTag VerdictInfra = "no-verdict-infra"
 
--- | The closed set of tags; anything outside it fails the envelope validator.
 verdictVocabulary :: [Text]
 verdictVocabulary = map verdictTag verdictClasses
 
--- | The in-band marker a verifier-channel message carries.
 verdictMarker :: VerdictClass -> Text
 verdictMarker c = "[verdict: " <> verdictTag c <> "]"
 
-{- | Decode a verifier-surface answer to its verdict. Recognised: the explicit
-marker, a JSON @\"verdict\":\"tag\"@ field, and the transport failure envelope
-(@[infra]@\/@[kernel]@ = 'VerdictInfra', @[payload]@ = 'VerdictCouldNotRun').
-Anything else — silence included — is 'Nothing': undecodable, a lint issue.
--}
 parseVerdict :: Text -> Maybe VerdictClass
 parseVerdict t =
     lookupBy marked

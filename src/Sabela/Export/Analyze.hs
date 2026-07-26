@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Shared notebook-graph analysis for the exporters.
-
-Both the static pipeline exporter ("Sabela.Export") and the (future) reactive
-exporter need the same view of a notebook: its Haskell code cells in document
-order, the dependency graph between them, which cells redefine earlier names,
-which cells instantiate widgets, and which cells are downstream of a widget.
-This module computes that once.
--}
 module Sabela.Export.Analyze (
     NotebookGraph (..),
     buildNotebookGraph,
@@ -27,26 +19,18 @@ import qualified Sabela.Topo as Topo
 
 data NotebookGraph = NotebookGraph
     { ngOrdered :: [Cell]
-    -- ^ Haskell code cells in document order.
     , ngDefMap :: M.Map Text Int
-    -- ^ Name → id of the cell that canonically defines it (first-wins).
     , ngDepGraph :: M.Map Int (S.Set Int)
-    -- ^ Cell id → set of cell ids it depends on.
     , ngRedefIds :: Set Int
-    -- ^ Cells flagged as redefinitions; excluded from slices.
     , ngWidgetCells :: Set Int
-    -- ^ Cells that instantiate a widget constructor.
     , ngReactiveSet :: Set Int
-    -- ^ Cells transitively downstream of a widget cell (the widget cells too).
     }
     deriving (Eq, Show)
 
--- | Widget constructors from the Sabela display prelude (see "Sabela.Output").
 widgetConstructors :: Set Text
 widgetConstructors =
     S.fromList ["slider", "dropdown", "checkbox", "textInput", "button"]
 
--- | Compute the dependency graph and widget/reactive partition for a notebook.
 buildNotebookGraph :: Notebook -> NotebookGraph
 buildNotebookGraph nb =
     let cells = haskellCodeCells nb
@@ -69,10 +53,6 @@ buildNotebookGraph nb =
             , ngReactiveSet = reactiveSet
             }
 
-{- | The pipeline that produces a target cell: the target plus its transitive
-dependencies, in document order, excluding redefinition-flagged cells. If the
-target is not a Haskell code cell, the slice is empty.
--}
 backwardSlice :: Int -> NotebookGraph -> [Cell]
 backwardSlice target ng =
     let reach = Topo.reachableFrom (S.singleton target) (ngDepGraph ng)

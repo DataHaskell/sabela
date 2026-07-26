@@ -1,26 +1,5 @@
-{- | An MCP (Model Context Protocol) server over stdio for the Sabela AI tool
-surface.
-
-Speaks newline-delimited JSON-RPC 2.0 on stdin/stdout, so any MCP client
-(goose, Claude Desktop, opencode) drives the notebook with structured tool
-arguments. The model fills typed fields rather than building a shell command
-string. Tool schemas are fetched at runtime from the live server's
-@GET /api/ai/tools@ (the same @chatTools@ the chat loop uses), and @tools/call@
-forwards through 'Siza.Transport.callTool', reusing the client's
-auth/discovery/hub-token path.
-
-Mutations (@insert_cell@/@replace_cell_source@/@propose_edit@) pass through the
-same client-side pre-flight gate ('Siza.Preflight.preflight') the @siza tool@
-command enforces. Here a block becomes an MCP tool error the model can recover
-from rather than a process exit.
-
-STDOUT PURITY: the @emit@ chokepoint is the only writer to stdout; every
-diagnostic goes to stderr. A stray stdout write corrupts the JSON-RPC stream.
--}
 module Siza.Mcp (
     runMcp,
-
-    -- * Exposed for testing
     Rpc (..),
     decodeRpc,
     initializeResult,
@@ -60,13 +39,9 @@ import System.IO (
     stdout,
  )
 
--- | The MCP protocol version we advertise when the client does not pin one.
 defaultProtocolVersion :: Text
 defaultProtocolVersion = "2025-06-18"
 
-{- | Serve MCP over stdio against the resolved server @base@ until stdin EOF.
-The tool catalogue is fetched once at startup.
--}
 runMcp :: Conn -> Text -> IO ()
 runMcp conn base = do
     hSetBuffering stdout LineBuffering
@@ -84,7 +59,6 @@ runMcp conn base = do
                 mapM_ emit resp
                 loop catalogue
 
--- | The ONLY writer to stdout. Everything else goes to stderr.
 emit :: Value -> IO ()
 emit = LBS8.putStrLn . encode
 
@@ -93,30 +67,12 @@ stripCR bs
     | not (BS.null bs) && BS.last bs == 13 = BS.init bs
     | otherwise = bs
 
--- | Fetch @/api/ai/tools@ and project each entry to MCP's tool shape.
-
-{- | The catalogue MCP serves: the AGENT's own, so every client meets one
-surface and one dispatcher.
-
-Serving @\/api\/ai\/tools@ instead handed MCP clients the raw server tools and
-NO @discover@ — the aggregation, hidden-package cards, notebook source, near
-spelling and doc synopses all live client-side, so none of it reached anyone
-outside the eval harness. It also re-exposed the seven discovery tools
-@discover@ folds, which is the surface an agent cannot route.
-
-Server tools with no agent-catalogue entry are still reachable by name through
-'toolsCall'; they are simply not advertised.
--}
 loadCatalogue :: Conn -> Text -> IO [Value]
 loadCatalogue _ _ = do
     let cat = map agentToMcpTool (AgentTools.catalogueWith False)
     hPutStrLn stderr ("siza mcp: serving " <> show (length cat) <> " tools")
     pure cat
 
-{- | Project one AGENT catalogue entry to an MCP tool. The agent catalogue is
-in the function-call shape @{type, function:{name, description, parameters}}@;
-MCP wants @{name, description, inputSchema}@.
--}
 agentToMcpTool :: Value -> Value
 agentToMcpTool (Object o)
     | Just (Object f) <- KM.lookup "function" o =
@@ -127,10 +83,6 @@ agentToMcpTool (Object o)
             ]
 agentToMcpTool v = v
 
-{- | Project one server @ToolDef@ JSON to an MCP tool: rename @input_schema@ →
-@inputSchema@ (the schema body is raw JSON Schema, passed through verbatim) and
-drop Anthropic's @cache_control@. Other fields (name, description) are kept.
--}
 toMcpTool :: Value -> Value
 toMcpTool (Object o) =
     Object
@@ -145,7 +97,6 @@ handleLine conn base catalogue line =
         Left _ -> pure (Just (errorResp Null (-32700) "parse error"))
         Right rpc -> dispatch conn base catalogue rpc
 
--- | A parsed JSON-RPC request. A missing @id@ marks a notification.
 data Rpc = Rpc
     { rpcId :: Maybe Value
     , rpcMethod :: Text
@@ -181,10 +132,6 @@ dispatch conn base catalogue rpc = case rpcMethod rpc of
         pure
             (fmap (\i -> errorResp i (-32601) ("method not found: " <> other)) (rpcId rpc))
 
-{- | Wrap a result as a success response, but only when the request carried an
-@id@. A notification (no @id@) gets no response. That is the JSON-RPC rule, and
-the classic hand-rolled bug if forgotten.
--}
 routeResponse :: Rpc -> Value -> Maybe Value
 routeResponse rpc result = fmap (`successResp` result) (rpcId rpc)
 
@@ -215,20 +162,9 @@ negotiatedVersion (Object o) = case KM.lookup "protocolVersion" o of
     _ -> defaultProtocolVersion
 negotiatedVersion _ = defaultProtocolVersion
 
-{- | Handle @tools/call@: gate mutations, forward via 'callTool', map the
-@{isError,result}@ outcome onto an MCP tool result. Unknown tool names and gate
-blocks become tool-level errors (@isError:true@) rather than protocol errors, so
-the model gets feedback it can act on.
--}
 toolsCall :: Conn -> Text -> Value -> IO Value
 toolsCall conn base params =
     case parseToolName name of
-        -- Not a server ToolName: agent-level tools (discover) and garbled
-        -- spellings both belong to the agent dispatcher, which aggregates
-        -- the former and rescues or rejects the latter. Gating on
-        -- parseToolName FIRST advertised discover in tools/list and answered
-        -- "unknown tool" in tools/call — the first harness-free probe called
-        -- it five times and was refused five times.
         Nothing -> do
             res <- AgentTools.dispatch conn base (ToolCall name args)
             pure (outcomeResult res)
@@ -237,8 +173,6 @@ toolsCall conn base params =
             case gate of
                 Left ds -> pure (toolResult True (renderDiags ds))
                 Right () -> do
-                    -- The agent's dispatcher, so MCP gets the same write
-                    -- reconciliation the episode loop has.
                     res <- AgentTools.dispatch conn base (ToolCall name args)
                     pure (outcomeResult res)
   where
@@ -250,11 +184,6 @@ outcomeResult (Left e) = toolResult True e
 outcomeResult (Right o) =
     toolResult (toolOutcomeIsError o) (encodeText (toolOutcomeValue o))
 
-{- | The pre-flight gate for MCP: block on a parse failure (always) or a denied
-capability (under a strict 'Policy'); otherwise pass. Reuses
-'Siza.Preflight.preflight', the same gate @siza tool@ runs, but returns a
-verdict instead of exiting, since this server is long-lived.
--}
 gateForMcp :: Policy -> ToolName -> Value -> IO (Either [Diagnostic] ())
 gateForMcp policy name input
     | name `elem` [ReplaceCellSource, InsertCell, ProposeEdit]

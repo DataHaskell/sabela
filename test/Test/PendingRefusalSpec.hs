@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R10-T2 pending-error refusal invariants: over a controlled set of red-cell
-diagnostics the 'VPendingError' envelope decodes against the ONE write-ack
-refusal schema, stays under the 2,500-byte budget, NEVER embeds the raw
-multi-line GHC error, and names exactly the two legal edits
-(@replace_cell_source@ | @delete_cell@). When an unchecked mechanical candidate
-exists for the blocking cell it is carried as @suggestedSource@ with its honest
-verification status, and no
-channel instructs a fresh search (R5.7/R5.8). Pure; no kernel needed.
--}
 module Test.PendingRefusalSpec (spec) where
 
 import Control.Monad (forM_)
@@ -35,9 +26,6 @@ import Sabela.AI.WriteAck (
  )
 import Sabela.Handlers (NotebookViolation (..))
 
-{- | A raw multi-line GHC error blob — the exact text an insert refusal must
-NEVER re-ship downstream (R3.10).
--}
 rawGhcError :: Text
 rawGhcError =
     "<interactive>:4:9: error: [GHC-88464]\n\
@@ -45,7 +33,6 @@ rawGhcError =
     \    Suggested fix: Perhaps use ‘replot’ (imported from Graphics.X)\n\
     \    In the expression: defPlot"
 
--- | A controlled set of red-cell diagnostics: (red-cell source, blocking id).
 diagnostics :: [(Text, Int)]
 diagnostics =
     [ ("defPlot :: Plot", 1)
@@ -73,7 +60,6 @@ textOf _ = ""
 errorText :: Value -> Text
 errorText = maybe "" textOf . field "error"
 
--- | Phrases the refusal must never carry: steering the model back to search.
 searchSteers :: [Text]
 searchSteers = ["discover", "search again", "find_by_type", "rephrase", "api_reference"]
 

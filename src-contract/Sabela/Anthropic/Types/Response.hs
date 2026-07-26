@@ -1,10 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Types describing what the Anthropic Messages API sends back: the
-final 'MessageResponse', why it stopped, and the token-usage breakdown
-the hub charges against.
--}
 module Sabela.Anthropic.Types.Response (
     MessageResponse (..),
     StopReason (..),

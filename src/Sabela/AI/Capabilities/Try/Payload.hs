@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure JSON-envelope construction for 'Sabela.AI.Capabilities.Try': one
-function per verdict class, split out of that module for the module-size
-cap. No IO, no App — only the typed verdicts 'Try' has already computed.
--}
 module Sabela.AI.Capabilities.Try.Payload (
     purePayload,
     unrestrictedIOPayload,
@@ -94,21 +90,12 @@ skippedCellValue skip =
         , "reason" .= skippedReason skip
         ]
 
-{- | The cell a failure is attributable to: a failure that happened WHILE
-replaying the notebook prefix (a prior cell, never the candidate). Keyed on a
-present cell id at a replay stage so it never captures a candidate-stage error.
--}
 attributableCell :: MaterializeFailure -> Maybe Int
 attributableCell failure = case (failureStage failure, failureCellId failure) of
     (StageCellReplay, Just cid) -> Just cid
     (StagePrelude, Just cid) -> Just cid
     _ -> Nothing
 
-{- | G4: a replay-stage failure is another cell's fault, not the candidate's.
-Lead with the attribution and withhold the raw diagnostic from @stderr@ (it is
-kept, cell-labelled, under @failure@) so the model never reads a prior cell's
-error as a verdict on its own code and abandons a correct candidate.
--}
 replayBlockedPayload :: DisposableResult -> Int -> Value
 replayBlockedPayload result cid =
     object
@@ -193,14 +180,6 @@ inputErrorPayload reason =
         , "reason" .= reason
         ]
 
-{- | G7 admission-message parity (docs/discover/implementation-plan.md task
-4): where a committed cell genuinely accepts more than a trial does — any
-number of statements, any effect, a compile-time escape — the rejection
-names that difference explicitly rather than leaving a bare "no code ran"
-for the model to theorize about (live_test5 turns 11-16). 'TrialMetaCommand'
-has no such gap: no cell source can hold a GHCi meta-command either, so its
-message stays a plain refusal.
--}
 trialPlanErrorText :: TrialPlanError -> Text
 trialPlanErrorText planErr = case planErr of
     TrialEmpty -> "code required"
@@ -225,9 +204,6 @@ trialPlanErrorText planErr = case planErr of
                 <> reason
             )
 
-{- | The task-4 parity clause, shared by every rejection that names a genuine
-cell-vs-try policy gap rather than a universal safety restriction.
--}
 cellsAcceptTryDoesNot :: Text -> Text
 cellsAcceptTryDoesNot reason =
     "cells accept this; try does not, because " <> reason <> "; no code ran"

@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Guards for the two silent-corruption repair bugs the gate transcripts
-surfaced: hole-fit must not empty a free name to @mempty@/@[]@, and the resolver
-must not resolve a name to an example / demo / internal module.
--}
 module Test.RepairGuardSpec (spec) where
 
 import Test.Hspec
@@ -39,10 +35,6 @@ spec = describe "repair correctness guards" $ do
                 ["Data.List.Split", "DataFrame", "Data.Text.Metrics", "Granite.Svg"]
                 `shouldBe` False
 
-    -- G2 hard rule 2: a lexical resolution must never step outside the
-    -- notebook's scope into the compiler's OWN toolchain packages (the
-    -- `unionfind-point` regression resolved `Point` to `ghc`'s
-    -- `GHC.Data.UnionFind`).
     describe "isOutOfScopePackage (G2 scope guard)" $ do
         it "excludes the compiler's own toolchain packages" $
             all

@@ -23,9 +23,6 @@ import Eval.Task (Grader (..), Task (..))
 dummyTask :: Task
 dummyTask = Task "t" "do the thing" (ByValue "True")
 
-{- | A code-tool call following the content protocol: the Haskell rides in a
-```haskell block in the message, not in the tool args.
--}
 callTurn :: Text -> Turn
 callTurn name =
     Turn

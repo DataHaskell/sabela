@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Extracting a proposed covering-check expression from a model reply and
-interpreting the user's confirm\/edit\/skip input — split from
-"Siza.Agent.Check" (module-size cap); that module re-exports these names.
--}
 module Siza.Agent.CheckExtract (
     extractTestExpr,
     feedbackContinuation,
@@ -49,10 +45,6 @@ interpretConfirm proposed input
     stripped = T.strip input
     low = T.toLower stripped
 
-{- | Check-prompt input that is neither accepted/edited/skipped is feedback on
-the last deliverable, not a test — carry it forward verbatim as the next
-turn's request instead of making the user retype it.
--}
 feedbackContinuation :: Text -> Text -> Maybe Text
 feedbackContinuation proposed input
     | T.null (interpretConfirm proposed input)

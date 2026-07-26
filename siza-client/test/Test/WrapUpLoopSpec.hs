@@ -1,10 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T3 wrap-up through the REAL loop: every stop reason yields a non-empty
-final, the wrap-up fires exactly once on the last turn with R5.7 silence, and
-the jsonSum / symbolicRegression happy-path floor shapes add zero bytes (R9.8).
--}
 module Test.WrapUpLoopSpec (wrapUpLoopSpec) where
 
 import Control.Monad (forM_)
@@ -45,7 +41,6 @@ okDispatch tc = case tcName tc of
             object ["cellId" .= (1 :: Int), "execution" .= object ["ok" .= True]]
     _ -> pure (Right (ToolOk (object [])))
 
--- | Dispatch whose discover path runs the REAL catalogue tool (for misses).
 discoverDispatch :: ToolCall -> IO (Either Text ToolOutcome)
 discoverDispatch tc = case tcName tc of
     "discover" -> Right . ToolOk <$> runCat (argText "query" (tcArgs tc))
@@ -82,7 +77,6 @@ markerCount run =
 contents :: AgentRun -> [Text]
 contents run = map (textField "content") (arTranscript run)
 
--- | Counter-backed chat: answers by 1-based call number.
 scriptChat :: IORef Int -> (Int -> Turn) -> [Value] -> IO (Either Text Turn)
 scriptChat ref f _ = do
     n <- readIORef ref
@@ -93,8 +87,6 @@ wrapUpLoopSpec :: Spec
 wrapUpLoopSpec = describe "budget-exhaustion wrap-up in the real loop (R6-T3)" $ do
     loopStopGridSpec
     happyFloorSpec
-
--- The loop: every stop reason yields a non-empty final ----------------------
 
 loopStopGridSpec :: Spec
 loopStopGridSpec = describe "the real loop: no stop reason yields an empty final" $ do
@@ -114,7 +106,6 @@ loopStopGridSpec = describe "the real loop: no stop reason yields an empty final
         arStopped run `shouldBe` "max_turns"
         T.strip (arFinal run) `shouldSatisfy` (not . T.null)
         markerCount run `shouldBe` 1
-        -- R5.7: nothing after the wrap-up advises more searching.
         let after =
                 drop 1 $
                     dropWhile
@@ -138,8 +129,6 @@ loopStopGridSpec = describe "the real loop: no stop reason yields an empty final
         run <- runShaped driver defBudget 1
         arStopped run `shouldBe` "max_turns"
         seen <- readIORef dispatched
-        -- list_cells is the turn-0 ledger seed; no read/replace/list traffic
-        -- appears after the one model write reaches max_turns.
         seen `shouldBe` ["list_cells", "insert_cell"]
         arToolCalls run `shouldBe` 1
     it "repair_budget: wrap-up fires once and the final is non-empty" $ do
@@ -203,8 +192,6 @@ loopStopGridSpec = describe "the real loop: no stop reason yields an empty final
         run <- runShaped driver defBudget 20
         arStopped run `shouldBe` "error"
         T.strip (arFinal run) `shouldSatisfy` (not . T.null)
-
--- R9.8: the happy-path floors add zero bytes ---------------------------------
 
 happyFloorSpec :: Spec
 happyFloorSpec = describe "R9.8: happy-path floors add zero wrap-up bytes" $ do

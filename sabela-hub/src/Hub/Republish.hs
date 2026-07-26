@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Backfill the spliced fragments into already-published share snapshots.
-Walks a shares directory (@\<root\>\/\<slug\>\/index.html@) and rewrites each
-snapshot: 'republishBanners' through 'spliceBanner', 'republishRunners' through
-'spliceRunner' (reading the share's stored @source.md@). Both splices are
-idempotent and byte-identical outside the inserted fragment, so re-running is
-safe; it changes nothing on the second pass.
--}
 module Hub.Republish (
     republishBanners,
     republishRunners,
@@ -25,19 +18,9 @@ import Hub.Banner (spliceBanner)
 import Hub.Runner (spliceRunner)
 import Hub.Share (validSlug)
 
-{- | Splice the banner into every share under @sharesDir@. Returns @(slug,
-changed)@ per processed share — @changed@ is 'False' for a share that already
-carried the banner. Non-slug directories and dirs without an @index.html@ are
-skipped.
--}
 republishBanners :: FilePath -> IO [(Text, Bool)]
 republishBanners = republishWith (\_ slug -> pure (spliceBanner slug))
 
-{- | Splice the WASM runner (+ source island) into every share under
-@sharesDir@, reading each share's stored @source.md@ (empty when absent). Returns
-@(slug, changed)@ per processed share; @changed@ is 'False' for a share that
-already carried the runner.
--}
 republishRunners :: FilePath -> IO [(Text, Bool)]
 republishRunners = republishWith readSource
   where
@@ -45,10 +28,6 @@ republishRunners = republishWith readSource
         spliceRunner slug <$> readSourceMd (sourcePath dir slug)
     sourcePath dir slug = dir </> T.unpack slug </> "source.md"
 
-{- | Shared directory walk: for each valid-slug share with an @index.html@,
-build a per-share rewrite from @(sharesDir, slug)@, apply it, and write back
-only when the bytes changed.
--}
 republishWith ::
     (FilePath -> Text -> IO (BS.ByteString -> BS.ByteString)) ->
     FilePath ->
@@ -68,7 +47,6 @@ republishWith mkRewrite sharesDir = do
   where
     indexPath slug = sharesDir </> T.unpack slug </> "index.html"
 
--- | The stored source markdown text, or empty when the share has none.
 readSourceMd :: FilePath -> IO Text
 readSourceMd f = do
     e <- doesFileExist f

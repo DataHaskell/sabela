@@ -1,29 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Types describing what we send to the Anthropic Messages API: the
-configuration, the request body, the content blocks that flow inside a
-message (also shared by responses and streaming), and the in-flight
-cancellation token consulted between streamed chunks and tool calls.
--}
 module Sabela.Anthropic.Types.Request (
-    -- * Configuration
     AnthropicConfig (..),
-
-    -- * Cache control
     CacheControl (..),
-
-    -- * Conversation roles and content
     Role (..),
     ContentBlock (..),
-
-    -- * Request body
     MessagesRequest (..),
     SystemBlock (..),
     Message (..),
     ToolDef (..),
-
-    -- * Cancellation
     CancelToken (..),
     newCancelToken,
     cancel,
@@ -47,14 +33,12 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
--- | Configuration for the Anthropic API client.
 data AnthropicConfig = AnthropicConfig
     { acApiKey :: Text
     , acModel :: Text
     , acBaseUrl :: Text
     }
 
--- | Cancellation token checked between streaming chunks and tool calls.
 newtype CancelToken = CancelToken (IORef Bool)
 
 newCancelToken :: IO CancelToken
@@ -66,11 +50,6 @@ cancel (CancelToken ref) = atomicWriteIORef ref True
 isCancelled :: CancelToken -> IO Bool
 isCancelled (CancelToken ref) = readIORef ref
 
-{- | Anthropic @cache_control@. @Ephemeral@ uses the default 5-minute TTL;
-@EphemeralHour@ uses the 1-hour TTL (costs 2× on write but 0.1× on read, same
-as 5-minute reads). Pick @EphemeralHour@ for prefixes that stay stable across
-user idle gaps (system blocks, tool schemas, stable notebook prefix).
--}
 data CacheControl = Ephemeral | EphemeralHour
     deriving (Eq, Show)
 

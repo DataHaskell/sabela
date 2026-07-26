@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the stale-run contract: run-all re-executes only cells whose
-source changed since their last run (or whose last run errored), plus
-their transitive dependents; everything else keeps its outputs.
--}
 module Test.StaleRunSpec (spec) where
 
 import Sabela.Handlers (updateCellSource)

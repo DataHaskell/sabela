@@ -62,16 +62,12 @@ newSessionManager =
 getHaskellSession :: SessionManager -> IO (Maybe ST.SessionBackend)
 getHaskellSession = readMVar . smHaskell
 
--- | Swap the slot to Nothing and return the old backend (close it outside).
 takeHaskellSession :: SessionManager -> IO (Maybe ST.SessionBackend)
 takeHaskellSession sm =
     modifyMVar (smHaskell sm) $ \old -> do
         clearHaskellContextReady sm
         pure (Nothing, old)
 
-{- | Atomically detach one exact backend. A late crash/recovery callback must
-never clear a replacement installed after the callback captured its handle.
--}
 takeHaskellSessionIfSame ::
     SessionManager -> Unique -> IO (Maybe ST.SessionBackend)
 takeHaskellSessionIfSame sm expected =
@@ -102,15 +98,9 @@ modifyHaskellSession sm action =
         clearHaskellContextReady sm
         pure replacement
 
-{- | Serialize process replacement/build operations without holding the
-session-slot MVar across a slow Cabal build.
--}
 withHaskellLifecycle :: SessionManager -> IO a -> IO a
 withHaskellLifecycle sm = withMVar (smHaskellLifecycle sm) . const
 
-{- | Allocate a process generation that is monotonic across whole-process
-replacement, not merely an in-place backend reset.
--}
 freshHaskellSessionGeneration :: SessionManager -> IO Int
 freshHaskellSessionGeneration sm =
     atomicModifyIORef' (smHaskellGeneration sm) $ \generation ->
@@ -145,10 +135,6 @@ modifyPythonSession ::
     IO a
 modifyPythonSession sm = modifyMVar (smPython sm)
 
-{- | Force-reset all sessions without blocking on MVars: tryTakeMVar so it
-never deadlocks; slots it cannot grab are reclaimed by the caller's
-registry sweep. The two backends close concurrently to bound shutdown.
--}
 forceResetAllSessions :: SessionManager -> IO ()
 forceResetAllSessions sm = do
     clearHaskellContextReady sm
@@ -162,10 +148,6 @@ forceResetAllSessions sm = do
             mv
             (\s -> void (try (ST.sbClose s) :: IO (Either SomeException ())))
 
-{- | Close-and-clear one slot without blocking: a slot whose MVar is held
-by another thread is skipped (at server exit the shutdown registry sweep
-still reclaims it; runtime resets simply leave it to its holder).
--}
 forceResetMVar :: MVar (Maybe a) -> (a -> IO ()) -> IO ()
 forceResetMVar mv close = do
     taken <- tryTakeMVar mv

@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The recovery layer: code-bearing tools (insert_cell, replace_cell_source,
-try) take their Haskell straight from the (recovered) tool-call args.
-gpt-oss usually escapes backslashes correctly, but intermittently (1) emits an
-unescaped backslash that makes Ollama return a 500 @error parsing tool call:
-raw='...', err=...@, or (2) emits the whole tool-call JSON in the content/thinking
-channel instead of a native tool_call. These tests pin 'repairJsonEscapes',
-error-body recovery, content-JSON recovery, and that a normal tool_call is
-untouched.
--}
 module Test.CodePathSpec (spec) where
 
 import Data.Aeson (Value (..), eitherDecodeStrict', encode, object, (.=))
@@ -35,14 +26,9 @@ field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (K.fromText k) o
 field _ _ = Nothing
 
--- | A lambda's backslash gpt-oss intermittently leaves unescaped in tool args.
 lambdaSrc :: Text
 lambdaSrc = "shortCode = foldl (\\acc b -> acc * 58 + b) 0"
 
-{- | The exact error shape Ollama returns on a 500 (captured from /api/chat):
-@error parsing tool call: raw='{"source":"...\acc..."}', err=invalid character 'a' ...@
-Note the @\a@ is a single literal backslash in the payload (unescaped).
--}
 capturedError :: Text
 capturedError =
     "error parsing tool call: raw='{\"source\":\"base58 :: [Int] -> String\\n\
@@ -108,7 +94,6 @@ spec = describe "Recovery layer (code from tool args, repaired)" $ do
         it "does not recover an unrelated error" $
             isNothing (recoverFromError "model not found") `shouldBe` True
         it "recovers discover from the dangling-comma payload (gpt-oss, measured)" $
-            -- Verbatim from the gpt-oss gate: a trailing ," before the brace.
             case recoverFromError
                 "ollama error: error parsing tool call: \
                 \raw='{\"query\":\"Data.List.Extra\",\"}', \
@@ -210,7 +195,6 @@ spec = describe "Recovery layer (code from tool args, repaired)" $ do
             length seeds `shouldBe` 4
             length (nub seeds) `shouldBe` 4
   where
-    -- Base arg payloads with the model's stray backslashes, one per code tool.
     bases :: [(Text, Text)]
     bases =
         [ ("insert_cell", "{\"source\":\"f = \\acc b -> acc * 58 + b\"}")
@@ -258,7 +242,6 @@ chatContent content =
             .= object ["role" .= ("assistant" :: Text), "content" .= content]
         ]
 
--- | The function names under @tool_calls@ in a recorded raw message.
 rawCallNames :: Value -> [Text]
 rawCallNames raw = case field "tool_calls" raw of
     Just (Array a) ->

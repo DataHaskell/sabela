@@ -63,9 +63,6 @@ import qualified Data.Set as Set
 import Sabela.Handlers (setupReactive)
 import Sabela.Server (mkApp, newApp)
 
-{- | Start the Sabela server in-process on the given port.
-The server runs in a forked thread; this function returns once it is ready.
--}
 withTestServer :: Int -> FilePath -> IO () -> IO ()
 withTestServer port workDir action = do
     app <- newApp workDir Set.empty Nothing Nothing []
@@ -74,7 +71,6 @@ withTestServer port workDir action = do
     waitForServer port
     action
 
--- | Poll until the server responds 200 OK on /api/notebook.
 waitForServer :: Int -> IO ()
 waitForServer port = go (50 :: Int)
   where
@@ -92,18 +88,13 @@ waitForServer port = go (50 :: Int)
             then return ()
             else ioError (userError "not ready")
 
-{- | Spawn ChromeDriver on port 9515 and wait until it accepts connections.
-The process is killed when the surrounding bracket exits.
--}
 startChromeDriver :: IO ()
 startChromeDriver = do
     ph <- spawnProcess "chromedriver" ["--port=9515"]
     waitForChromeDriver
-    -- Register cleanup to run at process exit (best-effort for tests)
     _ <- forkIO $ void (waitForProcess ph)
     return ()
 
--- | Poll until ChromeDriver port 9515 accepts connections.
 waitForChromeDriver :: IO ()
 waitForChromeDriver = go (50 :: Int)
   where
@@ -123,7 +114,6 @@ waitForChromeDriver = go (50 :: Int)
                 connect sock (addrAddress addr)
                 close sock
 
--- | WebDriver session config pointing to local ChromeDriver on port 9515.
 driverConfig :: WDConfig
 driverConfig =
     defaultConfig
@@ -131,7 +121,6 @@ driverConfig =
         , wdPort = 9515
         }
 
--- | Set the content of a CodeMirror cell by cell ID using JS execution.
 setCellContent :: Int -> Text -> WD ()
 setCellContent cid src = do
     let sel = ".cell[data-id='" <> T.pack (show cid) <> "'] .CodeMirror" :: Text
@@ -142,16 +131,12 @@ setCellContent cid src = do
             WD Text
     return ()
 
--- | Click the Run button for the given cell ID.
 runCell :: Int -> WD ()
 runCell cid = do
     let sel = ByCSS $ ".cell[data-id='" <> T.pack (show cid) <> "'] .run-btn"
     btn <- findElem sel
     click btn
 
-{- | Wait up to @timeoutSecs@ seconds for cell @cid@'s output to contain @expected@.
-Throws inside 'waitUntil' on each failed attempt so that polling retries.
--}
 waitForOutput :: Int -> Int -> Text -> WD ()
 waitForOutput cid timeoutSecs expected =
     waitUntil (fromIntegral timeoutSecs) $ do
@@ -169,7 +154,6 @@ waitForOutput cid timeoutSecs expected =
                                     ++ " does not contain "
                                     ++ T.unpack expected
 
--- | Get the text content of a cell's output element, or Nothing if absent/empty.
 getCellOutput :: Int -> WD (Maybe Text)
 getCellOutput cid = do
     let sel = ByCSS $ ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output"
@@ -180,7 +164,6 @@ getCellOutput cid = do
             txt <- getText el
             if T.null (T.strip txt) then return Nothing else return (Just txt)
 
--- | Get the error text for a cell (checks .cell-output.error), or Nothing.
 getCellError :: Int -> WD (Maybe Text)
 getCellError cid = do
     let sel = ByCSS $ ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output.error"
@@ -191,14 +174,12 @@ getCellError cid = do
             txt <- getText el
             if T.null (T.strip txt) then return Nothing else return (Just txt)
 
--- | Count the number of iframes rendered inside a cell's output area.
 countIframesInCell :: Int -> WD Int
 countIframesInCell cid = do
     let sel = ByCSS $ ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output iframe"
     elems <- findElems sel
     return (length elems)
 
--- | Wait until a cell has exactly @n@ iframes in its output.
 waitForIframeCount :: Int -> Int -> Int -> WD ()
 waitForIframeCount cid timeoutSecs n =
     waitUntil (fromIntegral timeoutSecs) $ do
@@ -211,9 +192,6 @@ waitForIframeCount cid timeoutSecs n =
                         userError $
                             "expected " ++ show n ++ " iframe(s), got " ++ show count
 
-{- | Stamp the first iframe in a cell's output with a test marker.
-Returns True if an iframe was found and stamped.
--}
 stampCellIframe :: Int -> Text -> WD Bool
 stampCellIframe cid stamp = do
     let sel = ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output iframe" :: Text
@@ -221,7 +199,6 @@ stampCellIframe cid stamp = do
         [JSArg sel, JSArg stamp]
         "var el=document.querySelector(arguments[0]); if(!el) return false; el.setAttribute('data-stamp',arguments[1]); return true;"
 
--- | Read the stamp attribute from the first iframe in a cell's output.
 getCellIframeStamp :: Int -> WD (Maybe Text)
 getCellIframeStamp cid = do
     let sel = ".cell[data-id='" <> T.pack (show cid) <> "'] .cell-output iframe" :: Text
@@ -229,7 +206,6 @@ getCellIframeStamp cid = do
         [JSArg sel]
         "var el=document.querySelector(arguments[0]); return el ? el.getAttribute('data-stamp') : null;"
 
--- | Count non-error output blocks in a cell's output area.
 countOutputBlocks :: Int -> WD Int
 countOutputBlocks cid = do
     let sel =
@@ -240,7 +216,6 @@ countOutputBlocks cid = do
     elems <- findElems sel
     return (length elems)
 
--- | Wait until a cell has exactly @n@ output blocks.
 waitForOutputBlockCount :: Int -> Int -> Int -> WD ()
 waitForOutputBlockCount cid timeoutSecs n =
     waitUntil (fromIntegral timeoutSecs) $ do
@@ -253,7 +228,6 @@ waitForOutputBlockCount cid timeoutSecs n =
                         userError $
                             "expected " ++ show n ++ " output block(s), got " ++ show count
 
--- | Post a synthetic widget postMessage to the page (simulates an iframe slider).
 postWidgetMessage :: Int -> Text -> Text -> WD ()
 postWidgetMessage cid name value = do
     _ <-

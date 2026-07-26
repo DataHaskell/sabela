@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Model-context distillation of a cell-execution outcome (R10-T5): before an
-outcome enters the model's context at @renderOutcome@, every rendered output is
-replaced by a bounded, escape-stripped head plus its true char count, and the
-carrying object gains an @outputCount@. The multi-thousand-char ANSI wall a
-chart cell prints (barChart turn-27) never crosses the surface. Keyed on the
-output SHAPE (an @oiOutput@-carrying item), never on the cell's content or
-library; the human-visible notebook render is a separate server path (the
-'Sabela.Model.OutputItem' wire encoding) and is untouched by this transform.
--}
 module Siza.Agent.OutcomeDistill (
     distillOutcome,
     outcomeCharBudget,
@@ -25,27 +16,17 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
--- | Per-output escape-stripped head cap; a legit small output survives whole.
 outcomeHeadBudget :: Int
 outcomeHeadBudget = 1200
 
--- | The distilled outcome's hard serialised cap; excess outputs are shed.
 outcomeCharBudget :: Int
 outcomeCharBudget = 2500
 
-{- | Distil a tool outcome for the model's context: bound every @outputs@ array
-in place, then shed trailing outputs while the whole envelope exceeds the
-budget. A value with no output-shaped array (a discover envelope, a check_type
-reply) passes through unchanged.
--}
 distillOutcome :: Value -> Value
 distillOutcome v
     | not (containsOutputArray v) = v
     | otherwise = hardBound (shedOutputs (distillNode v))
 
-{- | Whether this is an execution-shaped value that owns an @outputs@ array.
-Non-execution tool envelopes remain byte-identical.
--}
 containsOutputArray :: Value -> Bool
 containsOutputArray (Object o) =
     outputHere || any containsOutputArray (KM.elems o)
@@ -56,7 +37,6 @@ containsOutputArray (Object o) =
 containsOutputArray (Array a) = any containsOutputArray a
 containsOutputArray _ = False
 
--- | Rewrite every @outputs@ array (top-level or nested) to bounded previews.
 distillNode :: Value -> Value
 distillNode (Object o) =
     Object (boundOutputs (KM.mapWithKey descend o))
@@ -67,9 +47,6 @@ distillNode (Object o) =
 distillNode (Array a) = Array (fmap distillNode a)
 distillNode v = v
 
-{- | If this object carries an output-shaped @outputs@ array, replace each item
-with its bounded preview and record the original @outputCount@.
--}
 boundOutputs :: KM.KeyMap Value -> KM.KeyMap Value
 boundOutputs o = case KM.lookup "outputs" o of
     Just (Array items)
@@ -79,14 +56,10 @@ boundOutputs o = case KM.lookup "outputs" o of
                 KM.insert "outputs" (Array (fmap distillItem items)) o
     _ -> o
 
--- | An 'Sabela.Model.OutputItem'-shaped value: an object carrying @oiOutput@.
 outputShaped :: Value -> Bool
 outputShaped (Object h) = KM.member "oiOutput" h
 outputShaped _ = False
 
-{- | One bounded output preview: keep @oiMime@, replace @oiOutput@ with its
-escape-stripped, capped head, and record the true @chars@. One declared shape.
--}
 distillItem :: Value -> Value
 distillItem (Object h) =
     Object
@@ -99,19 +72,11 @@ distillItem (Object h) =
         _ -> ""
 distillItem v = v
 
-{- | Shed trailing outputs (bumping @omittedOutputs@, counts still reconcile)
-until the distilled envelope fits the budget. Only output previews are shed —
-diagnostics in @outcome@/@warnings@ are load-bearing and never dropped.
--}
 shedOutputs :: Value -> Value
 shedOutputs v
     | serialisedChars v <= outcomeCharBudget = v
     | otherwise = maybe v shedOutputs (dropOneOutput v)
 
-{- | Outputs are normally enough to shed; if another field (a warning wall)
-still breaches the contract, cap all textual detail, then fall back to the
-stable execution frame — the declared budget is a postcondition, not a best effort.
--}
 hardBound :: Value -> Value
 hardBound v
     | serialisedChars v <= outcomeCharBudget = v
@@ -143,9 +108,6 @@ frameOnly _ = Object (KM.singleton "distilled" (Bool True))
 serialisedChars :: Value -> Int
 serialisedChars = T.length . TE.decodeUtf8 . LBS.toStrict . encode
 
-{- | Drop the last item of the first @outputs@ array (top-level, then nested
-@execution@), recording the drop in @omittedOutputs@.
--}
 dropOneOutput :: Value -> Maybe Value
 dropOneOutput (Object o)
     | Just (Array items) <- KM.lookup "outputs" o
@@ -168,10 +130,6 @@ bumpOmitted = KM.insertWith addNum "omittedOutputs" (intVal 1)
 intVal :: Int -> Value
 intVal = Number . fromIntegral
 
-{- | Strip ANSI CSI escape sequences and any remaining control bytes (keeping
-newline and tab), so no raw terminal escape or internal byte reaches the model
-(R3.10). Keyed on byte shape, never on content.
--}
 stripEscapes :: Text -> Text
 stripEscapes = stripCtrl . stripAnsi
 

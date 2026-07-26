@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The gallery seeder's Markdown→HTML rendering: inline spans (escape, image,
-link, bold, code), the notebook body block machine (code fences, quoted output
-blocks, headings, paragraphs), and the page shell. Pins the emitted HTML shape
-the static gallery depends on.
--}
 module Test.SeedRenderSpec (spec) where
 
 import qualified Data.Text as T

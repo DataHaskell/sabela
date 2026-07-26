@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The fork-banner splice: it inserts exactly one banner after @\<body\>@,
-interpolates the slug into the fork action, is idempotent, leaves every byte
-outside the inserted banner untouched, and no-ops on bodyless fragments. Also
-covers the directory backfill ('republishBanners') on a temp shares dir.
--}
 module Test.BannerSpec (spec) where
 
 import Control.Exception (SomeException, try)
@@ -62,7 +57,6 @@ spec = do
             let root = base </> "sabela-republish-test"
             _ <- try (removeDirectoryRecursive root) :: IO (Either SomeException ())
             mapM_ (writeShare root) ["aa11", "bb22"]
-            -- legacy/non-share dirs are skipped
             createDirectoryIfMissing True (root </> "NOTAHEX")
 
             first <- republishBanners root

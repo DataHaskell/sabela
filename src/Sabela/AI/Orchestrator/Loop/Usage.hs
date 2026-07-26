@@ -1,7 +1,3 @@
-{- | Token-usage accumulation for the agentic loop: fold a completion's usage
-onto the turn and session totals. Split from "Sabela.AI.Orchestrator.Loop" to
-keep each module under the size cap.
--}
 module Sabela.AI.Orchestrator.Loop.Usage (
     accumulateUsage,
     mergeUsage,
@@ -17,7 +13,6 @@ import Sabela.Anthropic.Types (StopReason (..), Usage (..))
 import Sabela.LLM.Completion (StopCondition (..))
 import qualified Sabela.LLM.Usage as K
 
--- | Fold a turn's token usage onto both the turn and the session accumulators.
 accumulateUsage :: AIStore -> Turn -> K.TokenUsage -> IO ()
 accumulateUsage store turn tu = do
     let u = toUsage tu
@@ -33,9 +28,6 @@ toUsage tu =
         , uCacheReadInputTokens = K.tuCacheRead tu
         }
 
-{- | Add two 'Usage' records componentwise. @Nothing@ cache fields collapse to
-@Just 0@ once either side starts reporting them, so the UI never has to guess.
--}
 mergeUsage :: Usage -> Usage -> Usage
 mergeUsage a b =
     Usage
@@ -50,10 +42,6 @@ mergeUsage a b =
     addMaybeInt Nothing Nothing = Nothing
     addMaybeInt x y = Just (fromMaybe 0 x + fromMaybe 0 y)
 
-{- | Map the neutral stop condition onto 'TurnPhase''s (still Anthropic-shaped)
-'StopReason'. The value is not surfaced — the turn just completes — and this
-last domain leak goes away with the Phase-5 aggregate reshape.
--}
 toStopReason :: StopCondition -> StopReason
 toStopReason Truncated = SRMaxTokens
 toStopReason _ = SREndTurn

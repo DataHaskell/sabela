@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R4-T3(b): the two formerly-dead repair tiers become real pure generators
-(search-api.md section 7.1, RepairDispatch.tiersFor already advertises them):
-the type-directed tier proposes catalogue bindings of the goal type, the arity
-tier permutes/re-groups applied arguments. Both are safe by construction under
-'acceptRepair' (R7.5), discover-findable (R7.6), and report within budget for
-adversarial K (R7.7). Grow generators, not control flow.
--}
 module Test.RepairTierGenSpec (repairTierGenSpec) where
 
 import Control.Monad (forM_)
@@ -40,7 +33,6 @@ repairTierGenSpec = describe "type-directed and arity tier generators (R4-T3b)" 
     findabilitySpec
     livenessSpec
 
--- A hole-fit blob GHC would print for a goal-type search over the catalogue.
 plotBlob :: Text
 plotBlob =
     T.unlines
@@ -58,8 +50,6 @@ typeInput diag src =
         , tiLocate = const []
         , tiModules = const []
         }
-
--- The type-directed tier ----------------------------------------------------
 
 typeDirectedSpec :: Spec
 typeDirectedSpec = describe "TierTypeDirected proposes a goal-typed binding" $ do
@@ -86,8 +76,6 @@ typeDirectedSpec = describe "TierTypeDirected proposes a goal-typed binding" $ d
         let cands = tierCandidates TierTypeDirected (typeInput diag src)
         map cdSource cands `shouldSatisfy` notElem src
 
--- The arity tier ------------------------------------------------------------
-
 aritySpec :: Spec
 aritySpec = describe "TierArity permutes/re-groups applied arguments" $ do
     let diag =
@@ -113,8 +101,6 @@ aritySpec = describe "TierArity permutes/re-groups applied arguments" $ do
     it "the arity class dispatches to exactly the arity tier" $
         tiersFor (classifyDiag diag) `shouldBe` [TierArity]
 
--- R7.6 cross-check: every proposed name is discover-findable -----------------
-
 findabilitySpec :: Spec
 findabilitySpec = describe "R7.6: the new tiers propose only findable names" $
     it "every name the type-directed tier proposes is found by discover" $ do
@@ -134,8 +120,6 @@ findabilitySpec = describe "R7.6: the new tiers propose only findable names" $
         forM_ (concatMap cdProposes cands) $ \n -> do
             v <- runCat n
             (n, stateOf v) `shouldBe` (n, "found")
-
--- The tiers are no longer dead ----------------------------------------------
 
 livenessSpec :: Spec
 livenessSpec = describe "the advertised tiers are live (no []-returning tier)" $ do

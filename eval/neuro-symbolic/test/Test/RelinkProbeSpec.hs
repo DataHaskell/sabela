@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R8.1 tree-state-vs-binary relink probe (round-6 finding 5): @cabal build@
-can leave the exe un-relinked, so the pre-run gate must prove the binary is
-newer than every source file it embeds, and the verdict must be recorded in
-every episode header where the report guard can see it.
--}
 module Test.RelinkProbeSpec (spec) where
 
 import qualified Data.Text as T
@@ -35,7 +30,6 @@ stamp day hour =
         (fromGregorian 2026 7 day)
         (secondsToDiffTime (fromIntegral hour * 3600))
 
--- | Lay out a binary and a source tree with controlled mtimes.
 withTree :: (FilePath -> FilePath -> FilePath -> IO a) -> IO a
 withTree k = do
     tmp <- getTemporaryDirectory

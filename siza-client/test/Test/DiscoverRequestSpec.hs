@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The discover request schema (R1.7, R2.7, R2.8): the offered catalogue
-entry and the validator derive from ONE schema, every advertised argument
-observably changes the result or is rejected (no dead knobs), scope filters
-are honoured or disclosed, and bounds are exact at 0, 1, oversized and
-malformed. Plus the shipped-knob alignment of the history advice.
--}
 module Test.DiscoverRequestSpec (discoverRequestSpec) where
 
 import Control.Monad (forM_)
@@ -34,7 +28,6 @@ import Test.DiscoverFixtures (
     textField,
  )
 
--- | The discover entry's schema in the model-facing catalogue.
 discoverSchema :: Maybe Value
 discoverSchema =
     case [ f
@@ -218,8 +211,6 @@ discoverRequestSpec = describe "discover request schema (R1.7/R2.7/R2.8)" $ do
                 `shouldBe` requestKey "lull" (args [])
 
     describe "the held-facts clause states, it does not advise" $ do
-        -- It used to end "discover a package or module name (narrow with
-        -- module= ...), or act" — tool instructions on an empty ledger.
         it "an empty ledger says only that nothing is held" $ do
             let advice = T.toLower (factsClause [])
             forM_ ["inventory", "narrow with", "or act", "discover a"] $ \p ->

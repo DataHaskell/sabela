@@ -253,10 +253,6 @@ tryExecAndBroadcast app gen cid cell = do
                 (rrWarnings result)
             )
 
-{- | Mirror of the GHCi crash handler: clear the slot only if it still
-holds the crashed backend, then tear it down (idempotent), so the next
-Python run respawns a fresh interpreter.
--}
 handlePythonCrash :: App -> ST.SessionBackend -> IO ()
 handlePythonCrash app crashed = do
     modifyPythonSession (appSessions app) $ \mSess ->
@@ -276,7 +272,6 @@ unwrapExecResult cid (Left e) = (RunResult cid [] (Just (T.pack (show e))) [], [
 executePythonCells :: App -> Int -> IO ()
 executePythonCells = executePythonCellsWhere (const True)
 
--- | Incremental run-all pass: only stale Python cells re-run.
 executeStalePythonCells :: App -> Int -> IO ()
 executeStalePythonCells = executePythonCellsWhere cellStale
 

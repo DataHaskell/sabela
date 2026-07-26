@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure RSS + sitemap over the resolved gallery feed — the cheapest retention
-channel for an RSS-driven ecosystem (Planet Haskell, Haskell Weekly). Entries
-are in @index@ order; titles are 'htmlEscape'd (XML shares the @& < >@ escapes);
-links are absolute against the configured origin.
--}
 module Hub.Gallery.Feed (
     renderFeed,
     renderSitemap,

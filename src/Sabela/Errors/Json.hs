@@ -1,18 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Parse GHC's @-fdiagnostics-as-json@ output (NDJSON: one diagnostic object
-per stderr line) into 'CellError's, split by severity.
-
-Each diagnostic carries a structured @span@ (file + start line\/column) and a
-@severity@, so lines and the originating cell come back exact rather than
-scraped from human-readable text ("Sabela.Errors" is the pre-9.8 fallback). The
-@span.file@ is the @sabela-cell-N@ LINE-pragma tag the renderers emit
-('ScriptHs.Compiled.linePragmaTag'), so compiled diagnostics route per cell the
-same way the textual 'Sabela.Errors.parseCompiledErrors' did.
-
-Lines that are not JSON diagnostics (runtime stderr, linker\/TH noise) are
-returned verbatim as residual text, so the runtime-error path still sees them.
--}
 module Sabela.Errors.Json (
     DiagSpan (..),
     diagnosticSpans,
@@ -32,7 +19,6 @@ import qualified Data.Text.Encoding as TE
 import Sabela.Model (CellError (..))
 import ScriptHs.Compiled (parseLinePragmaTag)
 
--- | A decoded GHC diagnostic, reduced to what Sabela renders and routes.
 data Diag = Diag
     { dSeverity :: Text
     , dCellId :: Maybe Int
@@ -43,7 +29,6 @@ data Diag = Diag
 isWarning :: Diag -> Bool
 isWarning d = dSeverity d == "Warning"
 
--- | An error diagnostic's message with its full source span (start, end).
 data DiagSpan = DiagSpan
     { dsMessage :: Text
     , dsStart :: (Int, Int)
@@ -51,10 +36,6 @@ data DiagSpan = DiagSpan
     }
     deriving (Eq, Show)
 
-{- | Error diagnostics with their full source span, for the typed-hole engine to
-hole the offending subterm by range. Warnings and spanless diagnostics are dropped
-(nothing to hole).
--}
 diagnosticSpans :: Text -> [DiagSpan]
 diagnosticSpans raw =
     [ DiagSpan (ceMessage (dError d)) (spLine s, spCol s) (spEndLine s, spEndCol s)
@@ -63,10 +44,6 @@ diagnosticSpans raw =
     , Just s <- [dSpan d]
     ]
 
-{- | Diagnostics for an interpreted cell: @(errors, warnings, residual)@. The
-cell is already known to the caller, so the span tag is ignored here; residual
-is every non-JSON stderr line, joined, for the runtime-error path.
--}
 parseJsonInteractive :: Text -> ([CellError], [CellError], Text)
 parseJsonInteractive raw =
     let (diags, residual) = decodeLines raw
@@ -75,11 +52,6 @@ parseJsonInteractive raw =
   where
     span' p ds = (filter p ds, filter (not . p) ds)
 
-{- | Error diagnostics for a compiled @:load@, routed per cell by the span tag,
-matching 'Sabela.Errors.parseCompiledErrors': @(perCell, loose)@. Tagless
-errors are loose; warnings never count as a compile failure, so they are
-dropped.
--}
 parseJsonCompiled :: Text -> (M.Map Int [CellError], [CellError])
 parseJsonCompiled raw =
     foldr route (M.empty, []) [d | d <- fst (decodeLines raw), not (isWarning d)]
@@ -88,7 +60,6 @@ parseJsonCompiled raw =
         Just cid -> (M.insertWith (++) cid [dError d] m, loose)
         Nothing -> (m, dError d : loose)
 
--- | Decode each line; JSON diagnostics on one side, untouched lines on the other.
 decodeLines :: Text -> ([Diag], Text)
 decodeLines raw = (diags, T.unlines residual)
   where
@@ -124,17 +95,10 @@ instance FromJSON Diag where
                 , dSpan = mspan
                 }
 
--- | GHC paragraphs then hints, one per line.
 renderMessage :: [Text] -> [Text] -> Text
 renderMessage msgs hints =
     T.intercalate "\n" (filter (not . T.null . T.strip) (msgs ++ hints))
 
-{- | Annotate each @Perhaps use `name'@ suggestion with the cell that defines
-@name@, so the reader can find it. GHC's hint gives a bare @(line N)@ that names
-the line but not the cell (it abbreviates the synthetic per-cell file tag away),
-so without this a "use `triple'" hint can't be followed. @resolve@ maps a name
-to its defining cell (from notebook defs); unresolved names are left untouched.
--}
 annotateDefSites :: (Text -> Maybe Int) -> Text -> Text
 annotateDefSites resolve = T.intercalate "\n" . map annotateLine . T.lines
   where
@@ -149,7 +113,6 @@ annotateDefSites resolve = T.intercalate "\n" . map annotateLine . T.lines
             <> ")"
     tShow = T.pack . show
 
--- | Identifiers GHC quoted in a hint line, in both @`name'@ and @‘name’@ forms.
 quotedNames :: Text -> [Text]
 quotedNames t = between '`' '\'' t ++ between '\8216' '\8217' t
   where
@@ -164,7 +127,6 @@ quotedNames t = between '`' '\'' t ++ between '\8216' '\8217' t
                         _ -> []
             _ -> []
 
--- | The bits of a diagnostic @span@ Sabela uses (start + end position + file tag).
 data Span = Span
     { spFile :: Text
     , spLine :: Int
@@ -180,7 +142,6 @@ instance FromJSON Span where
         Pos el ec <- fromMaybe (Pos ln col) <$> o .:? "end"
         pure (Span file ln col el ec)
 
--- | A diagnostic span's @{line, column}@ endpoint.
 data Pos = Pos Int Int
 
 instance FromJSON Pos where

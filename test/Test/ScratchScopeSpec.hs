@@ -1,20 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Intention specs for the scratch-vet SCOPE REPLAY (evalExpr deep-dive
-finding 1).
-
-The live gate showed the vet false-declining a correct candidate (@chainl1@ →
-parser-combinators) because GHC printed the goal with the CELL's own type
-synonym (@t0 -> Parser (…) -> Parser Double@, where @type Parser = Parsec Void
-String@ is declared in the cell) — the scratch replayed the cell's imports but
-not its type declarations, so the probe could not parse.
-
-Proposed API (extends Sabela.AI.Capabilities.Edit.ScratchVet):
-
-  cellScopeLines :: Text -> [Text]   -- imports AND single-line type synonyms
-
-'scratchVet' replays 'cellScopeLines' instead of 'cellImportLines'.
--}
 module Test.ScratchScopeSpec (spec) where
 
 import qualified Data.Text as T
@@ -22,7 +7,6 @@ import Test.Hspec
 
 import Sabela.AI.Capabilities.Edit.ScratchVet (cellScopeLines)
 
--- | The real evalExpr cell shape: pragma, imports, a type synonym, bindings.
 cellSrc :: T.Text
 cellSrc =
     T.unlines

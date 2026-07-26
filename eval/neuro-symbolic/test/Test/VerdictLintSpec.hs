@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T4 R8.4 lint extension: a verifier-surface answer (verify channel,
-@try@ result) with no decodable verdict is a lint issue — silence cannot
-pass review — while marker-bearing, JSON-field-bearing and transport-classed
-answers all decode. Red-then-green fixture: the marker-less pre-R6-T4 verify
-message shape FAILS, the current producers' shape passes.
--}
 module Test.VerdictLintSpec (spec) where
 
 import Data.Aeson (Value, object, (.=))
@@ -19,7 +13,6 @@ import Siza.Agent.Messages (doneSignalMsg, unconfirmedMsgWith, verifyMsgWith)
 toolRes :: Text -> Text -> Value
 toolRes n c = object ["role" .= ("tool" :: Text), "tool_name" .= n, "content" .= c]
 
--- | An assistant turn calling @n@, so the result is not a phantom (P10).
 call :: Text -> Value
 call n =
     object

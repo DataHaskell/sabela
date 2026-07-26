@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The re-enter (health_gate) message must CONTRAST the wrong name with the
-real candidates from the cell's own diagnostic — gemma re-submitted
-@takeWhile1@ three times past GHC's own \"Perhaps use: takeWhileP\" hint when
-the rail only said \"fix the error\".
--}
 module Test.ReenterContrastSpec (reenterContrastSpec, reenterAlarmSpec) where
 
 import Data.Text (Text)
@@ -13,7 +8,6 @@ import Test.Hspec
 
 import Siza.Agent.Messages (reenterAlarmMessage, reenterMessage)
 
--- | A shortened real gemma diagnostic: wrong name + GHC's did-you-mean.
 diag :: Text
 diag =
     T.unlines
@@ -39,10 +33,6 @@ reenterContrastSpec = describe "reenterMessage — wrong-vs-real contrast" $ do
         msg `shouldSatisfy` T.isInfixOf "1"
         msg `shouldSatisfy` (not . T.isInfixOf "does not exist")
 
-{- | G1: a compile-class ('Rejected') red cell reaching the health gate is now
-structurally impossible, so it is reframed as an invariant alarm rather than
-a routine fix-it nudge — 'reenterAlarmMessage' is the canary.
--}
 reenterAlarmSpec :: Spec
 reenterAlarmSpec = describe "reenterAlarmMessage — G1 invariant canary" $ do
     it "leads with an invariant-alarm line when a red cell is compile-class" $ do

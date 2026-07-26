@@ -35,9 +35,6 @@ newNotebookStore =
 readNotebook :: NotebookStore -> IO Notebook
 readNotebook = readMVar . nsNotebook
 
-{- | Apply @f@ to the notebook and store the result. The bang on the
-result keeps the 'MVar' from trapping a thunk chain across edits.
--}
 modifyNotebook :: NotebookStore -> (Notebook -> Notebook) -> IO ()
 modifyNotebook ns f = modifyMVar_ (nsNotebook ns) (\nb -> let !nb' = f nb in pure nb')
 
@@ -45,11 +42,6 @@ modifyNotebookIO :: NotebookStore -> (Notebook -> IO Notebook) -> IO ()
 modifyNotebookIO ns f =
     modifyMVar_ (nsNotebook ns) (\nb -> do !nb' <- f nb; pure nb')
 
-{- | Atomically transform the notebook and return a value, both decided under
-the lock. A validate-then-commit (return the new notebook on success, the
-unchanged one plus a rejection on conflict) is then a single critical section,
-so a checked mutation never leaves a half-applied edit.
--}
 atomicEditNotebook :: NotebookStore -> (Notebook -> (Notebook, a)) -> IO a
 atomicEditNotebook ns f =
     modifyMVar (nsNotebook ns) (\nb -> let (!nb', a) = f nb in pure (nb', a))

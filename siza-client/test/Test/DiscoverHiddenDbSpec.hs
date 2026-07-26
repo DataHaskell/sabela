@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R5-T1: the whole-installed-DB symbol catalogue. Over a controlled
-catalogue extended with a HIDDEN locally-installed package, every exported
-symbol of every installed package — exposed or hidden — is findable by exact
-name (top 3, R3.1), by scoped module query, and by a prose topic query naming
-the package (R2.4); install state follows package-DB ground truth; the
-mechanism keys on evidence class, never the library name.
--}
 module Test.DiscoverHiddenDbSpec (discoverHiddenDbSpec) where
 
 import Control.Monad (forM, forM_)
@@ -36,9 +29,6 @@ import Test.DiscoverFixtures (
     textField,
  )
 
-{- | The hidden LOCAL package (zephyr/stratus family): structure fixed,
-name substitutable for the invariance grid. Not on Hackage.
--}
 breezeAs :: Text -> SynPkg
 breezeAs nm =
     SynPkg
@@ -47,23 +37,19 @@ breezeAs nm =
         True
         [("Breeze.Chart", [("chartz", "[(Text, Double)] -> Chart -> Text")])]
 
--- | The post-fix index: the whole installed DB, hidden local package included.
 extended :: [SynPkg]
 extended = synHoogle ++ [breezeAs "breeze"]
 
--- | Ground truth: the installed packages (nimbus is the absent-known one).
 installedPkgs :: [SynPkg]
 installedPkgs = [p | p <- extended, spName p /= "nimbus"]
 
 args :: [(Text, Value)] -> Value
 args kvs = object [(K.fromText k, v) | (k, v) <- kvs]
 
--- | Every (package, module, export, hidden) row of the installed DB.
 installedRows :: [(SynPkg, Text, Text)]
 installedRows =
     [(p, m, n) | p <- installedPkgs, (m, es) <- spModules p, (n, _) <- es]
 
--- | The target row's position in the envelope's hits, if present.
 rankOf :: Text -> Text -> Value -> Maybe Int
 rankOf n m v =
     case [ i
@@ -91,8 +77,6 @@ discoverHiddenDbSpec =
             probeOrderSpec
             conservationSpec
 
--- Whole-catalogue invariant + false-denial ledger ---------------------------
-
 wholeCatalogueSpec :: Spec
 wholeCatalogueSpec = describe "every installed export findable, 3 shapes (R3.1/R2.4)" $ do
     it "exact name in the top 3, install state = package-DB ground truth" $ do
@@ -111,7 +95,6 @@ wholeCatalogueSpec = describe "every installed export findable, 3 shapes (R3.1/R
             pure (rowViolations p m n "prose" v (rankOf n m v))
         ledger `shouldBe` []
 
--- | The false-denial/ground-truth ledger entries for one (pkg, mod, name) row.
 rowViolations :: SynPkg -> Text -> Text -> Text -> Value -> Maybe Int -> [Text]
 rowViolations p m n shape v mRank =
     concat
@@ -135,8 +118,6 @@ rowViolations p m n shape v mRank =
     tag = spName p <> "." <> n <> " (" <> shape <> "): "
     tShow = T.pack . show
 
--- Library-name-substitution invariance --------------------------------------
-
 nameInvarianceSpec :: Spec
 nameInvarianceSpec = describe "library-name substitution invariance" $
     it "three spellings of the hidden package decide byte-identically" $ do
@@ -154,11 +135,6 @@ nameInvarianceSpec = describe "library-name substitution invariance" $
   where
     encodeText = TE.decodeUtf8 . LBS.toStrict . encode
 
--- The pre-fix index gap, pinned red-then-green ------------------------------
-
-{- | A world whose hoogle index predates the local-DB extension: the hidden
-local package is installed (session evidence) but unindexed.
--}
 preFixWorld :: SimWorld
 preFixWorld =
     SimWorld
@@ -174,8 +150,6 @@ runWorldQ w q a = do
 preFixIndexSpec :: Spec
 preFixIndexSpec = describe "the pre-fix names-only index misses the local package" $ do
     it "PIN: an exact hidden-local symbol is unreachable without the local DB" $ do
-        -- The defect update-search-cache.sh's local-DB pass closes: no
-        -- channel indexes a hidden local package's symbols.
         v <- runWorldQ preFixWorld "chartz" (args [])
         stateOf v `shouldBe` "not_found"
     it "module-shaped queries still classify it hidden from session evidence" $ do
@@ -188,12 +162,6 @@ preFixIndexSpec = describe "the pre-fix names-only index misses the local packag
         stateOf v `shouldBe` "found"
         rankOf "chartz" "Breeze.Chart" v `shouldSatisfy` maybe False (< 3)
 
--- Stage-0 lexical-tier liveness on prose and scoped shapes ------------------
-
-{- | A world whose FUZZY capability channel fails on prose (the run-085948
-denoise failure) while the exact channel still answers: only a live
-stage-0 exact consult can find the deliverable.
--}
 exactOnlyCall :: SimWorld -> ToolName -> Value -> IO (Either Text ToolOutcome)
 exactOnlyCall w tn a = case tn of
     SearchCapability
@@ -225,12 +193,6 @@ exactTierLivenessSpec = describe "stage-0 exact tier is live for prose/scoped sh
         stateOf v `shouldBe` "found"
         rankOf "chartz" "Breeze.Chart" v `shouldBe` Just 0
 
--- The hidden-probe budget cannot be exhausted by fuzzy noise ----------------
-
-{- | Three foreign packages sharing the export name, flooding the fuzzy
-channel AHEAD of the query-named hidden package (the live prose defect:
-granite's probe lost to plotlyhs/chart-svg/Chart bucket order).
--}
 foreignFlood :: [SynPkg]
 foreignFlood =
     [ SynPkg nm "1.0.0" False [(m, [("chartz", "Int -> Text")])]
@@ -253,8 +215,6 @@ probeOrderSpec = describe "query-named package outranks fuzzy noise in the probe
             `shouldSatisfy` maybe
                 False
                 ((== "-- cabal: build-depends: breeze") . hitText "cabal")
-
--- Conservation: new rows never displace an existing answer (R3.3) -----------
 
 conservationSpec :: Spec
 conservationSpec = describe "union-merge conservation over the extension (R3.3)" $

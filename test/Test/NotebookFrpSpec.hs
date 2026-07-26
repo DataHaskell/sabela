@@ -1,12 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- HLINT ignore "Functor law" -}
-{- HLINT ignore "Use <$>" -}
-
-{- | Tests for the sticky @sabela-notebook@ FRP core. Compiling this module at
-all proves the embedded support modules type-check; the examples below pin
-their behaviour and the laws the documentation promises.
--}
 module Test.NotebookFrpSpec (spec) where
 
 import Sabela.Notebook.Frp
@@ -27,12 +20,12 @@ spec = do
     describe "Behavior: Functor/Applicative laws" $ do
         let b = 2 * time + 1
         it "fmap id = id" $
-            map (at (fmap id b)) [0, 1, 2] `shouldBe` map (at b) [0, 1, 2]
+            map (at (id b)) [0, 1, 2] `shouldBe` map (at b) [0, 1, 2]
         it "fmap (f . g) = fmap f . fmap g" $
             map (at (fmap ((+ 1) . (* 2)) b)) [0, 1]
-                `shouldBe` map (at (fmap (+ 1) (fmap (* 2) b))) [0, 1]
+                `shouldBe` map (at (fmap ((+ 1) . (* 2)) b)) [0, 1]
         it "pure/<*> applies pointwise" $
-            at (pure (+ 1) <*> time) 4 `shouldBe` (5 :: Double)
+            at ((+ 1) <$> time) 4 `shouldBe` (5 :: Double)
 
     describe "sampleBetween" $
         it "takes n+1 evenly spaced snapshots" $
@@ -104,6 +97,5 @@ spec = do
             map (round . at (derivative (2 * time))) [0, 1, 2]
                 `shouldBe` [2, 2, 2 :: Integer]
         it "integralFrom resets a switched-in motion (the bounce fix)" $ do
-            -- switch at t=2 to a fresh integral that restarts there.
             let b = switcher (always 0) (eventFromList [(2, integralFrom 2 (always 2))])
-            round (at b 4) `shouldBe` (4 :: Integer) -- 2*(4-2), NOT 2*4=8
+            round (at b 4) `shouldBe` (4 :: Integer)

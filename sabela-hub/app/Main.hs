@@ -35,11 +35,6 @@ main = do
         ("seed-gallery" : rest) -> runSeed rest
         _ -> runServer
 
-{- | @sabela-hub seed-gallery [DATA_ROOT] [REPO_ROOT]@: (re)generate the curated
-gallery — the five featured shares plus the Learn You a Haskell collection — into
-@DATA_ROOT@ (holding @shares\/@ and @gallery\/@) from the example notebooks under
-@REPO_ROOT@. Both default to @.@. Standalone, like the republish backfills.
--}
 runSeed :: [String] -> IO ()
 runSeed rest =
     let (dataRoot, repoRoot) = case rest of
@@ -48,11 +43,6 @@ runSeed rest =
             [] -> (".", ".")
      in seedGallery repoRoot dataRoot
 
-{- | @sabela-hub \<cmd\> [SHARES_DIR]@: backfill a spliced fragment into existing
-snapshots (the fork banner or the WASM runner). The dir defaults to
-@$HUB_SHARES_DIR@. Runs standalone — no OAuth config required — so it is safe to
-invoke as a one-shot migration.
--}
 runRepublish ::
     String -> (FilePath -> IO [(a, Bool)]) -> [String] -> IO ()
 runRepublish cmd backfill rest = do

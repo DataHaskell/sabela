@@ -17,17 +17,12 @@ import Eval.FitCheck (
     parseExpr,
  )
 
--- | The symbolicRegression sample: y = x^2 on four points.
 points :: [(Double, Double)]
 points = [(1, 1), (2, 4), (3, 9), (4, 16)]
 
 tol :: Double
 tol = 1e-6
 
-{- | The R5-T5 rendering grid: the SAME correct expression as tuple (quoted and
-bare), markdown, plain prose, and alternate error wording (SSE vs total squared
-error). Every rendering must extract and confirm.
--}
 correctRenderings :: [Text]
 correctRenderings =
     [ "Best expression: (x * x), total squared error: 0.0"
@@ -38,7 +33,6 @@ correctRenderings =
     , "the best fit is x^2 with total squared error 0"
     ]
 
--- | The same grid with a genuinely wrong expression: every rendering refutes.
 wrongRenderings :: [Text]
 wrongRenderings =
     [ "Best expression: (x + 1), total squared error: 0.0"
@@ -48,9 +42,6 @@ wrongRenderings =
     , "**Best expression:** `x+1`, SSE 0"
     ]
 
-{- | Extraction-failure outcomes: no reported expression at all, probe errors,
-and prose that merely echoes the task's grammar. None may refute.
--}
 expressionFreeOutputs :: [Text]
 expressionFreeOutputs =
     [ ""
@@ -108,7 +99,6 @@ spec = describe "Eval.FitCheck (symbolic-regression covering verifier)" $ do
                 ( \r -> case fitOutcome points tol r of
                     FitRefuted err e -> do
                         (r, err > tol) `shouldBe` (r, True)
-                        -- the evidence names a real x-expression, recomputable
                         parseExpr e `shouldSatisfy` (/= Nothing)
                     _ -> pure ()
                 )

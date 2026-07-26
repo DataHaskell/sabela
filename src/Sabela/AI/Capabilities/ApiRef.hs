@@ -1,16 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @api_reference@ tool. Given a module substring, name, or type, it
-gathers signatures from three LOCAL sources — the offline @hoogle@ CLI
-('Sabela.AI.HoogleResolve'), the live session's @:browse@ ('sbQueryBrowse'), and
-typed-hole fits ('sbQueryHoleFits') — and merges them. Hoogle needs no live
-session, so the tool still answers before any cell has run; @:browse@ and hole
-fits enrich the result when a kernel exists.
--}
 module Sabela.AI.Capabilities.ApiRef (
     execApiReference,
-
-    -- * Pure merge core
     ApiRefSources (..),
     ArgKind (..),
     argKind,
@@ -29,11 +20,9 @@ import Sabela.SessionTypes (SessionBackend (..))
 import Sabela.State (App (..))
 import Sabela.State.SessionManager (getHaskellSession)
 
--- | How many Hoogle hits to pull before scoping to the requested module/name.
 apiRefHoogleK :: Int
 apiRefHoogleK = 40
 
--- | Whether the arg reads as a type (route to hole fits) or a module/name.
 data ArgKind = AsType | AsModuleOrName
     deriving (Eq, Show)
 
@@ -44,10 +33,6 @@ argKind t0
   where
     t = T.strip t0
 
-{- | The inputs 'mergeApiRef' folds into one reference: scoped Hoogle hits, the
-live @:browse@ text, and the typed-hole-fits text. The @Maybe Text@ live sources
-are 'Nothing' when no kernel was available.
--}
 data ApiRefSources = ApiRefSources
     { arsArg :: Text
     , arsHoogle :: [HoogleHit]
@@ -67,16 +52,11 @@ execApiReference app input = do
                 maybe (pure (Nothing, Nothing)) (gatherLive arg) mBackend
             pure (okOutcome (mergeApiRef (ApiRefSources arg hoogle browse holes)))
 
--- | The tool arg: the @module@ field, falling back to a bare @query@.
 apiRefArg :: Value -> Text
 apiRefArg input =
     let m = fieldText "module" input
      in if T.null m then fieldText "query" input else m
 
-{- | Local Hoogle hits, scoped to the arg for a module/name query (Hoogle ranks
-across the ecosystem, so keep only hits in a matching module or name); a type
-query keeps Hoogle's own type ranking untouched.
--}
 scopedHoogle :: Text -> IO [HoogleHit]
 scopedHoogle arg = do
     hits <- hoogleQuery apiRefHoogleK arg
@@ -89,9 +69,6 @@ scopedHoogle arg = do
         needle `T.isInfixOf` T.toLower (hhModule h)
             || needle `T.isInfixOf` T.toLower (hhName h)
 
-{- | Live-session enrichment: a type arg asks for typed-hole fits; a single-token
-module/name arg is @:browse@d directly (a multi-word keyword is left to Hoogle).
--}
 gatherLive :: Text -> SessionBackend -> IO (Maybe Text, Maybe Text)
 gatherLive arg backend = case argKind arg of
     AsType -> do
@@ -106,9 +83,6 @@ gatherLive arg backend = case argKind arg of
   where
     asHole g = if "_" `T.isPrefixOf` g then g else "_ :: " <> g
 
-{- | Merge the dynamic sources (Hoogle / @:browse@ / hole fits) into one
-reference value. When all are empty, return an explicit no-result note.
--}
 mergeApiRef :: ApiRefSources -> Value
 mergeApiRef s
     | not (hasDynamic s) =
@@ -146,10 +120,6 @@ hoogleJSON h =
         , "type" .= hhType h
         ]
 
-{- | A live-source text stripped, or 'Nothing' when it is blank or a
-@:browse@/hole-fits failure (a not-in-scope / error line), so a wall counts as
-"no dynamic result" and the static fallback wins.
--}
 usableText :: Maybe Text -> Maybe Text
 usableText Nothing = Nothing
 usableText (Just t)
@@ -157,8 +127,6 @@ usableText (Just t)
     | otherwise = Just (T.strip t)
   where
     s = T.toLower (T.strip t)
-    -- A @:browse@ of an un-imported (hidden) package, or any diagnostic, is not
-    -- a usable reference — fall back to the curated card instead of shipping it.
     unusable =
         [ "not in scope"
         , "error:"

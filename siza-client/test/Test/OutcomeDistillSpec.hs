@@ -1,14 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R10-T5 execution-output distillation invariants: over generated cell
-outputs of varying size and shape (including a multi-thousand-char ANSI wall
-like barChart-on turn-27) every execution result crosses the model surface as
-ONE bounded envelope — @outcome@ + @outputCount@ + escape-stripped head — under
-the declared budget, one declared per-output schema, with no raw ANSI or
-control byte passing through. A value with no output-shaped array is unchanged.
-The CAVEAT (product cohesion) pins that the human-visible 'OutputItem' wire
-encoding is NOT capped by this model-context-only transform.
--}
 module Test.OutcomeDistillSpec (outcomeDistillSpec) where
 
 import Control.Monad (forM_)
@@ -32,11 +23,9 @@ import Siza.Agent.OutcomeDistill (
     stripEscapes,
  )
 
--- | A multi-thousand-char ANSI-escape wall (the barChart turn-27 shape).
 ansiWall :: Text
 ansiWall = T.concat (replicate 2000 "\ESC[95m\9608\9608\ESC[0m block ")
 
--- | Generated outputs of varying size and shape: (mime, body).
 outputBodies :: [(Text, Text)]
 outputBodies =
     [ ("text/plain", "42")
@@ -50,7 +39,6 @@ outputBodies =
 outItem :: (Text, Text) -> Value
 outItem (mime, body) = object ["oiMime" .= mime, "oiOutput" .= body]
 
--- | An execution outcome (CellResult wire shape) with the given outputs.
 execOutcome :: Int -> [(Text, Text)] -> Value
 execOutcome cid bodies =
     object

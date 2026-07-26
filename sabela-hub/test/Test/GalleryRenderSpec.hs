@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pure render tests for the public gallery pages and feed: HTML escaping,
-admin-defined feed order, the opaque-origin sandboxed reader, tag chips +
-filtering (with no reflection of an unknown tag), og tags, the footer CTA, and
-the RSS/sitemap shapes. Substring assertions mirror the @shareHeaders@ style.
--}
 module Test.GalleryRenderSpec (spec) where
 
 import Data.Text (Text)
@@ -42,7 +37,6 @@ mkShare slug title =
 shareItem :: Text -> Text -> [Text] -> GalleryItem
 shareItem slug title tags = GItemShare (mkShare slug title) tags Nothing
 
--- | @x@ appears before @y@ in @hay@ (both must be present).
 occursBefore :: Text -> Text -> Text -> Bool
 occursBefore x y hay =
     case (T.breakOn x hay, T.breakOn y hay) of

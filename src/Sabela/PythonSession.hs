@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Python REPL session backend, with the same lifecycle guarantees as
-the GHCi backend: own process group, bounded binary-safe capture,
-busy-gated interrupt, and timeout→interrupt→resync→destroy.
--}
 module Sabela.PythonSession (
     PythonSession,
     newPythonSession,
@@ -55,7 +51,6 @@ data PythonSession = PythonSession
     , pyWorkDir :: FilePath
     , pyBusy :: IORef Bool
     , pyTimeout :: TimeoutConfig
-    -- ^ Execution/resync budget, read from @SABELA_CELL_TIMEOUT_SECONDS@.
     }
 
 newPythonSession :: Maybe FilePath -> FilePath -> IO PythonSession
@@ -107,7 +102,6 @@ initializePython sess = do
   where
     markerOf (Marker t) = t
 
--- | Polite close: @exit()@, a short grace, then the teardown chokepoint.
 closePythonSession :: PythonSession -> IO ()
 closePythonSession sess = do
     _ <- timeout quitWriteGraceUs (quiet (sendRaw sess "exit()"))
@@ -161,10 +155,6 @@ executionTimeoutUs, resyncTimeoutUs :: PythonSession -> Int
 executionTimeoutUs = tcExecutionUs . pyTimeout
 resyncTimeoutUs = tcResyncUs . pyTimeout
 
-{- | Run a cell. On timeout: group SIGINT (KeyboardInterrupt), resync on
-a fresh marker, destroy if the interpreter stays silent — identical
-semantics to the GHCi backend.
--}
 runBlockStreaming :: PythonSession -> Text -> (Text -> IO ()) -> IO (Text, Text)
 runBlockStreaming sess block onLine = withMVar (pyLock sess) $ \_ -> do
     resetErrorBuffer sess
@@ -216,10 +206,6 @@ queue = psQueue . pyProcSess
 setBusy :: PythonSession -> Bool -> IO ()
 setBusy sess = writeIORef (pyBusy sess)
 
-{- | Write the cell to a temp file and exec it. 'show' on the path
-coincides with Python string-literal escaping because both the tmp dir
-and the fixed filename are ASCII; revisit if either stops being ASCII.
--}
 execViaFile :: PythonSession -> Text -> IO ()
 execViaFile sess block = do
     let tmpPath = pyWorkDir sess </> ".sabela_cell.py"

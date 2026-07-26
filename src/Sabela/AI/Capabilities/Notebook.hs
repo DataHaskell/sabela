@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Read-only notebook inspection tools: @list_cells@, @read_cell@,
-@read_cell_output@, @find_cells_by_content@. Each returns a
-'ToolOutcome' so success and failure are distinct constructors rather
-than a positional @(Value, Bool)@.
--}
 module Sabela.AI.Capabilities.Notebook (
     execListCells,
     execReadCell,
@@ -30,28 +25,15 @@ import Sabela.SessionTypes (CellLang (..))
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
 
-{- | @list_cells@. The default is a PREVIEW (every cell's metadata + first line),
-which always lists the whole notebook compactly; @full=true@ adds each cell's
-source (capped per cell). Preview-by-default so the first call never blows the
-context budget or hides cells behind a truncation cut.
--}
 execListCells :: App -> Value -> IO ToolOutcome
 execListCells app input = do
     nb <- readNotebook (appNotebook app)
     let entries = zipWith (cellListEntry (fieldBool "full" input)) [1 :: Int ..] (nbCells nb)
     pure $ okOutcome $ object ["title" .= nbTitle nb, "cells" .= entries]
 
-{- | Per-cell source budget for a @full@ @list_cells@. A cell longer than this is
-truncated with a @truncated@ flag; the model fetches the rest with @read_cell@.
--}
 listCellSourceCap :: Int
 listCellSourceCap = 4000
 
-{- | One @list_cells@ entry. Preview (@full=False@): metadata + @firstLine@ (the
-cell's first NON-blank line, so a cell like @print 5@ is never invisible) +
-@lineCount@, no source — compact, so the whole notebook fits one call. Full
-(@full=True@): adds @source@, capped to 'listCellSourceCap'. A pure projection.
--}
 cellListEntry :: Bool -> Int -> Cell -> Value
 cellListEntry full pos c =
     object $
@@ -77,21 +59,12 @@ cellListEntry full pos c =
                 <> "\n-- … (truncated; use read_cell for the full source)"
         | otherwise = src
 
-{- | Top-level binding names a Haskell code cell introduces — the @defines@
-field of @list_cells@, so the model reuses real names instead of inventing
-them. A pure projection of the parser's def set; empty for prose/Python cells.
--}
 cellDefines :: Cell -> [T.Text]
 cellDefines c
     | cellType c == CodeCell && cellLang c == Haskell =
         S.toAscList (fst (cellNames (cellSource c)))
     | otherwise = []
 
-{- | @read_cell@. The default returns the cell's full SOURCE and error but omits
-its @outputs@ (which can be large rendered HTML/SVG) — a @hasOutputs@ flag points
-at them; @full=true@ includes @outputs@. Preview-by-default keeps the first read
-cheap; escalate to @full@ only when the output itself is needed.
--}
 execReadCell :: App -> Value -> IO ToolOutcome
 execReadCell app input = do
     let mcid = fieldInt "cell_id" input

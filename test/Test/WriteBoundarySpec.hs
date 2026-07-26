@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T4 write boundary: a top-level signature with no equation is a
-diagnostic-class property ('Sabela.Parse.signatureWithoutEquation') answered as
-a PROPOSAL — the same cell completed with a @name = _@ typed-hole body
-('holeBodyCompletion') handed back through the existing error envelope, never
-committed as the session-damming red cell. The proposal forbids no correct move
-and suggests no search (R5.8).
--}
 module Test.WriteBoundarySpec (spec) where
 
 import Control.Monad (forM_)
@@ -40,12 +33,8 @@ import Sabela.Parse.Declared (signatureWithoutEquation)
 names :: [Text]
 names = ["topMonth", "revenueTotal", "f"]
 
--- One grid case: a source and the names it declares-without-equation.
 type Case = (Text, [Text])
 
-{- | {sig-only, sig+equation, equation-only, sig+equation-for-other-name,
-multi-decl mixed} x a spread of spellings.
--}
 grid :: [Case]
 grid =
     concat
@@ -66,9 +55,6 @@ textOf :: Value -> Text
 textOf (String s) = s
 textOf _ = ""
 
-{- | Phrases the proposal must never contain: forbidding the write or steering
-back to search (R5.8).
--}
 banned :: [Text]
 banned =
     [ "do not"
@@ -113,11 +99,6 @@ spec = describe "write-boundary signature-without-equation proposal (R9-T4)" $ d
 
     envelopeSweepSpec
 
-{- | R3.6 envelope validator sweep: the proposal and every refusal class decode
-against the ONE write-ack envelope validator ('parseAckEnvelope') — the same
-shape that decodes a settled write and an own-write bounce. No mutation-path
-response is undecodable, and none serialises execution into a string.
--}
 envelopeSweepSpec :: Spec
 envelopeSweepSpec = describe "R3.6: every mutation outcome decodes against the write-ack envelope" $ do
     let okWrite =

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R9-T1: the not-in-scope extractor grid (casefold, every phrase
-variant), the qualified-alias import generator, the module-rename tier and
-hole-fit liveness — one dispatcher, decisions invariant under library-name
-substitution (R1.6, R3.1, R5.1, R7.5-R7.7).
--}
 module Test.RepairGridSpec (repairGridSpec) where
 
 import Control.Monad (forM_)
@@ -34,7 +29,6 @@ import Siza.Agent.RepairTiers (
  )
 import Test.DiscoverFixtures (runCat, stateOf)
 
--- | The synthetic (module, export) catalogue the locator answers from.
 synCatalogue :: [(Text, Text)]
 synCatalogue =
     [ ("Zephyr.Core", "gust")
@@ -42,11 +36,9 @@ synCatalogue =
     , ("Cumulus.Plot", "bars")
     ]
 
--- | Exact-bare-name locator over 'synCatalogue' (the discover path stand-in).
 catLocate :: Text -> [(Text, Maybe Text)]
 catLocate n = [(m, Nothing) | (m, e) <- synCatalogue, e == n]
 
--- | Nearest-module locator over the catalogue, edit-distance ranked.
 catModules :: Text -> [Text]
 catModules w =
     take 3 [m | (m, _) <- sortOn (editDistance w . fst) synCatalogue]
@@ -61,9 +53,6 @@ inputWith diag src =
         , tiModules = catModules
         }
 
-{- | The GHC phrase grid: every not-in-scope spelling, bare and
-alias-qualified, built over a substitutable name.
--}
 phraseGrid :: [(String, Text -> Text)]
 phraseGrid =
     [ ("Variable not in scope", ("Variable not in scope: " <>))
@@ -150,8 +139,6 @@ qualifiedAliasSpec = describe "qualified-alias import generator" $ do
             take 3 (concatMap cdProposes cands) `shouldContain` [m]
             null imports `shouldBe` False
     it "the lookup uses the bare name, never the qualified spelling" $ do
-        -- A locator that only knows bare names: a generator querying the
-        -- qualified spelling would get nothing and produce no candidate.
         let diag =
                 "Variable not in scope: Q.gust :: Int -> Wind"
                     <> noModuleHint "Q"

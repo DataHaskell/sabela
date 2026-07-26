@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R3-T3: @mode:"inventory"@ (search-api.md section 3, M6), the within-
-stratum public-API demotion (R3.1-R3.3, R3.7), session-hit version enrichment
-(carryover 6), and the R1.7 argument grid: every advertised discover argument
-observably changes the result or is rejected.
--}
 module Test.DiscoverInventorySpec (discoverInventorySpec) where
 
 import Control.Monad (forM_)
@@ -61,7 +56,6 @@ emptyEnv = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 topicInterp :: Text -> Interpreted
 topicInterp q = Interpreted q q Nothing "name" "" []
 
--- | A generated catalogue: n packages cycling the three honest states.
 genStates :: Int -> [(Text, InstallState)]
 genStates n =
     [ (T.pack ("pkg" <> show i), cycle3 (i `mod` 3))
@@ -72,7 +66,6 @@ genStates n =
     cycle3 1 = InstHidden
     cycle3 _ = InstAbsentKnown
 
--- | One catalogue hit per generated package, in that package's true state.
 genHit :: (Text, InstallState) -> DHit
 genHit (p, st) =
     DHit
@@ -104,7 +97,6 @@ genInventory n limit =
   where
     states = genStates n
 
--- | The synthetic hidden http-client catalogue of the M6 counterfactual.
 httpCat :: [SynPkg]
 httpCat =
     synHoogle
@@ -230,9 +222,6 @@ discoverInventorySpec = describe "inventory mode + demotion (R3-T3)" $ do
                     `shouldBe` "-- cabal: build-depends: http-client"
 
     describe "a package row claims exact only on a whole-name match" $ do
-        -- live_test13: query `line` ranked the Hackage spam package
-        -- Facebook-Password-Hacker-Online-Latest-Version as EXACT, because
-        -- "online" contains "line". Package rows then crowd out real hits.
         let pkgRows q pkgs =
                 boundEnvelope
                     ( inventoryEnvelope
@@ -267,9 +256,6 @@ discoverInventorySpec = describe "inventory mode + demotion (R3-T3)" $ do
             rankKey env interp public
                 `shouldSatisfy` (< rankKey env interp internal)
         it "B2: an in-scope prefix hit outranks an unreachable exact hit" $ do
-            -- live_test11: query `line` spent four of five slots on exact
-            -- `line`s from ghc/conduit/prettyprinter while `lineChart`, same
-            -- module as the winning hit and installed, never showed.
             let inScopePrefix =
                     (subHit "Sabela.Notebook")
                         { dhName = "lineChart"

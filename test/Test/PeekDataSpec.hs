@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the pure 'peekData' analysis (delimiter inference, header
-detection, per-column type guessing, first-N rows) and the @peek_data@
-JSON shape, plus a 'ToolName' round-trip for the new constructor.
--}
 module Test.PeekDataSpec (spec) where
 
 import Data.Aeson (Value (..), object, toJSON, (.=))

@@ -1,13 +1,5 @@
 {-# LANGUAGE NumericUnderscores #-}
 
-{- | The @siza login@ device-authorization client.
-
-Mirrors 'Hub.CliAuth': POST @start@ to get a @deviceCode@/@userCode@, open the
-browser at the authorize page, then poll until the user approves and the hub
-returns a short-lived token, which is saved via "Siza.HubToken". No cookie
-copy-paste — the only manual step is clicking Approve in a browser already
-logged into the hub.
--}
 module Siza.Login (
     runLogin,
     runLogout,
@@ -39,9 +31,6 @@ import System.Exit (exitFailure)
 import System.Info (os)
 import System.Process (callProcess)
 
-{- | Run the device-authorization flow against @hubUrl@: start, open the
-browser, poll to approval, and persist the token. Exits non-zero on failure.
--}
 runLogin :: Conn -> Text -> IO ()
 runLogin conn hubUrl = do
     let base = T.dropWhileEnd (== '/') hubUrl
@@ -91,7 +80,6 @@ approveAndSave conn base v device user = do
                     <> " when SABELA_URL points there."
                 )
 
--- | Poll @cli-auth/poll@ every @interval@ seconds until approval or timeout.
 pollLoop :: Conn -> Text -> Text -> Int -> Int -> IO (Either Text (Text, Int))
 pollLoop conn base device interval remaining
     | remaining <= 0 = pure (Left "authorization timed out; re-run siza login")
@@ -110,9 +98,6 @@ pollLoop conn base device interval remaining
   where
     again = pollLoop conn base device interval (remaining - interval)
 
-{- | Revoke the saved token server-side (best-effort) and forget it locally.
-A failed/absent revoke still clears the local file; the hub TTL is the backstop.
--}
 runLogout :: Conn -> IO ()
 runLogout conn = do
     mt <- loadHubToken
@@ -122,7 +107,6 @@ runLogout conn = do
     clearHubToken
     TIO.putStrLn "Logged out: siza token cleared."
 
--- | Best-effort @POST /_hub/cli-auth/revoke@ with the token as the bearer.
 revokeRemote :: Conn -> Text -> Text -> IO ()
 revokeRemote conn base tok = do
     er <-
@@ -144,9 +128,6 @@ revokeRemote conn base tok = do
                     IO (Either SomeException (Response LBS.ByteString))
             pure ()
 
-{- | A hub URL is safe to send a token to over HTTPS, or over plain HTTP only
-when it is loopback (local hub development).
--}
 isSecureHub :: Text -> Bool
 isSecureHub url =
     "https://" `T.isPrefixOf` url
@@ -154,13 +135,6 @@ isSecureHub url =
             (`T.isPrefixOf` url)
             ["http://localhost", "http://127.0.0.1", "http://[::1]"]
 
--- ---------------------------------------------------------------------------
--- helpers
--- ---------------------------------------------------------------------------
-
-{- | Open a URL in the user's browser, cross-platform. Best-effort: on failure
-the URL is already printed above for the user to open by hand.
--}
 openBrowser :: Text -> IO ()
 openBrowser url = do
     let u = T.unpack url
@@ -171,7 +145,6 @@ openBrowser url = do
     _ <- try (callProcess cmd args) :: IO (Either SomeException ())
     pure ()
 
--- | A JSON POST returning the decoded body. 15s timeout (these are quick).
 postJson :: Conn -> Text -> Value -> IO (Either Text Value)
 postJson conn url payload = do
     er <- try (parseRequest (T.unpack url)) :: IO (Either SomeException Request)

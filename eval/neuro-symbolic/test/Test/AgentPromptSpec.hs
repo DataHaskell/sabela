@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The eval prompt shares the product's working-rules core, the core
-carries no unsatisfiable or absolute rule (R6.8, R5.8, M15), and a literal
-caller obeying the rules verbatim reaches a binding-referencing write.
--}
 module Test.AgentPromptSpec (spec) where
 
 import Control.Monad (forM_)
@@ -15,9 +11,6 @@ import Eval.Agent (systemPrompt)
 import Sabela.AI.Grammar (discoverGrammarBlock, grammarPromptBlock)
 import Sabela.AI.PromptCore (sharedPromptCore, sharedPromptCoreWith)
 
-{- | Every prompt surface that ships the shared core: the product chat
-(grammar cheat-sheet) and the siza\/eval surface (discover cheat-sheet).
--}
 surfaces :: [(String, Text)]
 surfaces =
     [ ("product chat (sharedPromptCore)", sharedPromptCore)
@@ -26,10 +19,6 @@ surfaces =
     , ("siza/eval full systemPrompt", systemPrompt)
     ]
 
-{- | Banned phrase classes (lower-cased infix): the compiler-first-via-
-scratchpad mandate (M15, unsatisfiable for binding-referencing cells) and
-absolute never-write-unconfirmed-name rules (R5.8: misses can be wrong).
--}
 bannedClasses :: [(String, [Text])]
 bannedClasses =
     [
@@ -54,9 +43,6 @@ bannedClasses =
         )
     ]
 
-{- | The bulleted working rules of a prompt: each @- @ bullet with its
-continuation lines, up to the next bullet or section break.
--}
 workingRules :: Text -> [Text]
 workingRules p = go [] (takeWhile (not . sectionBreak) body)
   where
@@ -71,10 +57,6 @@ workingRules p = go [] (takeWhile (not . sectionBreak) body)
             go ((cur ++ [T.strip l]) : done) rest
         | otherwise = go acc rest
 
-{- | The literal-minded caller of R6.8, writing a binding-referencing cell:
-a rule blocks it when it demands an impossible pre-write step — a compile
-check via the isolated scratchpad, or an unsatisfiable name confirmation.
--}
 literalCallerReachesWrite :: [Text] -> Either Text ()
 literalCallerReachesWrite rules = case concatMap blocking rules of
     [] -> Right ()

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @hackage@ source's name lookups over @data/hackage-packages.txt@.
-Hackage names are mixed case; a caller's query is not, so every lookup here
-has to be case-insensitive on BOTH sides while still reporting the index's
-own spelling — that is what a @-- cabal: build-depends:@ line needs.
--}
 module Test.DiscoverHackageSpec (discoverHackageSpec) where
 
 import Control.Exception (bracket)
@@ -33,9 +28,6 @@ import Siza.Agent.Discover.Types (
  )
 import Siza.Agent.Tools (catalogueWith)
 
-{- | Run against a fixture index. The names are real Hackage spellings: the
-capitalised ones are what the asymmetric lowercasing used to lose.
--}
 withNames :: IO a -> IO a
 withNames act = bracket acquire release (const act)
   where
@@ -61,8 +53,6 @@ env0 = NotebookEnv [] [] [] [] [] []
 hackageNameSpec :: Spec
 hackageNameSpec = describe "the hackage name source" $ do
     describe "hackageMatching (keyword -> upstream candidates)" $ do
-        {- live_test35_wine: `frames` returned one unrelated session hit and
-        no package at all, though both Frames and dataframe were in the index. -}
         it "reaches a capitalised package from a lowercase token" $
             withNames (hackageMatching 10 ["frames"])
                 `shouldReturn` ["Frames"]
@@ -102,11 +92,6 @@ hackageNameSpec = describe "the hackage name source" $ do
             unsetEnv "SABELA_HACKAGE_NAMES"
             hiAvailable info `shouldBe` False
 
-{- | live_test37 asked its own EMPTY notebook for `DataFrame`, `dataset`,
-`wine`, `Data.Csv` and `mean`, read five misses as evidence, and hand-rolled
-the work. Routing "where is X?" to a notebook tool or a library tool asks the
-caller to know the answer first, so discover answers both.
--}
 notebookSourceSpec :: Spec
 notebookSourceSpec = describe "cell matches are a discover source" $ do
     let interp = interpret env0 "helper"
@@ -123,12 +108,6 @@ notebookSourceSpec = describe "cell matches are a discover source" $ do
     it "an absent notebook answer is not a denial" $
         saHits (notebookAnswer interp Nothing) `shouldBe` []
 
-{- | The first harness-free probe: tools/list advertised discover, tools/call
-answered "unknown tool: discover" five times — the call path gated on
-parseToolName before the agent dispatcher that owns discover. Every
-advertised tool must be callable; the two lists come from one catalogue, so
-the invariant is checkable without a server.
--}
 mcpSurfaceSpec :: Spec
 mcpSurfaceSpec = describe "every advertised MCP tool is dispatchable" $
     it "discover is on the agent surface (not a server ToolName)" $ do
@@ -139,6 +118,4 @@ mcpSurfaceSpec = describe "every advertised MCP tool is dispatchable" $
                 , Just (String n) <- [KM.lookup "name" f]
                 ]
         names `shouldSatisfy` elem "discover"
-        -- The property the bug violated: a name the server does not parse
-        -- must still be a name the agent dispatcher routes.
         parseToolName "discover" `shouldBe` Nothing

@@ -1,9 +1,3 @@
-{- | Grade-wired entrypoints over the shared 'Siza.Agent.Loop'. The loop itself
-lives in siza-client (so the product @siza chat@ shares it); this module keeps the
-benchmark 'Task'/grader wiring — 'runEpisode' and 'runEpisodeDebug', which build a
-'Driver' whose verify step is the objective grader — and re-exports the loop
-surface under the @Eval.Agent@ name its importers already use.
--}
 module Eval.Agent (
     module Siza.Agent.Loop,
     runEpisode,
@@ -33,10 +27,6 @@ runEpisode budget mgr conn base model task maxTurns = do
                 }
     runEpisodeWith budget driver (taskPrompt task) maxTurns
 
-{- | Like 'runEpisode' but streams the whole conversation to @emit@ as it happens
-and turns on the model's reasoning channel, for the single-run debug path. The
-benchmark path stays silent and thinking-free.
--}
 runEpisodeDebug ::
     (Text -> IO ()) ->
     EpisodeBudget ->

@@ -7,12 +7,6 @@ module Sabela.AI.ReferenceCard (
 import Data.Text (Text)
 import qualified Data.Text as T
 
-{- | The small reference card covering Sabela's in-session display and widget
-functions — which @:browse@ can't surface because they are injected by
-@displayPrelude@ at session start rather than exported from a library module.
-For dataframe / granite signatures the @api_reference@ tool queries hoogle and
-@:browse@ live.
--}
 apiReferenceCard :: Text
 apiReferenceCard =
     T.unlines

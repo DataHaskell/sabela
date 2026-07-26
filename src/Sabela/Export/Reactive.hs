@@ -1,21 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Export a notebook's widget→output dataflow as a runnable, headless
-@reactive-banana@ program.
-
-The notebook's reactive model (a widget edit recomputes everything downstream)
-is exactly an FRP push network. Rather than lifting every binding into its own
-'Behavior', we generate a single @render@ function that takes the widget values
-as parameters and contains the reactive cells' code as a @do@-block (built by
-"Sabela.Export.Block"), then lift it over the widget source behaviors as one
-@Behavior (IO ())@ and @reactimate@ it. Widget binds become parameters;
-everything else copies through.
-
-The host is headless: widgets are driven from stdin (lines @name value@) and
-one-shot @--name=value@ flags; output goes to stdout. The exported program
-carries its own deps in a @{\- cabal: -\}@ header, so Sabela's server never
-depends on @reactive-banana@.
--}
 module Sabela.Export.Reactive (
     exportReactive,
 ) where
@@ -46,14 +30,6 @@ import Sabela.State.SessionManager (getHaskellSession)
 import ScriptHs.Parser (CabalMeta (..))
 import ScriptHs.Render (TrailKind (..), renderCabalScriptHeader)
 
--- ---------------------------------------------------------------------------
--- Public API
--- ---------------------------------------------------------------------------
-
-{- | Export the whole notebook as a headless reactive-banana program. (The
-target argument is accepted for endpoint symmetry but unused: the reactive
-export always covers every widget and its downstream.)
--}
 exportReactive :: App -> Int -> IO Text
 exportReactive app _target = do
     nb <- readNotebook (appNotebook app)
@@ -81,25 +57,12 @@ exportReactive app _target = do
         prelude = exportPreludeDecls (reactiveCells ++ staticCells)
     pure (assemble meta allH prelude widgets renderBody staticStmts)
 
--- ---------------------------------------------------------------------------
--- Reactive cell bodies
--- ---------------------------------------------------------------------------
-
-{- | The render-do-block statements contributed by one reactive cell. Widget
-binds are dropped (their binders become @render@ parameters); a cell with an
-unsupported widget (e.g. a composed @liftA2 (slider…) (slider…)@) is emitted
-commented-out so the program still compiles.
--}
 reactiveCellStmts :: (Text -> TrailKind) -> S.Set Text -> Cell -> [Text]
 reactiveCellStmts resolve binders c
     | cellHasUnsupportedWidget c =
         "-- [sabela:export] cell not auto-translated to FRP (composed/unsupported widget):"
             : map ("-- " <>) (T.lines (cellSource c))
     | otherwise = snd (splitProgram resolve binders [cellSource c])
-
--- ---------------------------------------------------------------------------
--- Widgets
--- ---------------------------------------------------------------------------
 
 data FeedMode = ReadMode | RawMode | UnitMode
 
@@ -149,10 +112,6 @@ mentionsWidgetCtor t =
     any
         (`T.isInfixOf` t)
         ["slider ", "dropdown ", "checkbox ", "textInput ", "button "]
-
--- ---------------------------------------------------------------------------
--- Program assembly
--- ---------------------------------------------------------------------------
 
 assemble ::
     CabalMeta -> Hoisted -> [Text] -> [WInfo] -> [Text] -> [Text] -> Text
@@ -244,7 +203,6 @@ fixedImports =
     , "import Text.Read (readMaybe)"
     ]
 
--- | Inlined FRP runtime helpers so the exported program is self-contained.
 runtimePrelude :: [Text]
 runtimePrelude =
     [ "-- [sabela:export] reactive-banana runtime helpers"
@@ -262,10 +220,6 @@ runtimePrelude =
 
 reactiveMeta :: CabalMeta -> CabalMeta
 reactiveMeta meta = meta{metaDeps = "reactive-banana" : metaDeps meta}
-
--- ---------------------------------------------------------------------------
--- Small helpers
--- ---------------------------------------------------------------------------
 
 intercalateBlank :: [[Text]] -> [Text]
 intercalateBlank = intercalate [""]

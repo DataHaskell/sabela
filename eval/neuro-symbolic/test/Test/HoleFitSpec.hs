@@ -81,8 +81,6 @@ spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
         it "drops the outer annotation, keeping an inner type signature" $
             dropAnnotation "Maybe" "answer = (6 * 7 :: Int) :: Maybe"
                 `shouldBe` "answer = (6 * 7 :: Int)"
-    {- The trigger for head-anchored application synthesis. Strings are the real
-    GHC 9.12 diagnostics gemma4 produced on the revenueTotal bench task. -}
     describe "arityFromError (misapplication trigger)" $ do
         it "reads the expected FUNCTION type of a misapplication" $
             arityFromError

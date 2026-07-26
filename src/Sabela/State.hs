@@ -1,14 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The composition root: build the 'App' record from the work directory and
-runtime config. The record itself, the AI-config subsystem, and the config file
-live in the @Sabela.State.*@ submodules this re-exports, so importers keep
-seeing one 'Sabela.State' surface.
--}
 module Sabela.State (
     newApp,
-
-    -- * Re-exports for convenience
     module Sabela.State.App,
     module Sabela.State.AIConfig,
     module Sabela.State.Config,
@@ -99,10 +92,6 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
         <*> newIORef numCtx0
         <*> newIORef toolLimit0
 
-{- | The AI store to start with: only when there is an HTTP manager AND the
-provider is usable (Ollama needs no key; Anthropic needs one). 'Nothing'
-otherwise — the settings modal configures it later via 'updateAIConfig'.
--}
 initialAIStore ::
     Maybe Manager ->
     Text ->

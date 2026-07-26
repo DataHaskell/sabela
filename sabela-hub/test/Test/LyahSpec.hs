@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The Learn You a Haskell converter: frontmatter handling, Pandoc-attribute
-stripping (heading anchors, labelled spans, image attrs), image-path repointing,
-and the GHCi-transcript splitter (runnable cells vs. static meta-command /
-intentional-error blocks).
--}
 module Test.LyahSpec (spec) where
 
 import qualified Data.Text as T
@@ -18,7 +13,6 @@ import Hub.Gallery.Lyah (
     stripPandocAttrs,
  )
 
--- | A small synthetic chapter exercising each conversion rule.
 fixture :: T.Text
 fixture =
     T.unlines
@@ -101,7 +95,6 @@ spec = do
         it "keeps an intentional-error example as a static text block" $ do
             ("```text\nghci> 5 + \"x\"\n<interactive>:1:1: error: bad\n```" `T.isInfixOf` out)
                 `shouldBe` True
-            -- the erroring input is NOT emitted as a runnable cell
             ("```haskell\n5 + \"x\"\n```" `T.isInfixOf` out) `shouldBe` False
 
         it "renders a .plain block as static text" $

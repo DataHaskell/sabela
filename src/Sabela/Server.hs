@@ -1,23 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Top-level routing + middleware assembly. The Servant types live in
-"Sabela.Server.Api"; per-feature handlers live in sibling modules:
-
-* "Sabela.Server.Static" — embedded HTML + assets + uploads.
-* "Sabela.Server.Export" — the @\/api\/export\/*@ endpoints.
-* "Sabela.Server.Files" — file-explorer endpoints + path safety.
-* "Sabela.Server.Notebook" — notebook GET/load/save + cell mutators.
-* "Sabela.Server.Run" — cell run/reset/restart + IDE + SSE.
-* "Sabela.Server.Ai" — chat lifecycle, AI config, REST bridge.
-
-This module wires those handlers into one 'Application' and owns the
-cross-cutting concerns (bearer-token middleware, request-size cap).
--}
 module Sabela.Server (
     mkApp,
     newApp,
-
-    -- * Exposed for testing
     checkBearer,
     isAiApi,
     proseMarker,
@@ -124,9 +109,6 @@ import Sabela.Server.Static (
  )
 import Sabela.State (App (..), newApp)
 
-{- | Maximum request body size (10 MB). Requests exceeding this are rejected
-  with 413 Payload Too Large.
--}
 maxBodySize :: Int
 maxBodySize = 10 * 1024 * 1024
 
@@ -136,10 +118,6 @@ mkApp app rn =
         limitRequestBody maxBodySize $
             serve fullProxy (server app rn)
 
-{- | Gate the @/api/ai/*@ subtree behind bearer auth whenever
-@SABELA_AI_TOKEN@ is configured. When unset, all requests pass through
-unchanged (the zero-friction local posture: unauthenticated by default).
--}
 aiAuthMiddleware :: Maybe Text -> Middleware
 aiAuthMiddleware Nothing baseApp req sendResp = baseApp req sendResp
 aiAuthMiddleware (Just tok) baseApp req sendResp
@@ -159,17 +137,11 @@ isAiApi :: [Text] -> Bool
 isAiApi ("api" : "ai" : _) = True
 isAiApi _ = False
 
-{- | Pure auth check so it can be unit-tested directly. Uses a constant-time
-compare so the local AI token can't be recovered via early-mismatch timing.
--}
 checkBearer :: Text -> [(HeaderName, BS.ByteString)] -> Bool
 checkBearer tok hdrs = case lookup hAuthorization hdrs of
     Just v -> constEqBS v ("Bearer " <> TE.encodeUtf8 tok)
     Nothing -> False
 
-{- | Length-checked, constant-time 'BS.ByteString' equality (no early-mismatch
-timing leak once the lengths match).
--}
 constEqBS :: BS.ByteString -> BS.ByteString -> Bool
 constEqBS a b =
     BS.length a == BS.length b

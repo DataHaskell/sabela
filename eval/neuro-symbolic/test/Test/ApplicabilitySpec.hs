@@ -30,7 +30,6 @@ import Eval.Applicability (
 header :: Text -> Text
 header arm = T.unlines ["<!-- episode-config", "arm: " <> arm, "-->"]
 
--- | A search-free body: a plain insert-cell trajectory, no discover markers.
 searchFreeBody :: Text
 searchFreeBody =
     T.unlines
@@ -43,17 +42,12 @@ searchFreeBody =
         , ""
         ]
 
--- | A discover-class CALL line with no answering result (lever never fired).
 callOnlyLine :: Text
 callOnlyLine = "- `find_function` {\"query\":\"col\"}\n"
 
--- | One discover-class result header: the surface ANSWERED (lever fired).
 discoverHeader :: Text
 discoverHeader = T.unlines ["## 2. tool (discover)", "", "```", "surface", "```", ""]
 
-{- | A body with @c@ unanswered discover-class call lines and @r@ answering
-result headers; (0, 0) is search-free.
--}
 bodyWith :: Int -> Int -> Text
 bodyWith c r =
     searchFreeBody
@@ -63,11 +57,6 @@ bodyWith c r =
 file :: Text -> Text -> Text
 file arm body = header arm <> body
 
-{- | The three-way law over a generated (lever-fired x body-equal) pair:
-search-free on both arms is the category NA; differing bodies measured; equal
-bodies split on the lever-fired evidence — answered surface = saturated,
-unanswered = dead (VOID). Never conflated.
--}
 expected :: (Int, Int) -> (Int, Int) -> PairCategory
 expected off@(_, r1) on
     | off == (0, 0) && on == (0, 0) = PairNotApplicable

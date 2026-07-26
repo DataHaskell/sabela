@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the env-cache property: 'setupReplProject' must not rewrite an unchanged
-'cabal.project'/'.cabal' (so cabal skips the dependency re-solve on a restart), and
-must rewrite when the metadata changes.
--}
 module Test.ReplProjectSpec (spec) where
 
 import Sabela.Session.Project (

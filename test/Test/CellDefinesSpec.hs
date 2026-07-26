@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The @list_cells@ pure projections: 'cellDefines' (top-level binding names,
-so the weak model reuses real names) and 'cellListEntry' (a cell's metadata plus
-its FULL source, so the model reads the whole notebook in one call instead of a
-@read_cell@ per cell). Both pure.
--}
 module Test.CellDefinesSpec (spec) where
 
 import Data.Aeson (Value (..), toJSON)

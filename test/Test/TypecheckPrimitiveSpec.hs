@@ -38,11 +38,6 @@ spec = describe "flagged no-add type-check feasibility prototype" $ do
             ]
             `shouldBe` replicate 5 OutsideValueSubset
 
-    -- live_test19 §30: `let p = …` followed by an expression was classified
-    -- ValueBindings and spliced whole into `(let { … } in ())`, so the `let`
-    -- keyword nested and the expression sat where only a binding is legal.
-    -- GHC then reported `parse error on input '}'` at a column past the end
-    -- of the submitted line — a diagnostic about text the model never wrote.
     it "routes a binding/expression mix outside the subset instead of mangling it" $ do
         classifyTypecheckInput "let p = [1 :: Int]\nprint p"
             `shouldBe` OutsideValueSubset

@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins the §1.4 atomic admission fold at the REAL @executeTool@ dispatch:
-two simultaneous kernel-needing tool calls share one 'AIStore', and exactly
-one is admitted to the backend while the other is bounced @busy@. This drives
-the production code path (the @admit@ gate in @executeTool@), not a synthetic
-parallel MVar harness, so it covers the live TOCTOU rather than a stand-in.
--}
 module Test.AtomicAdmissionSpec (spec) where
 
 import Control.Concurrent (
@@ -42,17 +36,12 @@ import Sabela.State (App (..))
 import Sabela.State.SessionManager (setHaskellSession)
 import Test.Hspec
 
-{- | A fake backend whose @sbQueryType@ blocks on a barrier and counts each
-arrival, so the test can observe how many callers actually reached the kernel.
-@sbBusy@ stays 'False' — the legacy admission read alone never blocks here, so
-only the atomic gate can keep the second caller out.
--}
 barrierBackend :: IORefCounter -> MVar () -> IO ST.SessionBackend
 barrierBackend reachedRef gate = do
     uid <- newUnique
     let blockingQuery _ = do
             atomicModifyIORef' reachedRef (\n -> (n + 1, ()))
-            readMVar gate -- peek; held until the test fills it
+            readMVar gate
             pure "result"
         backend =
             ST.SessionBackend
@@ -117,11 +106,6 @@ field _ _ = Nothing
 queryInput :: Value
 queryInput = object ["expr" .= ("map fst" :: Text)]
 
-{- | Race two @check_type@ calls through one shared 'AIStore' and
-'executeTool'. The barrier in the backend keeps the admitted caller inside
-the kernel while the loser is decided, so the simultaneity is real. Returns
-(outcomes, number of callers that actually reached the backend).
--}
 raceTwoQueries :: IO ([ToolOutcome], Int)
 raceTwoQueries = do
     reached <- newIORef 0
@@ -136,9 +120,9 @@ raceTwoQueries = do
             putMVar results out
     _ <- forkIO call
     _ <- forkIO call
-    threadDelay 50000 -- let the admitted caller enter the blocking query
+    threadDelay 50000
     n <- readIORef reached
-    putMVar gate () -- release the held query so the winner completes
+    putMVar gate ()
     o1 <- takeMVar results
     o2 <- takeMVar results
     pure ([o1, o2], n)
@@ -158,7 +142,7 @@ spec = describe "atomic admission at the real executeTool dispatch (§1.4)" $ do
 
     it "a lone kernel call is admitted and returns its result" $ do
         gate <- newEmptyMVar
-        putMVar gate () -- pre-open: no blocking for the solo path
+        putMVar gate ()
         reached <- newIORef 0
         backend <- barrierBackend reached gate
         app <- mkApp backend

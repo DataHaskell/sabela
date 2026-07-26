@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R5-T2: denial-legal closure (search-api.md section 8.2): closure is
-scope-keyed like dedup, a repeat replays its OWN evidence, and every close
-carries the best held hit from a final ledger-union sweep.
--}
 module Test.DiscoverClosureSpec (discoverClosureSpec) where
 
 import Control.Monad (forM, forM_)
@@ -83,7 +79,6 @@ missFor q =
   where
     srcs = ["session", "hoogle"]
 
--- | The foreign-scope hit of the barChart replay defect (a plotpkg synonym).
 foreignHit :: DHit
 foreignHit =
     (mkHit "Bar" "Plotly.Types" "plotpkg")
@@ -197,8 +192,6 @@ closeCarriesHeldHitSpec = describe "a close never asserts absence over held evid
         s `shouldSatisfy` T.isInfixOf "hidden"
         s `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: cumulus"
     it "rung-3 give-up advice hands over held evidence for the entity" $ do
-        -- The found lives in another cluster; the missed cluster still NAMES
-        -- the entity (its package), so the give-up must hand the hit over.
         let (_, outs) =
                 script
                     emptyLedger
@@ -226,7 +219,6 @@ closeCarriesHeldHitSpec = describe "a close never asserts absence over held evid
             (led1, _) = script emptyLedger [(key, foundWith "bars" barsHit)]
         fmap (hitText "name") (bestHeldFor (heldEvidence led1) "bars")
             `shouldBe` Just "bars"
-        -- Named by module and by package, not just by symbol name:
         fmap (hitText "name") (bestHeldFor (heldEvidence led1) "cumulus.plot")
             `shouldBe` Just "bars"
         fmap (hitText "name") (bestHeldFor (heldEvidence led1) "cumulus")
@@ -268,8 +260,6 @@ postCloseConsistencySpec = describe "post-close consistency (R5.7)" $
 determinismSpec :: Spec
 determinismSpec = describe "the ledger is deterministic (R3.7)" $
     it "two independent evaluations of one query over one state agree" $ do
-        -- Two runs assembled from separately constructed inputs (never the
-        -- same thunk compared to itself): interleavings, closes, repeats.
         let mkInputs () =
                 [ (requestKey q a, foundWith q barsHit)
                 | q <- ["bars", "gust"]

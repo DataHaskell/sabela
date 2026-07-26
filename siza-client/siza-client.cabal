@@ -52,6 +52,7 @@ library
                       Siza.Agent.Loop.Route
                       Siza.Agent.EmitLedger
                       Siza.Agent.Chat
+                      Siza.Agent.Compact
                       Siza.Agent.Check
                       Siza.Agent.Check.Gate
                       Siza.Agent.Check.Vet
@@ -177,6 +178,8 @@ test-suite siza-client-test
                       Test.DiscoverEmissionSpec
                       Test.DiscoverEnvelopeSpec
                       Test.DiscoverHiddenDbSpec
+                      Test.ArtifactSpec
+                      Test.CompactSpec
                       Test.DiscoverHackageSpec
                       Test.DiscoverHistorySpec
                       Test.DiscoverClosureSpec

@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Controlled-catalogue suite per testing-plan R10(a): the four-state install
-resolver and union merge exercised over SYNTHETIC packages, with a false-denial
-ledger asserting 0 over the whole catalogue, plus bench-shape fixtures as
-secondary checks (granite-shaped hidden card, D.col alias, displayHtml).
--}
 module Test.DiscoverCatalogueSpec (discoverCatalogueSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -108,7 +103,6 @@ discoverCatalogueSpec =
                     stateOf v `shouldBe` "found"
                     firstHit v "name" `shouldBe` "col"
 
--- | The (query, state) denial entries for one discoverable name.
 denialOf :: Text -> IO [(Text, Text)]
 denialOf n = do
     v <- runCat n
@@ -124,7 +118,6 @@ consultedSources v = case field "consulted" v of
     Just (Array a) -> map (textField "source") (toList a)
     _ -> []
 
--- | Bench-shape mock: granite installed-but-hidden, bars in Graphics.Granite.
 graniteCall :: ToolName -> Value -> IO (Either Text ToolOutcome)
 graniteCall ListCells _ =
     pure (Right (ToolOk (object ["cells" .= ([] :: [Value])])))
@@ -161,7 +154,6 @@ graniteCall SearchCapability _ =
             ]
 graniteCall _ _ = pure (Left "unsupported")
 
--- | Bench-shape mock: the notebook imports DataFrame qualified as D.
 dataframeCall :: ToolName -> Value -> IO (Either Text ToolOutcome)
 dataframeCall ListCells _ =
     pure . Right . ToolOk $

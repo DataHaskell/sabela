@@ -1,15 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Re-shell a gallery dashboard\/notebook export into the current template.
-
-An export is the template with its @\/*__SABELA_INJECT__*\/@ placeholder
-replaced by @window.__SABELA_STATIC__ = <json>;@ (plus, for notebook-mode
-exports, the render-mode flag and the markdown literal). When the template's
-chrome moves on, an old export keeps its stale chrome. 'reshell' lifts the
-injected data out of the old export and drops it into the current template, so
-the outputs are preserved exactly with no re-run. Shares its logic with the
-standalone cabal script @tools\/reshell-dashboard.hs@.
--}
 module Hub.Dashboard.Reshell (
     reshell,
     extractObject,
@@ -27,10 +17,6 @@ import qualified Data.Text.Encoding as TE
 placeholder :: Text
 placeholder = "/*__SABELA_INJECT__*/"
 
-{- | Re-shell @src@ (an old export) into @tmpl@ (the current template). 'Left'
-on a missing placeholder, an absent @__SABELA_STATIC__@ payload, or a payload
-that is not valid JSON.
--}
 reshell :: Text -> Text -> Either String Text
 reshell src tmpl
     | not (placeholder `T.isInfixOf` tmpl) =
@@ -54,19 +40,12 @@ reshell src tmpl
                     (\v -> "\nwindow." <> var <> " = " <> v <> ";")
                     (extractString src var)
 
-{- | The literal escapes @\<\/@ as @\<\\\/@ for script safety; undo that and the
-payload must parse as JSON.
--}
 validJson :: Text -> Bool
 validJson static =
     isJust (decodeStrict (TE.encodeUtf8 unescaped) :: Maybe Value)
   where
     unescaped = T.replace "<\\/" "</" static
 
-{- | Return the @{...}@ object literal assigned to @window.\<var\>@, verbatim
-(brace-balanced, string-aware). 'Nothing' if the anchor is absent or the value
-is not an object literal.
--}
 extractObject :: Text -> Text -> Maybe Text
 extractObject src var = do
     body <- afterAnchor src var
@@ -88,9 +67,6 @@ extractObject src var = do
              in if d == 0 then Just (c : acc) else scan cs d False False (c : acc)
         | otherwise = scan cs depth False False (c : acc)
 
-{- | Return the @"..."@ string literal assigned to @window.\<var\>@, verbatim
-(escape-aware). 'Nothing' if the anchor is absent or the value is not a string.
--}
 extractString :: Text -> Text -> Maybe Text
 extractString src var = do
     body <- afterAnchor src var
@@ -105,7 +81,6 @@ extractString src var = do
         | c == '"' = Just (c : acc)
         | otherwise = scan cs False (c : acc)
 
--- | The text following @window.\<var\> = @, with leading whitespace dropped.
 afterAnchor :: Text -> Text -> Maybe Text
 afterAnchor src var
     | T.null rest = Nothing
@@ -114,7 +89,6 @@ afterAnchor src var
     anchor = "window." <> var <> " = "
     (_, rest) = T.breakOn anchor src
 
--- | Replace the first occurrence of @needle@ in @hay@ with @repl@.
 replaceFirst :: Text -> Text -> Text -> Text
 replaceFirst needle repl hay
     | T.null rest = hay

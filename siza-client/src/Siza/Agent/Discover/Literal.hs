@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Literal-constructibility of a type (R3.10): the atoms and composites a cell
-can write directly, and the canonical literal for each. Split from
-"Siza.Agent.Discover.Goal" for the module-size cap; the goal ranker uses
-'literalConstructible' to exclude these from genuine gaps, the candidate
-synthesiser uses 'literalFill' to fill them instead of holing them.
--}
 module Siza.Agent.Discover.Literal (
     literalConstructible,
     literalFill,
@@ -14,16 +8,9 @@ module Siza.Agent.Discover.Literal (
 import Data.Text (Text)
 import qualified Data.Text as T
 
--- | The scalar atoms an argument can be filled with directly, never a goal.
 literalConstructible :: [Text]
 literalConstructible = map fst scalarLiterals
 
-{- | A canonical paste-valid literal for each scalar an argument can be filled
-with directly — the atoms that never need a producer hunt (R3.10). @Text@ uses
-a string literal (OverloadedStrings is a Sabela default extension), and
-@FilePath@ is @String@ under another name: omitting it made @readCsv ::
-FilePath -> IO DataFrame@ derive a standing hunt for a producer of a path.
--}
 scalarLiterals :: [(Text, Text)]
 scalarLiterals =
     [ ("Int", "0")
@@ -39,12 +26,6 @@ scalarLiterals =
     , ("Ordering", "EQ")
     ]
 
-{- | A canonical literal for a type built ONLY from literal-constructible atoms,
-lists, and tuples ([(Text, Double)] → [("", 0.0)]); 'Nothing' for any type
-carrying a genuine gap, so that gap stays a typed hole (R3.10). Purely
-type-syntactic: it fills what a cell can write without a producer, holes the
-rest — decided by the type, never a library.
--}
 literalFill :: Text -> Maybe Text
 literalFill ty0 = case T.strip ty0 of
     t
@@ -60,10 +41,6 @@ literalFill ty0 = case T.strip ty0 of
   where
     normType = T.unwords . T.words
 
-{- | The text a matching pair of outer @open@\/@close@ brackets wraps, when the
-opener at index 0 is closed by the character at the very end (depth-aware over
-that one bracket kind, so @[(a, b)]@ unwraps to @(a, b)@).
--}
 wrappedIn :: Char -> Char -> Text -> Maybe Text
 wrappedIn open close t
     | matches = Just (T.dropEnd 1 (T.drop 1 t))
@@ -79,7 +56,6 @@ wrappedIn open close t
         | c == close = if d - 1 == 0 then i == n - 1 else go (d - 1) rest
         | otherwise = go d rest
 
--- | Split on top-level commas only (paren\/bracket depth aware).
 splitTopCommas :: Text -> [Text]
 splitTopCommas = map (T.strip . T.pack) . go (0 :: Int) "" . T.unpack
   where

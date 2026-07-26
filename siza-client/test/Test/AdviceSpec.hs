@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R8-T1 (search-api.md 10): dedup participation is not assertion strength —
-every found answer dedups from its 2nd occurrence, any stratum; strata 1-5
-alone assert (11.1). Plus the 'heldHitLine' disclose-not-truncate clamp audit.
--}
 module Test.AdviceSpec (adviceSpec) where
 
 import Control.Monad (forM_)
@@ -35,9 +31,6 @@ envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 hkT :: HackageInfo
 hkT = HackageInfo True []
 
-{- | A found envelope whose single hit has the given kind (nullary type, so
-no standing goal interferes with the dedup path under test).
--}
 foundKind :: MatchKind -> Text -> Text -> Value
 foundKind kind q name =
     discoverEnvelope envT (interpret envT q) 8 [okAnswer "session" [hit]] hkT
@@ -76,8 +69,6 @@ adviceSpec = describe "dedup participation vs assertion strength (R8-T1)" $ do
                             led1
                 stateOf out1 `shouldBe` "found"
                 stateOf out2 `shouldBe` "duplicate"
-                -- From the SECOND occurrence, referencing call 1 — never a
-                -- 30-turn wall (the barChart six-replay class).
                 textField "ref" out2 `shouldSatisfy` T.isInfixOf "call 1"
 
     describe "the reference discloses evidence strength" $ do

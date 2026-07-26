@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pins Phase 0.0 Confounder 1: kernel-needing discovery tools warm a cold
-GHCi once at the @executeTool@ dispatch, so they work before the first cell is
-run instead of failing with "No live Haskell session". Drives the real
-production path (the @kernelGuarded@ warm-up in @Sabela.AI.Capabilities@).
--}
 module Test.DiscoveryToolsPreSessionSpec (spec) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -57,9 +52,6 @@ inertRn =
         , rnWidgetCell = \_ -> pure ()
         }
 
-{- | A no-op backend with a stable id so we can detect whether warming replaced
-a live session (it must not).
--}
 sentinelBackend :: IO ST.SessionBackend
 sentinelBackend = do
     uid <- newUnique
@@ -93,11 +85,6 @@ runDiscovery app tool input = do
     ct <- newCancelToken
     executeTool app store inertRn ct tool input
 
-{- | Drive a discovery tool on a cold App: it triggers the @kernelGuarded@
-warm-up. Gated on cabal and on the warm actually producing a session — a
-sandbox that cannot build the repl project skips rather than fails, so the
-assertion only runs where the warm-up could materialise GHCi.
--}
 warmThenAssert :: Text -> Value -> (ToolOutcome -> Expectation) -> Expectation
 warmThenAssert tool input assertOut = do
     cabal <- findExecutable "cabal"

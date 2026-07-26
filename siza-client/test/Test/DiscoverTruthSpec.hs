@@ -1,11 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Truthfulness reaches every arm (search-api.md sections 0/2/7, R2-T3):
-arm-independence over the WHOLE synthetic catalogue (the lever changes
-enrichment only, never answerability) and stage-0 exact-name findability with
-every fuzzy channel disabled. Ledger properties live in
-Test.DiscoverLedgerSpec; turn-0 seeding in Test.DiscoverSeedSpec.
--}
 module Test.DiscoverTruthSpec (discoverTruthSpec) where
 
 import Control.Monad (forM)
@@ -30,8 +24,6 @@ discoverTruthSpec =
         describe "discover truthfulness on every arm (R2-T3)" $ do
             armIndependenceSpec
             stageZeroSpec
-
--- Arm independence (section 2) ---------------------------------------------
 
 armIndependenceSpec :: Spec
 armIndependenceSpec = describe "arm independence: the lever never changes answerability" $ do
@@ -62,10 +54,6 @@ consultedStatus src v =
         , textField "source" c == src
         ]
 
-{- | The @semantic@ flag of each non-stage-0 capability call made for a
-prose query. Stage-0's exact-tier lookups (@exact: true@) run semantic-off
-on EVERY arm by design (section 2) and are excluded from the lever check.
--}
 recordSemantic :: Bool -> IO [Maybe Bool]
 recordSemantic lever = do
     ref <- newIORef []
@@ -87,11 +75,6 @@ recordSemantic lever = do
         _ -> Nothing
     exactArg _ = Nothing
 
--- Stage-0 exact-name channel (R3.1, section 7) ------------------------------
-
-{- | Fuzzy channels OFF: name scans and non-exact capability calls answer
-empty; module browses and the exact-name capability lookup still work.
--}
 lookupOnly :: ToolName -> Value -> IO (Either Text ToolOutcome)
 lookupOnly FindFunction args
     | moduleShapedQ (argText "query" args) = simCall FindFunction args
@@ -101,7 +84,6 @@ lookupOnly SearchCapability args
     | otherwise = pure (Right (ToolOk (emptyArr "hits")))
 lookupOnly tn args = simCall tn args
 
--- | The hoogle channel fully down as well: only the session lookup answers.
 sessionOnly :: ToolName -> Value -> IO (Either Text ToolOutcome)
 sessionOnly SearchCapability _ = pure (Right (ToolOk (emptyArr "hits")))
 sessionOnly tn args = lookupOnly tn args

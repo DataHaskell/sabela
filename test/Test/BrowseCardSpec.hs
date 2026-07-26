@@ -1,12 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The compact module card a browse-route discover answer renders to.
-Measured live: GHC's PERFECT answers (did-you-mean with package flags,
-hidden-package notes) reached the model as raw double-encoded JSON blobs with
-the same paragraph repeated 11-15x — the one load-bearing line buried twice.
-The card decodes the diagnostic (via "Sabela.Errors.Json") and ships ONLY the
-distilled fields.
--}
 module Test.BrowseCardSpec (spec) where
 
 import Data.Aeson (Value (..))
@@ -22,12 +15,10 @@ import Sabela.AI.Capabilities.BrowseCard (
     packageOfUnit,
  )
 
--- | Field accessor for card assertions.
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (K.fromText k) o
 field _ _ = Nothing
 
--- Verbatim WIRE fixture (gate transcript): hidden-package, note repeated.
 hiddenBlob :: Text
 hiddenBlob =
     "{\"version\":\"1.1\",\"ghcVersion\":\"ghc-9.12.2\",\"span\":null,\
@@ -42,7 +33,6 @@ hiddenBlob =
     \it.\\n(Note: this unloads all the modules in the current scope.)\"],\
     \\"hints\":[]}"
 
--- Verbatim WIRE fixture (bench transcript): could-not-find + did-you-mean.
 didYouMeanBlob :: Text
 didYouMeanBlob =
     "{\"version\":\"1.1\",\"ghcVersion\":\"ghc-9.12.2\",\"span\":null,\
@@ -52,8 +42,6 @@ didYouMeanBlob =
     \dataframe-0.3.3.7)\\n  DataFrame (needs flag -package-id \
     \dataframe-1.0.0.0)\"],\"hints\":[]}"
 
--- Same wire shapes, DIFFERENT subject (the laws must generalise past the
--- eval corpus's packages).
 hiddenBlobOther :: Text
 hiddenBlobOther =
     "{\"version\":\"1.1\",\"ghcVersion\":\"ghc-9.12.2\",\"span\":null,\
@@ -75,7 +63,6 @@ cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
             field "package" card `shouldBe` Just (String "http-client")
             field "cabal" card
                 `shouldBe` Just (String "-- cabal: build-depends: http-client")
-            -- The raw blob must NOT ride along in any field.
             T.isInfixOf "ghcVersion" (T.pack (show card)) `shouldBe` False
         it "generalises to any package (same shape, different subject)" $ do
             let card = browseCard "Text.Pretty.Simple" hiddenBlobOther
@@ -107,10 +94,6 @@ cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
             let card = browseCard "Tiny.Module" "one :: Int\ntwo :: Int"
             field "more" card `shouldBe` Nothing
             field "total" card `shouldBe` Just (Number 2)
-        -- live_test20: Sabela.Notebook's card showed 24 of 227 exports and
-        -- every one was a type declaration or a record continuation, because
-        -- `type Canvas :: *` contains " :: " and banded as a value signature.
-        -- `group`, `plot` and `animate` were all in the module and none showed.
         it "ranks the verbs first when type declarations come first in :browse" $ do
             let raw =
                     T.unlines
@@ -161,12 +144,6 @@ cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
         it "leaves an unversioned name alone" $
             packageOfUnit "containers" `shouldBe` "containers"
 
-{- | live_test41: after the install, @ReadOptions@ queries hit the LIVE card,
-which answered operator-soup-first while the store card for the same module
-answered ranked. One relevance scale for every card shape — and declarations
-score by their declared name, which is what a constructor-hunting query
-(@ReadOptions@, @HeaderSpec@) is about.
--}
 queryRankSpec :: Spec
 queryRankSpec = describe "the live card ranks for the query that asked" $ do
     let raw =

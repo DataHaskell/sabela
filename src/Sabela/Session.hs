@@ -1,9 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Long-lived GHCi session state and the cell entry points: marker
-placement, drains, interrupts, and the timeout→interrupt→resync→destroy
-pipeline. Spawn/teardown live in 'Sabela.Session.Proc' and ".Process".
--}
 module Sabela.Session where
 
 import Control.Concurrent (
@@ -65,7 +61,6 @@ data Session = Session
     { sessProcSess :: ProcSession
     , sessLock :: MVar ()
     , sessQueryLock :: MVar ()
-    -- ^ Serialises introspection queries off the cell run-lock (case 20).
     , sessErrBuf :: IORef [Text]
     , sessCounter :: IORef Int
     , sessConfig :: SessionConfig
@@ -73,33 +68,20 @@ data Session = Session
     , sessBusy :: IORef Bool
     , sessNonce :: Int
     , sessLastInterruptTime :: IORef (Maybe UTCTime)
-    -- ^ When the kernel last actually signalled an interrupt (case 25).
     , sessionGen :: IORef Int
-    -- ^ Generation tag; bumps on restart so clients can discard stale results.
     , sessBaselineBindings :: IORef [Text]
-    -- ^ Prelude-injected bindings, snapshotted at warmup so 'queryBindings' scrubs them.
     }
 
 data SessionConfig = SessionConfig
     { scProjectDir :: FilePath
     , scWorkDir :: FilePath
     , scCabalStoreDir :: Maybe FilePath
-    {- ^ Optional per-session Cabal store. Disposable trials set this to a
-    temporary directory so dependency builds cannot mutate the live store.
-    -}
     , scExecutionTimeoutUs :: Int
-    -- ^ Per-cell execution budget (microseconds), from 'mkSessionConfig'.
     , scResyncTimeoutUs :: Int
-    -- ^ Post-timeout resync window (microseconds).
     , scJsonDiagnostics :: Bool
-    -- ^ Session GHC supports @-fdiagnostics-as-json@ (GHC ≥ 9.8).
     }
     deriving (Eq, Show)
 
-{- | Build a 'SessionConfig', reading the execution budget from
-@SABELA_CELL_TIMEOUT_SECONDS@ (default 30 minutes). The single chokepoint every
-real caller routes through, so the live session and exports never drift.
--}
 mkSessionConfig :: FilePath -> FilePath -> IO SessionConfig
 mkSessionConfig projDir workDir = do
     tc <- readTimeoutConfig
@@ -114,10 +96,6 @@ mkSessionConfig projDir workDir = do
             , scJsonDiagnostics = jsonDiag
             }
 
-{- | Does the session GHC support @-fdiagnostics-as-json@ (added in GHC 9.8.1)?
-Probe the resolved compiler — the @GHC@ env override 'ghciProcessSpec' honours,
-else @ghc@ — once at config time; assume no on any failure (textual fallback).
--}
 detectJsonDiagnostics :: IO Bool
 detectJsonDiagnostics = do
     ghc <- fromMaybe "ghc" <$> lookupEnv "GHC"
@@ -128,7 +106,6 @@ detectJsonDiagnostics = do
         Right (ExitSuccess, out, _) -> versionAtLeast [9, 10] (parseVersion out)
         _ -> False
 
--- | The numeric components of a @ghc --numeric-version@ string, e.g. [9,12,2].
 parseVersion :: String -> [Int]
 parseVersion s =
     [ n
@@ -136,7 +113,6 @@ parseVersion s =
     , Right (n, _) <- [TR.decimal p]
     ]
 
--- | Lexicographic @>=@ on version components, padding the candidate with zeros.
 versionAtLeast :: [Int] -> [Int] -> Bool
 versionAtLeast req v = take (length req) (v ++ repeat 0) >= req
 
@@ -149,26 +125,19 @@ sessProc = psProc . sessProcSess
 sessLines :: Session -> OutQueue
 sessLines = psQueue . sessProcSess
 
--- | The session's configured per-cell execution budget, in microseconds.
 executionTimeoutUs :: Session -> Int
 executionTimeoutUs = scExecutionTimeoutUs . sessConfig
 
--- | How long the post-timeout resync waits for its fresh marker.
 resyncTimeoutUs :: Session -> Int
 resyncTimeoutUs = scResyncTimeoutUs . sessConfig
 
 runBlock :: Session -> Text -> IO (Text, Text)
 runBlock sess block = runBlockStreaming sess block (\_ -> pure ())
 
--- | Run one block with a caller-specific wall-clock budget.
 runBlockWithTimeout :: Int -> Session -> Text -> IO (Text, Text)
 runBlockWithTimeout budgetUs sess block =
     runBlockStreamingWithTimeout budgetUs sess block (\_ -> pure ())
 
-{- | Run a cell's rendered block. On timeout: group SIGINT, then resync
-on a fresh marker; if the session stays silent it is destroyed. EOF
-mid-run (dead interpreter) also destroys and surfaces as a crash.
--}
 runBlockStreaming :: Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
 runBlockStreaming sess =
     runBlockStreamingWithTimeout (executionTimeoutUs sess) sess
@@ -179,10 +148,6 @@ runBlockStreamingWithTimeout budgetUs sess block onLine =
     withMVar (sessLock sess) $ \_ ->
         runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine
 
-{- | The marker/timeout body for a caller already holding 'sessLock'. This is
-used by the atomic pure-live transaction, which must retain both session locks
-across its type proof, binding fingerprints, and evaluation.
--}
 runBlockStreamingUnlockedWithTimeout ::
     Int -> Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
 runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine = do
@@ -223,12 +188,6 @@ finishRunWithTimeout budgetUs sess Nothing = do
                 )
         _ -> killAndRespawnWithTimeout budgetUs sess
 
-{- | The interrupt rung was ignored within the resync window: escalate the
-kill ladder (INT → TERM → KILL via the portable group wrappers), reap, and
-surface the killed-and-will-respawn notice. The handler layer catches this,
-broadcasts the crash, and the next run spawns a fresh idle kernel — so the
-kernel self-recovers with no human (stress cases 8–10, 17).
--}
 killAndRespawn :: Session -> IO (Text, Text)
 killAndRespawn sess = killAndRespawnWithTimeout (executionTimeoutUs sess) sess
 
@@ -243,15 +202,9 @@ killAndRespawnWithTimeout budgetUs sess = do
             )
         )
 
--- | Raw group SIGINT, used by the internal timeout path unconditionally.
 interruptSessionRaw :: Session -> IO ()
 interruptSessionRaw = interruptGroup . sessProcSess
 
-{- | Public interrupt: only signals while a cell run is actually
-draining, so an idle click can never reach the interpreter's group.
-Records the instant it actually signals, so a request stamped before
-this interrupt can be dropped as stale ('isRequestStale').
--}
 interruptIfBusy :: Session -> IO ()
 interruptIfBusy sess = do
     busy <- readIORef (sessBusy sess)
@@ -259,15 +212,11 @@ interruptIfBusy sess = do
         interruptSessionRaw sess
         markInterrupt sess
 
--- | Record that the kernel just interrupted, stamping the current instant.
 markInterrupt :: Session -> IO ()
 markInterrupt sess = do
     now <- getCurrentTime
     writeIORef (sessLastInterruptTime sess) (Just now)
 
-{- | A request is stale when it was stamped before the kernel's last
-interrupt — its queued run must not fire after the user interrupted.
--}
 isRequestStale :: Session -> UTCTime -> IO Bool
 isRequestStale sess reqTime = do
     mLast <- readIORef (sessLastInterruptTime sess)
@@ -276,25 +225,12 @@ isRequestStale sess reqTime = do
 setBusy :: Session -> Bool -> IO ()
 setBusy sess = writeIORef (sessBusy sess)
 
-{- | Lock-free busy check: the run-lock is empty while 'runBlockStreaming'
-holds it, so an empty lock ('tryReadMVar' returns 'Nothing') means a cell or
-query is running. Answers without ever blocking, so a status probe can run
-while a cell is mid-flight.
--}
 isBusy :: Session -> IO Bool
 isBusy sess = isNothing <$> tryReadMVar (sessLock sess)
 
-{- | The live backend generation. Born at @firstSessionGen@; a restart
-seeds a strictly-higher one so a client can discard a result tagged with an
-older generation (stress case 36).
--}
 readSessionGen :: Session -> IO Int
 readSessionGen = readIORef . sessionGen
 
-{- | Reap-probe for a self-exited leader. This reaps outside the
-kill-lock; 'destroySession' tolerates that by never signalling a pgid
-once the probe there reports an exit.
--}
 checkProcessAlive :: Session -> IO ()
 checkProcessAlive sess = do
     mExit <- getProcessExitCode (sessProc sess)
@@ -317,9 +253,6 @@ getMarker sess = do
 
 placeMarker :: Session -> Marker -> IO ()
 placeMarker sess (Marker mk) =
-    -- A bare @putStrLn@ statement rebinds GHCi's special @it@ to @()@.
-    -- @:cmd@ performs the same framed write without creating an interactive
-    -- result binding, so protocol bookkeeping stays invisible to notebooks.
     sendRaw sess $
         ":cmd ((Prelude.>>) (Prelude.putStrLn "
             ++ show (T.unpack mk)
