@@ -26,7 +26,11 @@ corpus =
     , ("read the parquet file", Just LoadAction, Just "data import")
     , ("compute the average price", Just ComputeAction, Just "aggregation function")
     , ("aggregate sales by region", Just ComputeAction, Just "aggregation function")
-    , ("install the plotting library", Just InstallAction, Just "package installation")
+    ,
+        ( "install the plotting library"
+        , Just InstallAction
+        , Just "package installation"
+        )
     , ("what is a Monad", Nothing, Nothing)
     , ("divvy", Nothing, Nothing)
     ]
@@ -48,8 +52,9 @@ spec = describe "HoogleIntent action classifier" $ do
             classifyAction "animate it" `shouldBe` Just RenderAction
             classifyAction "use hgg to create a scatter plot" `shouldBe` Just RenderAction
 
-        it "every render-class request emits an action-shaped query, never just the object noun alone" $
-            mapM_
+        it
+            "every render-class request emits an action-shaped query, never just the object noun alone"
+            $ mapM_
                 ( \req ->
                     intentQueries req
                         `shouldSatisfy` any (`elem` actionNeedQueries RenderAction)

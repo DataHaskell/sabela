@@ -64,7 +64,7 @@ chatOptsParser =
         option
             auto
             ( long "timeout"
-                <> value 300
+                <> value 1800
                 <> showDefault
                 <> metavar "SECS"
                 <> help "Per-request wall-clock cap"

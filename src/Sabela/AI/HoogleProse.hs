@@ -6,6 +6,7 @@ package-scoped rescue (never silently drops a term naming a package).
 -}
 module Sabela.AI.HoogleProse (
     hoogleQuery,
+    hoogleQueryInScope,
     hoogleQueryWith,
     packageScopedQueries,
     isPackageRow,
@@ -21,16 +22,27 @@ import Control.Monad (filterM)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Sabela.AI.HoogleClient (HoogleHit (..), queryAllDbs)
 import Sabela.AI.HoogleIntent (intentQueries)
-import Sabela.AI.HoogleRank (rankHits)
+
+import Sabela.AI.HoogleRank (rankHits, rankHitsInScope)
 
 {- | Run a hoogle query (free text, type, or name) against the LOCAL hoogle
 CLI only, returning ranked rich hits; empty on any failure, never a throw.
 @SABELA_HOOGLE_BIN@ / @SABELA_HOOGLE_DB@ override binary and database.
 -}
 hoogleQuery :: Int -> Text -> IO [HoogleHit]
-hoogleQuery = hoogleQueryWith rawQuery
+hoogleQuery = hoogleQueryInScope Set.empty
+
+{- | 'hoogleQuery' under B2's scope gate: a hit from a package already in
+scope outranks one that is not, so an out-of-scope exact name cannot
+displace an in-scope alternative. Passing an empty set is the ungated
+behaviour.
+-}
+hoogleQueryInScope :: Set Text -> Int -> Text -> IO [HoogleHit]
+hoogleQueryInScope inScope = hoogleQueryWithRank (rankHitsInScope inScope) rawQuery
 
 {- | 'hoogleQuery' over an injectable runner (the ladder tests' seam). Prose
 widens progressively: denoised phrase, keywords, the action need, the
@@ -38,7 +50,15 @@ package-scoped rescue, bigrams, round-robin singles.
 -}
 hoogleQueryWith ::
     (Int -> Text -> IO [HoogleHit]) -> Int -> Text -> IO [HoogleHit]
-hoogleQueryWith run k query
+hoogleQueryWith = hoogleQueryWithRank rankHits
+
+hoogleQueryWithRank ::
+    ([HoogleHit] -> [HoogleHit]) ->
+    (Int -> Text -> IO [HoogleHit]) ->
+    Int ->
+    Text ->
+    IO [HoogleHit]
+hoogleQueryWithRank ranker run k query
     | T.null (T.strip query) = pure []
     | isTypeOrName query || isSingleToken query = takeRanked <$> run k query
     | otherwise = firstNonEmpty stages
@@ -56,7 +76,7 @@ hoogleQueryWith run k query
         , concat <$> mapM (run k) (bigrams kws)
         , roundRobin <$> mapM (run k) kws
         ]
-    takeRanked = take (max 0 k) . rankHits
+    takeRanked = take (max 0 k) . ranker
     firstNonEmpty [] = pure []
     firstNonEmpty (s : ss) = do
         hits <- takeRanked <$> s

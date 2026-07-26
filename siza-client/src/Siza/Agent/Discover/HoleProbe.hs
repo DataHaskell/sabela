@@ -12,6 +12,9 @@ compiler accepted whole is ever returned; partial states stay in here.
 -}
 module Siza.Agent.Discover.HoleProbe (
     ProbeDispatch,
+    factSignature,
+    groundedTarget,
+    probeGroundedType,
     probeTargetType,
     resolveCandidate,
     synthesisRoundCap,
@@ -21,7 +24,9 @@ import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
+import qualified Data.Text as T
 
 import Sabela.AI.HoleProbe (
     holeProbeFacts,
@@ -32,6 +37,7 @@ import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Discover.Candidate (candidateCellFrom, candidateGaps)
 import Siza.Agent.Discover.Facts (foldFacts)
+import Siza.Agent.Discover.Goal (producesGoal)
 
 type ProbeDispatch = ToolCall -> IO (Either Text ToolOutcome)
 
@@ -53,6 +59,39 @@ probeTargetType dispatch ty = do
         [] -> [noProducerFact ty]
         facts -> facts
 
+{- | 'probeTargetType' under G3 task 2's precondition: a target type is
+probed only when something in reachable scope actually produces it. An
+UNGROUNDED type — one inferred from the shape of a query string — is
+discarded without dispatching, so no probe runs at all.
+
+live_test9 is the specimen: the harness conjured @Frequency@ from the query
+token @Sine@ (an ALUT constructor, for a plotting request), burned three
+probes proving it had no producers, and then served those three non-facts in
+every subsequent nudge for the rest of the episode.
+-}
+probeGroundedType :: ProbeDispatch -> [Text] -> Text -> IO [Text]
+probeGroundedType dispatch held ty
+    | groundedTarget held ty = probeTargetType dispatch ty
+    | otherwise = pure []
+
+{- | Does anything the ledger holds actually produce @ty@? The same producer
+test the goal ledger uses (G5 task 1), applied to a probe target.
+-}
+groundedTarget :: [Text] -> Text -> Bool
+groundedTarget held ty =
+    not (T.null (T.strip ty))
+        && any (producesGoal ty) (mapMaybe factSignature held)
+
+{- | The signature of a held fact, as @harvestFacts@ shapes them
+(@`name` :: sig — found in M (pkg)@); 'Nothing' for a non-signature fact.
+-}
+factSignature :: Text -> Maybe Text
+factSignature f = case T.breakOn " :: " f of
+    (_, rest)
+        | not (T.null rest) ->
+            Just (T.strip (T.takeWhile (/= '—') (T.drop 4 rest)))
+    _ -> Nothing
+
 -- | The probe's conclusions: the server's own, else parsed from its diagnostic.
 answerFacts :: Value -> [Text]
 answerFacts v = case textsAt "answer" v of
@@ -69,7 +108,8 @@ no gap is open, when a probe adds nothing new, or at the round cap. The
 returned candidate is 'Just' only when @try@ accepted it whole, so a partial
 fill can never reach the model.
 -}
-resolveCandidate :: ProbeDispatch -> Maybe Text -> [Text] -> IO ([Text], Maybe Text)
+resolveCandidate ::
+    ProbeDispatch -> Maybe Text -> [Text] -> IO ([Text], Maybe Text)
 resolveCandidate dispatch mDraft = go synthesisRoundCap
   where
     go k facts = case openGaps facts of

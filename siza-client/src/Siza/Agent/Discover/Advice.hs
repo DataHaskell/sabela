@@ -158,10 +158,7 @@ are held — the advice must only ever name arguments discover offers.
 -}
 factsClause :: [Text] -> Text
 factsClause facts = case facts of
-    [] ->
-        ": nothing held bears on this yet — discover a package or module \
-        \name (narrow with module= or package=, or list a topic's packages \
-        \with mode=\"inventory\"), or act"
+    [] -> ": nothing held bears on this yet"
     fs -> ": " <> T.intercalate "; " fs
 
 {- | The miss cluster (R5.6, section 11.1): the lowercased resolved target

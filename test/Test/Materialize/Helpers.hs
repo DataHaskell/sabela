@@ -7,6 +7,7 @@ module Test.Materialize.Helpers (
     newPackageCandidate,
     requireCompleted,
     nsToSeconds,
+    hasCompleteMarker,
     listCacheBuckets,
     requireSnapshot,
 ) where
@@ -65,6 +66,7 @@ newPackageCandidate pkg =
         , candidateSetup = ""
         , candidateExpression = Just "1 + (1 :: Int)"
         , candidateReplacesCellId = Nothing
+        , candidateDeliberate = False
         }
 
 requireCompleted :: IO DisposableResult -> IO DisposableResult
@@ -77,6 +79,12 @@ requireCompleted action = do
 
 nsToSeconds :: Word64 -> Double
 nsToSeconds ns = fromIntegral ns / 1e9
+
+{- | Is a bucket marked complete, i.e. usable as a cache HIT? A shelved
+(budget-breached) bucket keeps its store but never this marker.
+-}
+hasCompleteMarker :: FilePath -> FilePath -> IO Bool
+hasCompleteMarker root bucket = doesFileExist (root </> bucket </> ".complete")
 
 listCacheBuckets :: FilePath -> IO [FilePath]
 listCacheBuckets root = do

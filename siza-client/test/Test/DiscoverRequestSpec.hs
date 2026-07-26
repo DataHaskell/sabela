@@ -217,10 +217,13 @@ discoverRequestSpec = describe "discover request schema (R1.7/R2.7/R2.8)" $ do
             requestKey "lull" (args [("limit", Number (fromIntegral defaultLimit))])
                 `shouldBe` requestKey "lull" (args [])
 
-    describe "history advice names only shipped knobs (carryover #4, R5.6)" $ do
-        it "factsClause points at the now-shipped inventory mode" $ do
+    describe "the held-facts clause states, it does not advise" $ do
+        -- It used to end "discover a package or module name (narrow with
+        -- module= ...), or act" — tool instructions on an empty ledger.
+        it "an empty ledger says only that nothing is held" $ do
             let advice = T.toLower (factsClause [])
-            advice `shouldSatisfy` T.isInfixOf "inventory"
+            forM_ ["inventory", "narrow with", "or act", "discover a"] $ \p ->
+                (p, p `T.isInfixOf` advice) `shouldBe` (p, False)
         it "every knob factsClause names is in the shipped schema" $ do
             let advice = factsClause []
                 named =

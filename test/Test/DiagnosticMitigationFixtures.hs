@@ -40,15 +40,17 @@ import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State (App (..), atomicEditNotebook, freshCellId, readNotebook)
 
--- | Skip a spec (rather than fail) when there is no real GHC toolchain to
--- gate-check against — this whole module exercises a live kernel.
+{- | Skip a spec (rather than fail) when there is no real GHC toolchain to
+gate-check against — this whole module exercises a live kernel.
+-}
 requireLiveIntegration :: IO ()
 requireLiveIntegration = do
     cabal <- findExecutable "cabal"
     case cabal of
         Nothing -> pendingWith "cabal not found on PATH; skipping mitigation-gate integration"
         Just _ -> pure ()
-    supportPresent <- doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
+    supportPresent <-
+        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
     if supportPresent
         then pure ()
         else pendingWith "sabela-notebook support source not on disk; skipping"
@@ -109,7 +111,12 @@ cellSourceOf app cid = fmap cellSource . lookupCell cid <$> readNotebook (appNot
 return its @execution@ value.
 -}
 settledExecutionFor ::
-    App -> AIStore.AIStore -> ReactiveNotebook -> Int -> Maybe Value -> IO (Maybe Value)
+    App ->
+    AIStore.AIStore ->
+    ReactiveNotebook ->
+    Int ->
+    Maybe Value ->
+    IO (Maybe Value)
 settledExecutionFor _ _ _ 0 _ = pure Nothing
 settledExecutionFor app store rn n mCid = do
     v <- callTool app store rn "await_idle" (object [])

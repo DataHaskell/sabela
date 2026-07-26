@@ -97,11 +97,13 @@ spec = describe "G3 hole-probe conclusions" $ do
 
     it "states producers plainly, with provenance" $ do
         let facts = holeProbeFacts namedTypeBlob
-        facts `shouldBe` ["`Plot` is produced by: `Plot`, `defPlot` (" <> holeProbeProvenance <> ")"]
+        facts
+            `shouldBe` ["`Plot` is produced by: `Plot`, `defPlot` (" <> holeProbeProvenance <> ")"]
 
     it "states an empty answer plainly, never as a recommendation" $ do
         let facts = holeProbeFacts noProducerBlob
-        facts `shouldBe` ["no producer of `Point` found in scope (" <> holeProbeProvenance <> ")"]
+        facts
+            `shouldBe` ["no producer of `Point` found in scope (" <> holeProbeProvenance <> ")"]
         head facts `shouldSatisfy` (not . T.isInfixOf "insert_cell")
 
     it "no rendered fact hands back hole-bearing code" $

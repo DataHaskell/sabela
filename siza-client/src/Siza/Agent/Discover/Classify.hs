@@ -4,6 +4,7 @@ and browse cards), and the capability/hoogle channel. No payload shape ever
 reaches the model unparsed (R3.6).
 -}
 module Siza.Agent.Discover.Classify (
+    notebookAnswer,
     candidatePackages,
     envAnswer,
     sessionAnswer,
@@ -26,6 +27,7 @@ import Siza.Agent.Discover.Types (
     MatchKind (..),
     NotebookEnv (..),
     SourceAnswer (..),
+    mkHit,
     okAnswer,
     unavailableAnswer,
  )
@@ -293,3 +295,46 @@ textAt k o = case KM.lookup k o of
 textAt' :: K.Key -> Value -> Text
 textAt' k (Object o) = textAt k o
 textAt' _ _ = ""
+
+{- | Cell-source matches as a discover source, so ONE search answers "where is
+this?" whether the answer is a notebook cell or a library.
+
+Routing that question to a separate notebook-search tool asks the caller to
+know the answer first: live_test37 asked its own empty notebook for
+@DataFrame@, @dataset@, @wine@, @Data.Csv@ and @mean@, took five misses as
+evidence, and hand-rolled the work. The tool even said "unlike discover, which
+searches installed LIBRARIES" — a disclaimer cannot fix a distinction the
+caller cannot make.
+-}
+notebookAnswer :: Interpreted -> Maybe Value -> SourceAnswer
+notebookAnswer _ Nothing = okAnswer "notebook" []
+notebookAnswer interp (Just (Object o))
+    | Just (Array ms) <- KM.lookup "matches" o =
+        okAnswer "notebook" (concatMap (cellHit interp) (toList ms))
+notebookAnswer _ (Just _) = okAnswer "notebook" []
+
+{- | One matched cell as a hit: the query names something the NOTEBOOK already
+has, and @use@ carries where, so the caller can go straight to the cell.
+-}
+cellHit :: Interpreted -> Value -> [DHit]
+cellHit interp (Object m)
+    | Just cid <- cellIdOf m =
+        [ (mkHit (iName interp) "" "")
+            { dhInstall = InstNotebook
+            , dhOrigin = "notebook"
+            , dhUse = Just ("defined in notebook cell " <> cid)
+            , dhKind = MkExact
+            }
+        ]
+cellHit _ _ = []
+
+-- | A match's cell id, however the payload spells it.
+cellIdOf :: KM.KeyMap Value -> Maybe Text
+cellIdOf m = case (KM.lookup "cellId" m, KM.lookup "cell_id" m) of
+    (Just v, _) -> render v
+    (_, Just v) -> render v
+    _ -> Nothing
+  where
+    render (Number n) = Just (T.pack (show (round n :: Int)))
+    render (String s) = Just s
+    render _ = Nothing

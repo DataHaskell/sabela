@@ -7,6 +7,7 @@ installed modules. A keyword query ranks every exposed function with
 -}
 module Sabela.AI.Capabilities.ModuleSearch (
     execFindFunction,
+    usableCard,
     resolveNameToModules,
     interesting,
 ) where
@@ -19,7 +20,11 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.AI.Capabilities.BrowseCard (browseCard)
+import Sabela.AI.Capabilities.BrowseCard (browseCard, browseCardFor)
+import Sabela.AI.Capabilities.ModuleCard (
+    hiddenModuleCard,
+    matchesOutcomeWithDocs,
+ )
 import Sabela.AI.Capabilities.Resolve (lookupByName)
 import Sabela.AI.Capabilities.Util (fieldText)
 import Sabela.AI.Capability (
@@ -71,7 +76,10 @@ execFindFunction app input =
                             raw <- sbQueryBrowse backend q
                             let card = browseCard q raw
                             if browseEmpty raw || not (usableCard card)
-                                then keywordSearch backend mods
+                                then -- The session cannot browse a module whose
+                                -- package it does not expose; the store can.
+                                    hiddenModuleCard Nothing q
+                                        >>= maybe (keywordSearch backend mods) (pure . okOutcome)
                                 else pure (okOutcome card)
                         else keywordSearch backend mods
   where
@@ -81,7 +89,12 @@ execFindFunction app input =
             -- instead of being silently ignored (measured: a refinement call
             -- had zero effect and no signal).
             caps <- buildIndex backend [qModule]
-            pure (matchesOutcome q (searchCapabilities defaultSynonyms caps q))
+            case searchCapabilities defaultSynonyms caps q of
+                -- A scoped miss asked about a MODULE, so answer about the
+                -- module: an empty result sends the caller back to guessing
+                -- (live_test36 probed Data.Csv for "!?" then "!.").
+                [] -> moduleExports backend qModule q
+                hits -> matchesOutcomeWithDocs backend q hits
     keywordSearch backend mods = do
         surfacing <- isJust <$> lookupEnv "SABELA_INSTANCE_SURFACING"
         -- Always index the notebook's own vocabulary: the bare completion
@@ -101,7 +114,7 @@ execFindFunction app input =
                     pure (nub (baseMods ++ filter interesting extra))
                 else pure (take maxIndexModules baseMods)
         caps <- buildIndex backend (nub (builtin ++ toBrowse))
-        pure (matchesOutcome q (searchCapabilities defaultSynonyms caps q))
+        matchesOutcomeWithDocs backend q (searchCapabilities defaultSynonyms caps q)
     q =
         let qq = fieldText "query" input
          in if T.null qq then fieldText "module" input else qq
@@ -134,9 +147,49 @@ looksLikeModule t =
     not (T.any (== ' ') t)
         && maybe False (isUpper . fst) (T.uncons t)
 
--- | A card the model can act on; an @error@ card means fall back instead.
+{- | Everything a module exports, for a scoped query that matched nothing.
+Uses the raw @:browse@ card, so TYPES and classes are listed alongside the
+functions; falls through to the store when the session cannot see the module.
+The @matched@ field states the miss as a fact, without prescribing a next move.
+-}
+moduleExports :: SessionBackend -> Text -> Text -> IO ToolOutcome
+moduleExports backend modName q = do
+    raw <- sbQueryBrowse backend modName
+    let card = browseCardFor (Just q) modName raw
+    if browseEmpty raw || not (usableCard card)
+        then
+            maybe (missOutcome modName q) (okOutcome . noteMiss q)
+                <$> hiddenModuleCard (Just q) modName
+        else pure (okOutcome (noteMiss q card))
+
+-- | Record which query missed, on the card that answers instead.
+noteMiss :: Text -> Value -> Value
+noteMiss q (Object o) =
+    Object (KM.insert "matched" (String ("no export matched '" <> q <> "'")) o)
+noteMiss _ v = v
+
+-- | The module itself could not be read, so report that rather than nothing.
+missOutcome :: Text -> Text -> ToolOutcome
+missOutcome modName q =
+    okOutcome
+        ( object
+            [ "module" .= modName
+            , "matched" .= ("no export matched '" <> q <> "'")
+            , "exports" .= ([] :: [Text])
+            ]
+        )
+
+{- | A card that ANSWERS the query, rather than reporting why it could not be
+answered here. An @error@ card falls back; so does @hidden-package@, which
+names the package but lists nothing — the session cannot browse what its
+environment does not expose, and the store can (live_test38 asked for
+@DataFrame@ and received a four-field card with no exports, because a
+hidden-package card counted as usable and short-circuited the store lookup).
+-}
 usableCard :: Value -> Bool
-usableCard (Object o) = KM.lookup "status" o /= Just (String "error")
+usableCard (Object o) = case KM.lookup "status" o of
+    Just (String st) -> st `notElem` ["error", "hidden-package"]
+    _ -> False
 usableCard _ = False
 
 -- | A @:browse@ that resolved to nothing usable (empty or a scope/parse error).
@@ -213,22 +266,3 @@ baseNamespaces =
     , "Unsafe"
     , "Language"
     ]
-
--- | Shape ranked hits into @{query, matches: [{module, name, type, via}]}@.
-matchesOutcome :: Text -> [Hit] -> ToolOutcome
-matchesOutcome q hits =
-    okOutcome $ object ["query" .= q, "matches" .= map hitJSON hits]
-  where
-    hitJSON h =
-        object
-            [ "module" .= capModule (hitCap h)
-            , "name" .= capName (hitCap h)
-            , "type" .= capType (hitCap h)
-            , "via" .= matchName (hitVia h)
-            ]
-
-matchName :: Match -> Text
-matchName ByName = "name"
-matchName ByType = "type"
-matchName BySynonym = "synonym"
-matchName ByModule = "module"

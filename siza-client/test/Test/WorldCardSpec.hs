@@ -74,8 +74,8 @@ gateDispatch tc = case tcName tc of
             ]
 
 guardGateSpec :: Spec
-guardGateSpec = describe "the k=2 gate holds through guardDiscover" $
-    it "answers two post-satisfaction calls, then steers every further one" $ do
+guardGateSpec = describe "satisfaction never withholds an answer through guardDiscover" $
+    it "every post-satisfaction call answers; none is a held-facts citation" $ do
         ledger <- newSearchLedger
         let disp q =
                 guardDiscover
@@ -88,10 +88,8 @@ guardGateSpec = describe "the k=2 gate holds through guardDiscover" $
                 | Right (ToolOk v) <- outs
                 ]
         length texts `shouldBe` 5
-        forM_ (take 2 (drop 1 texts)) $ \t ->
-            t `shouldSatisfy` (not . T.isInfixOf "write the deliverable")
-        forM_ (drop 3 texts) $ \t ->
-            t `shouldSatisfy` T.isInfixOf "write the deliverable"
+        forM_ texts $ \t ->
+            t `shouldSatisfy` (not . T.isInfixOf "satisfied by held facts")
 
 -- worldChange legality (R1.4) ------------------------------------------------
 

@@ -45,10 +45,12 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Sabela.AI.Capabilities.ToolName (ToolName (..), parseToolName)
 import Sabela.AI.Types (ToolOutcome, toolOutcomeIsError, toolOutcomeValue)
+import Sabela.LLM.Ollama.Client (ToolCall (..))
+import qualified Siza.Agent.Tools as AgentTools
 import Siza.Language (Diagnostic, renderDiagnostic)
 import Siza.Preflight (preflight)
 import Siza.Security (Policy, advisoryPolicy)
-import Siza.Transport (Conn, callTool, getTools)
+import Siza.Transport (Conn, callTool)
 import System.IO (
     BufferMode (LineBuffering),
     hPutStrLn,
@@ -92,19 +94,38 @@ stripCR bs
     | otherwise = bs
 
 -- | Fetch @/api/ai/tools@ and project each entry to MCP's tool shape.
+
+{- | The catalogue MCP serves: the AGENT's own, so every client meets one
+surface and one dispatcher.
+
+Serving @\/api\/ai\/tools@ instead handed MCP clients the raw server tools and
+NO @discover@ — the aggregation, hidden-package cards, notebook source, near
+spelling and doc synopses all live client-side, so none of it reached anyone
+outside the eval harness. It also re-exposed the seven discovery tools
+@discover@ folds, which is the surface an agent cannot route.
+
+Server tools with no agent-catalogue entry are still reachable by name through
+'toolsCall'; they are simply not advertised.
+-}
 loadCatalogue :: Conn -> Text -> IO [Value]
-loadCatalogue conn base = do
-    mt <- getTools conn base
-    case mt of
-        Just (Array arr) -> do
-            let cat = map toMcpTool (toList arr)
-            hPutStrLn stderr ("siza mcp: serving " <> show (length cat) <> " tools")
-            pure cat
-        _ -> do
-            hPutStrLn
-                stderr
-                "siza mcp: could not fetch /api/ai/tools; serving empty catalogue"
-            pure []
+loadCatalogue _ _ = do
+    let cat = map agentToMcpTool (AgentTools.catalogueWith False)
+    hPutStrLn stderr ("siza mcp: serving " <> show (length cat) <> " tools")
+    pure cat
+
+{- | Project one AGENT catalogue entry to an MCP tool. The agent catalogue is
+in the function-call shape @{type, function:{name, description, parameters}}@;
+MCP wants @{name, description, inputSchema}@.
+-}
+agentToMcpTool :: Value -> Value
+agentToMcpTool (Object o)
+    | Just (Object f) <- KM.lookup "function" o =
+        object
+            [ "name" .= fromMaybe Null (KM.lookup "name" f)
+            , "description" .= fromMaybe Null (KM.lookup "description" f)
+            , "inputSchema" .= fromMaybe (object []) (KM.lookup "parameters" f)
+            ]
+agentToMcpTool v = v
 
 {- | Project one server @ToolDef@ JSON to an MCP tool: rename @input_schema@ →
 @inputSchema@ (the schema body is raw JSON Schema, passed through verbatim) and
@@ -202,13 +223,23 @@ the model gets feedback it can act on.
 toolsCall :: Conn -> Text -> Value -> IO Value
 toolsCall conn base params =
     case parseToolName name of
-        Nothing -> pure (toolResult True ("unknown tool: " <> name))
+        -- Not a server ToolName: agent-level tools (discover) and garbled
+        -- spellings both belong to the agent dispatcher, which aggregates
+        -- the former and rescues or rejects the latter. Gating on
+        -- parseToolName FIRST advertised discover in tools/list and answered
+        -- "unknown tool" in tools/call — the first harness-free probe called
+        -- it five times and was refused five times.
+        Nothing -> do
+            res <- AgentTools.dispatch conn base (ToolCall name args)
+            pure (outcomeResult res)
         Just tn -> do
             gate <- gateForMcp advisoryPolicy tn args
             case gate of
                 Left ds -> pure (toolResult True (renderDiags ds))
                 Right () -> do
-                    res <- callTool conn base tn args
+                    -- The agent's dispatcher, so MCP gets the same write
+                    -- reconciliation the episode loop has.
+                    res <- AgentTools.dispatch conn base (ToolCall name args)
                     pure (outcomeResult res)
   where
     name = paramName params

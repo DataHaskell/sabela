@@ -121,12 +121,12 @@ executeWithRepair app store rn cid cancelTok = do
         "resolvers" -> tierResolvers
         "restart" -> tierRestart
         _ -> \_ _ _ _ -> pure Nothing
-    {- | G6: the diagnostic-class mitigation table, tried first — it owns its
-    own bounded round loop (up to 'mitigationRoundCap'), so by the time this
-    tier declines the OTHER tiers see either a clean cell or diagnostics no
-    table row claims. Fires once per outer round like every other tier; its
-    disclosure (the ordered fix chain, any fact lists, the honest remainder)
-    is captured into @mitigateRef@ for 'executeWithRepair' to return. -}
+    -- \| G6: the diagnostic-class mitigation table, tried first — it owns its
+    --    own bounded round loop (up to 'mitigationRoundCap'), so by the time this
+    --    tier declines the OTHER tiers see either a clean cell or diagnostics no
+    --    table row claims. Fires once per outer round like every other tier; its
+    --    disclosure (the ordered fix chain, any fact lists, the honest remainder)
+    --    is captured into @mitigateRef@ for 'executeWithRepair' to return.
     tierMitigate staleRef sugRef mitigateRef res = do
         (result, disclosure) <-
             runMitigations app store rn cid cancelTok sugRef staleRef mitigationRoundCap res
@@ -152,7 +152,16 @@ executeWithRepair app store rn cid cancelTok = do
     -- dependency is never an automatic act); phase 2 renames in 'tierResolvers'.
     tierModuleDep staleRef sugRef _mitigateRef res = withCellSrc $ \src -> do
         mDep <- moduleDepStep res src
-        verifyAndRevert app rn cancelTok cid sugRef staleRef res src (maybe [] pure mDep)
+        verifyAndRevert
+            app
+            rn
+            cancelTok
+            cid
+            sugRef
+            staleRef
+            res
+            src
+            (maybe [] pure mDep)
     {- Compile-only, NON-COMMITTING type-directed tier — tried BEFORE the
     session-committing name resolvers so a type-correct in-scope fix
     (takeWhile1 → takeWhileP) wins without the keyword resolvers ever running;
@@ -183,7 +192,16 @@ executeWithRepair app store rn cid cancelTok = do
             holeSearchCands
             (endorsed ++ lexical)
             (listToMaybe wins)
-        verifyAndRevert app rn cancelTok cid sugRef staleRef res src (take speculativeCap wins)
+        verifyAndRevert
+            app
+            rn
+            cancelTok
+            cid
+            sugRef
+            staleRef
+            res
+            src
+            (take speculativeCap wins)
     -- Ambiguous-occurrence and add-import are now G6 mitigation-table rows
     -- (selection-by-proof, via 'tierMitigate'); this tier keeps only the
     -- resolvers the table does not own, so neither fires twice under two
@@ -191,7 +209,16 @@ executeWithRepair app store rn cid cancelTok = do
     tierResolvers staleRef sugRef _mitigateRef res = withCellSrc $ \src -> do
         modCands <- moduleResolveCandidates app res src
         pathCands <- pathNearMissCandidates app res src
-        verifyAndRevert app rn cancelTok cid sugRef staleRef res src (modCands ++ pathCands)
+        verifyAndRevert
+            app
+            rn
+            cancelTok
+            cid
+            sugRef
+            staleRef
+            res
+            src
+            (modCands ++ pathCands)
     {- Restart-causing tier: every candidate here adds a dependency by
     construction, so 'verifyAndRevert''s classify demotes each to a disclosed
     suggestion — this tier never commits (G2 hard rule 1). -}
@@ -199,7 +226,16 @@ executeWithRepair app store rn cid cancelTok = do
         typeCands <- typeDiscoverCandidates app store res src
         hoogCands <- hoogleCandidates app store res src
         traceRestart res typeCands hoogCands
-        verifyAndRevert app rn cancelTok cid sugRef staleRef res src (typeCands ++ hoogCands)
+        verifyAndRevert
+            app
+            rn
+            cancelTok
+            cid
+            sugRef
+            staleRef
+            res
+            src
+            (typeCands ++ hoogCands)
     withCellSrc k = do
         mCell <- lookupCell cid <$> readNotebook (appNotebook app)
         maybe (pure Nothing) (k . cellSource) mCell

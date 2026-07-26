@@ -7,6 +7,7 @@ them (via "Sabela.Errors.Json") and ships only the distilled fields.
 -}
 module Sabela.AI.Capabilities.BrowseCard (
     browseCard,
+    browseCardFor,
     packageOfUnit,
 ) where
 
@@ -18,6 +19,12 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capability (
+    Capability (..),
+    defaultSynonyms,
+    relevanceScore,
+    unqualify,
+ )
 import Sabela.AI.Grammar.Synth (sanitizeTypeText)
 import Sabela.Errors.Json (parseJsonInteractive)
 import Sabela.Model (CellError (..))
@@ -28,8 +35,19 @@ cabal line; not-found → deduped suggestions + cabal line); anything else is
 @status:error@ with ONE deduped line so the caller can fall back.
 -}
 browseCard :: Text -> Text -> Value
-browseCard modName raw
-    | null msgLines = listingCard modName raw
+browseCard = browseCardFor Nothing
+
+{- | 'browseCard' ranked for the query that asked: the same relevance scale
+every search and the hidden-store card rank with, as the LEADING key over the
+static band. The live card was the last unranked surface — after the install,
+@ReadOptions@ queries hit this path and were answered operator-soup-first
+(live_test41) while the store card for the same module answered ranked.
+Declarations score too: @type HeaderSpec :: *@ names the thing a
+constructor-hunting query is about.
+-}
+browseCardFor :: Maybe Text -> Text -> Text -> Value
+browseCardFor mQuery modName raw
+    | null msgLines = listingCard mQuery modName raw
     | Just pkg <- hiddenPackage msgLines =
         object (base "hidden-package" <> cabalPairs pkg)
     | not (null suggests) =
@@ -62,12 +80,12 @@ disclosed (shown implicitly, @more@ + @total@ explicitly) — never a wall and
 never a silent cap (R3.4). Every line renders through the ONE R3.10 seam
 ('sanitizeTypeText'): no version-qualified or compiler-internal token ships.
 -}
-listingCard :: Text -> Text -> Value
-listingCard modName raw =
+listingCard :: Maybe Text -> Text -> Text -> Value
+listingCard mQuery modName raw =
     object $
         [ "module" .= modName
         , "status" .= ("ok" :: Text)
-        , "exports" .= take cap (rankExports ls)
+        , "exports" .= take cap (rankExports mQuery ls)
         , "total" .= length ls
         ]
             <> ["more" .= (length ls - cap) | length ls > cap]
@@ -84,10 +102,24 @@ renders a declaration as @type Canvas :: *@ — which contains @" :: "@ and woul
 otherwise rank as a value signature, spending the whole cap on declarations and
 their record continuations while the module's verbs never appear.
 -}
-rankExports :: [Text] -> [Text]
-rankExports ls = map snd (sortOn key (zip [0 :: Int ..] ls))
+rankExports :: Maybe Text -> [Text] -> [Text]
+rankExports mQuery ls = map snd (sortOn key (zip [0 :: Int ..] ls))
   where
-    key (i, l) = (band l, i)
+    key (i, l) = (negate (relevance l), band l, i)
+    relevance l = case mQuery of
+        Just q | not (T.null (T.strip q)) -> relevanceScore defaultSynonyms q (asCap l)
+        _ -> 0
+    -- A line as a scorable (name, type): a declaration's name is the word
+    -- after its keyword; a value signature's is the text before " :: ",
+    -- unqualified (the live browse prefixes the notebook's own alias).
+    asCap l
+        | isTypeLevel l = case T.words l of
+            (_ : n : _) -> Capability "" (unqualify n) (T.unwords (drop 2 (T.words l)))
+            _ -> Capability "" "" l
+        | (n, rest) <- T.breakOn " :: " l
+        , not (T.null rest) =
+            Capability "" (unqualify (T.strip n)) (T.drop 4 rest)
+        | otherwise = Capability "" "" l
     band l
         | "_" `T.isPrefixOf` l = 2 :: Int
         | isTypeLevel l = 1

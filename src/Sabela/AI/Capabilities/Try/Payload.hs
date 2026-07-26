@@ -220,11 +220,14 @@ trialPlanErrorText planErr = case planErr of
         "GHCi meta-commands are not admitted by try; no command ran: " <> cmd
     TrialUnsafeSyntax reason ->
         cellsAcceptTryDoesNot
-            ("a trial must stay safely discardable and cannot own a \
-             \compile-time or purity escape: " <> reason)
+            ( "a trial must stay safely discardable and cannot own a \
+              \compile-time or purity escape: "
+                <> reason
+            )
 
--- | The task-4 parity clause, shared by every rejection that names a genuine
--- cell-vs-try policy gap rather than a universal safety restriction.
+{- | The task-4 parity clause, shared by every rejection that names a genuine
+cell-vs-try policy gap rather than a universal safety restriction.
+-}
 cellsAcceptTryDoesNot :: Text -> Text
 cellsAcceptTryDoesNot reason =
     "cells accept this; try does not, because " <> reason <> "; no code ran"

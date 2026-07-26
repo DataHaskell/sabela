@@ -226,7 +226,7 @@ provenanceLoopSpec = describe "provenance flows from the ledger's held consumer 
         installNamesFileWith ["plume", "chartx"]
         outs <- runGuard provWorld [constructPlot]
         map (take 1 . names) outs `shouldBe` [["aaaPlot"]]
-    it "a junk wall mid-hunt is judged and steered to the facet by rung 2" $ do
+    it "a junk wall mid-hunt is judged unsatisfied, and never steered" $ do
         installNamesFileWith ["plume", "chartx"]
         outs <-
             runGuard
@@ -238,7 +238,8 @@ provenanceLoopSpec = describe "provenance flows from the ledger's held consumer 
         let sat o = field "goal" o >>= field "satisfied"
         sat (outs !! 1) `shouldBe` Just (Bool False)
         sat (outs !! 2) `shouldBe` Just (Bool False)
-        textField "next" (outs !! 2) `shouldSatisfy` T.isInfixOf "mode=\"construct\""
+        textField "next" (outs !! 2)
+            `shouldNotSatisfy` T.isInfixOf "mode=\"construct\""
 
 -- Same-envelope producer attachment (R3.3/R3.9) ------------------------------
 

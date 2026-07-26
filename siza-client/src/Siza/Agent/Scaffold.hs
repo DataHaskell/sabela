@@ -54,8 +54,20 @@ runScaffoldStage disp prompt = case scaffoldFile prompt of
 scaffoldFile :: Text -> Maybe Text
 scaffoldFile =
     find (".csv" `T.isSuffixOf`)
-        . map (T.dropAround (`elem` ("`\"',." :: String)))
+        . map trimPathToken
         . T.words
+
+{- | Strip the punctuation prose wraps a path in, WITHOUT eating a relative
+path's leading dot. A @.@ is sentence punctuation only at the END: stripping
+it from both ends turned the user's @./examples/data/housing.csv@ into an
+absolute @/examples/data/housing.csv@, which is C4 task 1's near-miss class
+introduced by the harness itself (G8 task 10). live_test21 and live_test22
+both scaffolded against a path that does not exist.
+-}
+trimPathToken :: Text -> Text
+trimPathToken =
+    T.dropWhileEnd (`elem` ("`\"',." :: String))
+        . T.dropWhile (`elem` ("`\"'," :: String))
 
 -- | Pre-load the named data file, keyed off the prompt's structure alone.
 scaffoldCall :: Text -> Maybe ToolCall

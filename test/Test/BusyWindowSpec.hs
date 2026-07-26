@@ -18,6 +18,8 @@ import Data.Text (Text)
 import Sabela.AI.KernelVocab (
     BusyEvidence (..),
     BusyVerdict (..),
+    Holding (..),
+    LockOwner (..),
     busyDenyJson,
     busyVerdict,
     resolveOccupied,
@@ -37,6 +39,10 @@ import Test.WriteAckFixture (
     withAckEnv,
  )
 
+-- | A holder that IS a notebook cell, the ordinary case for these laws.
+heldBy :: Int -> Int -> Holding
+heldBy cid = Holding (OwnedByCell cid)
+
 spec :: Spec
 spec = describe "post-settled consistency window (R6.4)" $ do
     describe "busyVerdict (pure law over the evidence grid)" $ do
@@ -45,7 +51,7 @@ spec = describe "post-settled consistency window (R6.4)" $ do
                 [ BusyEvidence occ (Just g) g holder
                 | occ <- [False, True]
                 , g <- [0, 1, 5, 100]
-                , holder <- [Nothing, Just (3, 250)]
+                , holder <- [Nothing, Just (heldBy 3 250)]
                 ]
             $ \e -> case busyVerdict e of
                 DenyBusy _ ->
@@ -58,13 +64,13 @@ spec = describe "post-settled consistency window (R6.4)" $ do
                 [ BusyEvidence False sg g h
                 | sg <- [Nothing, Just 0, Just 3]
                 , g <- [0, 3, 7]
-                , h <- [Nothing, Just (1, 10)]
+                , h <- [Nothing, Just (heldBy 1 10)]
                 ]
             $ \e -> busyVerdict e `shouldBe` AdmitNow
 
         it "denies a genuine busy (gen advanced or no settle), naming the holder" $ do
-            busyVerdict (BusyEvidence True (Just 3) 4 (Just (7, 900)))
-                `shouldBe` DenyBusy (Just (7, 900))
+            busyVerdict (BusyEvidence True (Just 3) 4 (Just (heldBy 7 900)))
+                `shouldBe` DenyBusy (Just (heldBy 7 900))
             busyVerdict (BusyEvidence True Nothing 0 Nothing)
                 `shouldBe` DenyBusy Nothing
 
@@ -87,13 +93,13 @@ spec = describe "post-settled consistency window (R6.4)" $ do
                     pure $
                         if n < 2
                             then BusyEvidence True (Just 4) 4 Nothing
-                            else BusyEvidence True (Just 4) 5 (Just (2, 40))
+                            else BusyEvidence True (Just 4) 5 (Just (heldBy 2 40))
             v <- resolveOccupied 8 (pure ()) sample
-            v `shouldBe` DenyBusy (Just (2, 40))
+            v `shouldBe` DenyBusy (Just (heldBy 2 40))
 
     describe "busyDenyJson" $ do
         it "names the locking cell and elapsed time" $ do
-            let v = busyDenyJson (Just (7, 1200))
+            let v = busyDenyJson (Just (heldBy 7 1200))
             field "cellId" v `shouldBe` Just (Number 7)
             field "elapsedMs" v `shouldBe` Just (Number 1200)
             field "busy" v `shouldBe` Just (Bool True)
@@ -178,7 +184,7 @@ spec = describe "post-settled consistency window (R6.4)" $ do
                 Busy cid ms -> do
                     cid `shouldBe` 7
                     (ms >= 30) `shouldBe` True
-                    let v = busyDenyJson (Just (cid, ms))
+                    let v = busyDenyJson (Just (heldBy cid ms))
                     field "cellId" v `shouldBe` Just (Number 7)
             putMVar heldGate ()
             takeMVar released

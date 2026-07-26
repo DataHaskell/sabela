@@ -189,8 +189,6 @@ grammarPromptBlock =
         , "  list_bindings              values/types already in scope this session — reuse them"
         , "  check_type <expr>          the type of an expression or name"
         , "  find_example_cell <idiom>  a paste-able cell, e.g. the typed-column CSV reader (a wrong column is a compile error)"
-        , ""
-        , grammarFooter
         ]
 
 {- | The siza-surface variant of 'grammarPromptBlock': that catalogue offers ONE
@@ -205,15 +203,4 @@ discoverGrammarBlock =
         , "  discover <query>   ANY function/package/module: by name (\"divvy\"), goal type (\"[Int] -> Int\"), module (\"Granite.Svg\"), or description (\"edit distance\"). Every hit names its module, package, version, and install state, with the `-- cabal:` line when a package is hidden or not installed; a miss lists what was consulted."
         , "  list_bindings      values/types already in scope this session — reuse them"
         , "  check_type <expr>  the type of an expression or name"
-        , ""
-        , grammarFooter
-        ]
-
--- | The install/display/pitfall lines both cheat-sheets share.
-grammarFooter :: Text
-grammarFooter =
-    T.unlines
-        [ "Install a package by running a cell whose FIRST line is `-- cabal: build-depends: <pkg>`."
-        , "A plotter returns Text — show it with `displaySvg (T.unpack (...))`."
-        , "Avoid `main = do`, a top-level `let`, hand-parsing data, and `:set -package`."
         ]

@@ -42,6 +42,12 @@ import Sabela.AI.Capabilities.Query.Explore (
     parseExploreOp,
     runExplore,
  )
+import Sabela.AI.Capabilities.Query.IndexAnswer (
+    consultedSources,
+    fillSilence,
+    viaSessionInfo,
+    viaSessionType,
+ )
 import Sabela.AI.Capabilities.Util (fieldInt, fieldText)
 import Sabela.AI.HoleFits (holeFitsJson)
 import Sabela.AI.LeakShape (leakyLine)
@@ -98,31 +104,35 @@ execCheckType app input = do
                 )
         else withBackend app $ \backend -> do
             (via, result) <- dispatchCheckType backend expr
+            (via', result') <- fillSilence app expr via result
             pure
                 ( guidedOutcome
                     [ "expr" .= expr
-                    , "via" .= via
-                    , "verdict" .= answerVerdict result
+                    , "via" .= via'
+                    , "consulted" .= consultedSources
+                    , "verdict" .= answerVerdict result'
                     ]
-                    result
+                    result'
                 )
 
 {- | Every answer routes through 'distillTypeAnswer' at this emitting seam
 (R3.10): the signature stays, trailing leak-shaped output never crosses.
+The @via@ vocabulary names the ANSWERING source, so triage can attribute
+every answer (G10.1).
 -}
 dispatchCheckType :: SessionBackend -> Text -> IO (Text, Text)
 dispatchCheckType backend expr
     | length (T.words expr) > 1 =
-        (,) "type" . distillTypeAnswer <$> sbQueryType backend expr
+        (,) viaSessionType . distillTypeAnswer <$> sbQueryType backend expr
     | otherwise = do
         ty <- distillTypeAnswer <$> sbQueryType backend expr
         if looksResolved ty
             then do
                 struct <- typeStructure backend ty
-                pure ("type", if T.null struct then ty else ty <> "\n\n" <> struct)
+                pure (viaSessionType, if T.null struct then ty else ty <> "\n\n" <> struct)
             else do
                 raw <- sbQueryInfo backend expr
-                pure ("info", withInstances raw (distillTypeAnswer raw))
+                pure (viaSessionInfo, withInstances raw (distillTypeAnswer raw))
 
 {- | Append the type's instances to an @:info@ answer. Without them the caller
 sees a type's shape but not what it can DO — the live_test20 failure, where

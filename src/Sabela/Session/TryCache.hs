@@ -19,6 +19,7 @@ module Sabela.Session.TryCache (
     acquireCacheEntry,
     commitCacheEntry,
     discardCacheEntry,
+    shelveCacheEntry,
     resolvedGhcVersion,
 ) where
 
@@ -40,6 +41,7 @@ import System.Directory (
     getModificationTime,
     listDirectory,
     removeDirectoryRecursive,
+    removeFile,
  )
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
@@ -134,10 +136,33 @@ isValidHit dir keyText = do
             stored <- try (TIO.readFile (keyFile dir)) :: IO (Either SomeException Text)
             pure (either (const False) (== keyText) stored)
 
+{- | Clear a bucket for a fresh attempt while PRESERVING its cabal store.
+The store is content-addressed, so a partly-built dependency set is real
+progress the next attempt resumes from. Wiping it made a dependency too
+heavy for one budget window impossible to install at all: every attempt
+restarted from empty and re-breached the same budget, which is why
+@dataframe@ never landed in live_test21-23.
+-}
 resetBucket :: FilePath -> IO ()
 resetBucket dir = do
     exists <- doesDirectoryExist dir
-    when exists (removeDirectoryRecursive dir)
+    when exists $ do
+        removeQuietly (completeMarker dir)
+        removeTreeQuietly (dir </> "project")
+
+removeQuietly :: FilePath -> IO ()
+removeQuietly f = do
+    exists <- doesFileExist f
+    when exists $ do
+        r <- try (removeFile f) :: IO (Either SomeException ())
+        either (const (pure ())) pure r
+
+removeTreeQuietly :: FilePath -> IO ()
+removeTreeQuietly d = do
+    exists <- doesDirectoryExist d
+    when exists $ do
+        r <- try (removeDirectoryRecursive d) :: IO (Either SomeException ())
+        either (const (pure ())) pure r
 
 touchComplete :: FilePath -> IO ()
 touchComplete dir = TIO.writeFile (completeMarker dir) ""
@@ -152,14 +177,24 @@ commitCacheEntry root dir maxEntries = do
     touchComplete dir
     evictOldest root maxEntries
 
--- | Tear a bucket down entirely: used when its build breaches budget or
--- throws, so the next attempt for that key starts from a clean slate.
+{- | Tear a bucket down entirely, store included. For a build that THREW:
+its store may be inconsistent, so the next attempt starts clean. A build
+that merely ran out of budget uses 'shelveCacheEntry' instead — see there
+for why the distinction matters.
+-}
 discardCacheEntry :: FilePath -> IO ()
-discardCacheEntry dir = do
+discardCacheEntry = removeTreeQuietly
+
+{- | Set a budget-breached build aside: drop the completion marker so it can
+never be served as a hit, but KEEP the cabal store so the next attempt
+resumes where this one stopped. Without this a heavy dependency is not slow,
+it is unreachable — each attempt rebuilds from empty and breaches the same
+ceiling forever.
+-}
+shelveCacheEntry :: FilePath -> IO ()
+shelveCacheEntry dir = do
     exists <- doesDirectoryExist dir
-    when exists $ do
-        r <- try (removeDirectoryRecursive dir) :: IO (Either SomeException ())
-        either (const (pure ())) pure r
+    when exists (removeQuietly (completeMarker dir))
 
 evictOldest :: FilePath -> Int -> IO ()
 evictOldest root maxEntries = do
@@ -185,9 +220,10 @@ listCompletedBuckets root = do
             then Just . (,) dir <$> getModificationTime (completeMarker dir)
             else pure Nothing
 
--- | @ghc --numeric-version@, honouring the same @GHC@ override as the
--- session spawner; "unknown" on any failure keeps caching safe (a bad
--- version string just changes the cache key, it never crashes the trial).
+{- | @ghc --numeric-version@, honouring the same @GHC@ override as the
+session spawner; "unknown" on any failure keeps caching safe (a bad
+version string just changes the cache key, it never crashes the trial).
+-}
 resolvedGhcVersion :: IO Text
 resolvedGhcVersion = do
     ghc <- fromMaybe "ghc" <$> lookupEnv "GHC"

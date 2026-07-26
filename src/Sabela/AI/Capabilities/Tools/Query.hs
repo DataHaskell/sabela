@@ -2,6 +2,20 @@
 
 {- | Tool schemas for live GHCi introspection and result drill-down.
 Sibling of "Sabela.AI.Capabilities.Tools.Notebook".
+
+DEPRECATION IN PROGRESS. @find_function@, @api_reference@,
+@search_capability@, @find_by_type@, @find_example_cell@ and
+@describe_function@ are the seven-way discovery surface that @discover@ folds
+into one call, and an agent cannot route between them: choosing needs the
+answer. @siza chat@ and the MCP server already offer @discover@ instead, and
+stopped advertising these.
+
+They stay here until @discover@ is available SERVER-side, because it currently
+lives in @Siza.Agent.DiscoverTool@ and the product chat would otherwise be
+left with no discovery at all. They must also stay as ENDPOINTS forever:
+@discover@ aggregates by calling @find_function@ and @search_capability@
+through this same dispatch, so de-advertising is the whole change — deleting
+them breaks the tool that replaces them.
 -}
 module Sabela.AI.Capabilities.Tools.Query (queryTools) where
 

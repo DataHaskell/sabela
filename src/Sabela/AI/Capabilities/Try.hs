@@ -15,10 +15,18 @@ module Sabela.AI.Capabilities.Try (
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
-import Data.Maybe (isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.ModuleCard (resolveInstalledModules)
+import Sabela.AI.Capabilities.Try.Autofix (
+    autofixNote,
+    hiddenPackageOf,
+    notFoundModuleOf,
+    renameCandidateCap,
+    renameNote,
+ )
 import Sabela.AI.Capabilities.Try.HoleProbe (runHoleProbe)
 import Sabela.AI.Capabilities.Try.Payload (
     disposablePayload,
@@ -33,12 +41,13 @@ import Sabela.AI.Capabilities.Try.Snapshot (AppSnapshot (..), snapshotApp)
 import Sabela.AI.Capabilities.TryPlan
 import Sabela.AI.Capabilities.Util (fieldText, parseCellLang)
 import Sabela.AI.DepRepair (addBuildDepend)
+import Sabela.AI.ImportRepair (renameModule)
 import Sabela.AI.NormalizeGate (gatedRewrite)
+import Sabela.AI.PackageIndex (PackageEntry (..))
 import Sabela.AI.TypedHole (containsTypedHole)
 import Sabela.AI.Types (ToolOutcome (..), errOutcome, okOutcome)
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Deps (collectMetadata)
-import Sabela.Diagnose (hiddenPackage)
 import Sabela.Handlers.Lifecycle (sessionMetaMatches)
 import Sabela.Handlers.Plan (executeFullRestart)
 import Sabela.Model (Cell (..))
@@ -106,9 +115,18 @@ withField k v (ToolOk (Object o)) = ToolOk (Object (KM.insert (Key.fromText k) v
 withField k v (ToolErr (Object o)) = ToolErr (Object (KM.insert (Key.fromText k) v o))
 withField _ _ out = out
 
-{- | Mechanical dependency repair: a candidate failing only because its import
-lives in a hidden package is retried once with that package declared, and the
-addition disclosed. Scratch-only; committing a dependency stays deliberate.
+{- | Mechanical dependency repair, two rungs keyed on diagnostic class:
+
+* hidden package (GHC-87110): GHC names the package; retry once with it
+  declared.
+* module not found (GHC-35235): GHC cannot name a package because the module
+  name itself is wrong. Resolve it against the STORE index — near spelling
+  included — rename, declare the resolved package, retry once. live_test40
+  wrote @import Data.DataFrame@ then @import Data.Frame@ for the module the
+  card had named @DataFrame@, took two dead not-found errors, and abandoned
+  the right package for one it already knew.
+
+Scratch-only either way; committing a dependency stays deliberate.
 -}
 runTrialWithDepAutofix :: App -> Text -> TrialPlan -> IO ToolOutcome
 runTrialWithDepAutofix app code plan = do
@@ -119,42 +137,31 @@ runTrialWithDepAutofix app code plan = do
             , Right repaired <- planTrial repairedCode ->
                 withField "autofix" (String (autofixNote pkg repairedCode))
                     <$> runHaskellTrial app repaired
-        _ -> pure outcome
-
-{- | R7.1: the trial declared the dependency itself, so it owes the caller the
-source that carries it. Committing the pre-repair source would fail the gate,
-which declares no dependency the model did not write.
--}
-autofixNote :: Text -> Text -> Text
-autofixNote pkg repairedCode =
-    "Declared build-depends: "
-        <> pkg
-        <> " for this trial (the module was in a hidden package). Commit this \
-           \CURRENT source, which carries the dependency line:\n"
-        <> repairedCode
-
-{- | The hidden package named by a rejected trial, read from the fields that
-actually carry the compiler's words.
--}
-hiddenPackageOf :: ToolOutcome -> Maybe Text
-hiddenPackageOf (ToolOk _) = Nothing
-hiddenPackageOf (ToolErr value) =
-    listToMaybe (mapMaybe hiddenPackage (diagnosticTexts value))
-
-diagnosticTexts :: Value -> [Text]
-diagnosticTexts value =
-    [ text
-    | key <- ["stderr", "error", "diagnostic"]
-    , Just (String text) <- [lookupField key value]
-    ]
-        ++ [ text
-           | Just failure <- [lookupField "failure" value]
-           , Just (String text) <- [lookupField "message" failure]
-           ]
-
-lookupField :: Text -> Value -> Maybe Value
-lookupField key (Object obj) = KM.lookup (Key.fromText key) obj
-lookupField _ _ = Nothing
+        _ -> case notFoundModuleOf outcome of
+            Nothing -> pure outcome
+            Just wrong -> do
+                -- Extensive: iterate the nearest-name candidates until one
+                -- compiles, rather than betting the repair on the top guess.
+                cands <- resolveInstalledModules renameCandidateCap wrong
+                tryRenames outcome wrong cands
+  where
+    tryRenames failed _ [] = pure failed
+    tryRenames failed wrong ((right, pkg) : rest)
+        | right == wrong = tryRenames failed wrong rest
+        | repairedCode <-
+            addBuildDepend (peName pkg) (renameModule wrong right code)
+        , Right repaired <- planTrial repairedCode = do
+            retried <- runHaskellTrial app repaired
+            case retried of
+                ToolOk _ ->
+                    pure
+                        ( withField
+                            "autofix"
+                            (String (renameNote wrong right (peName pkg) repairedCode))
+                            retried
+                        )
+                ToolErr _ -> tryRenames failed wrong rest
+        | otherwise = tryRenames failed wrong rest
 
 runHaskellTrial :: App -> TrialPlan -> IO ToolOutcome
 runHaskellTrial app plan
@@ -267,6 +274,8 @@ candidateSpec plan =
                             <> hiddenExpressionBinding expression
                     , candidateExpression = Just "_sabelaTryCandidate"
                     , candidateReplacesCellId = Nothing
+                    , -- Speculative: keep Safe Haskell and the fail-fast budget.
+                      candidateDeliberate = False
                     }
         expression ->
             CandidateSpec
@@ -274,6 +283,7 @@ candidateSpec plan =
                 , candidateSetup = trialSetup plan
                 , candidateExpression = expression
                 , candidateReplacesCellId = Nothing
+                , candidateDeliberate = False
                 }
 
 hiddenExpressionBinding :: Text -> Text

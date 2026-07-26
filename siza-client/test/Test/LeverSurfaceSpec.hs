@@ -263,9 +263,9 @@ gridSpec = describe "discover-call-class grid (R8-T4 arm-independence pin)" $ do
         outs `shouldSatisfy` any ("\"state\":\"found\"" `T.isInfixOf`)
         -- Dedup: the byte-identical repeat is a duplicate reference.
         outs `shouldSatisfy` any ("\"state\":\"duplicate\"" `T.isInfixOf`)
-        -- Closure: the nudge closed the ledger; a later seen-key repeat
-        -- replays under the post-close reference.
-        outs `shouldSatisfy` any ("discovery closed" `T.isInfixOf`)
+        -- Retired gate: satisfaction discloses on answers; no call is
+        -- replaced by a held-facts citation.
+        outs `shouldSatisfy` (not . any ("satisfied by held facts" `T.isInfixOf`))
         -- Goal disclosure: the standing goal rides the inner call args.
         args `shouldSatisfy` any (\a -> goalTypeIn a == "Plot")
     it "RED on the plant: a mode-gated honesty branch breaks grid equality" $ do

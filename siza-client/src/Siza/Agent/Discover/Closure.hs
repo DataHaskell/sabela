@@ -146,33 +146,26 @@ sigClamp = 200
 
 {- | The post-close reference for a SEEN key: leads with the held hit when
 the sweep finds one, else replays the key's own summary — never a foreign
-scope's — and never advises further searching. @factsText@ is the caller's
-pre-rendered held-facts clause (kept out of this module's dependencies).
+scope's. @factsText@ is the caller's pre-rendered held-facts clause (kept out
+of this module's dependencies).
+
+It used to end \"Searching further cannot help ... act on it, or state the
+blocker plainly\", which asserts the search was sufficient — the one thing a
+miss record cannot know.
 -}
 closedSummary :: Maybe Value -> Text -> Text -> Text
 closedSummary (Just h) _ ownSummary =
-    heldHitLine h
-        <> " — already answered ("
-        <> ownSummary
-        <> "). Searching further cannot help because you already hold the \
-           \answer; act on it, or state the blocker plainly."
+    heldHitLine h <> " — already answered (" <> ownSummary <> ")."
 closedSummary Nothing factsText ownSummary =
-    ownSummary
-        <> ". Discovery is closed: act on what is held"
-        <> factsText
-        <> ", or state the blocker plainly."
+    ownSummary <> ". Already held" <> factsText <> "."
 
-{- | The rung-3 give-up line (R5.4): hand over the held hit, or state the
-scoped emptiness naming what was consulted — the only legal bare cannot-help.
+{- | What a repeated miss has to report (R5.4): the held hit for the entity,
+or the scoped emptiness naming which sources were consulted.
 -}
 giveUpLine :: Maybe Value -> [Text] -> Text
-giveUpLine (Just h) _ =
-    "Searching further cannot help — you already hold the answer: "
-        <> heldHitLine h
-        <> ". Act on it, or state the blocker plainly."
+giveUpLine (Just h) _ = "already held: " <> heldHitLine h <> "."
 giveUpLine Nothing consulted =
-    "Searching further cannot help: nothing was found for this in any \
-    \recorded answer (consulted: "
+    "no match in any recorded answer (consulted: "
         <> T.intercalate ", " (if null consulted then ["none"] else consulted)
         <> ")."
 

@@ -7,10 +7,13 @@ Split from "Sabela.AI.HoogleResolve" for the module-size cap.
 module Sabela.AI.HoogleRank (
     ecosystemScore,
     rankHits,
+    rankHitsInScope,
     nubOnKey,
 ) where
 
 import Data.List (sortOn)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -72,11 +75,27 @@ packages ('ecosystemScore') first, keep hoogle's relevance order per band,
 dedup by (name, module, package), drop noise modules ('isNoiseModule').
 -}
 rankHits :: [HoogleHit] -> [HoogleHit]
-rankHits hits =
+rankHits = rankHitsInScope Set.empty
+
+{- | B2: 'rankHits' with the scope gate. A hit from a package already in
+scope — a notebook dependency or a loaded session module — outranks one that
+is not, whatever its name matched. An out-of-scope EXACT name match
+therefore never displaces an in-scope alternative, which is how a plotting
+request came to be answered with audio-synthesis and theorem-prover cards
+(the @tidal-for-plot@, @rzk-for-plot@ and @unionfind-for-plot@ specimens).
+
+Scope is a fact about the session, not a judgement about a library: there is
+no package block-list here, and an out-of-scope hit is demoted, never
+dropped, so a genuinely new package is still reachable when nothing in scope
+answers.
+-}
+rankHitsInScope :: Set Text -> [HoogleHit] -> [HoogleHit]
+rankHitsInScope inScope hits =
     map snd (nub' (sortOn rankKey (zip [0 :: Int ..] keep)))
   where
     keep = filter (not . isNoiseModule . hhModule) hits
-    rankKey (i, h) = (ecosystemScore (hhPackage h), i)
+    rankKey (i, h) = (outOfScope h, ecosystemScore (hhPackage h), i)
+    outOfScope h = if hhPackage h `Set.member` inScope then 0 else 1 :: Int
     nub' = nubOnKey (\(_, h) -> (hhName h, hhModule h, hhPackage h))
 
 -- | Order-preserving dedup keyed by a projection.

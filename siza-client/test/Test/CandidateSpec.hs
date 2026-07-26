@@ -192,7 +192,7 @@ candidateSpec = describe "candidate cell (R8-T3 / R3.10 / G3)" $ do
                     facts `shouldSatisfy` any (nm `T.isInfixOf`)
 
     describe "G5.4: a candidate the gate refused is retired" $ do
-        it "the same source is never handed back once refuted" $
+        it "zombie-candidate: the same source is never handed back once refuted" $
             forM_ (map (: []) entries) $ \es -> do
                 let facts = factsFor es
                     clause = candidateClause facts

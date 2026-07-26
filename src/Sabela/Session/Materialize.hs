@@ -35,6 +35,8 @@ module Sabela.Session.Materialize (
     snapshotStillCurrent,
 
     -- * Pure pieces used by focused tests
+    buildBudgetFor,
+    candidateSafetyPrelude,
     candidateProjectMeta,
     materializationPlanFailure,
     partitionReplayCells,
@@ -87,8 +89,8 @@ import Sabela.Session.Process (ghciBackend, newSession)
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 import Sabela.Session.Query (captureBindingsBaseline)
 import Sabela.Session.Timeout (
+    TimeoutConfig (..),
     readTimeoutConfig,
-    tcTryBuildUs,
     tryBuildTimedOutMessage,
  )
 import Sabela.Session.TryCache (
@@ -98,6 +100,7 @@ import Sabela.Session.TryCache (
     commitCacheEntry,
     discardCacheEntry,
     resolvedGhcVersion,
+    shelveCacheEntry,
     tryCacheMaxEntries,
     tryCacheRoot,
  )
@@ -132,6 +135,15 @@ data CandidateSpec = CandidateSpec
     reconstructed prefix so the candidate replays against the notebook AFTER
     the edit, not alongside its own stale predecessor. 'Nothing' for an insert.
     -}
+    , candidateDeliberate :: Bool
+    {- ^ Is this a deliberate COMMIT rather than a speculative trial? A
+    commit gets the live build budget ('tcBuildUs'), a trial the tighter
+    disposable one ('tcTryBuildUs'). Without the distinction a cell whose
+    first line declares a heavy dependency can never be gate-compiled: the
+    trial budget expires, the gate refuses, and its own guidance ("commit it
+    deliberately with a @-- cabal:@ line") names the move it just refused.
+    live_test21 died in exactly that loop.
+    -}
     }
     deriving (Eq, Show)
 
@@ -143,6 +155,7 @@ expressionCandidate source =
         , candidateSetup = ""
         , candidateExpression = Just source
         , candidateReplacesCellId = Nothing
+        , candidateDeliberate = False
         }
 
 data DisposableVerdict
@@ -196,6 +209,16 @@ data DisposableResult = DisposableResult
     , disposableDependencies :: [Text]
     }
     deriving (Eq, Show)
+
+{- | The env-build budget for a candidate. A deliberate commit is allowed
+the live build ceiling, because for a cell whose first line declares a
+dependency the build IS the deliverable; a speculative trial keeps the
+tighter budget so it fails fast (G1 task 2).
+-}
+buildBudgetFor :: CandidateSpec -> TimeoutConfig -> Int
+buildBudgetFor spec tc
+    | candidateDeliberate spec = tcBuildUs tc
+    | otherwise = tcTryBuildUs tc
 
 disposableRouteName :: Text
 disposableRouteName = "disposable_scratch"
@@ -344,11 +367,13 @@ runInDisposableRoot app snapshot plan meta spec entry cacheRoot deps = do
                         { scJsonDiagnostics = False
                         , scCabalStoreDir = Just (ceStoreDir entry)
                         }
-            tryBuildBudget <- tcTryBuildUs <$> readTimeoutConfig
+            tryBuildBudget <- buildBudgetFor spec <$> readTimeoutConfig
             spawned <- timeout tryBuildBudget (newSession cfg)
             case spawned of
                 Nothing -> do
-                    discardCacheEntry (ceBucketDir entry)
+                    -- Budget breach, not a fault: keep the store so the next
+                    -- attempt resumes rather than rebuilding from empty.
+                    shelveCacheEntry (ceBucketDir entry)
                     pure
                         base
                             { disposableVerdict = DisposableTimedOut
@@ -436,7 +461,9 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
                                                             }
                                                 Right _ -> do
                                                     safety <-
-                                                        runChecked backend candidateSafetyPrelude
+                                                        runChecked
+                                                            backend
+                                                            (candidateSafetyPrelude spec)
                                                     case safety of
                                                         Left msg ->
                                                             pure
@@ -471,18 +498,19 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
   where
     compiledIds = map cellId (epCompileCells plan)
 
-{- | Safe Haskell is defense in depth for candidate-owned setup.  Existing
-notebook bindings may have unsafe provenance, so this establishes TypeOnly,
-not SafeProvenance.  The disposable process means no flag restoration is
-needed.
+{- | What a candidate runs under. The containment that matters is ISOLATION:
+the process is disposable, and 'Sabela.Session.Query.evalPureLive' proves the
+candidate is non-@IO@ before executing anything.
+
+@-XSafe@ used to ride along here for speculative trials. It bought hardening
+against @unsafePerformIO@ inside a pure-typed expression and cost the entire
+library surface: most of Hackage is neither Safe nor Trustworthy, so a trial
+could not import @Data.Csv@ or @Network.HTTP.Simple@ at all (GHC-44360), and
+the tool callers are told to reach for first was unusable for library code
+(@live_test33_wine@).
 -}
-candidateSafetyPrelude :: Text
-candidateSafetyPrelude =
-    T.unlines
-        [ ":module -System.IO.Unsafe"
-        , ":set -XSafe"
-        , ":seti -XSafe"
-        ]
+candidateSafetyPrelude :: CandidateSpec -> Text
+candidateSafetyPrelude _ = ":module -System.IO.Unsafe\n"
 
 runCandidate ::
     ST.SessionBackend ->

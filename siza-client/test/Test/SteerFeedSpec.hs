@@ -60,16 +60,18 @@ record :: Text -> Value -> SearchLedger -> (SearchLedger, Value)
 record = ledgerRecord
 
 steerFeedSpec :: Spec
-steerFeedSpec = describe "found-but-unsatisfied steer feed (R7-T2)" $ do
-    -- R8-T2 tightened this: an unsatisfied found walks the SAME ladder as a
-    -- not_found, so the steer fires at rung 2, not on the first answer.
-    it "fires the construct steer on every generated unsatisfied cluster by rung 2" $ do
+steerFeedSpec = describe "found-but-unsatisfied miss feed (R7-T2)" $ do
+    -- R8-T2: an unsatisfied found walks the SAME ladder as a not_found. That
+    -- ladder used to steer to mode="construct" by rung 2; it now only records.
+    it "no rung of an unsatisfied cluster steers" $ do
         let failures =
                 [ q
                 | (q, hits) <- unsatisfiedCases
                 , let (l1, _) = record q (foundWith q hits) emptyLedger
-                      (_, out2) = record q (foundWith q hits) l1
-                , not ("mode=\"construct\"" `T.isInfixOf` textField "next" out2)
+                      (l2, out2) = record q (foundWith q hits) l1
+                      (_, out3) = record q (foundWith q hits) l2
+                , o <- [out2, out3]
+                , "mode=\"construct\"" `T.isInfixOf` textField "next" o
                 ]
         failures `shouldBe` []
     it "discloses the unsatisfied goal in-band on the FIRST wall" $ do
@@ -87,10 +89,10 @@ steerFeedSpec = describe "found-but-unsatisfied steer feed (R7-T2)" $ do
             (l1, _) = record q (foundWith q hits) emptyLedger
             (l2, _) = record q (foundWith q hits) l1
             (_, out3) = record q (missFor q) l2
-        -- Two unsatisfied founds then a miss: the cluster escalation reaches
-        -- the give-up rung, which must carry the legal cannot-help wording.
+        -- Two unsatisfied founds then a miss: the cluster reaches the rung
+        -- that hands back the held hit rather than a bare denial.
         T.toLower (textField "next" out3 <> textField "summary" out3)
-            `shouldSatisfy` ("cannot help" `T.isInfixOf`)
+            `shouldSatisfy` ("already held" `T.isInfixOf`)
 
     it "a satisfying hit (exact target name) feeds no steer" $ do
         let q = "defaultPlotLineStyle"
@@ -109,10 +111,10 @@ steerFeedSpec = describe "found-but-unsatisfied steer feed (R7-T2)" $ do
         textField "next" out
             `shouldNotSatisfy` ("mode=\"construct\"" `T.isInfixOf`)
 
-    it "the not_found steer trigger path is unregressed (rung-2 value-shape miss)" $ do
+    it "a rung-2 value-shape miss is answered, not steered" $ do
         let q = "defaultPlotLineStyle"
             (l1, _) = record q (missFor q) emptyLedger
             (_, out2) = record (q <> " ") (missFor q) l1
         stateOf out2 `shouldBe` "not_found"
         textField "next" out2
-            `shouldSatisfy` ("mode=\"construct\"" `T.isInfixOf`)
+            `shouldNotSatisfy` ("mode=\"construct\"" `T.isInfixOf`)

@@ -103,11 +103,11 @@ spec = do
                            \computation interrupted ***"
 
     describe "defaultTimeoutConfig" $ do
-        it "is the historical 120s / 5s pair" $ do
-            tcExecutionUs defaultTimeoutConfig `shouldBe` 120_000_000
+        it "is the 30-minute execution budget with a 5s resync window" $ do
+            tcExecutionUs defaultTimeoutConfig `shouldBe` 1800_000_000
             tcResyncUs defaultTimeoutConfig `shouldBe` 5_000_000
-        it "bounds the off-lock build phase at 900s" $
-            tcBuildUs defaultTimeoutConfig `shouldBe` 900_000_000
+        it "bounds the off-lock build phase at 30 minutes too" $
+            tcBuildUs defaultTimeoutConfig `shouldBe` 1800_000_000
         it "bounds the disposable try build phase at 120s, tighter than tcBuildUs" $
             tcTryBuildUs defaultTimeoutConfig `shouldBe` 120_000_000
 

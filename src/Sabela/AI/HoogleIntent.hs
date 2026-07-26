@@ -30,7 +30,17 @@ actionStemTable :: [(ActionClass, [Text])]
 actionStemTable =
     [
         ( RenderAction
-        , ["plot", "draw", "render", "anima", "chart", "graph", "visual", "scatter", "svg"]
+        ,
+            [ "plot"
+            , "draw"
+            , "render"
+            , "anima"
+            , "chart"
+            , "graph"
+            , "visual"
+            , "scatter"
+            , "svg"
+            ]
         )
     ,
         ( LoadAction
@@ -38,7 +48,17 @@ actionStemTable =
         )
     ,
         ( ComputeAction
-        , ["comput", "calcul", "aggreg", "analy", "summar", "averag", "fit", "train", "predict"]
+        ,
+            [ "comput"
+            , "calcul"
+            , "aggreg"
+            , "analy"
+            , "summar"
+            , "averag"
+            , "fit"
+            , "train"
+            , "predict"
+            ]
         )
     ,
         ( InstallAction

@@ -83,8 +83,8 @@ infraPayload result =
         , "stage" .= maybe "unknown" (materializeStageText . failureStage) failure
         , "reason"
             .= ( "The hole probe could not reach the compiler; no producers were \
-                 \established. Retry, or state the blocker."
-                    :: Text
+                 \established. Retry, or state the blocker." ::
+                    Text
                )
         , "diagnostic" .= T.strip (probeDiagnostic result)
         ]

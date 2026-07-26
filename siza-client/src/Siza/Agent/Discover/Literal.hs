@@ -20,7 +20,9 @@ literalConstructible = map fst scalarLiterals
 
 {- | A canonical paste-valid literal for each scalar an argument can be filled
 with directly — the atoms that never need a producer hunt (R3.10). @Text@ uses
-a string literal (OverloadedStrings is a Sabela default extension).
+a string literal (OverloadedStrings is a Sabela default extension), and
+@FilePath@ is @String@ under another name: omitting it made @readCsv ::
+FilePath -> IO DataFrame@ derive a standing hunt for a producer of a path.
 -}
 scalarLiterals :: [(Text, Text)]
 scalarLiterals =
@@ -32,6 +34,7 @@ scalarLiterals =
     , ("Char", "' '")
     , ("Bool", "True")
     , ("String", "\"\"")
+    , ("FilePath", "\"\"")
     , ("Text", "\"\"")
     , ("Ordering", "EQ")
     ]

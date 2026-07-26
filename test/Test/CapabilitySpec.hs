@@ -15,6 +15,7 @@ import Sabela.AI.Capability (
     Match (..),
     defaultSynonyms,
     parseCapabilities,
+    relevanceScore,
     searchCapabilities,
  )
 import Test.Hspec
@@ -39,6 +40,10 @@ idx =
         "LinearConfig"
     , Capability "DataFrame.Model" "fit" "cfg -> Expr Double -> DataFrame -> model"
     , Capability
+        "DataFrame.Operations.Statistics"
+        "summarize"
+        "DataFrame -> DataFrame"
+    , Capability
         "Granite.Svg"
         "lineGraph"
         "[(Text, [(Double, Double)])] -> Plot -> Text"
@@ -59,7 +64,27 @@ via q = case searchCapabilities defaultSynonyms idx q of
     [] -> Nothing
 
 spec :: Spec
-spec = describe "Sabela.AI.Capability.searchCapabilities" $ do
+spec = unqualifySpec >> relevanceSpec >> searchSpec
+
+{- | The card ranks its exports with the SAME scorer every search ranks with,
+so "relevant" cannot mean two things. A bounded card only helps if the few
+exports it carries are the ones the question was about — ranking, not more
+context, is what makes the floor-of-8 carry the right 8.
+-}
+relevanceSpec :: Spec
+relevanceSpec = describe "one relevance scale for search and cards" $ do
+    let summarize = Capability "DataFrame" "summarize" "DataFrame -> DataFrame"
+        columns = Capability "DataFrame" "columns" "DataFrame -> Vector Column"
+        score = relevanceScore defaultSynonyms
+    it "a near-spelling query outranks an unrelated export" $
+        score "summary" summarize `shouldSatisfy` (> score "summary" columns)
+    it "an exact query outranks a near spelling" $
+        score "summarize" summarize `shouldSatisfy` (> score "summary" summarize)
+    it "no relation scores zero" $
+        score "zzznope" columns `shouldBe` 0
+
+searchSpec :: Spec
+searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
     {- live_test20: asked to superimpose a cosine, the model searched
     `overlay` and `pictures`, found neither, and guessed the gloss package —
     while `group` and the Semigroup instance were in scope throughout. -}
@@ -71,6 +96,15 @@ spec = describe "Sabela.AI.Capability.searchCapabilities" $ do
 
         it "finds the picture API for a pluralised query" $
             fmap fst (top "pictures") `shouldBe` Just "Sabela.Notebook"
+
+    {- live_test33_wine: "summary" is neither a prefix nor an infix of
+    "summarize", so the function the query wanted scored nothing at all. -}
+    describe "a near-spelling query still reaches the name" $ do
+        it "finds summarize for summary" $
+            fmap snd (top "summary") `shouldBe` Just "summarize"
+
+        it "does not fuzzy-match an unrelated name" $
+            fmap snd (top "zzzznotathing") `shouldBe` Nothing
 
     it "a name keyword finds the function (animate)" $ do
         top "animate" `shouldBe` Just ("Sabela.Notebook.Anim", "animate")
@@ -244,3 +278,21 @@ animBrowse =
         , "  -> IO ()"
         , "Sabela.Notebook.Anim.defaultAnim :: Sabela.Notebook.Anim.AnimOpts"
         ]
+
+{- | live_test40: the DataFrame card led with @&&)@ and bare @)@ — a qualified
+operator's own name contains dots, so unqualifying at the last dot splits
+inside it; and re-exports carry a @pkg-1.2.3:@ unit prefix no caller writes.
+-}
+unqualifySpec :: Spec
+unqualifySpec = describe "browse names unqualify structurally" $ do
+    it "a qualified operator keeps its whole name" $
+        parseCapabilities "M" "(DataFrame..&&.) :: Expr Bool -> Expr Bool -> Expr Bool"
+            `shouldBe` [Capability "M" "(.&&.)" "Expr Bool -> Expr Bool -> Expr Bool"]
+    it "a unit-prefixed re-export drops the unit and the qualifier" $
+        parseCapabilities
+            "M"
+            "dataframe-core-2.1.0.0:DataFrame.Internal.DataFrame.columns :: DataFrame -> Vector Column"
+            `shouldBe` [Capability "M" "columns" "DataFrame -> Vector Column"]
+    it "a plain qualified name still unqualifies" $
+        parseCapabilities "M" "DataFrame.readCsv :: FilePath -> IO DataFrame"
+            `shouldBe` [Capability "M" "readCsv" "FilePath -> IO DataFrame"]

@@ -14,6 +14,9 @@ module Siza.Agent.Messages (
     unconfirmedMessage,
     unconfirmedMsgWith,
     verifyMessage',
+    VerifyFailure (..),
+    verifyFailureOf,
+    verifyHeadline,
     verifyMsg,
     verifyMsgWith,
 ) where
@@ -111,24 +114,53 @@ wrong-value sentence — a giving-up model is shown the exact contradiction.
 -}
 verifyMessage' :: Int -> [Text] -> Maybe Text -> Text
 verifyMessage' ownedCount missing counterexample =
-    "The task is not done: the deliverable's check still fails. "
-        <> diagnosis
-        <> " Do not stop until the check passes."
+    verifyHeadline cls <> " " <> diagnosis <> " Do not stop until the check passes."
   where
-    diagnosis
-        | ownedCount == 0 =
+    cls = verifyFailureOf ownedCount missing
+    diagnosis = case cls of
+        NoDeliverable ->
             "You have written no cell yet — the deliverable must be DEFINED in \
             \a cell. Write it now with insert_cell."
-        | not (null missing) =
-            T.intercalate ", " (map tick missing)
+        DeliverableUndefined ns ->
+            T.intercalate ", " (map tick ns)
                 <> " is not defined in any cell. Define it with insert_cell or \
                    \replace_cell_source."
-        | Just ce <- counterexample =
-            ce <> " Fix the logic so it holds."
-        | otherwise =
-            "Your cells run, but the computed value does not satisfy the check \
-            \— re-read the task's examples and fix the logic."
+        CheckFailed
+            | Just ce <- counterexample -> ce <> " Fix the logic so it holds."
+            | otherwise ->
+                "Your cells run, but the computed value does not satisfy the \
+                \check — re-read the task's examples and fix the logic."
     tick n = "`" <> n <> "`"
+
+{- | C2.7: what actually went wrong. "No deliverable cell exists" is a
+PRECONDITION failure, not a failing check — live_test8 reported it as one
+and sent the model to inspect a check that was fine.
+-}
+data VerifyFailure
+    = NoDeliverable
+    | DeliverableUndefined [Text]
+    | CheckFailed
+    deriving (Eq, Show)
+
+-- | Classify a verify failure from the loop's own owned/missing counts.
+verifyFailureOf :: Int -> [Text] -> VerifyFailure
+verifyFailureOf ownedCount missing
+    | ownedCount == 0 = NoDeliverable
+    | not (null missing) = DeliverableUndefined missing
+    | otherwise = CheckFailed
+
+{- | One headline per class, so the verdict never calls a precondition
+failure a check failure.
+-}
+verifyHeadline :: VerifyFailure -> Text
+verifyHeadline NoDeliverable =
+    "The task is not done: no deliverable cell exists yet (the check has not \
+    \run — this is not a check failure)."
+verifyHeadline (DeliverableUndefined _) =
+    "The task is not done: the deliverable is not defined in any cell (the \
+    \check has not run — this is not a check failure)."
+verifyHeadline CheckFailed =
+    "The task is not done: the deliverable's check still fails."
 
 {- | The NOT-YET-CONFIRMED verify re-prompt (R5-T5): the check reached no
 verdict, so this must never claim failure — it says what is structurally

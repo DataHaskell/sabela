@@ -40,7 +40,8 @@ requireLiveIntegration = do
     case cabal of
         Nothing -> pendingWith "cabal not found on PATH; skipping try hole-probe integration"
         Just _ -> pure ()
-    supportPresent <- doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
+    supportPresent <-
+        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
     if supportPresent
         then pure ()
         else pendingWith "sabela-notebook support source not on disk; skipping"
@@ -130,7 +131,8 @@ spec = describe "G3 try admits a hole-bearing candidate as typecheck-only" $ do
             -- reaches stdout (the diagnostic quotes the source, which is the
             -- compiler echoing it, not the candidate running).
             textField "stdout" out `shouldBe` Just ""
-            textField "diagnostic" out `shouldSatisfy` maybe False (T.isInfixOf "Found hole")
+            textField "diagnostic" out
+                `shouldSatisfy` maybe False (T.isInfixOf "Found hole")
 
             countAfter <- cellCount app
             genAfter <- generationOf app

@@ -9,6 +9,7 @@ out of "Sabela.AI.Capabilities.Edit.Repair" to keep both under the size cap.
 module Sabela.AI.Capabilities.Edit.Repair.Resolvers (
     moduleResolveCandidates,
     importResolveCandidates,
+    qualifiedImportCandidates,
     ambiguousResolveCandidates,
     ambiguousCandidates,
     hoogleCandidates,
@@ -22,8 +23,13 @@ import Data.Maybe (isNothing, maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.AI.Capabilities.Edit.Repair (goalOfName, notInScopeNames, resultErrorText)
+import Sabela.AI.Capabilities.Edit.Repair (
+    goalOfName,
+    notInScopeNames,
+    resultErrorText,
+ )
 import Sabela.AI.Capabilities.Edit.ScratchVet (scratchVet)
+import Sabela.AI.Capabilities.ModuleCard (storeModuleNames)
 import Sabela.AI.Capabilities.ModuleSearch (interesting, resolveNameToModules)
 import Sabela.AI.Capabilities.Util (featureEnabled, featureOptIn)
 import Sabela.AI.Capability (Capability (..))
@@ -31,7 +37,12 @@ import Sabela.AI.CellEco (FitCand (..), cellEco, rankFits)
 import Sabela.AI.DepRepair (addBuildDepend)
 import Sabela.AI.HoleRepair (goalSpans, substituteNameAt)
 import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQuery, hoogleResolveTopK)
-import Sabela.AI.ImportRepair (addScopedImport, renameModule)
+import Sabela.AI.ImportRepair (
+    addQualifiedImport,
+    addScopedImport,
+    renameModule,
+    unboundAliasUses,
+ )
 import Sabela.AI.ModuleResolve (closestModules, isOutOfScopePackage)
 import Sabela.AI.PathRepair (pathNearMissFix)
 import Sabela.AI.Store (AIStore)
@@ -143,11 +154,17 @@ moduleResolveCandidates app res src = do
     case (enabled, mBackend, noHintModule) of
         (True, Just backend, Just wrong) -> do
             installed <- ST.sbQueryComplete backend "import "
+            store <- storeModuleNames
             k <- topKFromEnv
-            -- Pool = curated known modules plus the live installed list. Keeping
-            -- 'table' in keeps the target a candidate when the post-restart
-            -- completion list is not yet warm; verify-and-revert confirms it resolves.
-            let pool = nub (map fst table ++ filter interesting installed)
+            -- Pool = curated known modules, the live installed list, and the
+            -- STORE's modules (hidden packages included): live completion only
+            -- lists exposed modules, so a misspelling of a hidden module
+            -- (Data.Frame for DataFrame) had no candidate anywhere and this
+            -- fixer never fired; the renamed cell's hidden-package failure
+            -- then walks the dependency row, which serves the -- cabal: line
+            -- without applying it (live_test40). 'table' stays for the
+            -- post-restart window when completion is not yet warm.
+            let pool = nub (map fst table ++ filter interesting (installed ++ store))
             pure
                 [ src'
                 | cand <- closestModules k moduleFuzzyThreshold wrong pool
@@ -193,6 +210,39 @@ importResolveCandidates app store res src = do
             [ src'
             | cap <- vetted
             , let src' = addScopedImport (capModule cap) name src
+            , src' /= src
+            ]
+
+{- | Qualified-alias repair: a use of @T.lines@ in a cell that never bound
+@T@. The alias is not guessed — GHC names it as unimported, and the BARE name
+resolves against the session's own browse index, so the added
+@import qualified Data.Text as T@ rests on the same evidence
+'importResolveCandidates' uses. Shares its @SABELA_IMPORT_RESOLVE@ gate.
+
+live_test35_wine hit this six times; no mitigation row fitted, because the
+not-in-scope name GHC reports is the QUALIFIED one and no capability is
+indexed under it.
+-}
+qualifiedImportCandidates ::
+    App -> AIStore -> Either Text ExecutionResult -> Text -> IO [Text]
+qualifiedImportCandidates app store res src = do
+    enabled <- featureEnabled "SABELA_IMPORT_RESOLVE"
+    if not enabled
+        then pure []
+        else concat <$> mapM candidatesFor (unboundAliasUses (resultErrorText res))
+  where
+    candidatesFor (alias, name) = do
+        caps <- resolveNameToModules app name
+        vetted <-
+            filterM
+                ( \cap ->
+                    scratchVet app store src [] (capModule cap) name (goalOfName res name)
+                )
+                caps
+        pure
+            [ src'
+            | cap <- vetted
+            , let src' = addQualifiedImport (capModule cap) alias src
             , src' /= src
             ]
 

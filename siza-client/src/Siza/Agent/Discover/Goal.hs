@@ -14,6 +14,8 @@ module Siza.Agent.Discover.Goal (
     goalProduced,
     goalSatisfied,
     injectGoal,
+    injectRecent,
+    recentFromArgs,
     literalFill,
     nominalArgType,
     producesExact,
@@ -23,7 +25,7 @@ module Siza.Agent.Discover.Goal (
     withGoal,
 ) where
 
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAlphaNum, isUpper)
@@ -102,25 +104,38 @@ normType = T.unwords . T.words
 
 -- The evidence-derived standing goal -----------------------------------------
 
-{- | Held call-ready facts as (name, signature, package) triples — the shape
-'Siza.Agent.Discover.Advice.harvestFacts' emits, package = provenance.
+{- | Held call-ready facts as (name, signature, package) triples — the shapes
+'Siza.Agent.Discover.Advice.harvestFacts' and
+'Siza.Agent.Discover.Facts.compilerFact' emit, package = provenance.
+
+The signature ends at the provenance dash, WHICHEVER provenance follows.
+Splitting only on @" — found in "@ left a compiler-confirmed fact carrying its
+own marker into the signature, so @defaultReadOptions :: ReadOptions@ read as
+the type @"ReadOptions — confirmed by the compiler (check_type)"@ and produced
+nothing: the strongest evidence class could not close a goal, and
+@live_test34_wine@ hunted a @ReadOptions@ producer the working cell already had.
 -}
 consumerFacts :: [Text] -> [(Text, Text, Text)]
 consumerFacts facts =
-    [ (name, sig, provPackage prov)
+    [ (name, sig, foundInPackage prov)
     | f <- facts
     , Just body <- [T.stripPrefix "`" f]
     , let (name, rest) = T.breakOn "` :: " body
     , not (T.null name)
     , Just sigProv <- [T.stripPrefix "` :: " rest]
-    , let (sig0, prov) = T.breakOn " — found in " sigProv
+    , let (sig0, prov) = T.breakOn provenanceMark sigProv
           sig = T.strip sig0
     , not (T.null sig)
     ]
   where
-    provPackage prov = case reverse (T.splitOn "(" prov) of
-        (lastPart : _ : _) -> T.strip (T.takeWhile (/= ')') lastPart)
-        _ -> ""
+    provenanceMark = " — "
+    -- Only "found in Module (package)" names a package; the compiler marker's
+    -- own parenthesis is the tool that confirmed it, never provenance.
+    foundInPackage prov = case T.stripPrefix (provenanceMark <> "found in ") prov of
+        Just found -> case reverse (T.splitOn "(" found) of
+            (lastPart : _ : _) -> T.strip (T.takeWhile (/= ')') lastPart)
+            _ -> ""
+        Nothing -> ""
 
 {- | Derive the standing goal from held evidence: the MOST RECENT held
 consumer whose argument type is nominal and produced by no held fact — the
@@ -142,16 +157,27 @@ standingGoal facts =
 
 -- The judgement --------------------------------------------------------------
 
-{- | Section 8.3 satisfaction requires goal-class evidence: an exact hit for
-the resolved target, a hit whose signature produces the goal type, or a card
-ONLY when its package matches the goal's derivation provenance — a foreign
-card can never satisfy a goal it says nothing about.
+{- | Section 8.3 satisfaction requires goal-class evidence: a hit whose
+signature produces the goal type, an exact hit on the target when the target
+is the goal's OWN business, or a card ONLY when its package matches the
+goal's derivation provenance — a foreign card can never satisfy a goal it
+says nothing about.
+
+Target equality alone is not goal-class evidence. It let any exact-name
+lookup close an unrelated hunt: goal @FilePath@ (from @readCsv@) went
+satisfied on a query for @summary@ because a hit was named @summary@, and the
+armed gate then collapsed the next three searches to duplicates
+(@live_test33_wine@; @live_test_wine@ did the same via @Event@ and
+@http-conduit@).
 -}
 goalSatisfied :: StandingGoal -> Text -> Value -> Bool
 goalSatisfied sg target v = provenanceCard || any ok (jsonHits v)
   where
     g = sgType sg
-    ok h = jsonText "name" h == target || producesGoal g (jsonText "type" h)
+    ok h = producesGoal g (jsonText "type" h) || namesGoalsOwnBusiness h
+    namesGoalsOwnBusiness h =
+        jsonText "name" h == target
+            && (target == sgConsumer sg || producesExact g target)
     provenanceCard =
         not (T.null (sgPackage sg))
             && cardPackage v == Just (sgPackage sg)
@@ -220,6 +246,24 @@ injectGoal Nothing v = v
 injectGoal (Just sg) (Object o) = Object (KM.insert "_goal" (goalArg sg) o)
 injectGoal (Just sg) Null = object ["_goal" .= goalArg sg]
 injectGoal _ v = v
+
+{- | Ride the session's established packages on a discover call's arguments —
+the same schema-free seam the goal uses. Refinement state RANKS downstream,
+it never suppresses: the corrected use of ledger memory after the goal gate
+collapsed correct searches into citations (honeycomb, live_test33).
+-}
+injectRecent :: [Text] -> Value -> Value
+injectRecent [] v = v
+injectRecent pkgs (Object o) = Object (KM.insert "_recent" (toJSON pkgs) o)
+injectRecent pkgs Null = object ["_recent" .= pkgs]
+injectRecent _ v = v
+
+-- | The guard-injected recent packages, off a discover call's arguments.
+recentFromArgs :: Value -> [Text]
+recentFromArgs (Object o) = case KM.lookup "_recent" o of
+    Just (Array xs) -> [t | String t <- foldr (:) [] xs]
+    _ -> []
+recentFromArgs _ = []
 
 goalArg :: StandingGoal -> Value
 goalArg sg =

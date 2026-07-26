@@ -18,9 +18,7 @@ module Siza.Agent.Loop.Support (
     groundingMsgs,
     qualifiedBaseNames,
     nubShort,
-    updateNudge,
     factsBlock,
-    forceActMsgWith,
     streakHints,
 ) where
 
@@ -151,41 +149,6 @@ nubShort = go []
     go seen (x : xs)
         | x `elem` seen = go seen xs
         | otherwise = x : go (x : seen) xs
-
-{- | Consecutive read-only calls while a call-ready fact is held: acting (or a
-fact-free ledger) resets the counter. Crossing @k@ ('escalationK', budget-
-proportional) with 'nudgeFloor' turns left emits the ledger-closing @mkNudge@.
--}
-updateNudge ::
-    IO Value -> IORef Int -> Int -> Bool -> Int -> [ToolCall] -> IO [Value]
-updateNudge mkNudge ref k factReady remaining calls
-    | any callActs calls || not factReady = writeIORef ref 0 >> pure []
-    | otherwise = do
-        c0 <- readIORef ref
-        let c = c0 + length calls
-        if c >= k && remaining >= nudgeFloor
-            then do
-                writeIORef ref 0
-                nudge <- mkNudge
-                pure [nudge]
-            else writeIORef ref c >> pure []
-
-{- | The act-or-blocker nudge (R5.6/R5.7): carries the held facts it asks the
-caller to act on plus the remaining budget, and never asks for more searching.
--}
-forceActMsgWith :: [Text] -> Text -> Value
-forceActMsgWith facts remaining =
-    object
-        [ "role" .= ("user" :: Text)
-        , "content"
-            .= ( "You have made several discovery/read calls in a row without \
-                 \writing to the notebook. Searching further cannot help — act now: \
-                 \add or edit a cell (insert_cell / replace_cell_source), or state \
-                 \the blocker plainly. "
-                    <> remaining
-                    <> factsBlock facts
-               )
-        ]
 
 {- | The held-facts paragraph the act nudge and the wrap-up share. Blank-
 separated so it rides as one dedupable block ('Siza.Agent.EmitLedger'):

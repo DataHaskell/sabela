@@ -21,10 +21,12 @@ import Sabela.AI.HoleProbe (holeProbeProvenance)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Discover.Candidate (candidateCell, candidateGaps)
-import Siza.Agent.Discover.HistoryGuard (recordProbeFacts)
 import Siza.Agent.Discover.History (emptyLedger, heldFacts)
+import Siza.Agent.Discover.HistoryGuard (recordProbeFacts)
 import Siza.Agent.Discover.HoleProbe (
     ProbeDispatch,
+    groundedTarget,
+    probeGroundedType,
     probeTargetType,
     resolveCandidate,
     synthesisRoundCap,
@@ -34,7 +36,8 @@ import Test.ProbeFixtures (probeCode, probeFactFor, scriptedTryOutcome)
 
 -- | The live_test4 target: a consumer whose two argument slots are `Point`.
 lineFact :: Text
-lineFact = "`line` :: Point -> Point -> Picture — found in Sabela.Notebook (sabela-notebook)"
+lineFact =
+    "`line` :: Point -> Point -> Picture — found in Sabela.Notebook (sabela-notebook)"
 
 -- | A two-gap consumer over two DIFFERENT types, for the K-round fixture.
 segmentFact :: Text
@@ -59,11 +62,57 @@ mutatingCalls :: [ToolCall] -> [Text]
 mutatingCalls cs =
     [ tcName c
     | c <- cs
-    , tcName c `elem` ["insert_cell", "replace_cell_source", "propose_edit", "run_cell"]
+    , tcName c
+        `elem` ["insert_cell", "replace_cell_source", "propose_edit", "run_cell"]
     ]
+
+{- | live_test9's ungrounded target: @Frequency@ was conjured from the query
+token @Sine@ (an ALUT constructor, for a plotting request). Nothing in scope
+produces it, so it must never be probed at all.
+-}
+plotFact :: Text
+plotFact =
+    "`plot` :: [(Double, Double)] -> Picture \
+    \— found in Sabela.Notebook (sabela-notebook)"
 
 holeProbeSpec :: Spec
 holeProbeSpec = describe "G3 harness-side hole probing and bounded synthesis" $ do
+    describe "ungrounded-probe: a target nothing produces is never probed" $ do
+        it "runs ZERO probes and adds zero facts for an ungrounded type" $ do
+            (calls, dispatch) <- scriptedDispatch []
+            facts <- probeGroundedType dispatch [plotFact] "Frequency"
+            -- Assert on the PROBE COUNT, not just the ledger: a probe that
+            -- runs and is discarded still fails this.
+            readIORef calls `shouldReturn` []
+            facts `shouldBe` []
+
+        it "probes a target something in scope really does produce" $ do
+            (calls, dispatch) <-
+                scriptedDispatch [("Picture", ["`plot` produces Picture"])]
+            facts <- probeGroundedType dispatch [plotFact] "Picture"
+            cs <- readIORef calls
+            length cs `shouldBe` 1
+            facts `shouldNotBe` []
+
+        it "grounds on the producer test, not on lexical association" $ do
+            -- `plot` merely MENTIONS Double; it produces Picture.
+            groundedTarget [plotFact] "Picture" `shouldBe` True
+            groundedTarget [plotFact] "Frequency" `shouldBe` False
+            groundedTarget [plotFact] "Double" `shouldBe` False
+            groundedTarget [] "Picture" `shouldBe` False
+
+    describe "signature-synthesis: a held signature needs no hole" $ do
+        it "builds a compiling application from the confirmed signature" $ do
+            -- The exact live_test9 state: `plot`'s signature confirmed at
+            -- turn 11, no hole anywhere, twenty turns spent saying "write".
+            candidateGaps [plotFact] `shouldBe` []
+            case candidateCell [plotFact] of
+                Nothing -> expectationFailure "expected a synthesised candidate"
+                Just src -> do
+                    src `shouldSatisfy` T.isInfixOf "plot"
+                    src `shouldSatisfy` T.isInfixOf "import Sabela.Notebook"
+                    src `shouldNotSatisfy` T.isInfixOf "_ ::"
+
     describe "the probe on the live_test4 target type" $ do
         it "folds the compiler's producers into the ledger with provenance" $ do
             (calls, dispatch) <- scriptedDispatch [("Point", ["origin", "mkPoint"])]

@@ -16,28 +16,43 @@ import Sabela.AI.Capabilities.Edit.CompileGate.Render (
     renderNonExecuting,
  )
 
--- | Nothing in the render is a bare, immediately-runnable GHCi statement:
--- every non-declaration piece is wrapped in a fresh probe binding.
+{- | Nothing in the render is a bare, immediately-runnable GHCi statement:
+every non-declaration piece is wrapped in a fresh probe binding.
+-}
+
+{- | Nothing GHCi would EXECUTE. GHCi runs a bare statement but never the
+BODY of a binding, so the invariant is per block, not per line: each
+@:{ … :}@ block must OPEN with a binding or declaration, and everything
+outside a block must be an import, pragma or comment. Checking every line
+instead wrongly flagged the statements inside a non-executing @do@ block,
+which are exactly as inert as the binding that holds them.
+-}
 noBareStatement :: Text -> Bool
 noBareStatement rendered =
-    let bodyLines =
-            [ l
-            | l <- T.lines rendered
-            , let s = T.strip l
-            , not (T.null s)
-            , s /= ":{"
-            , s /= ":}"
-            ]
-     in all (isBindingOrPragma . T.strip) bodyLines
+    all blockOpensWithBinding (blocksOf rendered)
+        && all (safeOutside . T.strip) (outsideBlockLines rendered)
   where
-    isBindingOrPragma l =
-        "_sabelaGateProbe" `T.isPrefixOf` l
-            || "{-#" `T.isPrefixOf` l
-            || "import " `T.isPrefixOf` l
-            || "--" `T.isPrefixOf` l
-            || "=" `T.isInfixOf` l
+    blockOpensWithBinding body = case filter (not . T.null) (map T.strip body) of
+        [] -> True
+        (l : _) -> isBindingOrDecl l
+    isBindingOrDecl l =
+        "=" `T.isInfixOf` l
             || "::" `T.isInfixOf` l
-            || l == ")"
+            || any (`T.isPrefixOf` l) declStarts
+    declStarts = ["data ", "newtype ", "type ", "class ", "instance ", "--", "{-#"]
+    safeOutside l =
+        T.null l
+            || "import " `T.isPrefixOf` l
+            || "{-#" `T.isPrefixOf` l
+            || "--" `T.isPrefixOf` l
+
+-- | Lines that sit outside every @:{ … :}@ block.
+outsideBlockLines :: Text -> [Text]
+outsideBlockLines rendered = go (map T.strip (T.lines rendered))
+  where
+    go ls = case break (== ":{") ls of
+        (before, _ : rest) -> before <> go (drop 1 (dropWhile (/= ":}") rest))
+        (before, []) -> before
 
 {- | The @:{ … :}@ blocks of a rendering. GHCi judges each block on its own,
 so what shares a block is what shares a scope.
@@ -80,6 +95,10 @@ sharesABlock sig bind rendered =
         (\b -> any (T.isInfixOf sig) b && any (T.isInfixOf bind) b)
         (blocksOf rendered)
 
+-- | How many non-executing statement blocks the rendering emits.
+blockCount :: Text -> Int
+blockCount = length . filter (T.isInfixOf "= do") . T.lines
+
 spec :: Spec
 spec = do
     describe "renderForDiagnostics (G6 evidence rendering)" $ do
@@ -109,6 +128,35 @@ spec = do
                 `shouldSatisfy` noBareStatement
 
     describe "renderNonExecuting (G1 compile-gate candidate rendering)" $ do
+        {- live_test24: the gate rejected the commonest idiom there is —
+        `df <- readCsv ...` then any use of `df` — because each bind's
+        pattern was dropped. A gate with false negatives starves a session
+        exactly as a missing gate does; the housing probe could not load a
+        CSV at all until this was folded into one do block. -}
+        describe "gate-drops-bind (live_test24)" $ do
+            let rendered =
+                    renderNonExecuting
+                        "import qualified DataFrame as D\n\
+                        \df <- D.readCsv \"./data.csv\"\n\
+                        \print (D.take 10 df)"
+
+            it "keeps the bind's pattern, so a later statement sees it" $
+                rendered `shouldSatisfy` T.isInfixOf "df <- D.readCsv"
+
+            it "folds the run into ONE do block, not per-statement probes" $ do
+                rendered `shouldSatisfy` T.isInfixOf "= do"
+                blockCount rendered `shouldBe` 1
+
+            it "still executes nothing: the block is bound, never forced" $
+                rendered `shouldSatisfy` T.isInfixOf "_sabelaGateStmts"
+
+            it "keeps the import outside the block" $
+                rendered `shouldSatisfy` T.isInfixOf "import qualified DataFrame as D"
+
+            it "never ends a do block on a bind" $ do
+                let endsBind = renderNonExecuting "x <- readLn"
+                endsBind `shouldSatisfy` T.isInfixOf "pure ()"
+
         it "keeps a type signature in the same block as its binding (live_test6)" $ do
             let rendered = renderNonExecuting "y :: Int\ny = 3"
             rendered `shouldSatisfy` sharesABlock "y :: Int" "y = 3"
@@ -136,28 +184,36 @@ spec = do
             rendered `shouldSatisfy` T.isInfixOf "y = x + 1"
             rendered `shouldSatisfy` noBareStatement
 
-        it "a bare pure expression is bound to a probe, never left as a bare statement" $ do
+        it "a bare pure expression is bound, never left as a bare statement" $ do
             let rendered = renderNonExecuting "1 + 1"
-            rendered `shouldSatisfy` T.isInfixOf "_sabelaGateProbe"
-            rendered `shouldSatisfy` T.isInfixOf "(1 + 1)"
+            rendered `shouldSatisfy` T.isInfixOf "_sabelaGateStmts"
+            rendered `shouldSatisfy` T.isInfixOf "1 + 1"
             rendered `shouldSatisfy` noBareStatement
 
-        it "a runaway IO action is bound to a probe, never left as a bare statement (the live_test4-class regression)" $ do
-            let rendered = renderNonExecuting "print (length [(1 :: Integer) ..])"
-            rendered `shouldSatisfy` T.isInfixOf "_sabelaGateProbe"
-            rendered `shouldSatisfy` T.isInfixOf "print (length [(1 :: Integer) ..])"
-            rendered `shouldSatisfy` noBareStatement
+        it
+            "a runaway IO action is bound to a probe, never left as a bare statement (the live_test4-class regression)"
+            $ do
+                let rendered = renderNonExecuting "print (length [(1 :: Integer) ..])"
+                rendered `shouldSatisfy` T.isInfixOf "_sabelaGateStmts"
+                rendered `shouldSatisfy` T.isInfixOf "print (length [(1 :: Integer) ..])"
+                rendered `shouldSatisfy` noBareStatement
 
-        it "a main = <action> binding passes through as a declaration (already non-executing)" $ do
-            let rendered = renderNonExecuting "main = putStrLn \"hi\""
-            rendered `shouldSatisfy` T.isInfixOf "main = putStrLn \"hi\""
-            rendered `shouldSatisfy` noBareStatement
+        it
+            "a main = <action> binding passes through as a declaration (already non-executing)"
+            $ do
+                let rendered = renderNonExecuting "main = putStrLn \"hi\""
+                rendered `shouldSatisfy` T.isInfixOf "main = putStrLn \"hi\""
+                rendered `shouldSatisfy` noBareStatement
 
-        it "a monadic bind drops its pattern but still probes the right-hand side" $ do
+        {- Inverted 2026-07-25: the pattern is now KEPT. Dropping it is what
+        made `df <- readCsv …` + any use of `df` unpassable — see
+        'gate-drops-bind'. The invariant that still holds is that nothing
+        executes, which the enclosing binding guarantees. -}
+        it "a monadic bind KEEPS its pattern, inside a non-executing block" $ do
             let rendered = renderNonExecuting "x <- readFile \"input.txt\""
-            rendered `shouldSatisfy` T.isInfixOf "_sabelaGateProbe"
+            rendered `shouldSatisfy` T.isInfixOf "_sabelaGateStmts"
             rendered `shouldSatisfy` T.isInfixOf "readFile \"input.txt\""
-            rendered `shouldSatisfy` (not . T.isInfixOf "x <-")
+            rendered `shouldSatisfy` T.isInfixOf "x <- readFile"
             rendered `shouldSatisfy` noBareStatement
 
         -- live_test19: the gate rejected every animate candidate with a
@@ -174,7 +230,7 @@ spec = do
         it "a bind whose right-hand side holds a comprehension keeps it whole" $ do
             let rendered = renderNonExecuting "ys <- pure [y | y <- [1,2]]"
             rendered `shouldSatisfy` T.isInfixOf "pure [y | y <- [1,2]]"
-            rendered `shouldSatisfy` (not . T.isInfixOf "ys <-")
+            rendered `shouldSatisfy` T.isInfixOf "ys <- pure"
             rendered `shouldSatisfy` balancedBrackets
             rendered `shouldSatisfy` noBareStatement
 
@@ -194,6 +250,6 @@ spec = do
                         , "  putStrLn \"b\""
                         ]
                 rendered = renderNonExecuting src
-            rendered `shouldSatisfy` T.isInfixOf "_sabelaGateProbe"
+            rendered `shouldSatisfy` T.isInfixOf "_sabelaGateStmts"
             rendered `shouldSatisfy` T.isInfixOf "putStrLn \"a\""
             rendered `shouldSatisfy` T.isInfixOf "putStrLn \"b\""

@@ -16,7 +16,7 @@ module Sabela.AI.Capabilities.Edit.CompileGate (
     rejectionJson,
 ) where
 
-import Data.Aeson (Value, object, (.=))
+import Data.Aeson (Value, (.=))
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -67,6 +67,11 @@ compileGateSpec mReplaces src =
         , candidateSetup = renderNonExecuting src
         , candidateExpression = Nothing
         , candidateReplacesCellId = mReplaces
+        , -- A gate compile is always a deliberate commit, never a trial: the
+          -- model is asking to LAND this cell. Budgeting it as a speculative
+          -- trial is what deadlocked live_test21 — the gate refused a
+          -- dependency cell and then advised committing that same cell.
+          candidateDeliberate = True
         }
 
 {- | The rejection envelope: a 'refusalAck' naming the closed verdict, the

@@ -36,7 +36,6 @@ module Siza.Agent.Loop (
     qualifiedBaseNames,
 ) where
 
-import Control.Applicative ((<|>))
 import Control.Monad (unless, void, when)
 import Data.Aeson (Value (..), object, (.=))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -46,7 +45,7 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Grammar (discoverGrammarBlock)
-import Sabela.AI.PromptCore (sharedPromptCoreWith)
+import Sabela.AI.PromptCore (sabelaBuiltins)
 import Sabela.AI.Types (ToolOutcome (..))
 
 import Sabela.AI.Salvage (salvageCell)
@@ -61,17 +60,14 @@ import Siza.Agent.Discover (
     runDiscoverOutcomes,
     seamDiscover,
  )
-import Siza.Agent.Discover.History (SearchLedger, slRefuted)
+import Siza.Agent.Discover.History (SearchLedger)
 import Siza.Agent.Discover.HistoryGuard (
     closeSearchLedgerRanked,
     guardDiscover,
-    heldCallReady,
     newSearchLedger,
-    recordProbeFacts,
     seedSearchLedger,
     setSearchPressure,
  )
-import Siza.Agent.Discover.HoleProbe (resolveCandidate)
 import Siza.Agent.EmitLedger (
     EmitLedger,
     dedupInjected,
@@ -80,7 +76,6 @@ import Siza.Agent.EmitLedger (
  )
 import Siza.Agent.Exemplars (retrieveForPrompt, saveVerified)
 import Siza.Agent.Futility (guardDispatch, newFutilityGuard)
-import Siza.Agent.Loop.Escalate (escalateNudge)
 import Siza.Agent.Loop.Route (blockingCell, discloseRoute)
 import Siza.Agent.Loop.Support (
     callActs,
@@ -92,12 +87,10 @@ import Siza.Agent.Loop.Support (
     sampleK,
     streakHints,
     stuckFinal,
-    updateNudge,
     writeSource,
  )
 import Siza.Agent.Loop.WrapUp (
     budgetView,
-    escalationK,
     missRungFloor,
     wrapUpFinal,
     wrapUpOnce,
@@ -116,7 +109,6 @@ import Siza.Agent.Owned (
     StopDecision (..),
     bestFailing,
     hasArtifact,
-    latestDraft,
     noProgressStep,
     ownedCellOutcome,
     recordOwned,
@@ -129,7 +121,7 @@ import Siza.Agent.Repair.Blocking (repairBlockingCell)
 import Siza.Agent.Sample (SampleResult (..), SampleVerify (..), sampleVerifyOne)
 import Siza.Agent.Scaffold (runScaffoldStage)
 import Siza.Agent.ToolRoute (normalizeToolCall, recoverTurn)
-import Siza.Agent.Tools (offeredArgKeys, renderOutcome)
+import Siza.Agent.Tools (offeredArgKeys, renderOutcome, toolSurfacePrompt)
 import Siza.Agent.Transcript (renderMessage)
 
 data AgentRun = AgentRun
@@ -142,17 +134,37 @@ data AgentRun = AgentRun
     }
     deriving (Show)
 
-{- | TODO: mchavinda - the system prompt might be moot cause
-| small models forget anyway.
+{- | The prompt is the notebook's premise plus the tool surface, and nothing
+else. The working rules it used to carry ("try, then commit", "one small
+definition at a time", "a write auto-runs, so read the result") restated in
+prose what a tool already says in its own description, and prose a small model
+forgets is worse than a description it reads at the moment it picks the tool.
+So the rule logic lives in the tool descriptions, and the surface block is
+GENERATED from the catalogue.
 -}
 systemPrompt :: Text
 systemPrompt =
-    "Pair on a live Sabela reactive Haskell notebook through tools; editing or \
-    \running a cell re-runs everything downstream. insert_cell adds a cell (full \
-    \source, with the requested type signature); replace_cell_source fixes one. \
-    \Once the deliverable's cell runs clean, give a one-line summary and stop; do \
-    \not ask questions.\n\n"
-        <> sharedPromptCoreWith discoverGrammarBlock
+    T.unlines
+        [ "Pair on a live Sabela reactive Haskell notebook through tools."
+        , "Editing or running a cell re-runs every cell downstream of it."
+        , ""
+        ]
+        <> toolSurfacePrompt
+        <> T.unlines
+            [ "Examples:"
+            , ""
+            , "* \"what is already here?\" -> list_cells, then read_cell on the one you care about"
+            , "* \"which cell defines the counter?\" -> discover {query: \"counter\"}"
+            , "* \"is there a priority queue?\" -> discover {query: \"priority queue\"}"
+            , "* \"what is in Data.Map?\" -> discover {module: \"Data.Map\"}"
+            , "* \"how do I merge two maps?\""
+                <> " -> discover {query: \"Map k v -> Map k v -> Map k v\"}"
+            , "* \"how do I thread state?\" -> discover {query: \"StateT\"}"
+            , "* \"will this compile?\" -> try {code: \"...\"}, then insert_cell once it runs"
+            , "* \"the kernel says busy\" -> await_idle"
+            , ""
+            ]
+        <> sabelaBuiltins
 
 {- | The episode's side effects, injectable so the loop is testable without a
 live model or server. Production wires Ollama @chat@ and the siza @dispatch@.
@@ -252,8 +264,6 @@ episodeCore ::
     IO AgentRun
 episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
     printed <- newIORef (0 :: Int)
-    consec <- newIORef (0 :: Int)
-    nudgeRung <- newIORef (0 :: Int)
     delivered <- newIORef False
     signalled <- newIORef False
     signalDone <- newIORef False
@@ -264,7 +274,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
     streaks <- newIORef Map.empty
     wrapped <- newIORef False
     lastDitch <- newIORef False
-    start <- drvNow driver
     (owned0, msgs0) <-
         if null seed
             then do
@@ -277,6 +286,12 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 injected0 <- dedupInjected emits 0 (exemplars ++ pre ++ proactive)
                 pure (Map.empty, initial ++ injected0)
             else pure (Map.empty, seed ++ [userMsg])
+    {- The model's deadline starts at the model's FIRST turn. Harness-owned
+    setup — above all the scaffold's dependency build, which can run for
+    minutes — is not the model's to pay for: charging it left live_test24
+    with four tool calls and a "time budget is nearly spent" notice before
+    it had done anything. -}
+    start <- drvNow driver
     let flush msgs = do
             n <- readIORef printed
             mapM_
@@ -487,23 +502,16 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                             signalMsgs <- doneSignalProbe signalled done0
                             unless (null signalMsgs) $
                                 writeIORef signalDone True
-                            -- R5.7: once the stop line is out, no channel may
-                            -- emit search/read advice — the act nudge closes.
-                            quiet <- readIORef signalDone
-                            -- R5.6: nudge once a call-ready fact is held and
-                            -- reads keep coming (never fact-free/below floor).
-                            ready <- heldCallReady ledger
-                            nudge <-
-                                if quiet
-                                    then pure []
-                                    else
-                                        updateNudge
-                                            (mkNudge nudgeRung turn owned)
-                                            consec
-                                            (escalationK maxTurns (maxTurns - turn))
-                                            ready
-                                            (maxTurns - turn)
-                                            dispatched
+                            {- The read-streak escalation is GONE. Both rungs
+                            asserted things the harness cannot know: "Searching
+                            further cannot help" assumes the search so far was
+                            sufficient, and "Repetition has not produced a
+                            write" reads a hard search as a loop. live_test31
+                            was told search could not help immediately before
+                            the next search returned the answer that solved the
+                            task. A read streak is evidence of not-writing, not
+                            of having-enough. -}
+                            let nudge = []
                             let owned' =
                                     foldr recordOwned owned [(c, o) | (c, Right o) <- results]
                                 toolMsgs =
@@ -690,17 +698,6 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
     -- R8-T3 escalation in kind: rung 1 echoes facts, rung 2+ carries a
     -- candidate ('Siza.Agent.Loop.Escalate'). G3: before that, the harness
     -- probes its own open gaps and keeps only a candidate try accepted.
-    mkNudge rung turn owned = do
-        facts0 <- rankedFacts owned
-        let draft = latestDraft owned
-        (facts, resolved) <- resolveCandidate (drvDispatch driver) draft facts0
-        recordProbeFacts ledger facts
-        -- G5.4: never re-hand a candidate the gate already rejected.
-        refuted <- slRefuted <$> readIORef ledger
-        escalateNudge rung refuted (resolved <|> draft) facts $
-            "Remaining turn budget: "
-                <> T.pack (show (maxTurns - turn))
-                <> "."
     reDiscover dref owned' reds = do
         done <- readIORef dref
         if done

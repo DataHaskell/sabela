@@ -1,35 +1,38 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | R6-T3 construct-facet steering, unit half (R5.6/R5.7/R5.9): shape-keyed
-steering to @mode="construct"@ by miss 2, followable against the synthetic
-catalogue, plus the budget-pressure floor. Loop half: "Test.SteerLoopSpec".
+{- | Name-shape goal classification, and the guard that the miss record stays
+a record.
+
+This spec used to pin construct-facet steering: by miss 2 the ladder told the
+caller to re-query with @mode="construct"@, and by the give-up rung to stop
+searching and act. Both rest on the harness inferring that the search so far
+was sufficient and the question malformed — an inference it cannot make, and
+one that is wrong exactly when the hunt is hard. 'goalTypeOf' survives
+because goal detection is still real; the advice it fed does not.
 -}
 module Test.SteerSpec (
     steerSpec,
     foundHidden,
     missEnvOf,
-    steerTarget,
     world,
 ) where
 
 import Control.Monad (forM_)
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.Discover.History (
     SearchLedger,
     emptyLedger,
-    ledgerClose,
     ledgerPressure,
     ledgerRecord,
     ledgerShortcut,
  )
 import Siza.Agent.Discover.Interpret (interpret)
 import Siza.Agent.Discover.Merge (discoverEnvelope)
-import Siza.Agent.Discover.Steer (constructSteer, goalTypeOf)
+import Siza.Agent.Discover.Steer (goalTypeOf)
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
@@ -39,16 +42,8 @@ import Siza.Agent.Discover.Types (
     okAnswer,
     seededBuiltins,
  )
-import Siza.Agent.DiscoverTool (runDiscoverCall)
-import Test.CatalogueSim (SimWorld (..), producerPkgs, simWorldCall)
-import Test.DiscoverFixtures (
-    SynPkg (..),
-    hitText,
-    hitsOf,
-    installNamesFileWith,
-    stateOf,
-    textField,
- )
+import Test.CatalogueSim (SimWorld (..), producerPkgs)
+import Test.DiscoverFixtures (SynPkg (..), textField)
 
 -- Fixtures -------------------------------------------------------------------
 
@@ -97,44 +92,16 @@ scriptLedger = foldl step (emptyLedger, [])
 adviceOf :: Value -> Text
 adviceOf v = textField "next" v <> " " <> textField "summary" v
 
--- | Parse the steering's named type out of an advice text (literal caller).
-steerTarget :: Text -> Maybe Text
-steerTarget c = case T.breakOn marker c of
-    (_, rest)
-        | T.null rest -> Nothing
-        | otherwise ->
-            let ty = T.takeWhile (/= ',') (T.drop (T.length marker) rest)
-             in if T.null ty then Nothing else Just ty
-  where
-    marker = "For a value of type "
-
-steered :: Value -> Bool
-steered v = "mode=\"construct\"" `T.isInfixOf` adviceOf v
-
 -- | The producer catalogue world (session sees the exposed packages).
 world :: SimWorld
 world = SimWorld [p | p <- pkgs, not (spHidden p)] pkgs
   where
     pkgs = producerPkgs ("plume", "framing", "styling")
 
-runWorldConstruct :: Text -> IO Value
-runWorldConstruct ty = do
-    out <-
-        runDiscoverCall
-            True
-            (simWorldCall world)
-            ty
-            (object ["mode" .= ("construct" :: Text)])
-    pure $ case out of
-        ToolOk v -> v
-        ToolErr v -> v
-
 steerSpec :: Spec
-steerSpec = describe "construct-facet steering (R6-T3: R5.6/R5.7/R5.9)" $ do
+steerSpec = describe "goal shape classification and the miss record" $ do
     shapeSpec
-    ladderSpec
-    followableSpec
-    pressureSpec
+    recordSpec
 
 -- Shape classification (never a library name) --------------------------------
 
@@ -169,123 +136,53 @@ shapeSpec = describe "goalTypeOf classifies by name shape alone" $ do
             , "default_plot"
             ]
         $ \n -> (n, goalTypeOf n) `shouldBe` (n, Nothing)
-    it "the steering text is a function of the goal type, never a library" $ do
-        constructSteer "mkStyle" `shouldBe` constructSteer "makeStyle"
-        case constructSteer "defaultPlot" of
-            Nothing -> expectationFailure "defaultPlot must steer"
-            Just s ->
-                forM_ ["plume", "framing", "styling", "granite", "dataframe"] $ \lib ->
-                    (lib, lib `T.isInfixOf` T.toLower s) `shouldBe` (lib, False)
 
--- Steered by miss 2 through the ladder ---------------------------------------
+-- The record carries facts; it never instructs ------------------------------
 
-ladderSpec :: Spec
-ladderSpec = describe "a value-of-type miss cluster is steered by miss 2" $ do
-    it "the defaultPlot class: miss 1 is unsteered, miss 2 names the facet" $ do
-        let (_, outs) =
-                scriptLedger
-                    [("newPlot", missEnvOf "newPlot"), ("`newPlot`", missEnvOf "`newPlot`")]
-        steered (head outs) `shouldBe` False
-        steered (outs !! 1) `shouldBe` True
-        steerTarget (adviceOf (outs !! 1)) `shouldBe` Just "Plot"
-    it "the LegendPos class (bare type name) is steered by miss 2 too" $ do
-        let (_, outs) =
-                scriptLedger
-                    [ ("LegendPos", missEnvOf "LegendPos")
-                    , ("`LegendPos`", missEnvOf "`LegendPos`")
-                    ]
-        steered (outs !! 1) `shouldBe` True
-        steerTarget (adviceOf (outs !! 1)) `shouldBe` Just "LegendPos"
-    it "a value-shaped cluster (col) is never steered, at any rung" $ do
-        let (_, outs) =
-                scriptLedger
-                    [ ("col", missEnvOf "col")
-                    , ("`col`", missEnvOf "`col`")
-                    , ("col ", missEnvOf "col ")
-                    ]
-        forM_ outs $ \o -> steered o `shouldBe` False
-    -- live_test20: `pictures`, `overlay`, `color` are three DIFFERENT clusters,
-    -- so each sat at rung 1 and the per-cluster ladder never escalated. The
-    -- model then guessed a package. Distinct misses are the signal that the
-    -- lexical question itself is wrong.
-    it "distinct concept misses are taught the type question by the 2nd" $ do
-        let (_, outs) =
-                scriptLedger
-                    [ ("pictures", missEnvOf "pictures")
-                    , ("overlay", missEnvOf "overlay")
-                    ]
-        adviceOf (head outs) `shouldNotSatisfy` T.isInfixOf "find_by_type"
-        adviceOf (outs !! 1) `shouldSatisfy` T.isInfixOf "find_by_type"
+-- | Every imperative the ladder used to escalate into.
+bannedAdvice :: [Text]
+bannedAdvice =
+    [ "mode=\"construct\""
+    , "find_by_type"
+    , "act on what is held"
+    , "write the deliverable now"
+    , "state the blocker"
+    , "retry"
+    , "different shape"
+    , "search again"
+    ]
 
-    it "the type-question example is generic, never a library name" $ do
-        let (_, outs) =
-                scriptLedger
-                    [ ("pictures", missEnvOf "pictures")
-                    , ("overlay", missEnvOf "overlay")
-                    ]
-            advice = T.toLower (adviceOf (outs !! 1))
-        forM_ ["plume", "framing", "styling", "granite", "dataframe", "gloss"] $
-            \lib -> (lib, lib `T.isInfixOf` advice) `shouldBe` (lib, False)
-
-    it "repeats of ONE cluster are not the distinct-miss signal" $ do
-        let (_, outs) =
-                scriptLedger
-                    [ ("col", missEnvOf "col")
-                    , ("`col`", missEnvOf "`col`")
-                    ]
-        adviceOf (outs !! 1) `shouldNotSatisfy` T.isInfixOf "find_by_type"
-
-    it "R5.7: a post-close miss is never taught to search by type either" $ do
-        let closed = ledgerClose emptyLedger
-            (led1, _) = ledgerRecord "pictures" (missEnvOf "pictures") closed
-            (_, out) = ledgerRecord "overlay" (missEnvOf "overlay") led1
-        adviceOf out `shouldNotSatisfy` T.isInfixOf "find_by_type"
-
-    it "R5.7: a post-close miss is never steered back into searching" $ do
-        let closed = ledgerClose emptyLedger
-            (_, out) = ledgerRecord "newChart" (missEnvOf "newChart") closed
-            advice = T.toLower (adviceOf out)
-        steered out `shouldBe` False
-        forM_ ["call discover", "retry", "different shape", "search again"] $ \p ->
-            (p, p `T.isInfixOf` advice) `shouldBe` (p, False)
-
--- Followability against the catalogue ----------------------------------------
-
-followableSpec :: Spec
-followableSpec = describe "the steering text is followable (R4.4/R5.9)" $ do
-    it "following the newPlot steer verbatim finds ready-made producers" $ do
-        installNamesFileWith ["plume", "framing", "styling"]
-        let (_, outs) =
-                scriptLedger
-                    [("newPlot", missEnvOf "newPlot"), ("`newPlot`", missEnvOf "`newPlot`")]
-        case steerTarget (adviceOf (outs !! 1)) of
-            Nothing -> expectationFailure "no steer target named"
-            Just ty -> do
-                v <- runWorldConstruct ty
-                stateOf v `shouldBe` "found"
-                map (hitText "name") (take 3 (hitsOf v))
-                    `shouldSatisfy` elem "defaultPlot"
-    it "following a bare-type steer (Style) reaches the hoogle-only producer" $ do
-        installNamesFileWith ["plume", "framing", "styling"]
-        v <- runWorldConstruct "Style"
-        stateOf v `shouldBe` "found"
-        map (hitText "name") (take 3 (hitsOf v)) `shouldSatisfy` elem "mkStyle"
-
--- Budget-pressure floor on the miss ladder (R5.6) ----------------------------
-
-pressureSpec :: Spec
-pressureSpec = describe "the miss ladder's budget-pressure floor" $ do
+recordSpec :: Spec
+recordSpec = describe "a miss reports, it does not instruct" $ do
     let withFact = fst (ledgerRecord "cumulus" foundHidden emptyLedger)
-    it "under no pressure a fresh cluster's first miss is rung 1" $ do
-        let (_, out) = ledgerRecord "moonbeam" (missEnvOf "moonbeam") withFact
-        adviceOf out `shouldSatisfy` (not . T.isInfixOf "Already held")
-    it "at mid-budget pressure a fresh cluster's FIRST miss carries held facts" $ do
-        let led = ledgerPressure 2 withFact
-            (_, out) = ledgerRecord "moonbeam" (missEnvOf "moonbeam") led
-        adviceOf out `shouldSatisfy` T.isInfixOf "Already held"
-        adviceOf out `shouldSatisfy` T.isInfixOf "build-depends: cumulus"
-    it "at floor pressure a fresh cluster's FIRST miss is act-or-blocker" $ do
+        noAdvice out =
+            forM_ bannedAdvice $ \p ->
+                (p, p `T.isInfixOf` T.toLower (adviceOf out)) `shouldBe` (p, False)
+
+    it "no rung of a value-of-type cluster steers" $ do
+        let (_, outs) =
+                scriptLedger
+                    [ ("newPlot", missEnvOf "newPlot")
+                    , ("`newPlot`", missEnvOf "`newPlot`")
+                    , ("newPlot ", missEnvOf "newPlot ")
+                    ]
+        mapM_ noAdvice outs
+
+    it "distinct concept misses are not taught to ask by type" $ do
+        let (_, outs) =
+                scriptLedger
+                    [ ("pictures", missEnvOf "pictures")
+                    , ("overlay", missEnvOf "overlay")
+                    , ("color", missEnvOf "color")
+                    ]
+        mapM_ noAdvice outs
+
+    it "under budget pressure the record still only reports" $ do
         let led = ledgerPressure 3 withFact
             (_, out) = ledgerRecord "moonbeam" (missEnvOf "moonbeam") led
-        adviceOf out `shouldSatisfy` T.isInfixOf "Act on what is held"
-        steered out `shouldBe` False
+        noAdvice out
+
+    it "a pressured miss still carries the facts already held" $ do
+        let led = ledgerPressure 2 withFact
+            (_, out) = ledgerRecord "moonbeam" (missEnvOf "moonbeam") led
+        adviceOf out `shouldSatisfy` T.isInfixOf "build-depends: cumulus"

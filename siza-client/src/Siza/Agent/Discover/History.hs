@@ -27,7 +27,6 @@ module Siza.Agent.Discover.History (
 
 import Data.Aeson (Value)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (isNothing)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -66,13 +65,9 @@ import Siza.Agent.Discover.Goal (
     withGoal,
  )
 import Siza.Agent.Discover.Ledger
-import Siza.Agent.Discover.MissLadder (
-    attachTypeSteer,
-    missAdvice,
-    withCandidate,
- )
+import Siza.Agent.Discover.MissLadder (missAdvice)
 import Siza.Agent.Discover.Resolved (resolvedWhy)
-import Siza.Agent.Discover.Steer (goalTypeOf, typeSteerAfterMisses)
+import Siza.Agent.Discover.Steer (goalTypeOf)
 import Siza.Agent.Discover.Types (StandingGoal (..))
 
 {- | Answer from the ledger alone, skipping the backend — only ever for a
@@ -85,12 +80,8 @@ ledgerShortcut :: SearchLedger -> Text -> Maybe Value
 ledgerShortcut led q
     | slClosed led = case closedSeen of
         Just (_, summary) ->
-            -- The close carries the section 8.1 candidate (R8-T3): the gate
-            -- hands over the propose-and-compile write, not a bare refusal.
-            Just
-                . withCandidate (slRefuted led) (slFacts led)
-                . duplicateEnvelope qn "discovery closed"
-                $ closedSummary
+            Just . duplicateEnvelope qn "already answered" $
+                closedSummary
                     (bestHeldFor (slEvidence led) (entityOf qn))
                     (factsClause (slFacts led))
                     summary
@@ -107,11 +98,11 @@ ledgerShortcut led q
     qn = T.strip q
     closedSeen =
         case Map.lookup qn (slSeen led) of
-            Just seen -> Just seen
+            Just hit -> Just hit
             Nothing ->
                 snd
                     <$> Map.lookupMin
-                        (Map.filterWithKey (\seen _ -> sameCluster seen qn) (slSeen led))
+                        (Map.filterWithKey (\k _ -> sameCluster k qn) (slSeen led))
 
 -- | Equivalent query spellings share a head entity and identical scope.
 sameCluster :: Text -> Text -> Bool
@@ -129,14 +120,6 @@ and budget included (section 8.3); misses walk the ladder (R5.5-R5.6).
 ledgerRecord :: Text -> Value -> SearchLedger -> (SearchLedger, Value)
 ledgerRecord q v led0
     | state == "bad_request" = (led, v)
-    -- The k=2 hard gate: satisfaction held on real evidence plus a
-    -- call-ready deliverable fact answers at most 'gateBudget' further
-    -- same-cluster calls, then the one-line held-facts write steer.
-    | Just sg <- standing
-    , Just n <- Map.lookup (goalClusterKey (sgType sg)) (slGoalSat led)
-    , n > gateBudget
-    , not (null (callReadyFacts led)) =
-        announce (led, gateSteer (sgType sg) qn (slFacts led))
     | state == "not_found" =
         case protectedFact led cluster of
             Just why -> announce (led, blockedDenial qn why)
@@ -155,13 +138,8 @@ ledgerRecord q v led0
         announce $ case Map.lookup key (slAnswers led) of
             Just (n, q0)
                 | q0 /= qn ->
-                    let (repeated, hard) = discoverRepeat qn (assertFound led)
-                     in ( repeated
-                        , maybe
-                            (answerDup (strongEvidence v) qn n q0)
-                            (withCandidate (slRefuted repeated) (slFacts repeated))
-                            hard
-                        )
+                    let (repeated, _hard) = discoverRepeat qn (assertFound led)
+                     in (repeated, answerDup (strongEvidence v) qn n q0)
             _ ->
                 let led' = assertFound led
                  in ( (discoverFresh led')
@@ -172,7 +150,7 @@ ledgerRecord q v led0
                     )
     | otherwise = announce (discoverFresh (assertFound led), vG)
   where
-    led = bumpGate (noteConsulted v (harvest v (bumpCall (tryShapes q v led0))))
+    led = noteConsulted v (harvest v (bumpCall (tryShapes q v led0)))
     state = topText "state" v
     qn = T.strip q
     cluster = clusterOf v qn
@@ -193,16 +171,6 @@ ledgerRecord q v led0
         Just note ->
             (l{slWorldNote = Nothing}, setField "worldChange" note out)
         Nothing -> (l, out)
-    -- A same-cluster call after satisfaction spends the k=2 gate budget.
-    bumpGate l = case standingGoal (slFacts l) of
-        Just sg
-            | Just _ <-
-                Map.lookup (goalClusterKey (sgType sg)) (slGoalSat l) ->
-                l
-                    { slGoalSat =
-                        Map.adjust (+ 1) (goalClusterKey (sgType sg)) (slGoalSat l)
-                    }
-        _ -> l
     -- Satisfaction on a DERIVED goal arms the gate; keyed on ledger state.
     markSatisfied l = case standing of
         Just sg
@@ -240,9 +208,8 @@ ledgerRecord q v led0
             { slSeen = Map.insert qn (slCalls l, summary) (slSeen l)
             , slMisses = Map.delete cluster (slMisses l)
             }
-    -- The ONE ladder both not_found and goal-miss walk (section 8.3): a
-    -- post-close miss goes straight to the give-up rung (R5.7), the budget
-    -- floor binds (R5.6), and the advice rewrites the goal-attached answer.
+    -- The ONE record both not_found and goal-miss walk (section 8.3): the
+    -- budget floor binds (R5.6) and the rung count drives dedup only.
     missWalk summary ledIn =
         let n0 = 1 + Map.findWithDefault 0 missCluster (slMisses ledIn)
             n = max n0 (if slClosed ledIn then 3 else slRungFloor ledIn)
@@ -252,42 +219,21 @@ ledgerRecord q v led0
                     }
             bestHeld = bestHeldFor (slEvidence led') entity
             consulted = Set.toAscList (slConsulted led')
-            -- Distinct missed names, not repeats of one: the signal that the
-            -- lexical question itself is wrong and a synonym will not fix it.
-            -- Pre-close rungs only, like the construct steer: by the give-up
-            -- rung the caller must act on held facts, not learn a new way to
-            -- search (R5.7), and the terse reference has a size budget.
-            teachTypeQuestion =
-                isNothing mGoal
-                    && not (slClosed ledIn)
-                    && n <= 2
-                    && Map.size (slMisses led') >= typeSteerAfterMisses
          in ( led'
-            , attachTypeSteer teachTypeQuestion $
-                missAdvice
-                    (sgType <$> mGoal)
-                    (slTried led')
-                    (slRefuted led')
-                    (slFacts led')
-                    bestHeld
-                    consulted
-                    n
-                    qn
-                    vG
+            , missAdvice
+                (slTried led')
+                (slFacts led')
+                bestHeld
+                consulted
+                n
+                qn
+                vG
             )
 
--- | The gate's answered-call budget after satisfaction (section 8.3).
-gateBudget :: Int
-gateBudget = 2
-
--- | The one-line held-facts write steer the gate answers with (R5.7-clean).
-gateSteer :: Text -> Text -> [Text] -> Value
-gateSteer g qn facts =
-    duplicateEnvelope qn "goal satisfied" $
-        "goal "
-            <> g
-            <> " satisfied \8212 write the deliverable now"
-            <> factsClause facts
+{- | What the satisfied-goal gate answers with: the verdict and the evidence
+behind it. It used to end \"write the deliverable now\" — an instruction resting
+on the harness's own heuristic that the goal was met.
+-}
 
 -- | Fold an envelope's consulted source names into the session record.
 noteConsulted :: Value -> SearchLedger -> SearchLedger

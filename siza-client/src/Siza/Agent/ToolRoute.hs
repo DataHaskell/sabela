@@ -8,10 +8,11 @@ dispatches (stamped by 'recoverTurn'); ambiguity reprompts with the parse
 failure; a word-like foreign name stays honestly unknown.
 -}
 module Siza.Agent.ToolRoute (
+    isStateQuery,
+    stateQueryTools,
     Route (..),
     installSteer,
     isDiscoverName,
-    orientationKey,
     maxNameDrift,
     nameCandidates,
     normalizeToolCall,
@@ -23,15 +24,13 @@ module Siza.Agent.ToolRoute (
     unwrapArgs,
 ) where
 
-import Data.Aeson (Value (..), encode)
+import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isAlpha)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 
 import Sabela.AI.Capabilities.ToolName (ToolName, resolveToolCall)
 import Sabela.AI.HoleRepair (editDistance)
@@ -211,11 +210,16 @@ isDiscoverName name = T.takeWhile (/= ' ') (T.strip name) == "discover"
 {- | Stable request identity for read-only diagnostic tools covered by the
 history ledger. Argument normalisation happens before this boundary.
 -}
-orientationKey :: ToolCall -> Maybe Text
-orientationKey tc
-    | tcName tc `elem` ["list_cells", "kernel_status"] =
-        Just (tcName tc <> " " <> TE.decodeUtf8 (LBS.toStrict (encode (tcArgs tc))))
-    | otherwise = Nothing
+
+{- | Tools whose whole value is the comparison against their previous answer.
+Collapsing a repeat to "same as last time" deletes that information rather
+than compressing it, so these are exempt from dedup entirely (G8, G5.9).
+-}
+stateQueryTools :: [Text]
+stateQueryTools = ["kernel_status", "await_idle", "list_cells", "list_bindings"]
+
+isStateQuery :: Text -> Bool
+isStateQuery = (`elem` stateQueryTools)
 
 {- | Route a call: name resolution never depends on argument shape, so an
 offered name cannot land in 'RouteUnknown' by being wrapped (P4/M8).

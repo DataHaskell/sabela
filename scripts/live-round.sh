@@ -8,6 +8,7 @@
 #
 # Usage: scripts/live-round.sh "first prompt" ["second prompt" ...]
 #        LIVE_LABEL=g5-task4 scripts/live-round.sh "..."   # names the file
+#        LIVE_TIMEOUT=1800 scripts/live-round.sh "..."      # episode wall clock
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +16,13 @@ cd "$ROOT"
 
 PORT="${LIVE_PORT:-3111}"
 MODEL="${LIVE_MODEL:-gpt-oss:20b}"
-MAX_TURNS="${LIVE_MAX_TURNS:-40}"
+# 40 turns cut live_test34 off with the deliverable half-built: the cell loaded
+# the data and ran clean, and the episode ended before the stats were added.
+MAX_TURNS="${LIVE_MAX_TURNS:-80}"
+# A task whose deliverable installs a dependency has to outlast the server's
+# own build budget (tcBuildUs), or the write dies as a transport <<timeout>>
+# mid-install and the round grades a failure the model did not commit.
+TIMEOUT="${LIVE_TIMEOUT:-1800}"
 LIVE_DIR="docs/discover/live"
 
 # Next free transcript number, so a round never clobbers its predecessors.
@@ -75,6 +82,7 @@ printf '%s\n' "$@" |
         --verbose \
         --model "$MODEL" \
         --max-turns "$MAX_TURNS" \
+        --timeout "$TIMEOUT" \
         --url "http://localhost:$PORT" \
         > "$OUT" 2>&1
 status=$?

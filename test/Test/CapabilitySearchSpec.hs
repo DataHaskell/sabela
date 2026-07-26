@@ -11,7 +11,8 @@ module Test.CapabilitySearchSpec (spec) where
 import Data.Aeson (Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Capabilities.CapabilityHelper (
@@ -33,6 +34,7 @@ import Sabela.AI.HoogleResolve (
     keywords,
     parseHoogleBlob,
     rankHits,
+    rankHitsInScope,
     roundRobin,
  )
 import Sabela.AI.Types (ToolOutcome (..), toolOutcomeValue)
@@ -84,6 +86,37 @@ spec = describe "Sabela.AI.Capabilities.CapabilitySearch" $ do
         it "preserves hoogle's order and drops .Internal modules" $ do
             let ranked = rankHits (parseHoogleBlob jsonBlob)
             map hhModule ranked `shouldBe` ["Data.Text", "RIO.Text.Partial"]
+
+    {- B2: an out-of-scope EXACT name match never displaces an in-scope
+    alternative. The three live specimens are all the same shape — a plotting
+    request answered from a package the session has nothing to do with. Scope
+    is a fact about the session; there is no package block-list here. -}
+    describe "scope-gated ranking (B2)" $ do
+        let inScope = Set.fromList ["sabela-notebook"]
+            plotHit =
+                HoogleHit "plotPoints" "sabela-notebook" "Sabela.Notebook" "" ""
+            specimen name pkg modu = HoogleHit name pkg modu "" ""
+            winnerFor h = hhPackage <$> listToMaybe (rankHitsInScope inScope [h, plotHit])
+
+        it "tidal-for-plot: an audio exact match loses to the in-scope hit" $
+            winnerFor (specimen "sine" "tidal" "Sound.Tidal.Boot")
+                `shouldBe` Just "sabela-notebook"
+
+        it "rzk-for-plot: a theorem-prover exact match loses too" $
+            winnerFor (specimen "plot" "rzk" "Rzk.Syntax")
+                `shouldBe` Just "sabela-notebook"
+
+        it "unionfind-for-plot: a compiler-internals exact match loses too" $
+            winnerFor (specimen "Point" "ghc" "GHC.Data.UnionFind")
+                `shouldBe` Just "sabela-notebook"
+
+        it "demotes, never drops: an out-of-scope hit is still reachable" $ do
+            let odd' = specimen "sine" "tidal" "Sound.Tidal.Boot"
+            map hhPackage (rankHitsInScope inScope [odd', plotHit])
+                `shouldBe` ["sabela-notebook", "tidal"]
+            -- With nothing in scope, the ranking is unchanged from before.
+            map hhPackage (rankHitsInScope Set.empty [odd', plotHit])
+                `shouldBe` map hhPackage (rankHits [odd', plotHit])
 
     describe "capabilityOutcome" $ do
         it "shapes hits into {query, hits:[{name,type,module,package,docs}]}" $ do

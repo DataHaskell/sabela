@@ -27,7 +27,7 @@ import Siza.Agent.Loop (
     runEpisodeSeeded,
  )
 import Siza.Agent.NoteLedger (assertedLive)
-import Siza.Agent.Scaffold (scaffoldNoteFor)
+import Siza.Agent.Scaffold (scaffoldFile, scaffoldNoteFor)
 
 -- | A two-cell data-file request (the revenuePipeline shape).
 prompt :: Text
@@ -38,6 +38,28 @@ prompt =
 
 scaffoldChatSpec :: Spec
 scaffoldChatSpec = describe "scaffold in the shared chat loop (R7.4, M16)" $ do
+    {- G8 task 10 / C4 task 1: the harness's own scaffold write must obey the
+    path rules the model's writes do. Stripping `.` from BOTH ends turned the
+    user's relative path into an absolute one that does not exist, and both
+    live_test21 and live_test22 scaffolded against it. -}
+    describe "scaffold-abs-path (live_test21)" $ do
+        it "keeps a relative path's leading dot" $
+            scaffoldFile "load ./examples/data/housing.csv into a dataframe"
+                `shouldBe` Just "./examples/data/housing.csv"
+
+        it "still strips a trailing sentence period" $
+            scaffoldFile "load data/housing.csv."
+                `shouldBe` Just "data/housing.csv"
+
+        it "still strips surrounding quotes and backticks" $ do
+            scaffoldFile "load `./a/b.csv`" `shouldBe` Just "./a/b.csv"
+            scaffoldFile "load \"./a/b.csv\"," `shouldBe` Just "./a/b.csv"
+
+        it "never emits an absolute path the user did not write" $
+            case scaffoldFile "read ./examples/data/housing.csv now" of
+                Just p -> p `shouldNotSatisfy` T.isPrefixOf "/"
+                Nothing -> expectationFailure "expected a scaffold file"
+
     it "discloses the scaffold write in the transcript and the trace sink" $ do
         (msgs, emitted) <- runWith okInsert
         let scaffolds = filter (isTool "scaffold") msgs

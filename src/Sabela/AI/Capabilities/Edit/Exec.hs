@@ -63,7 +63,7 @@ and its tests map the real producer output, not a re-typed literal.
 abortCancelled, abortSuperseded, abortTimedOut :: Text
 abortCancelled = "Cancelled"
 abortSuperseded = "Request superseded by a kernel interrupt"
-abortTimedOut = "Cell execution timed out (>120s)"
+abortTimedOut = "Cell execution timed out"
 
 -- | Did the Haskell kernel interrupt after this request was stamped?
 requestStale :: App -> UTCTime -> IO Bool

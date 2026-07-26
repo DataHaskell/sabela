@@ -14,6 +14,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
+import Siza.Agent.Discover.Facts (compilerFact)
 import Siza.Agent.Discover.Goal (goalSatisfied, standingGoal, withGoal)
 import Siza.Agent.Discover.History (emptyLedger, ledgerRecord)
 import Siza.Agent.Discover.Types (StandingGoal (..))
@@ -84,7 +85,14 @@ satisfactionGridSpec = describe "satisfaction holds iff goal-class evidence" $
         forM_ renamings $ \rn -> do
             let sg = StandingGoal (rn "Plot") "bars" (rn "cumulus")
                 grid =
-                    [ ("exact hit", foundEnv "bars" [hitJ "bars" "X -> Y" "p"], True)
+                    [ -- The target IS the goal's deriving consumer, so finding
+                      -- it is the goal's own business.
+                      ("exact hit", foundEnv "bars" [hitJ "bars" "X -> Y" "p"], True)
+                    ,
+                        ( "foreign target: exact hit on an unrelated query"
+                        , foundEnv "shade" [hitJ "shade" "Html -> Html" "blaze"]
+                        , False
+                        )
                     ,
                         ( "producer hit"
                         , foundEnv "q" [hitJ "mkPlot" ("Ctx -> " <> rn "Plot") "p"]
@@ -101,7 +109,7 @@ satisfactionGridSpec = describe "satisfaction holds iff goal-class evidence" $
                         , True
                         )
                     ,
-                        ( "unrelated hit"
+                        ( "false-goal-point: unrelated hit never satisfies"
                         , foundEnv "q" [hitJ "rzkThing" "Rzk" "rzk"]
                         , False
                         )
@@ -122,6 +130,24 @@ consumerFact n sig m p =
 
 derivationSpec :: Spec
 derivationSpec = describe "a standing goal cites its deriving consumer" $ do
+    it "a path argument is a literal, not a producer hunt" $
+        standingGoal
+            [consumerFact "readCsv" "FilePath -> IO DataFrame" "DataFrame" "df"]
+            `shouldBe` Nothing
+    {- live_test34_wine: the compiler had confirmed `defaultReadOptions ::
+    ReadOptions`, but its provenance marker rode into the signature, so the
+    goal hunted a producer the working cell already had. -}
+    it "a compiler-confirmed producer closes the gap it fills" $ do
+        let consumer =
+                consumerFact
+                    "readCsvWithOpts"
+                    "ReadOptions -> FilePath -> IO DataFrame"
+                    "DataFrame"
+                    "dataframe"
+            confirmed = compilerFact "defaultReadOptions" "ReadOptions"
+        standingGoal [consumer]
+            `shouldBe` Just (StandingGoal "ReadOptions" "readCsvWithOpts" "dataframe")
+        standingGoal [consumer, confirmed] `shouldBe` Nothing
     it "derives from the most recent consumer, not the first-harvested" $ do
         let facts =
                 [ consumerFact "agg" "Frame -> Expr" "Frame.Core" "framelib"
@@ -164,26 +190,27 @@ renderAll v =
     T.intercalate " " [textField k v | k <- ["next", "summary", "ref"]]
 
 gateSpec :: Spec
-gateSpec = describe "satisfied + call-ready arms the k=2 gate" $ do
-    it "answers two further cluster calls, then the write steer" $ do
+gateSpec = describe "a satisfied goal discloses; it never replaces answers" $ do
+    {- The k=2 gate was the last answer-replacing mechanism: after
+    satisfaction it answered same-cluster searches with a citation of the
+    whole held-facts list. live_test41: goal HeaderSpec, "satisfied" by a
+    SELECTOR, collapsed the constructor hunt (HeaderNone, HeaderSpec, header)
+    to "satisfied by held facts: `summarize` …" — a fact that says nothing
+    about HeaderSpec, shown because it was first in the ledger. The model
+    shipped without header options and the table lost a row. Session memory
+    RANKS (the refinement band) and DISCLOSES (the goal field); it never
+    withholds a result.
+    -}
+    it "every post-satisfaction call still answers an envelope" $ do
         let qs = ["defaultPlot", "default", "plot default", "defaultP"]
             outs =
                 walk (("bars", barsFound) : [(q, junkFound q) | q <- qs])
-        -- The two post-satisfaction calls answer envelopes.
-        forM_ (take 2 (drop 1 outs)) $ \o ->
-            stateOf o `shouldSatisfy` (`elem` ["found", "not_found"])
-        -- The third and fourth hit the gate: a one-line held-facts steer.
-        forM_ (drop 3 outs) $ \o -> do
-            renderAll o `shouldSatisfy` T.isInfixOf "write"
-            renderAll o `shouldSatisfy` T.isInfixOf "bars"
-    it "never uses banned search-more phrasing after the gate" $ do
-        let qs = ["q1", "q2", "q3", "q4", "q5"]
-            outs = walk (("bars", barsFound) : [(q, junkFound q) | q <- qs])
-            banned = ["retry", "different shape", "rephrase", "search again"]
-        forM_ (drop 3 outs) $ \o ->
-            forM_ banned $ \b ->
-                (b, b `T.isInfixOf` T.toLower (renderAll o))
-                    `shouldBe` (b, False)
+        forM_ outs $ \o ->
+            stateOf o `shouldSatisfy` (`elem` ["found", "not_found", "duplicate"])
+        -- Never the gate's whole-ledger citation.
+        forM_ outs $ \o ->
+            renderAll o
+                `shouldSatisfy` (not . T.isInfixOf "satisfied by held facts")
     it "an unsatisfied goal is never gated (negative control)" $ do
         -- The consumer fact arrives on a query it does NOT satisfy (prose
         -- query, non-producing hit), so the goal stands unsatisfied.

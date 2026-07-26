@@ -5,6 +5,7 @@ the duplicate-hit fusion. Split from "Siza.Agent.Discover.Merge" for the
 module-size cap.
 -}
 module Siza.Agent.Discover.Rank (
+    rankKeyRecent,
     RankKey,
     demotedCount,
     fuse,
@@ -69,12 +70,21 @@ the deterministic length/name tie-breaks (R3.7).
 rankKey :: NotebookEnv -> Interpreted -> DHit -> RankKey
 rankKey = rankKeyIn []
 
-{- | 'rankKey' with the union's imported-package evidence (R4.5): a hit from a
-package the notebook imports (any of its modules) leads its stratum — decided
-by import evidence and install state, never by package name.
+{- | 'rankKey' with the union's imported-package evidence (R4.5) and the
+session's own footprint: a hit from a package the notebook imports leads its
+stratum; a hit from a package the session's held facts already established
+leads the remaining strangers — so each search REFINES what the session has
+learned instead of starting blind. live_test33 asked @summary@ and blaze-html's
+attribute outranked the dataframe world every prior call had been about.
+Affinity decides ORDER only; nothing is filtered by it.
 -}
 rankKeyIn :: [Text] -> NotebookEnv -> Interpreted -> DHit -> RankKey
-rankKeyIn importedPkgs env interp h =
+rankKeyIn = rankKeyRecent []
+
+-- | 'rankKeyIn' with the refinement band supplied.
+rankKeyRecent ::
+    [Text] -> [Text] -> NotebookEnv -> Interpreted -> DHit -> RankKey
+rankKeyRecent recentPkgs importedPkgs env interp h =
     ( stratum env interp h
     , importedBand
     , fromEnum (dhInstall h)
@@ -91,7 +101,8 @@ rankKeyIn importedPkgs env interp h =
         | dhInstall h `elem` [InstBuiltin, InstNotebook] = 0
         | dhModule h `elem` (map snd (neAliases env) ++ neImports env) = 0
         | not (T.null (dhPackage h)), dhPackage h `elem` importedPkgs = 0
-        | otherwise = 1
+        | not (T.null (dhPackage h)), dhPackage h `elem` recentPkgs = 1
+        | otherwise = 2
 
 {- | Signature plainness (section 7, round 7): (constraint count, type-level
 argument count), computed from the signature's own shape only — module and

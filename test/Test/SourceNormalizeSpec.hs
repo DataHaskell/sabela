@@ -39,9 +39,10 @@ import Sabela.State (App (..))
 -- Live_test5 fixtures, reconstructed
 -- ---------------------------------------------------------------------------
 
--- | Turn 7's sine-wave @let@ block, types corrected to 'Double' (the fix the
--- model itself converged on by turn 15) so the candidate both parses AND
--- type-checks once the leading @let@ is desugared.
+{- | Turn 7's sine-wave @let@ block, types corrected to 'Double' (the fix the
+model itself converged on by turn 15) so the candidate both parses AND
+type-checks once the leading @let@ is desugared.
+-}
 letSineCandidate :: Text
 letSineCandidate =
     T.unlines
@@ -62,11 +63,12 @@ letSineCandidate =
         , "length svg"
         ]
 
--- | Turns 17-22's transport bug: a raw (unescaped) newline landing inside an
--- unterminated string literal, the GHC-21231 "lexical error at end of input"
--- class. Built with an actual embedded newline char, as weak-model JSON
--- decoding would produce it; the leading import mirrors the original
--- candidate's shape (turns 17-22 all opened on two imports).
+{- | Turns 17-22's transport bug: a raw (unescaped) newline landing inside an
+unterminated string literal, the GHC-21231 "lexical error at end of input"
+class. Built with an actual embedded newline char, as weak-model JSON
+decoding would produce it; the leading import mirrors the original
+candidate's shape (turns 17-22 all opened on two imports).
+-}
 rawNewlineCandidate :: Text
 rawNewlineCandidate =
     "import Data.List (intercalate)\n"
@@ -75,15 +77,17 @@ rawNewlineCandidate =
         <> ">\"\n"
         <> "\ndisplaySvg (intercalate \"\" [tag])\n"
 
--- | The same transport bug, but the string is ALSO missing its closing quote
--- entirely — escaping the raw newline cannot fix an unterminated literal, so
--- the normalizer must judge this one as submitted.
+{- | The same transport bug, but the string is ALSO missing its closing quote
+entirely — escaping the raw newline cannot fix an unterminated literal, so
+the normalizer must judge this one as submitted.
+-}
 stillUnterminatedCandidate :: Text
 stillUnterminatedCandidate =
     "tag = \"</svg" <> "\n" <> "forgot the quote\n" <> "\ntag\n"
 
--- | Turn 21's second lexical-error class: a JS/JSON-style @\uXXXX@ escape,
--- not valid Haskell syntax, in place of the character it names.
+{- | Turn 21's second lexical-error class: a JS/JSON-style @\uXXXX@ escape,
+not valid Haskell syntax, in place of the character it names.
+-}
 spuriousUnicodeCandidate :: Text
 spuriousUnicodeCandidate =
     "tag = \"\\u003csvg\\u003e\"\ntag\n"
@@ -159,11 +163,12 @@ pureSpec = describe "pure generator + gate behaviour" $ do
             trialPlanErrorText (TrialMetaCommand ":!ls")
                 `shouldSatisfy` (not . T.isInfixOf "cells accept this")
 
--- | The grid 'gatedNormalizeInsert' and 'gatedRewrite' must agree on for any
--- CodeCell candidate — the try-vs-insert normalization-agreement property.
--- Effect/purity policy is a SEPARATE axis, not exercised here: 'planTrial'
--- (not the normalizer) is what refuses an effectful statement a cell would
--- accept, per the message-parity cases above.
+{- | The grid 'gatedNormalizeInsert' and 'gatedRewrite' must agree on for any
+CodeCell candidate — the try-vs-insert normalization-agreement property.
+Effect/purity policy is a SEPARATE axis, not exercised here: 'planTrial'
+(not the normalizer) is what refuses an effectful statement a cell would
+accept, per the message-parity cases above.
+-}
 codeGrid :: [Text]
 codeGrid =
     [ "let xs = [1,2,3]"
@@ -189,8 +194,11 @@ requireLiveIntegration = do
     case cabal of
         Nothing -> pendingWith "cabal not found on PATH; skipping G7 integration"
         Just _ -> pure ()
-    supportPresent <- doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if supportPresent then pure () else pendingWith "sabela-notebook support source not on disk"
+    supportPresent <-
+        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
+    if supportPresent
+        then pure ()
+        else pendingWith "sabela-notebook support source not on disk"
 
 newFixture :: FilePath -> IO (App, AIStore.AIStore, ReactiveNotebook)
 newFixture dir = do
@@ -240,10 +248,16 @@ integrationSpec = describe "live dispatch: insert_cell / try agree post-G7" $ do
         withSystemTempDirectory "sabela-g7-replace" $ \dir -> do
             (app, store, rn) <- newFixture dir
             seedOutcome <-
-                callTool app store rn "insert_cell" (object ["source" .= ("seed = (1 :: Int)" :: Text)])
+                callTool
+                    app
+                    store
+                    rn
+                    "insert_cell"
+                    (object ["source" .= ("seed = (1 :: Int)" :: Text)])
             cid <- case field "cellId" (toolOutcomeValue seedOutcome) of
                 Just (Number cidN) -> pure (round cidN :: Int)
-                _ -> expectationFailure "insert_cell did not return a cellId" >> error "unreachable"
+                _ ->
+                    expectationFailure "insert_cell did not return a cellId" >> error "unreachable"
             replaceOutcome <-
                 callTool
                     app

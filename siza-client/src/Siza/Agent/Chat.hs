@@ -18,7 +18,7 @@ module Siza.Agent.Chat (
 import Control.Exception (AsyncException (UserInterrupt), throwIO, try)
 import Control.Monad (when)
 import Data.Aeson (Value, object, (.=))
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -168,10 +168,27 @@ verifyGate mgr conn base model gateRef wroteRef feedbackRef = do
                     progress "\183 proposing a check\8230"
                     proposed <- proposeTest mgr conn base model
                     vetted <- vetProposal (callTool conn base) proposed
-                    t <- confirmTest feedbackRef vetted
+                    {- C2 task 4: when no candidate survives the gate there is
+                    nothing to accept. Prompting anyway offers the user an
+                    EMPTY check and blocks on their answer — live_test25 sat
+                    at that prompt until it timed out. Disclose the state
+                    instead; never invent a check. -}
+                    t <-
+                        if T.null (T.strip vetted)
+                            then do
+                                progress noCheckApplies
+                                pure ""
+                            else confirmTest feedbackRef vetted
                     writeIORef gateRef (Just t)
                     pure t
             runConfirmedTest conn base test
+
+{- | The disclosed no-check state (C2 task 4): the cells ran, but nothing
+machine-checkable survived the gate. Said plainly, never as a silent pass.
+-}
+noCheckApplies :: Text
+noCheckApplies =
+    "  cells ran clean; no machine check applies to this deliverable"
 
 {- | Run the confirmed covering check: a compiling-but-False check is a real
 denial (with its example); a non-compiling one has no clear target, so the
@@ -258,20 +275,19 @@ tracedDispatch wroteRef seenRef dsp call = do
     when (isOwningTool (tcName call)) (writeIORef wroteRef True)
     pure out
 
-{- | Record this call's (tool, args) signature for the human trace. Payload
-suppression for read-only repeats happens in the history guard; this marker is
-only an observability aid for other repeated calls.
+{- | Record this call's (tool, args) signature for the human trace.
+
+It used to append "repeat xN — going in circles?", which the harness cannot
+know: re-running a call after a type error is the repair loop working, and a
+re-issued discover with different scope keys is a refinement, not a circle.
+Payload suppression for genuine read-only repeats happens in the history
+guard, on the ANSWER, where it belongs.
 -}
 noteCall :: IORef [Text] -> ToolCall -> IO Text
 noteCall seenRef call = do
-    seen <- readIORef seenRef
     let sig = tcName call <> " " <> clip 160 (tshow (tcArgs call))
-        n = length (filter (== sig) seen)
-    writeIORef seenRef (sig : seen)
-    pure $
-        if n > 0
-            then "  \8635 repeat \215" <> tshow (n + 1) <> " \8212 going in circles?"
-            else ""
+    modifyIORef' seenRef (sig :)
+    pure ""
 
 progress :: Text -> IO ()
 progress = TIO.putStrLn . ("  " <>)

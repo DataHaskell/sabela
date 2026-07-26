@@ -14,8 +14,8 @@ can outlive the notebook that produced it.
 module Test.KernelStateIntegritySpec (spec) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (bracket)
 import Control.Concurrent.STM (atomically, readTChan)
+import Control.Exception (bracket)
 import Control.Monad (unless, void, when)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -27,8 +27,17 @@ import System.Timeout (timeout)
 import Test.Hspec
 
 import Sabela.AI.Capabilities.Kernel (haskellKernelOccupied)
-import Sabela.Handlers (ReactiveNotebook (..), buildTimeSupportDir, setupReactive)
-import Sabela.Model (Cell (..), CellType (..), Notebook (..), NotebookEvent (..))
+import Sabela.Handlers (
+    ReactiveNotebook (..),
+    buildTimeSupportDir,
+    setupReactive,
+ )
+import Sabela.Model (
+    Cell (..),
+    CellType (..),
+    Notebook (..),
+    NotebookEvent (..),
+ )
 import Sabela.Server (newApp)
 import Sabela.Server.Notebook (deleteCellH)
 import qualified Sabela.SessionTypes as ST
@@ -50,8 +59,9 @@ seedAndRun app rn cells = do
     modifyNotebook (appNotebook app) (\nb -> nb{nbCells = cells})
     runAndSettle app (rnRunAll rn)
 
--- | Delete a cell through the real HTTP handler and let any triggered
--- rebuild settle before the caller inspects session state.
+{- | Delete a cell through the real HTTP handler and let any triggered
+rebuild settle before the caller inspects session state.
+-}
 deleteAndSettle :: App -> Int -> IO ()
 deleteAndSettle app cid = runAndSettle app (void (runHandler (deleteCellH app cid)))
 
@@ -108,9 +118,10 @@ isFailure out =
     "error:" `T.isInfixOf` out
         || "\"severity\":\"Error\"" `T.isInfixOf` out
 
--- | The @sabela-notebook@ support source overlay 'installAndRestart' always
--- needs (it targets @WithNotebookSupport@ unconditionally); without it a
--- fresh session can never resolve @sabela-notebook@ from Hackage.
+{- | The @sabela-notebook@ support source overlay 'installAndRestart' always
+needs (it targets @WithNotebookSupport@ unconditionally); without it a
+fresh session can never resolve @sabela-notebook@ from Hackage.
+-}
 newLiveApp :: IO App
 newLiveApp = do
     app <- newApp "." Set.empty Nothing Nothing [buildTimeSupportDir]
@@ -126,7 +137,8 @@ withLiveApp = bracket newLiveApp (forceResetAllSessions . appSessions)
 withCabal :: IO () -> IO ()
 withCabal act = do
     mCabal <- findExecutable "cabal"
-    supportPresent <- doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
+    supportPresent <-
+        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
     case (mCabal, supportPresent) of
         (Nothing, _) -> pendingWith "cabal not found on PATH; skipping integration test"
         (_, False) -> pendingWith "sabela-notebook support source not on disk; skipping"
@@ -198,8 +210,11 @@ spec = describe "delete-cell session integrity (C6)" $ do
             afterType <- queryType app "Bar 1"
             afterType `shouldSatisfy` T.isInfixOf "Bar 1 :: Bar"
 
-    it "unrelated-cell preservation: deleting one cell leaves another's binding intact" $
-        withCabal $ withLiveApp $ \app -> do
+    it
+        "unrelated-cell preservation: deleting one cell leaves another's binding intact"
+        $ withCabal
+        $ withLiveApp
+        $ \app -> do
             rn <- setupReactive app
             seedAndRun
                 app
@@ -212,7 +227,8 @@ spec = describe "delete-cell session integrity (C6)" $ do
             deleted `shouldSatisfy` isFailure
             (keepOut, keepErr) <- runExpr app "keepMe"
             T.strip keepOut `shouldBe` "10"
-            unless (T.null keepErr) $ expectationFailure ("keepMe errored: " <> T.unpack keepErr)
+            unless (T.null keepErr) $
+                expectationFailure ("keepMe errored: " <> T.unpack keepErr)
 
     it
         "dependency/extension residue: deleting the only cell needing an\

@@ -1,43 +1,41 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The miss-escalation ladder rungs (search-api.md 8.1-8.3, R5.6): tried
-shapes stripped, held facts and steer by rung 2, denial-legal give-up plus
-the goal-gated typed-hole candidate at rung 3+. Split out of Advice.
+{- | What a repeated miss reports back: the shapes already tried, the facts
+already held, the sources already consulted. A RECORD, not a ladder.
+
+The rungs used to escalate into instructions — steer to another facet by
+rung 2, give up and act by rung 3, hand over a harness-authored candidate by
+rung 3+. Every one of those rests on an inference the harness cannot make:
+that the search so far was sufficient, that a miss streak means the question
+is malformed rather than the hunt hard, that facts held add up to the goal.
+When they were wrong they were expensively wrong (the prescribed-tidal
+class). The truthful part — you asked this before, here is what came back —
+is kept.
 -}
 module Siza.Agent.Discover.MissLadder (
-    attachTypeSteer,
     missAdvice,
     withCandidate,
 ) where
 
 import Data.Aeson (Value)
-import Data.Maybe (fromMaybe, isJust)
 import Data.Set (Set)
 import Data.Text (Text)
-import qualified Data.Text as T
 
 import Siza.Agent.Discover.Advice (
     duplicateEnvelope,
     factsClause,
-    resolvedTarget,
-    setField,
     setNext,
     stripTried,
     tShow,
     topText,
  )
-import Siza.Agent.Discover.Candidate (candidateClauseAgainst)
-import Siza.Agent.Discover.Closure (giveUpLine, heldHitLine)
-import Siza.Agent.Discover.Envelope (envelopeCharBudget, envelopeChars)
-import Siza.Agent.Discover.Steer (constructSteer, steerFor, typeQuestionSteer)
+import Siza.Agent.Discover.Closure (giveUpLine)
 
-{- | Rewrite a miss envelope for rung @n@ of the ladder (R5.6). Give-up rungs
-pass denial legality (8.2): @bestHeld@ leads the close, @consulted@ names the
-sources when nothing was held; @mGoal@'s steer overrides the spelled one.
+{- | The miss record for rung @n@: the backend's own @next@ minus shapes
+already tried, then the facts already held, then the held hit or the sources
+consulted. No advice, no candidate, no verdict on whether to keep searching.
 -}
 missAdvice ::
-    Maybe Text ->
-    Set Text ->
     Set Text ->
     [Text] ->
     Maybe Value ->
@@ -46,66 +44,19 @@ missAdvice ::
     Text ->
     Value ->
     Value
-missAdvice mGoal tried refuted facts bestHeld consulted n qn v
-    | n <= 1 = setNext (stripTried tried (topText "next" v)) v
-    | n == 2 =
-        setNext
-            ( stripTried tried (topText "next" v)
-                <> " Already held"
-                <> factsClause facts
-                <> "."
-                <> steerClause
-            )
-            v
-    | n == 3 =
-        preferWithin (setNext (giveUp <> candidateNext) v) (setNext giveUp v)
-    | otherwise =
-        attachGate . duplicateEnvelope qn ("miss " <> tShow n) $
-            maybe "" (\h -> "you already hold: " <> heldHitLine h <> "; ") bestHeld
-                <> "still no match; act on held facts"
-                <> factsClause facts
-                <> ", or state the blocker."
+missAdvice tried facts bestHeld consulted n qn v
+    | n <= 1 = setNext next0 v
+    | n == 2 = setNext (next0 <> " Already held" <> factsClause facts <> ".") v
+    | n == 3 = setNext record v
+    | otherwise = duplicateEnvelope qn ("miss " <> tShow n) record
   where
-    -- Rung 2 only: post-close and give-up rungs never advise more search
-    -- (R5.7), so the construct steer is confined to the pre-close ladder.
-    steerClause = case mGoal of
-        Just g -> steerFor g
-        Nothing -> fromMaybe "" (constructSteer (resolvedTarget v qn))
-    giveUp =
-        giveUpLine bestHeld consulted
-            <> " Act on what is held"
-            <> factsClause facts
-            <> " — or state the blocker plainly."
-    -- The section 8.3 hard gate: a goal-bearing cluster's give-up rungs
-    -- carry the typed-hole candidate; goalless clusters stay terse.
-    candidateNext = case (mGoal, candidateClauseAgainst refuted Nothing facts) of
-        (Just _, c) | not (T.null c) -> " " <> c
-        _ -> ""
-    attachGate
-        | isJust mGoal = withCandidate refuted facts
-        | otherwise = id
+    next0 = stripTried tried (topText "next" v)
+    record = giveUpLine bestHeld consulted <> " Already held" <> factsClause facts <> "."
 
-{- | Teach the type question once several DISTINCT names have missed. Keyed on
-distinct clusters rather than the per-cluster rung, because three different
-concept words each sit at rung 1 and the ladder never escalates (live_test20).
-Suppressed post-close, where no further searching is advised at all (R5.7).
--}
-attachTypeSteer :: Bool -> Value -> Value
-attachTypeSteer False v = v
-attachTypeSteer True v =
-    preferWithin (setNext (topText "next" v <> typeQuestionSteer) v) v
-
-{- | Attach the section 8.1 typed-hole candidate to a close\/gate envelope
-under @next@ — a load-bearing key: never clamped, never deduped (section 10).
-The R3.9 budget still binds: an unattachable candidate is dropped whole.
+{- | Formerly attached a harness-authored candidate to a close\/gate
+envelope. It now attaches nothing: see 'missAdvice' for why the harness does
+not author code. Kept as the identity so the ledger's call sites stay
+readable while the surrounding advice layer is retired.
 -}
 withCandidate :: Set Text -> [Text] -> Value -> Value
-withCandidate refuted facts v = case candidateClauseAgainst refuted Nothing facts of
-    "" -> v
-    c -> preferWithin (setField "next" c v) v
-
--- | Prefer the candidate-carrying form while it fits the R3.9 budget.
-preferWithin :: Value -> Value -> Value
-preferWithin rich plain
-    | envelopeChars rich <= envelopeCharBudget = rich
-    | otherwise = plain
+withCandidate _ _ v = v

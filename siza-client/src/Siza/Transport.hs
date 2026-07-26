@@ -1,3 +1,5 @@
+{-# LANGUAGE NumericUnderscores #-}
+
 {- | Typed HTTP transport to a running Sabela server's @/api/ai/*@ surface.
 
 Speaks the same wire shape the bash @siza-tool.sh@ did — @POST /api/ai/tool@
@@ -43,6 +45,7 @@ import Network.HTTP.Types.Header (Header)
 import Network.HTTP.Types.Status (statusCode)
 import Sabela.AI.Capabilities.ToolName (ToolName, toolWireName)
 import Sabela.AI.Types (ToolOutcome (..))
+import Sabela.Session.Timeout (TimeoutConfig (..), defaultTimeoutConfig)
 import Siza.HubToken (TokenStatus (..), statusForUrl)
 import Siza.Transport.Failure (
     classifyDecode,
@@ -96,13 +99,28 @@ resolveEnv = do
   where
     nonEmpty = fmap T.pack . (>>= \s -> if null s then Nothing else Just s)
 
-{- | Client-side per-tool wall clock. MUST exceed the server's own cell cap
-(@Sabela.Session.Timeout.defaultTimeoutConfig@: 120s execution + 5s resync) or
-the client abandons a request the server is still serving — live_test7 lost the
-session source that way, and the search then declared false futility.
+{- | Client-side per-tool wall clock, DERIVED from the server's own ceilings
+rather than guessed, so the invariant cannot drift: it must exceed the
+longest a single tool call can legitimately take. A hardcoded 180s satisfied
+the old cell cap and then silently broke when the compile gate began
+budgeting a deliberate dependency commit at the live build ceiling —
+live_test22 lost the housing probe to "no response within 180s ... a write
+may have landed", which is precisely the ambiguity G8 task 6 forbids.
+
+The longest legitimate call is a dependency build followed by the cell's own
+execution and resync, so the budget is their sum plus a margin for transport.
 -}
 defaultToolTimeoutSecs :: Int
-defaultToolTimeoutSecs = 180
+defaultToolTimeoutSecs = serverCeilingSecs + transportMarginSecs
+  where
+    tc = defaultTimeoutConfig
+    serverCeilingSecs =
+        usToSecs (tcBuildUs tc + tcExecutionUs tc + tcResyncUs tc)
+    usToSecs us = (us + 999_999) `div` 1_000_000
+
+-- | Headroom over the server ceiling for connection setup and response read.
+transportMarginSecs :: Int
+transportMarginSecs = 60
 
 {- | Make an explicit @--url@ the process @SABELA_URL@, so flag and env are ONE
 knob: discovery and the hub-token attach both key on 'envSabelaUrl', which only
@@ -160,7 +178,7 @@ getHealth conn base = do
     case er of
         Left _ -> pure Nothing
         Right req0 -> do
-            let req = req0{responseTimeout = responseTimeoutMicro 2000000}
+            let req = req0{responseTimeout = responseTimeoutMicro 2_000_000}
             res <-
                 try (httpLbs req (connManager conn)) ::
                     IO (Either SomeException (Response LBS.ByteString))
@@ -181,7 +199,7 @@ getTools conn base = do
     case er of
         Left _ -> pure Nothing
         Right req0 -> do
-            let req = req0{responseTimeout = responseTimeoutMicro 10000000}
+            let req = req0{responseTimeout = responseTimeoutMicro 10_000_000}
             res <-
                 try (httpLbs req (connManager conn)) ::
                     IO (Either SomeException (Response LBS.ByteString))
@@ -198,7 +216,7 @@ mkGet env url = do
 toolTimeout :: Int -> ResponseTimeout
 toolTimeout n
     | n <= 0 = responseTimeoutNone
-    | otherwise = responseTimeoutMicro (n * 1000000)
+    | otherwise = responseTimeoutMicro (n * 1_000_000)
 
 {- | @POST base/api/ai/tool@ with body @{name, input}@, decoding the
 @{isError, result}@ envelope into a typed 'ToolOutcome'. Failures render

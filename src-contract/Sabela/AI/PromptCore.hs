@@ -55,31 +55,30 @@ sharedPromptCoreWith searchBlock =
         , searchBlock
         ]
 
-{- | Sabela's own capabilities — the display/widget API and the drawing/animation/
-FRP toolkit @import Sabela.Notebook@ brings. Always in the prompt because Hackage
-search cannot surface them; everything else is discovered with the tools.
+{- | Where Sabela's own capabilities LIVE — not what they are called. The
+prompt names the modules and points at the search tools; the model finds the
+functions the same way it finds anything else.
+
+Enumerating them here was a deliberate lever, added when the session index
+could not surface `Sabela.*` by keyword at all. That is fixed (see
+'Test.BuiltinSearchLiveSpec': @find_function "chart"@ reaches @lineChart@,
+@"Picture"@ reaches @displayPicture@), so listing the names now only teaches
+the answer to the probes that grade this surface — the sine and animate
+canaries were passing on prompt recall rather than on discovery.
 -}
 sabelaBuiltins :: Text
 sabelaBuiltins =
     T.unlines
-        [ "## Sabela builtins (always available, nothing to install)"
+        [ "## Sabela's own library (installed, nothing to add)"
         , ""
-        , "- Display helpers, in scope after session start: "
-            <> T.intercalate ", " displayBuiltins
-            <> "."
-        , "- Interactive widgets, in scope: "
-            <> T.intercalate ", " widgetBuiltins
-        , "  (each builds an `Input a`; display / currentValue read one)."
-        , "- Drawing, charts, and animation, after `import Sabela.Notebook`: "
-            <> T.intercalate ", " drawingBuiltins
-        , "  (build a `Picture`, then show it with displayPicture; `plot` charts"
-        , "  [(Double, Double)] points directly). Pictures COMPOSE: `a <> b`"
-        , "  draws b over a, `group [..]` overlays a list, `mempty` is blank —"
-        , "  that is how you superimpose two curves. FRP lives there too."
+        , "- Display and interactive widgets are in scope at session start."
+        , "- Drawing, charts, animation and FRP live in `Sabela.Notebook`"
+        , "  and its submodules; import it to bring them into scope."
         , ""
-        , "These are an internal library. Look the exact signatures up with"
-        , "check_type or your search tools before calling, and let the types"
-        , "guide you — same as you would for dataframe, granite, or any package."
+        , "Find the entry points the same way you find anything else: search"
+        , "for what you want to DO in your own words, browse the module, and"
+        , "check_type before calling. These are an internal library, so"
+        , "Hackage will not have them — your session search will."
         ]
 
 {- | The builtin value names the prompt documents, as a machine-readable seed:

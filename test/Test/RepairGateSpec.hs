@@ -17,7 +17,11 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.HTTP.Client (defaultManagerSettings, newManager)
-import System.Directory (createDirectoryIfMissing, doesFileExist, findExecutable)
+import System.Directory (
+    createDirectoryIfMissing,
+    doesFileExist,
+    findExecutable,
+ )
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -40,7 +44,8 @@ requireLiveIntegration = do
     case cabal of
         Nothing -> pendingWith "cabal not found on PATH; skipping repair-gate integration"
         Just _ -> pure ()
-    supportPresent <- doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
+    supportPresent <-
+        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
     if supportPresent
         then pure ()
         else pendingWith "sabela-notebook support source not on disk; skipping"
@@ -100,25 +105,27 @@ cellSourceOf app cid = fmap cellSource . lookupCell cid <$> readNotebook (appNot
 
 spec :: Spec
 spec = describe "G2 self_heal propose-verify-disclose" $ do
-    it "a repair fixable only by a new dependency is disclosed as a suggestion, never applied" $ do
-        requireLiveIntegration
-        withSystemTempDirectory "sabela-repairgate-dep" $ \dir -> do
-            (app, store, rn) <- newFixture dir
-            _ <- insertSrc app store rn "sabelaWarmup = (1 :: Int)"
-            let brokenSrc =
-                    "import qualified Data.Map.Strict as M\n\
-                    \x = M.fromList [(1 :: Int, 2 :: Int)]"
-            cid <- bypassInsert app brokenSrc
-            ct <- newCancelToken
-            (_result, suggestions, _mitigations) <- executeWithRepair app store rn cid ct
+    it
+        "a repair fixable only by a new dependency is disclosed as a suggestion, never applied"
+        $ do
+            requireLiveIntegration
+            withSystemTempDirectory "sabela-repairgate-dep" $ \dir -> do
+                (app, store, rn) <- newFixture dir
+                _ <- insertSrc app store rn "sabelaWarmup = (1 :: Int)"
+                let brokenSrc =
+                        "import qualified Data.Map.Strict as M\n\
+                        \x = M.fromList [(1 :: Int, 2 :: Int)]"
+                cid <- bypassInsert app brokenSrc
+                ct <- newCancelToken
+                (_result, suggestions, _mitigations) <- executeWithRepair app store rn cid ct
 
-            -- The dependency fix ("containers") is offered, never committed.
-            suggestions `shouldSatisfy` (not . null)
-            let sugText = T.concat [T.pack (show s) | s <- suggestions]
-            sugText `shouldSatisfy` T.isInfixOf "containers"
+                -- The dependency fix ("containers") is offered, never committed.
+                suggestions `shouldSatisfy` (not . null)
+                let sugText = T.concat [T.pack (show s) | s <- suggestions]
+                sugText `shouldSatisfy` T.isInfixOf "containers"
 
-            postSrc <- cellSourceOf app cid
-            postSrc `shouldBe` Just brokenSrc
+                postSrc <- cellSourceOf app cid
+                postSrc `shouldBe` Just brokenSrc
 
     it "hole-guard: self_heal never enters a cell holding a typed-hole probe" $ do
         requireLiveIntegration
@@ -134,42 +141,50 @@ spec = describe "G2 self_heal propose-verify-disclose" $ do
             postSrc <- cellSourceOf app cid
             postSrc `shouldBe` Just holeSrc
 
-    it "C4 path-near-miss still commits a genuine fix and discloses it under the gated cascade" $ do
-        requireLiveIntegration
-        withSystemTempDirectory "sabela-repairgate-path" $ \dir -> do
-            createDirectoryIfMissing True (dir </> "examples" </> "data")
-            writeFile (dir </> "examples" </> "data" </> "housing.csv") "x\n1\n"
-            (app, store, rn) <- newFixture dir
-            -- Compiles fine (readFile/putStrLn are always in scope), so G1's
-            -- gate commits it; it fails only at runtime, on the wrong path —
-            -- exactly the class of failure the post-commit cascade exists for.
-            ack <- insertSrc app store rn "readFile \"/examples/data/housing.csv\" >>= putStrLn"
+    it
+        "C4 path-near-miss still commits a genuine fix and discloses it under the gated cascade"
+        $ do
+            requireLiveIntegration
+            withSystemTempDirectory "sabela-repairgate-path" $ \dir -> do
+                createDirectoryIfMissing True (dir </> "examples" </> "data")
+                writeFile (dir </> "examples" </> "data" </> "housing.csv") "x\n1\n"
+                (app, store, rn) <- newFixture dir
+                -- Compiles fine (readFile/putStrLn are always in scope), so G1's
+                -- gate commits it; it fails only at runtime, on the wrong path —
+                -- exactly the class of failure the post-commit cascade exists for.
+                ack <-
+                    insertSrc app store rn "readFile \"/examples/data/housing.csv\" >>= putStrLn"
 
-            field "error" ack `shouldBe` Nothing
-            let mCid = field "cellId" ack
-            Just (Number _) <- pure mCid
+                field "error" ack `shouldBe` Nothing
+                let mCid = field "cellId" ack
+                Just (Number _) <- pure mCid
 
-            -- The gate-checked cascade can outrun the write-ack deadline
-            -- (each candidate now pays a real disposable compile), so an
-            -- "executing" ack settles later, via await_idle.
-            execution <- case textField "status" ack of
-                Just "completed" -> pure (field "execution" ack)
-                _ -> settledExecutionFor app store rn 8 mCid
+                -- The gate-checked cascade can outrun the write-ack deadline
+                -- (each candidate now pays a real disposable compile), so an
+                -- "executing" ack settles later, via await_idle.
+                execution <- case textField "status" ack of
+                    Just "completed" -> pure (field "execution" ack)
+                    _ -> settledExecutionFor app store rn 8 mCid
 
-            case execution >>= field "self_heal" of
-                Just note -> do
-                    textField "note" note `shouldSatisfy` (/= Nothing)
-                    case field "source" note of
-                        Just (String s) ->
-                            s `shouldSatisfy` T.isInfixOf "./examples/data/housing.csv"
-                        _ -> expectationFailure "self_heal note carries no source"
-                Nothing -> expectationFailure "expected a self_heal disclosure for the path fix"
+                case execution >>= field "self_heal" of
+                    Just note -> do
+                        textField "note" note `shouldSatisfy` (/= Nothing)
+                        case field "source" note of
+                            Just (String s) ->
+                                s `shouldSatisfy` T.isInfixOf "./examples/data/housing.csv"
+                            _ -> expectationFailure "self_heal note carries no source"
+                    Nothing -> expectationFailure "expected a self_heal disclosure for the path fix"
 
 {- | Poll @await_idle@ (bounded) until the given cell's write settles, and
 return its @execution@ value.
 -}
 settledExecutionFor ::
-    App -> AIStore.AIStore -> ReactiveNotebook -> Int -> Maybe Value -> IO (Maybe Value)
+    App ->
+    AIStore.AIStore ->
+    ReactiveNotebook ->
+    Int ->
+    Maybe Value ->
+    IO (Maybe Value)
 settledExecutionFor _ _ _ 0 _ = pure Nothing
 settledExecutionFor app store rn n mCid = do
     v <- callTool app store rn "await_idle" (object [])

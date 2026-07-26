@@ -20,7 +20,10 @@ import Data.Text (Text)
 import System.Environment (lookupEnv)
 
 import Sabela.AI.Capabilities.Edit.Exec (executeCell)
-import Sabela.AI.Capabilities.Edit.RepairGate (CandidateVerdict (..), classifyCandidate)
+import Sabela.AI.Capabilities.Edit.RepairGate (
+    CandidateVerdict (..),
+    classifyCandidate,
+ )
 import Sabela.AI.Health (healthOfResult, improvesHealthFor)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Anthropic.Types (CancelToken)
@@ -41,7 +44,8 @@ classify app cid priorSrc cand = do
 {- | Gate-check a single proposal; push it as a disclosed suggestion when it
 verifies as one, drop it silently otherwise (rejected or a no-op).
 -}
-proposeDependency :: App -> Int -> IORef [Value] -> Text -> Maybe (Text, Text) -> IO ()
+proposeDependency ::
+    App -> Int -> IORef [Value] -> Text -> Maybe (Text, Text) -> IO ()
 proposeDependency _ _ _ _ Nothing = pure ()
 proposeDependency app cid sugRef priorSrc (Just (_, cand)) = do
     verdict <- classify app cid priorSrc cand

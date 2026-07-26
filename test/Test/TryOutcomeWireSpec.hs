@@ -58,8 +58,9 @@ fakePureBackend result = do
             , ST.sbEvalPureLive = \_ -> pure result
             }
 
--- | An empty-notebook app (so 'liveFastPathReady' matches trivially) wired
--- to a fake backend answering every pure-eval request with 'result'.
+{- | An empty-notebook app (so 'liveFastPathReady' matches trivially) wired
+to a fake backend answering every pure-eval request with 'result'.
+-}
 appWithPureResult :: ST.PureEvalResult -> IO App
 appWithPureResult result = do
     app <- newApp "." Set.empty Nothing Nothing []
@@ -156,19 +157,29 @@ spec = describe "try outcome envelope wire pins" $ do
         textField "outcome" v `shouldBe` Just "unavailable"
         textField "reason" v `shouldSatisfy` (/= Nothing)
 
-    it "plan rejection: multiple candidate expressions are rejected before any code runs" $ do
-        app <- newApp "." Set.empty Nothing Nothing []
-        outcome <- execTry app (object ["code" .= ("1 + 1\n2 + 2" :: Text)])
-        toolOutcomeIsError outcome `shouldBe` True
-        let v = toolOutcomeValue outcome
-        textField "route" v `shouldBe` Just "unavailable"
-        textField "verdict" v `shouldBe` Just "diagnostic"
-        textField "outcome" v `shouldBe` Just "rejected"
-        textField "reason" v
-            `shouldBe` Just
-                "cells accept this; try does not, because a trial previews exactly \
-                \one result and cannot follow more than one final expression; a \
-                \committed cell may run as many statements as it likes; no code ran"
+    it
+        "plan rejection: multiple candidate expressions are rejected before any code runs"
+        $ do
+            app <- newApp "." Set.empty Nothing Nothing []
+            outcome <- execTry app (object ["code" .= ("1 + 1\n2 + 2" :: Text)])
+            toolOutcomeIsError outcome `shouldBe` True
+            let v = toolOutcomeValue outcome
+            textField "route" v `shouldBe` Just "unavailable"
+            textField "verdict" v `shouldBe` Just "diagnostic"
+            textField "outcome" v `shouldBe` Just "rejected"
+            textField "reason" v
+                `shouldBe` Just
+                    "cells accept this; try does not, because a trial previews exactly \
+                    \one result and cannot follow more than one final expression; a \
+                    \committed cell may run as many statements as it likes; no code ran"
+
+    {- The trial's containment is isolation plus the non-IO admission proof.
+    live_test33_wine: -XSafe additionally rejected Data.Csv and
+    Network.HTTP.Simple outright, so it was dropped. -}
+    it "disposable: the route reports isolation as its contract" $ do
+        let v = disposablePayload disposableSample
+        textField "purityAssurance" v `shouldBe` Just "type_only"
+        textField "pollutionContract" v `shouldBe` Just "disposable_session"
 
     it "disposable: skippedCells renders as an array of {cellId, reason}" $ do
         let result =
@@ -189,28 +200,32 @@ spec = describe "try outcome envelope wire pins" $ do
                     )
                 )
 
-    it "disposable replay failure leads with attribution, not the candidate's own error" $ do
-        let rawDiag =
-                "<interactive>:236:12: error: [GHC-83865]\n  Expecting two more arguments to Point"
-            result =
-                disposableSample
-                    { disposableVerdict = DisposableCompileError
-                    , disposableType = Nothing
-                    , disposableStdout = ""
-                    , disposableStderr = rawDiag
-                    , disposableReplayedCells = [0]
-                    , disposableFailure =
-                        Just (MaterializeFailure StageCellReplay (Just 4) rawDiag)
-                    }
-            v = disposablePayload result
-        textField "outcome" v `shouldBe` Just "replay_blocked"
-        textField "verdict" v `shouldBe` Just "could-not-run"
-        field "candidateReached" v `shouldBe` Just (Bool False)
-        -- The attribution names the failing cell and says the candidate was not reached.
-        textField "attribution" v `shouldSatisfy` maybe False ("cell 4" `T.isInfixOf`)
-        textField "attribution" v `shouldSatisfy` maybe False ("never reached" `T.isInfixOf`)
-        -- The raw diagnostic is NOT surfaced as the candidate's own stderr.
-        textField "stderr" v `shouldBe` Just ""
-        -- It is retained, cell-labelled, under the failure field for reference.
-        let failureMsg = field "failure" v >>= textField "message"
-        failureMsg `shouldSatisfy` maybe False ("Expecting two more arguments" `T.isInfixOf`)
+    it
+        "disposable replay failure leads with attribution, not the candidate's own error"
+        $ do
+            let rawDiag =
+                    "<interactive>:236:12: error: [GHC-83865]\n  Expecting two more arguments to Point"
+                result =
+                    disposableSample
+                        { disposableVerdict = DisposableCompileError
+                        , disposableType = Nothing
+                        , disposableStdout = ""
+                        , disposableStderr = rawDiag
+                        , disposableReplayedCells = [0]
+                        , disposableFailure =
+                            Just (MaterializeFailure StageCellReplay (Just 4) rawDiag)
+                        }
+                v = disposablePayload result
+            textField "outcome" v `shouldBe` Just "replay_blocked"
+            textField "verdict" v `shouldBe` Just "could-not-run"
+            field "candidateReached" v `shouldBe` Just (Bool False)
+            -- The attribution names the failing cell and says the candidate was not reached.
+            textField "attribution" v `shouldSatisfy` maybe False ("cell 4" `T.isInfixOf`)
+            textField "attribution" v
+                `shouldSatisfy` maybe False ("never reached" `T.isInfixOf`)
+            -- The raw diagnostic is NOT surfaced as the candidate's own stderr.
+            textField "stderr" v `shouldBe` Just ""
+            -- It is retained, cell-labelled, under the failure field for reference.
+            let failureMsg = field "failure" v >>= textField "message"
+            failureMsg
+                `shouldSatisfy` maybe False ("Expecting two more arguments" `T.isInfixOf`)

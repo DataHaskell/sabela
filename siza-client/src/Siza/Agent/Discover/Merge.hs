@@ -5,6 +5,7 @@ rendered as ONE bounded envelope with cap disclosure (R3.3, R3.4).
 -}
 module Siza.Agent.Discover.Merge (
     discoverEnvelope,
+    discoverEnvelopeRecent,
     discoverEnvelopeScoped,
     envelopeFrom,
     mergedHits,
@@ -22,7 +23,7 @@ import Siza.Agent.Discover.Interpret (stripVersion)
 import Siza.Agent.Discover.Rank (
     demotedCount,
     fuse,
-    rankKeyIn,
+    rankKeyRecent,
     samePackageVariants,
  )
 import Siza.Agent.Discover.Render (
@@ -46,7 +47,7 @@ import Siza.Agent.Discover.Types (
     Interpreted (..),
     MatchKind (..),
     NotebookEnv (..),
-    Scope,
+    Scope (..),
     SourceAnswer (..),
     emptyScope,
     hitJson,
@@ -69,10 +70,22 @@ discoverEnvelopeScoped ::
     [SourceAnswer] ->
     HackageInfo ->
     Value
-discoverEnvelopeScoped env interp scope limit answers hk =
+discoverEnvelopeScoped = discoverEnvelopeRecent []
+
+-- | 'discoverEnvelopeScoped' with the session-footprint refinement band.
+discoverEnvelopeRecent ::
+    [Text] ->
+    NotebookEnv ->
+    Interpreted ->
+    Scope ->
+    Int ->
+    [SourceAnswer] ->
+    HackageInfo ->
+    Value
+discoverEnvelopeRecent recentPkgs env interp scope limit answers hk =
     envelopeFrom env interp scope limit answers hk card ranked
   where
-    ranked = mergedHits env interp answers hk
+    ranked = mergedHitsRecent recentPkgs env interp answers hk
     card = listToMaybe (mapMaybe saCard answers)
 
 {- | Render the one envelope shape from an already-ranked hit list: scope
@@ -102,10 +115,17 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
         , "consulted"
             .= (map consultedJson (dedupSources answers) ++ [hackageJson hk])
         ]
-            <> ["card" .= c | Just c <- [card]]
+            <> ["card" .= c | Just c <- [scopedCard]]
             <> ["next" .= n | Just n <- [next]]
             <> ["narrow" .= n | Just n <- [narrowNote]]
   where
+    {- A card for a module the caller did NOT scope to is an install-state
+    probe artifact, and reads as an answer about the module it asked for:
+    `module=Data.Csv query=!?` came back carrying Data.ByteString's export
+    list, because the probe browsed the top hit's module (live_test36). -}
+    scopedCard = case (scModule scope, card) of
+        (Just m, Just c) | cardModule c /= Just m -> Nothing
+        _ -> card
     -- Section 3.3: the scope filter is a post-union predicate over each
     -- hit's attributed modules/packages; removals are disclosed below.
     ranked = filter (attributedKeep rankedAll scope) rankedAll
@@ -136,8 +156,13 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
 -- | Union, finalise install states, fuse duplicates, rank by strata.
 mergedHits ::
     NotebookEnv -> Interpreted -> [SourceAnswer] -> HackageInfo -> [DHit]
-mergedHits env interp answers hk =
-    sortOn (rankKeyIn importedPkgs env interp)
+mergedHits = mergedHitsRecent []
+
+-- | 'mergedHits' under the refinement band (order only, never a filter).
+mergedHitsRecent ::
+    [Text] -> NotebookEnv -> Interpreted -> [SourceAnswer] -> HackageInfo -> [DHit]
+mergedHitsRecent recentPkgs env interp answers hk =
+    sortOn (rankKeyRecent recentPkgs importedPkgs env interp)
         . map enrichVersion
         . fuseAll
         $ map finalise allHits
@@ -278,3 +303,10 @@ mergedHits env interp answers hk =
 
 tShow :: Int -> Text
 tShow = T.pack . show
+
+-- | The module a card names, when it names one.
+cardModule :: Value -> Maybe Text
+cardModule (Object o) = case KM.lookup "module" o of
+    Just (String m) | not (T.null m) -> Just m
+    _ -> Nothing
+cardModule _ = Nothing

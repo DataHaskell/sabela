@@ -12,15 +12,19 @@ module Sabela.AI.Capability (
     defaultSynonyms,
     searchCapabilities,
     parseCapabilities,
+    relevanceScore,
+    unqualify,
 ) where
 
 import Control.Monad (guard)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isUpper)
 import Data.List (nubBy, sortOn)
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as T
+
+import Sabela.AI.Similarity (trigramSimilarity)
 
 -- | One exposed function: the unit of search, parsed from a @:browse@ line.
 data Capability = Capability
@@ -73,12 +77,14 @@ defaultSynonyms =
     , ("pictures", ["picture"])
     ]
 
-{- | Rank an index against a free-text query; best matches first, FOCUSED: a
-high-confidence (exact/prefix) hit silences the low-confidence tail, and the
-list is capped well below a wall — low-confidence walls are negative
-information for a small model. Ties break toward the SHORTER module path (the
-public umbrella API, not deep internals); duplicates of the same function — an
-umbrella module re-exporting it — collapse to one row.
+{- | Rank an index against a free-text query; best matches first, FOCUSED: an
+EXACT name match silences the rest, and the list is capped well below a wall
+— low-confidence walls are negative information for a small model. A prefix
+match does not silence anything: it is a guess, and letting one bury the
+tail is how @chartAgrees@ hid @lineChart@ from @find_function "chart"@.
+Ties break toward the SHORTER module path (the public umbrella API, not deep
+internals); duplicates of the same function — an umbrella module
+re-exporting it — collapse to one row.
 -}
 searchCapabilities :: Synonyms -> [Capability] -> Text -> [Hit]
 searchCapabilities syns idx query =
@@ -93,9 +99,27 @@ searchCapabilities syns idx query =
     nubByNameType =
         nubBy (\a b -> sameKey (hitCap a) (hitCap b))
     sameKey x y = capName x == capName y && capType x == capType y
+    {- Only an EXACT name match silences the tail, which is what this rule
+    always claimed to do. Silencing on a mere prefix (80) let one
+    same-prefix name bury the rest of the notebook's vocabulary: adding
+    `chartAgrees` made `find_function "chart"` stop returning `lineChart`,
+    undoing the live_test13 fix. A prefix is a guess, not an answer. -}
     focus hits = case hits of
-        (h : _) | hitScore h >= 80 -> take 5 (takeWhile ((>= 80) . hitScore) hits)
+        (h : _)
+            | hitScore h >= exactScore ->
+                take 5 (takeWhile ((>= exactScore) . hitScore) hits)
         _ -> take 8 hits
+    exactScore = 100
+
+{- | One capability's relevance to a free-text query, on the same tier scale
+'searchCapabilities' ranks with — so a card ordering its exports and a search
+ranking its hits can never disagree about what "relevant" means. 0 when
+nothing matches.
+-}
+relevanceScore :: Synonyms -> Text -> Capability -> Int
+relevanceScore syns query c = maybe 0 fst (scoreCap syns ql (tokens ql) c)
+  where
+    ql = lexQuery (T.toLower (T.strip query))
 
 {- | Strip Haskell surface syntax a name index can never match — type
 applications (@\@Type@) and string-literal arguments — so a query written the
@@ -118,8 +142,8 @@ lexQuery q =
     go False (c : cs) = c : go False cs
 
 {- | The highest-scoring signal a capability matches on, or Nothing — ordered
-strongest first (exact > prefix > substring > token > type > synonym > module),
-so 'listToMaybe' takes the winner.
+strongest first (exact > prefix > substring > type-shaped type > token >
+type > near-spelling > synonym > module), so 'listToMaybe' takes the winner.
 -}
 scoreCap :: Synonyms -> Text -> [Text] -> Capability -> Maybe (Int, Match)
 scoreCap syns ql qToks c =
@@ -128,8 +152,10 @@ scoreCap syns ql qToks c =
             [ (100, ByName) <$ guard (ql == nameL)
             , (80, ByName) <$ guard (ql `T.isPrefixOf` nameL)
             , (60, ByName) <$ guard (ql `T.isInfixOf` nameL)
+            , (58, ByType) <$ guard (typeShaped && typeMatch)
             , (55, ByName) <$ guard (any tokenInName qToks)
             , (50, ByType) <$ guard typeMatch
+            , (45, ByName) <$ guard nearSpelling
             , (40, BySynonym) <$ guard synMatch
             , (30, ByModule) <$ guard (ql `T.isInfixOf` T.toLower (capModule c))
             ]
@@ -139,6 +165,30 @@ scoreCap syns ql qToks c =
     tokenInName t = T.length t >= 3 && t `T.isInfixOf` nameL
     typeMatch = length qToks >= 2 && all (`T.isInfixOf` typeL) qToks
     synMatch = any (`T.isInfixOf` nameL) (synonymsFor syns ql)
+    {- Every substring tier misses a name that DIVERGES rather than extends:
+    "summary" is neither a prefix nor an infix of "summarize", so the one
+    function the query was after scored nothing at all and blaze-html's
+    `summary` attribute filled the answer (live_test33_wine). -}
+    nearSpelling =
+        T.length ql >= minFuzzyQuery
+            && trigramSimilarity ql nameL >= fuzzyNameThreshold
+    {- An arrow is an unambiguous type question, so a complete type match
+    outranks a weak name substring: without this rung `Double -> Picture`
+    resolves to `displayPicture` on the token `picture` and reports ByName.
+    Lexical resolution beating type-directed resolution is the live_test20
+    pathology, here inside the ranker. -}
+    typeShaped = "->" `T.isInfixOf` ql
+
+{- | Trigram-similarity floor for a near-spelling name match. 0.4 keeps
+@summary@\/@summarize@ (0.5) and @describe@\/@describes@ while rejecting the
+long tail of coincidental trigram overlap.
+-}
+fuzzyNameThreshold :: Double
+fuzzyNameThreshold = 0.4
+
+-- | Shortest query worth fuzzy-matching; below this trigrams are all noise.
+minFuzzyQuery :: Int
+minFuzzyQuery = 4
 
 {- | Synonym expansions whose key occurs as a WHOLE token of the query — a
 substring match let a key inside a longer domain word bridge to an unrelated
@@ -274,9 +324,39 @@ valueBinding ent
 declKeywords :: [Text]
 declKeywords = ["type ", "data ", "newtype ", "class ", "instance ", "pattern "]
 
--- | The unqualified name: the last @.@-separated component.
+{- | The unqualified name, by stripping leading MODULE components — never by
+splitting at the last dot. An operator's own name may contain dots:
+@(DataFrame..&&.)@ split at its last dot left @&&)@ and bare @)@ in the
+DataFrame card, and the one time the exports reached a live model they led
+with twelve lines of that soup (live_test40).
+-}
 unqualify :: Text -> Text
-unqualify = T.takeWhileEnd (/= '.')
+unqualify t
+    | "(" `T.isPrefixOf` t
+    , ")" `T.isSuffixOf` t =
+        "(" <> dropQualifier (dropUnit (T.init (T.drop 1 t))) <> ")"
+    | otherwise = dropQualifier (dropUnit t)
+
+{- | Drop a @pkg-1.2.3:@ unit prefix: @:browse@ qualifies a re-export with its
+defining unit, which is not part of any name a caller can write.
+-}
+dropUnit :: Text -> Text
+dropUnit t = case T.breakOnEnd ":" t of
+    (pre, rest) | not (T.null pre) -> rest
+    _ -> t
+
+{- | Drop @Upper.@-headed module components from the front, leaving the name —
+alphanumeric or operator — intact.
+-}
+dropQualifier :: Text -> Text
+dropQualifier t = case T.uncons t of
+    Just (c, _)
+        | isUpper c
+        , (comp, rest) <- T.breakOn "." t
+        , not (T.null rest)
+        , T.all (\x -> isAlphaNum x || x == '\'' || x == '_') comp ->
+            dropQualifier (T.drop 1 rest)
+    _ -> t
 
 {- | Render a qualified signature readably: drop @pkg-version:@ prefixes and
 module qualifiers, keeping each name's last component (so

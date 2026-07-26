@@ -12,6 +12,7 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.Wai.Handler.Warp (run)
 import Sabela.AI.Provenance (stateBase)
+import Sabela.AI.SearchCache (searchCacheReport)
 import Sabela.Handlers (
     buildTimeSupportDir,
     initGlobalEnv,
@@ -108,6 +109,7 @@ start port workDir globalFile pkgs = do
     app <- newApp workDir allGlobalDeps (Just httpMgr) mAiToken localPkgs
     rn <- setupReactive app
     registryFile <- writeDiscoveryRegistry port workDir mAiToken
+    searchCacheReport >>= mapM_ (putStrLn . T.unpack)
     putStrLn $ "sabela running on http://localhost:" ++ show port ++ "/index.html"
     case mAiToken of
         Just _ -> putStrLn "  /api/ai/* requires Authorization: Bearer <SABELA_AI_TOKEN>"

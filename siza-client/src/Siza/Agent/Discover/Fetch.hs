@@ -12,10 +12,12 @@ module Siza.Agent.Discover.Fetch (
     fetchNotebookEnv,
     fetchOk,
     fetchSession,
+    fetchSessionScoped,
     probeHidden,
     queryVariants,
 ) where
 
+import Control.Applicative ((<|>))
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isUpper)
@@ -51,7 +53,8 @@ whose last component is a value name retries as the bare name. A module-shaped
 query (Upper last component) and prose stay as they are.
 -}
 queryVariants :: Text -> [Text]
-queryVariants q = t : [bare | Just bare <- [unqualify t], bare /= t]
+queryVariants q =
+    t : [bare | Just bare <- [unqualify t], bare /= t] <> valueTokens
   where
     t = T.strip q
     unqualify s
@@ -64,6 +67,27 @@ queryVariants q = t : [bare | Just bare <- [unqualify t], bare /= t]
         , not (isUpper c) =
             Just lastComp
         | otherwise = Nothing
+    {- A NAME-PLUS-TYPE query ("take D.DataFrame") also tries its value word
+    alone. Prose is still never split — the shape that qualifies carries a
+    Type-or-module-looking word beside the value word, which prose does not.
+
+    The session index answers a bare name; given @take D.DataFrame@ whole it
+    scopes to a module @D.DataFrame@ that does not exist (@D@ is an alias)
+    and answers with a Prelude dump, while @take@ alone returns
+    @DataFrame.take :: Int -> DataFrame -> DataFrame@ as its first hit. That
+    is the answer live_test25 needed and never saw. -}
+    valueTokens = case T.words t of
+        -- EXACTLY a value word beside a type/module word. Anything longer is
+        -- prose and stays whole: a looser rule split "read a CSV file into
+        -- memory" on its acronym and fired noise queries for "read"/"file".
+        [a, b] | isValueWord a, isTypeWord b -> [a]
+        [a, b] | isTypeWord a, isValueWord b -> [b]
+        _ -> []
+    isValueWord w =
+        T.length w >= 3
+            && not (T.any (== '.') w)
+            && maybe False (not . isUpper . fst) (T.uncons w)
+    isTypeWord w = maybe False (isUpper . fst) (T.uncons (T.dropWhile (== '.') w))
 
 -- | The fuzzy capability call: the semantic flag carries the A/B lever.
 capabilityArgs :: Bool -> Interpreted -> Value
@@ -89,19 +113,50 @@ fetchSession ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     Interpreted ->
     IO (Maybe Value)
-fetchSession call interp = go variants Nothing
+fetchSession call = fetchSessionScoped call Nothing
+
+{- | 'fetchSession' with the request's module scope FORWARDED to the server.
+The scope used to be applied only as a post-union filter, so a scoped query
+never reached the server's scoped search — whose miss path answers with the
+module's own exports, hidden packages included. The model that asked
+@module=DataFrame query=csv@ got @hits: []@ for a module exporting @fromCsv@,
+took three such empties as evidence, and hand-rolled cassava (raw probe).
+-}
+fetchSessionScoped ::
+    (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
+    Maybe Text ->
+    Interpreted ->
+    IO (Maybe Value)
+fetchSessionScoped call mModule interp = go variants Nothing Nothing
   where
     variants =
         iName interp
             : [v | v <- queryVariants (iRaw interp), v /= iName interp]
-    go [] lastAnswered = pure lastAnswered
-    go (v : rest) lastAnswered = do
-        r <- call FindFunction (object ["query" .= v])
+    scopePairs = ["module" .= m | Just m <- [mModule]]
+    {- Prefer an answer that NAMES things (@matches@) over a bare module
+    listing, whatever order the variants come in. Returning the first
+    non-blank payload made the value-word variant unreachable the moment a
+    module name was present: @DataFrame head@ tried @DataFrame@ first, got a
+    1413-export listing (non-blank, so it won), and never asked @head@ —
+    which is the variant that answers. live_test26. -}
+    go [] best fallback = pure (best `orElse` fallback)
+    go (v : rest) best fallback = do
+        r <- call FindFunction (object (("query" .= v) : scopePairs))
         case r of
             Right (ToolOk payload)
-                | not (blankPayload payload) -> pure (Just payload)
-                | otherwise -> go rest (Just payload)
-            _ -> go rest lastAnswered
+                | namesMatches payload -> pure (Just payload)
+                | not (blankPayload payload) ->
+                    go rest (best `orElse` Just payload) fallback
+                | otherwise -> go rest best (fallback `orElse` Just payload)
+            _ -> go rest best fallback
+    orElse a b = a <|> b
+
+-- | Does this payload name concrete results, rather than list a module?
+namesMatches :: Value -> Bool
+namesMatches (Object o) = case KM.lookup "matches" o of
+    Just (Array ms) -> not (null ms)
+    _ -> False
+namesMatches _ = False
 
 -- | One call whose OK payload is kept; errors read as channel-unavailable.
 fetchOk ::

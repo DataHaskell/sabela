@@ -18,7 +18,9 @@ module Sabela.AI.HoogleResolve (
     hoogleResolve,
     hoogleResolveTopK,
     hoogleQuery,
+    hoogleQueryInScope,
     rankHits,
+    rankHitsInScope,
     isNoiseModule,
     ecosystemScore,
     keywords,
@@ -44,12 +46,13 @@ import Sabela.AI.HoogleProse (
     bigrams,
     denoise,
     hoogleQuery,
+    hoogleQueryInScope,
     isSingleToken,
     isTypeOrName,
     keywords,
     roundRobin,
  )
-import Sabela.AI.HoogleRank (ecosystemScore, rankHits)
+import Sabela.AI.HoogleRank (ecosystemScore, rankHits, rankHitsInScope)
 import Sabela.AI.ModuleResolve (isNoiseModule, isOutOfScopePackage)
 
 {- | The best (package, module) for an exact-name match, or Nothing when no hit's

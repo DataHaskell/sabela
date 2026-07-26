@@ -51,9 +51,12 @@ import Sabela.AI.Capabilities.CapabilityHelper (
     runCapabilityHelper,
  )
 import Sabela.AI.Capabilities.Util (fieldText)
-import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQuery)
+import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQueryInScope)
 import Sabela.AI.Types (ToolOutcome, okOutcome)
-import Sabela.State (App)
+import Sabela.Deps (availablePackages)
+import Sabela.State (App (..))
+import Sabela.State.Environment (Environment (..))
+import Sabela.State.NotebookStore (readNotebook)
 
 -- | How many ranked candidate packages to return to the model.
 maxHits :: Int
@@ -93,16 +96,22 @@ always runs); @exact: true@ is the stage-0 exact-name lookup, distinct from
 the widened fuzzy scan.
 -}
 execSearchCapability :: App -> Value -> IO ToolOutcome
-execSearchCapability _ input
+execSearchCapability app input
     | T.null (T.strip q) = pure (enrichedOutcome q [])
     | otherwise = do
         helperHits <-
             if semanticWanted input && not exact
                 then runCapabilityHelper maxHits q
                 else pure []
+        -- B2: rank under the session's OWN scope, so a dataframe notebook
+        -- asking for `head` is not answered with base's (live_test25).
+        nb <- readNotebook (appNotebook app)
+        let inScope = availablePackages nb (envGlobalDeps (appEnv app))
         pkgs <-
             if null helperHits
-                then packageBuckets . exactFilter <$> hoogleQuery maxHits q
+                then
+                    packageBuckets . exactFilter
+                        <$> hoogleQueryInScope inScope maxHits q
                 else pure [(hePackage h, heSynopsis h) | h <- helperHits]
         enriched <- enrichPackages enrichPkgs perPkgApi q pkgs
         pure (enrichedOutcome q enriched)

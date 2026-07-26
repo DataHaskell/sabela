@@ -57,7 +57,7 @@ import Sabela.AI.Capabilities.Kernel (
     execKernelStatus,
     haskellKernelOccupied,
  )
-import Sabela.AI.Capabilities.KernelHealth (busyEvidenceNow)
+import Sabela.AI.Capabilities.KernelHealth (busyEvidenceNow, cellOwner)
 import Sabela.AI.Capabilities.ModuleSearch (execFindFunction)
 import Sabela.AI.Capabilities.Notebook (
     execFindCells,
@@ -78,6 +78,7 @@ import Sabela.AI.Capabilities.Try (execTry)
 import Sabela.AI.Capabilities.Util (field, fieldInt)
 import Sabela.AI.KernelVocab (
     BusyVerdict (..),
+    Holding (..),
     busyDenyJson,
     busyRetryRounds,
     resolveOccupied,
@@ -142,8 +143,12 @@ executeTool app store rn cancelTok toolName rawInput =
                         (admissionCandidate input)
                         (kernelGuarded tool input)
                         >>= \case
-                            Busy cid ms ->
-                                pure (errOutcome (busyDenyJson (Just (cid, ms))))
+                            Busy cid ms -> do
+                                owner <- cellOwner app cid
+                                pure
+                                    ( errOutcome
+                                        (busyDenyJson (Just (Holding owner ms)))
+                                    )
                             Ran r -> pure r
                 | otherwise -> guarded tool input
 
@@ -198,8 +203,8 @@ executeTool app store rn cancelTok toolName rawInput =
         ApiReference -> execApiReference app input
         ExploreResult -> execExploreResult store input
         KernelStatus -> execKernelStatus app
-        Interrupt -> execInterrupt app
-        KernelRestart -> execKernelRestart rn
+        Interrupt -> execInterrupt app store
+        KernelRestart -> execKernelRestart app rn
         AwaitIdle -> execAwaitIdle app store
         ExportNotebook -> execExportNotebook app input
         PeekData -> execPeekData app input

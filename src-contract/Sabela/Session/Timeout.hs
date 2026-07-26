@@ -40,21 +40,21 @@ data TimeoutConfig = TimeoutConfig
     }
     deriving (Eq, Show)
 
-{- | 120s execution, 5s resync; 900s live-session build (room for a heavy
-install like hasktorch); 120s disposable-try build, since a speculative
-trial should fail fast rather than wait toward the live ceiling.
+{- | 30 minutes for execution and for the live-session build, 5s resync; 120s
+disposable-try build, since a speculative trial should fail fast rather than
+wait toward the live ceiling.
 -}
 defaultTimeoutConfig :: TimeoutConfig
 defaultTimeoutConfig =
     TimeoutConfig
-        { tcExecutionUs = 120_000_000
+        { tcExecutionUs = 1800_000_000
         , tcResyncUs = 5_000_000
-        , tcBuildUs = 900_000_000
+        , tcBuildUs = 1800_000_000
         , tcTryBuildUs = 120_000_000
         }
 
 {- | Read the execution budget from @SABELA_CELL_TIMEOUT_SECONDS@. A
-missing, unparseable, or non-positive value keeps the 120s default; the
+missing, unparseable, or non-positive value keeps the 30-minute default; the
 resync window is not configurable.
 -}
 readTimeoutConfig :: IO TimeoutConfig

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Cross-turn ledger invariant over EVERY artifact class (nudge facts,
+{- | Cross-turn ledger invariant over EVERY artifact class (
 cell-source echoes, heal notes, discovery cards): no byte-identical block
 transmits twice; ONE assertion body serves all classes — grid-extensible.
 -}
@@ -23,7 +23,6 @@ import Siza.Agent.EmitLedger (
     eligibleBlocks,
     emptyEmitLedger,
  )
-import Siza.Agent.Loop.Support (forceActMsgWith)
 import Siza.Agent.Tools (renderOutcome)
 import Test.DiscoverFixtures (textField)
 
@@ -103,10 +102,6 @@ discoveryCard name =
             ]
         )
 
-nudgeContent :: [Text] -> Text -> Text
-nudgeContent facts remaining =
-    textField "content" (forceActMsgWith facts remaining)
-
 {- | The artifact-class grid: (class, [first, byte-identical repeat, changed]).
 Adding a class here is the ONLY step to cover a new artifact kind — the
 invariant below is class-agnostic.
@@ -114,16 +109,6 @@ invariant below is class-agnostic.
 classGrid :: [(String, [Text])]
 classGrid =
     [
-        ( "nudge facts"
-        ,
-            [ nudgeContent longFacts "Remaining turn budget: 9."
-            , nudgeContent longFacts "Remaining turn budget: 7."
-            , nudgeContent
-                (longFacts ++ ["`render` :: Plot -> Text"])
-                "Remaining turn budget: 5."
-            ]
-        )
-    ,
         ( "read_cell source echo"
         , [readCellEcho srcA, readCellEcho srcA, readCellEcho srcB]
         )

@@ -18,6 +18,7 @@ import Test.Hspec
 
 import Sabela.AI.Capabilities.BrowseCard (
     browseCard,
+    browseCardFor,
     packageOfUnit,
  )
 
@@ -63,7 +64,10 @@ hiddenBlobOther =
     \scope.)\"],\"hints\":[]}"
 
 spec :: Spec
-spec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
+spec = queryRankSpec >> cardSpec
+
+cardSpec :: Spec
+cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
     describe "hidden-package diagnostics distil to one actionable card" $ do
         it "the verbatim 11x-repeated wire fixture becomes one package + cabal line" $ do
             let card = browseCard "Network.HTTP.Client" hiddenBlob
@@ -156,3 +160,30 @@ spec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
             packageOfUnit "pretty-simple-4.1.2.3" `shouldBe` "pretty-simple"
         it "leaves an unversioned name alone" $
             packageOfUnit "containers" `shouldBe` "containers"
+
+{- | live_test41: after the install, @ReadOptions@ queries hit the LIVE card,
+which answered operator-soup-first while the store card for the same module
+answered ranked. One relevance scale for every card shape — and declarations
+score by their declared name, which is what a constructor-hunting query
+(@ReadOptions@, @HeaderSpec@) is about.
+-}
+queryRankSpec :: Spec
+queryRankSpec = describe "the live card ranks for the query that asked" $ do
+    let raw =
+            "(DF..&&.) :: DF.Expr Bool -> DF.Expr Bool -> DF.Expr Bool\n\
+            \summarize :: DataFrame -> DataFrame\n\
+            \data ReadOptions\n\
+            \headerSpec :: ReadOptions -> HeaderSpec\n"
+        exportsWith mq = case browseCardFor mq "DataFrame" raw of
+            Object o -> case KM.lookup "exports" o of
+                Just (Array es) -> [t | String t <- foldr (:) [] es]
+                _ -> []
+            _ -> []
+    it "the query's declaration leads" $
+        head (exportsWith (Just "ReadOptions")) `shouldBe` "data ReadOptions"
+    it "a value query leads with its value" $
+        head (exportsWith (Just "summarize"))
+            `shouldBe` "summarize :: DataFrame -> DataFrame"
+    it "no query keeps the static band (values first, operators included)" $
+        head (exportsWith Nothing)
+            `shouldBe` "(DF..&&.) :: DF.Expr Bool -> DF.Expr Bool -> DF.Expr Bool"

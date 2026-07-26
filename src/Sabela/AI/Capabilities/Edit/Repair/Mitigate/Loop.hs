@@ -20,6 +20,7 @@ import qualified Data.Text as T
 import Sabela.AI.Capabilities.Edit.Cascade.Commit (verifyAndRevert)
 import Sabela.AI.Capabilities.Edit.CompileGate.Render (renderForDiagnostics)
 import Sabela.AI.Capabilities.Edit.Repair.Mitigate (
+    Discharge (..),
     MitigationRow (..),
     mitigationTable,
     rootErrors,
@@ -49,8 +50,9 @@ data MitigationFix = MitigationFix
     , mfAdded :: [Text]
     }
 
--- | Fact-list disclosure for an ambiguous row: every candidate that
--- independently clears its own diagnostic, named so the model can choose.
+{- | Fact-list disclosure for an ambiguous row: every candidate that
+independently clears its own diagnostic, named so the model can choose.
+-}
 factEntry :: Text -> [Text] -> Value
 factEntry cls cands = object ["class" .= cls, "compilingCandidates" .= cands]
 
@@ -59,9 +61,11 @@ independent defects are all visible: GHC stops a block at its first error, and
 selection-by-proof needs to see what a fix leaves behind. Deliberately more
 permissive than the commit gate, which stays 'renderNonExecuting'.
 -}
-probeResult :: App -> Int -> CellLang -> CellType -> Text -> IO (Either Text ExecutionResult)
+probeResult ::
+    App -> Int -> CellLang -> CellType -> Text -> IO (Either Text ExecutionResult)
 probeResult app cid lang ty candidate
-    | ty /= CodeCell || lang /= Haskell = pure (Right (ExecutionResult [] Nothing [] []))
+    | ty /= CodeCell || lang /= Haskell =
+        pure (Right (ExecutionResult [] Nothing [] []))
     | otherwise = do
         result <-
             runDisposableTry
@@ -71,6 +75,9 @@ probeResult app cid lang ty candidate
                     , candidateSetup = renderForDiagnostics candidate
                     , candidateExpression = Nothing
                     , candidateReplacesCellId = Just cid
+                    , -- Diagnosing a REAL cell: judge it as the live session
+                      -- will, not under the trial's Safe Haskell.
+                      candidateDeliberate = True
                     }
         pure $ case disposableVerdict result of
             DisposableOk -> Right (ExecutionResult [] Nothing [] [])
@@ -84,10 +91,35 @@ roots are a SUBSET of "the baseline's, minus this row's target" (task 3).
 @missing-extension@ is exempt: unblocking a parse only REVEALS diagnostics.
 -}
 foldRow ::
-    App -> AIStore -> Int -> CellLang -> CellType -> MitigationRow -> Text -> IO (Maybe (Text, Text, Int), Maybe Value, Text)
-foldRow app store cid lang ty row curSrc = do
+    App ->
+    AIStore ->
+    Int ->
+    CellLang ->
+    CellType ->
+    MitigationRow ->
+    Either Text ExecutionResult ->
+    Text ->
+    IO (Maybe (Text, Text, Int), Maybe Value, Text)
+foldRow app store cid lang ty row observed curSrc = do
     baseRes <- probeResult app cid lang ty curSrc
-    let baseRootErrs = rootErrors curSrc baseRes
+    {- Detection sees the cell's OBSERVED errors too, not only what a fresh
+    typecheck reproduces. A runtime diagnostic — @No instance for Show
+    Picture@ from GHCi printing an undisplayable result — never appears in a
+    typecheck probe, so every row was reachable only for compile-time
+    classes and `unshowable-display` could not fire on the very case it was
+    written for (live_test28/29).
+
+    Proof is unaffected: `clears` below still requires the candidate to
+    TYPECHECK with no new root errors, which is real evidence the rewrite is
+    valid. For this class it is also sufficient — the failure was GHCi
+    printing a result with no Show instance, and wrapping it in an IO action
+    provably removes the print. -}
+    let baseRootErrs = rootErrors curSrc baseRes <> observedRoots
+        observedRoots =
+            [ce | ce <- rootErrors curSrc observed, mitDetect row ce]
+        -- The probe's own result, carrying the observed diagnostics too.
+        withObserved (Right er) = Right er{erErrors = erErrors er <> observedRoots}
+        withObserved other = other
         expected =
             Set.fromList
                 [ceMessage ce | ce <- baseRootErrs, not (mitDetect row ce)]
@@ -95,7 +127,12 @@ foldRow app store cid lang ty row curSrc = do
     if not (any (mitDetect row) baseRootErrs)
         then pure (Nothing, Nothing, curSrc)
         else do
-            cands <- mitGenerate row app store baseRes curSrc
+            {- The generator must see what the DETECTOR matched on. It was
+            handed the typecheck probe, which is clean for a runtime
+            diagnostic, so a row could detect a runtime error and then
+            generate nothing — the last link in the unshowable-display
+            failure. -}
+            cands <- mitGenerate row app store (withObserved baseRes) curSrc
             probed <- mapM (\c -> (,) c <$> probeResult app cid lang ty c) cands
             let clears (c, r) =
                     let newRoots = rootErrors c r
@@ -103,22 +140,36 @@ foldRow app store cid lang ty row curSrc = do
                             then not (any (mitDetect row) newRoots)
                             else Set.fromList (map ceMessage newRoots) `Set.isSubsetOf` expected
                 cleared = [c | (c, r) <- probed, clears (c, r)]
-            pure $ case cleared of
-                [] -> (Nothing, Nothing, curSrc)
-                [one] -> (Just (mitClass row, one, length cands), Nothing, one)
-                many -> (Nothing, Just (factEntry (mitClass row) many), curSrc)
+            pure $ case (mitDischarge row, cleared) of
+                (_, []) -> (Nothing, Nothing, curSrc)
+                -- A dependency stays the model's deliberate act (G2), so a
+                -- proven fix is served as committable source, never applied.
+                (ServeAsArtifact, cs) ->
+                    (Nothing, Just (factEntry (mitClass row) cs), curSrc)
+                (Apply, [one]) ->
+                    (Just (mitClass row, one, length cands), Nothing, one)
+                (Apply, many) ->
+                    (Nothing, Just (factEntry (mitClass row) many), curSrc)
 
 {- | 'foldRow' over every table row, threading the growing composite source;
 each step re-probes fresh, so a line-shifting fix earlier in the fold cannot
 mistarget a later one.
 -}
 compileFold ::
-    App -> AIStore -> Int -> CellLang -> CellType -> Text -> IO ([Value], [(Text, Text, Int)], Text)
-compileFold app store cid lang ty src0 = go mitigationTable src0 [] []
+    App ->
+    AIStore ->
+    Int ->
+    CellLang ->
+    CellType ->
+    Either Text ExecutionResult ->
+    Text ->
+    IO ([Value], [(Text, Text, Int)], Text)
+compileFold app store cid lang ty observed src0 = go mitigationTable src0 [] []
   where
     go [] curSrc facts applied = pure (reverse facts, reverse applied, curSrc)
     go (row : rest) curSrc facts applied = do
-        (mApplied, mFact, nextSrc) <- foldRow app store cid lang ty row curSrc
+        (mApplied, mFact, nextSrc) <-
+            foldRow app store cid lang ty row observed curSrc
         let facts' = maybe facts (: facts) mFact
             applied' = maybe applied (: applied) mApplied
         go rest nextSrc facts' applied'
@@ -139,30 +190,43 @@ runMitigations ::
     Either Text ExecutionResult ->
     IO (Maybe (Either Text ExecutionResult), Maybe Value)
 runMitigations app store rn cid cancelTok sugRef staleRef k0 res0 = do
-    (fixes, facts, finalRes, committedAny, remaining) <- go [] [] k0 res0 False Nothing
-    pure (if committedAny then Just finalRes else Nothing, mitigationDisclosure fixes remaining facts)
+    (fixes, facts, finalRes, committedAny, remaining) <-
+        go [] [] k0 res0 False Nothing
+    pure
+        ( if committedAny then Just finalRes else Nothing
+        , mitigationDisclosure fixes remaining facts
+        )
   where
     currentSrc = maybe "" cellSource . lookupCell cid <$> readNotebook (appNotebook app)
 
-    {- | The source this round folds over: the uncommitted composite carried
-    from the previous round when there is one, else the committed cell.
-    -}
+    -- \| The source this round folds over: the uncommitted composite carried
+    --    from the previous round when there is one, else the committed cell.
+    --
     workingSrc = maybe currentSrc pure
 
     cellLangType =
         maybe (Haskell, CodeCell) (\c -> (cellLang c, cellType c)) . lookupCell cid
             <$> readNotebook (appNotebook app)
     go fixes facts k res committedAny mWorking
-        | isClean (healthOfResult res) = pure (reverse fixes, facts, res, committedAny, [])
+        | isClean (healthOfResult res) =
+            pure (reverse fixes, facts, res, committedAny, [])
         | k <= (0 :: Int) = do
             src <- workingSrc mWorking
-            pure (reverse fixes, facts, res, committedAny, map ceMessage (rootErrors src res))
+            pure
+                (reverse fixes, facts, res, committedAny, map ceMessage (rootErrors src res))
         | otherwise = do
             src <- workingSrc mWorking
             (lang, ty) <- cellLangType
-            (newFacts, applied, composed) <- compileFold app store cid lang ty src
+            (newFacts, applied, composed) <- compileFold app store cid lang ty res src
             if null applied
-                then pure (reverse fixes, facts ++ newFacts, res, committedAny, map ceMessage (rootErrors src res))
+                then
+                    pure
+                        ( reverse fixes
+                        , facts ++ newFacts
+                        , res
+                        , committedAny
+                        , map ceMessage (rootErrors src res)
+                        )
                 else do
                     mKept <- verifyAndRevert app rn cancelTok cid sugRef staleRef res src [composed]
                     let stepsList = steps src applied
@@ -229,7 +293,11 @@ mitigationDisclosure fixes remaining facts
     fixJSON f = object ["class" .= mfClass f, "removed" .= mfRemoved f, "added" .= mfAdded f]
     noteFor
         | null remaining =
-            "resolved " <> tshow n <> " diagnostic" <> plural <> "; notebook compiles clean."
+            "resolved "
+                <> tshow n
+                <> " diagnostic"
+                <> plural
+                <> "; notebook compiles clean."
         | otherwise =
             "resolved "
                 <> tshow n

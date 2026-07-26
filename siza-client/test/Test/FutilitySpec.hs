@@ -78,7 +78,7 @@ futilitySpec = describe "Siza.Agent.Futility (retry-futility guard)" $ do
                 out <- guardDispatch g rejecting (call "x = 1 +")
                 pure (noteOf out)
 
-        it "never tells the model the payload is not the fault" $ do
+        it "false-futility: never tells the model the payload is not the fault" $ do
             n <- secondNote
             n `shouldSatisfy` maybe False (not . T.isInfixOf "not the fault")
 

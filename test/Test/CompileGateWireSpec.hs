@@ -56,21 +56,23 @@ holeDiagnostic =
 
 spec :: Spec
 spec = describe "compile-gate rejection envelope wire pins" $ do
-    it "compile error on an insert: no cellId, verdict/stage/diagnostic/source present" $ do
-        let result =
-                baseResult
-                    { disposableFailure =
-                        Just (MaterializeFailure StageCandidateSetup Nothing "parse error on input")
-                    }
-            v = rejectionJson Nothing "broken = " DisposableCompileError result
-        textField "refusal" v `shouldBe` Just "compile-gate"
-        field "cellId" v `shouldBe` Nothing
-        textField "verdict" v `shouldBe` Just "diagnostic"
-        textField "stage" v `shouldBe` Just "candidate_setup"
-        textField "diagnostic" v `shouldBe` Just "parse error on input"
-        textField "source" v `shouldBe` Just "broken = "
-        field "holeFits" v `shouldBe` Nothing
-        field "holeProbe" v `shouldBe` Nothing
+    it
+        "compile error on an insert: no cellId, verdict/stage/diagnostic/source present"
+        $ do
+            let result =
+                    baseResult
+                        { disposableFailure =
+                            Just (MaterializeFailure StageCandidateSetup Nothing "parse error on input")
+                        }
+                v = rejectionJson Nothing "broken = " DisposableCompileError result
+            textField "refusal" v `shouldBe` Just "compile-gate"
+            field "cellId" v `shouldBe` Nothing
+            textField "verdict" v `shouldBe` Just "diagnostic"
+            textField "stage" v `shouldBe` Just "candidate_setup"
+            textField "diagnostic" v `shouldBe` Just "parse error on input"
+            textField "source" v `shouldBe` Just "broken = "
+            field "holeFits" v `shouldBe` Nothing
+            field "holeProbe" v `shouldBe` Nothing
 
     it "compile error on a replace: names the replaced cell" $ do
         let result =
@@ -94,39 +96,53 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                         Just
                             (MaterializeFailure StageCandidateTypecheck Nothing holeDiagnostic)
                     }
-            v = rejectionJson Nothing "line (_ :: Point) (_ :: Point)" DisposableCompileError result
+            v =
+                rejectionJson
+                    Nothing
+                    "line (_ :: Point) (_ :: Point)"
+                    DisposableCompileError
+                    result
         textField "diagnostic" v `shouldBe` Just holeDiagnostic
         case field "holeFits" v of
             Just (Array fits) -> length fits `shouldBe` 1
             _ -> expectationFailure "expected a non-empty holeFits array"
 
-    it "G3: the rejection carries the probe conclusions harvested by this gate check" $ do
-        let result =
-                baseResult
-                    { disposableFailure =
-                        Just
-                            (MaterializeFailure StageCandidateTypecheck Nothing holeDiagnostic)
-                    }
-            v = rejectionJson Nothing "line (_ :: Point) (_ :: Point)" DisposableCompileError result
-        case field "holeProbe" v >>= field "facts" of
-            Just (Array facts) -> length facts `shouldBe` 1
-            _ -> expectationFailure "expected a holeProbe facts array"
-        (field "holeProbe" v >>= field "provenance")
-            `shouldBe` Just (String "via: hole-probe")
+    it
+        "G3: the rejection carries the probe conclusions harvested by this gate check"
+        $ do
+            let result =
+                    baseResult
+                        { disposableFailure =
+                            Just
+                                (MaterializeFailure StageCandidateTypecheck Nothing holeDiagnostic)
+                        }
+                v =
+                    rejectionJson
+                        Nothing
+                        "line (_ :: Point) (_ :: Point)"
+                        DisposableCompileError
+                        result
+            case field "holeProbe" v >>= field "facts" of
+                Just (Array facts) -> length facts `shouldBe` 1
+                _ -> expectationFailure "expected a holeProbe facts array"
+            (field "holeProbe" v >>= field "provenance")
+                `shouldBe` Just (String "via: hole-probe")
 
-    it "an infra failure (build timeout) is the closed infra verdict, not a diagnostic" $ do
-        let result =
-                baseResult
-                    { disposableVerdict = DisposableTimedOut
-                    , disposableFailure =
-                        Just
-                            (MaterializeFailure StageSession Nothing "trial exceeded its time budget")
-                    }
-            v = rejectionJson Nothing "x = 1" DisposableTimedOut result
-        textField "verdict" v `shouldBe` Just "no-verdict-infra"
-        case textField "error" v of
-            Just msg -> msg `shouldSatisfy` (/= "")
-            Nothing -> expectationFailure "expected an error message"
+    it
+        "an infra failure (build timeout) is the closed infra verdict, not a diagnostic"
+        $ do
+            let result =
+                    baseResult
+                        { disposableVerdict = DisposableTimedOut
+                        , disposableFailure =
+                            Just
+                                (MaterializeFailure StageSession Nothing "trial exceeded its time budget")
+                        }
+                v = rejectionJson Nothing "x = 1" DisposableTimedOut result
+            textField "verdict" v `shouldBe` Just "no-verdict-infra"
+            case textField "error" v of
+                Just msg -> msg `shouldSatisfy` (/= "")
+                Nothing -> expectationFailure "expected an error message"
 
     it "an infra failure never claims the candidate was verified or committed" $ do
         let result = baseResult{disposableVerdict = DisposableUnavailable}

@@ -176,7 +176,7 @@ spec = describe "unified try operation" $ do
                     textField "route" v `shouldBe` Just "disposable_scratch"
                     textField "outcome" v `shouldSatisfy` (/= Just "unavailable")
 
-    it "autofixes a hidden-package import in the scratchpad, mechanically" $ do
+    it "try-dep-autofix: a trial-declared dependency is never a bare ok" $ do
         cabal <- findExecutable "cabal"
         case cabal of
             Nothing -> pendingWith "cabal not found on PATH"
@@ -198,6 +198,10 @@ spec = describe "unified try operation" $ do
                             (T.isInfixOf "-- cabal: build-depends: text")
                     autofix
                         `shouldSatisfy` maybe False (T.isInfixOf "sineWaveSvg")
+                    -- G7.5: an `ok` whose bytes the gate would reject is the
+                    -- live_test8 impasse. A trial that declared a dependency
+                    -- the source does not name must say so, never answer bare.
+                    autofix `shouldNotBe` Nothing
 
     it "strips `main` mechanically instead of refusing the candidate" $ do
         cabal <- findExecutable "cabal"

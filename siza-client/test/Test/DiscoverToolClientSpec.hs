@@ -9,10 +9,13 @@ module Test.DiscoverToolClientSpec (discoverToolSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
+import Siza.Agent.Discover.Fetch (fetchSession)
+import Siza.Agent.Discover.Types (Interpreted (..))
 import Siza.Agent.DiscoverTool (
     blankPayload,
     discoverArgs,
@@ -67,6 +70,62 @@ discoverToolSpec = describe "discover tool (plumbing)" $ do
         it "prose is never split" $
             queryVariants "parse digits from a string"
                 `shouldBe` ["parse digits from a string"]
+
+        {- live_test25: the model asked `take D.DataFrame`, the session index
+        was handed the whole string, scoped to a module `D.DataFrame` that
+        does not exist (D is an alias) and answered with a Prelude dump. The
+        one query that works — `take` — was never tried, so
+        `DataFrame.take :: Int -> DataFrame -> DataFrame` was never served. -}
+        it "session-query-mangled: a name-plus-type query also tries the name" $
+            queryVariants "take D.DataFrame"
+                `shouldBe` ["take D.DataFrame", "take"]
+
+        it "keeps prose unsplit even when it contains a capitalised word" $
+            queryVariants "read a CSV file into memory"
+                `shouldBe` ["read a CSV file into memory"]
+
+    {- live_test26: `fetchSession` returned the FIRST non-blank payload, so a
+    module listing (always non-blank) beat the value-word variant that
+    actually answers. `DataFrame head` browsed DataFrame's 1413 exports and
+    never asked `head`. An answer that NAMES things wins now. -}
+    describe "session-prefers-matches (live_test26)" $ do
+        let interp = Interpreted "DataFrame head" "DataFrame" Nothing "prose" "" []
+            listing =
+                object
+                    [ "module" .= ("DataFrame" :: Text)
+                    , "status" .= ("ok" :: Text)
+                    , "exports" .= (["D.AnyFrame :: Constraint"] :: [Text])
+                    , "total" .= (1413 :: Int)
+                    ]
+            matches =
+                object
+                    [ "matches"
+                        .= [ object
+                                [ "module" .= ("DataFrame" :: Text)
+                                , "name" .= ("take" :: Text)
+                                , "type" .= ("Int -> DataFrame -> DataFrame" :: Text)
+                                ]
+                           ]
+                    ]
+            scripted table tn args = do
+                let q = case args of
+                        Object o | Just (String v) <- KM.lookup "query" o -> v
+                        _ -> ""
+                pure $
+                    if tn /= FindFunction
+                        then Left "unexpected tool"
+                        else Right (ToolOk (fromMaybe (object []) (lookup q table)))
+
+        it "prefers a named match over a module listing, whatever the order" $ do
+            got <-
+                fetchSession
+                    (scripted [("DataFrame", listing), ("head", matches)])
+                    interp
+            got `shouldBe` Just matches
+
+        it "still answers with the listing when nothing names a match" $ do
+            got <- fetchSession (scripted [("DataFrame", listing)]) interp
+            got `shouldBe` Just listing
 
     describe "runDiscoverTool — one bounded envelope on every outcome" $ do
         it "a total miss is a scoped not_found envelope, never empty" $ do

@@ -8,6 +8,7 @@ names, and the tool description is generated from that same schema.
 module Test.DiscoverEnvelopeSpec (discoverEnvelopeSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
@@ -114,6 +115,26 @@ discoverEnvelopeSpec =
                     length (hitsOf v) `shouldBe` intField "shown" v
                     intField "shown" v + intField "omitted" v
                         `shouldBe` intField "total" v
+                {- raw probe: shedding exports FIRST emptied the card
+                (exports: [], moreExports: 60) while worst-ranked hits
+                survived — and the export list is the evidence a caller
+                decides from. Hits shed first; exports keep a floor. -}
+                it "sheds hits before card exports, and floors the exports" $ do
+                    let v =
+                            boundEnvelope
+                                ( discoverEnvelope
+                                    env0
+                                    (interpret env0 "col")
+                                    25
+                                    [ (okAnswer "hoogle" (map wideHit [1 .. 40]))
+                                        { saCard = Just wideCard
+                                        }
+                                    ]
+                                    hk0
+                                )
+                    envelopeChars v `shouldSatisfy` (<= envelopeCharBudget)
+                    length (exportsOf v) `shouldSatisfy` (>= 8)
+
                 it "bounds a wide card by moving exports into moreExports" $ do
                     let v =
                             boundEnvelope
@@ -233,3 +254,11 @@ discoverEnvelopeSpec =
                         `shouldSatisfy` T.isInfixOf "install state"
                     discoverGrammarBlock
                         `shouldSatisfy` T.isInfixOf "what was consulted"
+
+-- | The card's exports array, empty when absent.
+exportsOf :: Value -> [Value]
+exportsOf v = case field "card" v of
+    Just (Object c) -> case KM.lookup "exports" c of
+        Just (Array es) -> foldr (:) [] es
+        _ -> []
+    _ -> []

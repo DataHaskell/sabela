@@ -8,7 +8,14 @@ module Test.ImportRepairSpec (spec) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.ImportRepair (addScopedImport, moduleRenameFix, renameModule)
+import Sabela.AI.ImportRepair (
+    addQualifiedImport,
+    addScopedImport,
+    moduleRenameFix,
+    qualifiedAliases,
+    renameModule,
+    unboundAliasUses,
+ )
 import Sabela.AI.Types (ExecutionResult (..))
 import Test.Hspec
 
@@ -70,3 +77,52 @@ spec = describe "Sabela.AI.ImportRepair" $ do
         it "inserts after the -- cabal: line when the cell has no imports" $
             addScopedImport "Conduit" "runConduit" "-- cabal: build-depends: conduit\nx = 1"
                 `shouldBe` "-- cabal: build-depends: conduit\nimport Conduit (runConduit)\nx = 1"
+
+    {- live_test35_wine, GHC-76037: the cell used `T.lines` and `TE.decodeUtf8`
+    having never bound either alias. GHC names the unimported alias itself, so
+    the repair never has to guess that T means Data.Text. -}
+    describe "unboundAliasUses" $ do
+        it "pairs the alias with the bare name from GHC's two-line form" $
+            unboundAliasUses ghcAliasError
+                `shouldBe` [("T", "lines"), ("TE", "decodeUtf8")]
+
+        it "ignores a qualified name whose alias GHC does not call unimported" $
+            unboundAliasUses
+                "Not in scope: \8216M.foo\8217"
+                `shouldBe` []
+
+        it "ignores an unqualified not-in-scope name" $
+            unboundAliasUses
+                "Not in scope: \8216foo\8217\nNote: No module named \8216T\8217 is imported."
+                `shouldBe` []
+
+        it "is empty for an unrelated diagnostic" $
+            unboundAliasUses "Couldn't match type \8216Int\8217 with \8216Bool\8217"
+                `shouldBe` []
+
+    describe "addQualifiedImport" $ do
+        it "binds the alias GHC said was missing" $
+            addQualifiedImport "Data.Text" "T" "x = 1"
+                `shouldBe` "import qualified Data.Text as T\nx = 1"
+
+        it "is a no-op when the alias is already bound" $
+            addQualifiedImport
+                "Data.Text"
+                "T"
+                "import qualified Data.Text as T\nx = 1"
+                `shouldBe` "import qualified Data.Text as T\nx = 1"
+
+        it "reads the aliases a source already binds" $
+            qualifiedAliases
+                "import qualified Data.Text as T\nimport qualified Data.Map as M\nx = 1"
+                `shouldBe` ["T", "M"]
+
+-- | The diagnostic exactly as live_test35_wine received it.
+ghcAliasError :: Text
+ghcAliasError =
+    "<interactive>:365:20: error: [GHC-76037]\n\
+    \    Not in scope: \8216T.lines\8217\n\
+    \    Note: No module named \8216T\8217 is imported.\n\
+    \<interactive>:365:27: error: [GHC-76037]\n\
+    \    Not in scope: \8216TE.decodeUtf8\8217\n\
+    \    Note: No module named \8216TE\8217 is imported."

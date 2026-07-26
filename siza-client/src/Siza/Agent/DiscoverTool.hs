@@ -37,6 +37,7 @@ import Siza.Agent.Discover.Classify (
     candidatePackages,
     capabilityAnswer,
     envAnswer,
+    notebookAnswer,
     sessionAnswer,
  )
 import Siza.Agent.Discover.Construct (
@@ -51,15 +52,18 @@ import Siza.Agent.Discover.Fetch (
     capabilityArgs,
     fetchNotebookEnv,
     fetchOk,
-    fetchSession,
+    fetchSessionScoped,
     probeHidden,
     queryVariants,
  )
-import Siza.Agent.Discover.Goal (goalFromArgs)
+import Siza.Agent.Discover.Goal (goalFromArgs, recentFromArgs)
 import Siza.Agent.Discover.Hackage (hackageInfoFor, hackageMatching)
 import Siza.Agent.Discover.Interpret (interpret)
 import Siza.Agent.Discover.Inventory (inventoryEnvelope, topicTokens)
-import Siza.Agent.Discover.Merge (discoverEnvelopeScoped)
+import Siza.Agent.Discover.Merge (
+    discoverEnvelopeRecent,
+    discoverEnvelopeScoped,
+ )
 import Siza.Agent.Discover.ProducerCard (establishedFallback)
 import Siza.Agent.Discover.Request (
     DiscoverMode (..),
@@ -74,6 +78,7 @@ import Siza.Agent.Discover.Types (
     HackageInfo,
     Interpreted (..),
     NotebookEnv,
+    Scope (..),
     SourceAnswer,
     StandingGoal,
  )
@@ -140,7 +145,7 @@ runDiscoverCall ::
     IO ToolOutcome
 runDiscoverCall capSearch call q args = case parseRequest q args of
     Left reason -> pure (ToolOk (boundEnvelope (badRequest q reason)))
-    Right req -> runDiscoverGoal (goalFromArgs args) capSearch call req
+    Right req -> runDiscoverGoal (goalFromArgs args) (recentFromArgs args) capSearch call req
 
 {- | Run a validated @discover@ request: build the notebook environment,
 consult every source, and union-merge into one envelope under the request's
@@ -153,7 +158,7 @@ runDiscoverRequest ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     DiscoverRequest ->
     IO ToolOutcome
-runDiscoverRequest = runDiscoverGoal Nothing
+runDiscoverRequest = runDiscoverGoal Nothing []
 
 {- | 'runDiscoverRequest' with the guard-injected standing goal (section
 8.3): ledger provenance feeds producer ranking and the argument-producer
@@ -161,11 +166,12 @@ attachment; everything else is identical.
 -}
 runDiscoverGoal ::
     Maybe StandingGoal ->
+    [Text] ->
     Bool ->
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     DiscoverRequest ->
     IO ToolOutcome
-runDiscoverGoal mSG capSearch call req0
+runDiscoverGoal mSG recent capSearch call req0
     | T.null (T.strip q) =
         pure (ToolOk (boundEnvelope (badRequest q blankReason)))
     | otherwise = do
@@ -187,12 +193,15 @@ runDiscoverGoal mSG capSearch call req0
                         modeRedirect req env interp0 answers hk v
                 pure (ToolOk (boundEnvelope vOut))
             else do
-                sess <- fetchSession call interp
+                sess <- fetchSessionScoped call (scModule (drScope req)) interp
                 cap <- fetchOk call SearchCapability (capabilityArgs capSearch interp)
+                nb <-
+                    fetchOk call FindCellsByContent (object ["pattern" .= iName interp])
                 let base =
                         [ envA
                         , sessionAnswer interp sess
                         , capabilityAnswer interp cap
+                        , notebookAnswer interp nb
                         ]
                             ++ exact0
                 probed <- probeHidden call interp base
@@ -202,7 +211,7 @@ runDiscoverGoal mSG capSearch call req0
                         else pure []
                 let answers = base ++ probed ++ attached
                 hk <- hackageInfoFor (candidatePackages interp answers)
-                v <- answerFor req env interp answers hk
+                v <- answerFor recent req env interp answers hk
                 vOut <-
                     establishedFallback mSG call req $
                         modeRedirect req env interp0 answers hk v
@@ -271,16 +280,25 @@ asConstruct req interp
 
 -- | The mode's envelope: ranked search hits, or the M6 inventory card.
 answerFor ::
+    [Text] ->
     DiscoverRequest ->
     NotebookEnv ->
     Interpreted ->
     [SourceAnswer] ->
     HackageInfo ->
     IO Value
-answerFor req env interp answers hk = case drMode req of
+answerFor recent req env interp answers hk = case drMode req of
     ModeSearch ->
         pure
-            (discoverEnvelopeScoped env interp (drScope req) (drLimit req) answers hk)
+            ( discoverEnvelopeRecent
+                recent
+                env
+                interp
+                (drScope req)
+                (drLimit req)
+                answers
+                hk
+            )
     ModeInventory -> do
         lexical <- hackageMatching lexicalCap (topicTokens interp)
         pure

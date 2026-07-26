@@ -9,10 +9,12 @@ forced, so nothing runs. The same trick 'Sabela.AI.Capabilities.Try' already
 uses for a single trial expression ('hiddenExpressionBinding'), generalized
 to an arbitrary multi-piece cell.
 
-Known limitation: a monadic bind's pattern (@x <- expr@) is dropped, so a
-LATER piece in the same cell that references @x@ will spuriously not find it
-in scope. Narrower and far safer than the alternative (actually running the
-candidate) — see the live_test4 resource-runaway regression this replaced.
+A consecutive run of statements is rendered as ONE non-executing @do@ block
+(see 'doBlock'), so a bind's name stays in scope for the statements after
+it. Remaining limitation: a top-level DECLARATION that references a
+do-bound name is still not seen, because the declaration cannot live inside
+the block; GHCi's own top-level binds do allow that, so such a cell is
+rejected though it would run.
 -}
 module Sabela.AI.Capabilities.Edit.CompileGate.Render (
     renderNonExecuting,
@@ -37,10 +39,65 @@ import ScriptHs.Render (
 
 renderNonExecuting :: Text -> Text
 renderNonExecuting src =
-    T.unlines (concat (zipWith pieceLines [0 :: Int ..] pieces))
+    T.unlines (concat (zipWith renderGroup [0 :: Int ..] (groupStatements pieces)))
   where
     pieces =
         mergePieces (toPieces (scriptLines (fst (parseScriptNumbered src))))
+
+{- | A consecutive run of statements, or any other piece. The run is what
+lets a bind stay in scope for the statements after it.
+-}
+data RenderGroup = GStatements [Piece] | GOther Piece
+
+isStatement :: Piece -> Bool
+isStatement (PUnit KAction _) = True
+isStatement (PUnit KIOBind _) = True
+isStatement _ = False
+
+groupStatements :: [Piece] -> [RenderGroup]
+groupStatements [] = []
+groupStatements (p : ps)
+    | isStatement p =
+        let (run, rest) = span isStatement (p : ps)
+         in GStatements run : groupStatements rest
+    | otherwise = GOther p : groupStatements ps
+
+renderGroup :: Int -> RenderGroup -> [Text]
+renderGroup i (GStatements ps) = doBlock i (map statementBody ps)
+renderGroup i (GOther p) = pieceLines i p
+
+-- | A statement as it appears in a do block: a bind keeps its pattern.
+statementBody :: Piece -> Text
+statementBody (PUnit _ ls) = bodyOf ls
+statementBody _ = ""
+
+{- | One run of statements as a single non-executing @do@ block bound to a
+fresh, unused name. GHC type-checks the whole sequence — so a bind's name IS
+in scope for the statements after it — and nothing is ever forced, so
+nothing runs.
+
+This is what replaced the old per-statement probe, which dropped each bind's
+pattern and therefore rejected the commonest idiom there is: @df <- readCsv
+…@ followed by any use of @df@. The gate was refusing correct cells, which
+is a worse failure than the one it guards against — live_test24 could not
+load a CSV at all.
+-}
+doBlock :: Int -> [Text] -> [Text]
+doBlock i stmts =
+    [":{", name <> " = do"]
+        ++ map ("    " <>) (concatMap T.lines (stmts <> tailStatement))
+        ++ [":}"]
+  where
+    name = "_sabelaGateStmts" <> T.pack (show i)
+    -- A do block may not END in a bind, and a cell often does.
+    tailStatement
+        | maybe False endsInBind (lastOf stmts) = ["pure ()"]
+        | otherwise = []
+    endsInBind t = case bindStatementBody (lastLine t) of
+        Just _ -> True
+        Nothing -> False
+    lastLine = fromMaybe "" . lastOf . T.lines
+    lastOf xs = if null xs then Nothing else Just (last xs)
 
 {- | Evidence rendering for G6: like 'renderNonExecuting', but each binder gets
 its own block instead of one block for the whole declaration run. GHC halts a
@@ -104,7 +161,17 @@ binderOf t
 
 declKeywords :: [Text]
 declKeywords =
-    ["data", "newtype", "type", "class", "instance", "foreign", "pattern", "infixl", "infixr", "infix"]
+    [ "data"
+    , "newtype"
+    , "type"
+    , "class"
+    , "instance"
+    , "foreign"
+    , "pattern"
+    , "infixl"
+    , "infixr"
+    , "infix"
+    ]
 
 pieceLines :: Int -> Piece -> [Text]
 pieceLines _ PBlank = [""]
@@ -123,8 +190,9 @@ bodyOf = T.intercalate "\n" . map lineText
 wrapDecl :: Text -> [Text]
 wrapDecl body = [":{"] ++ T.lines body ++ [":}"]
 
--- | @pat <- expr@ (any pattern) becomes just @expr@: a probe never needs the
--- bound name, only that the right-hand side itself type-checks.
+{- | @pat <- expr@ (any pattern) becomes just @expr@: a probe never needs the
+bound name, only that the right-hand side itself type-checks.
+-}
 probeDecl :: Int -> Text -> [Text]
 probeDecl i body =
     [":{", "_sabelaGateProbe" <> T.pack (show i) <> " = (" <> body <> ")", ":}"]

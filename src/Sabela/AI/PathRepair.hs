@@ -14,6 +14,7 @@ module Sabela.AI.PathRepair (
 ) where
 
 import Control.Exception (IOException, try)
+import Data.Char (isAlphaNum)
 import Data.List (isPrefixOf, sortOn)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Ord (Down (..))
@@ -26,17 +27,36 @@ import Sabela.AI.Similarity (trigramSimilarity)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (Guidance (..))
 
--- | The failing path from a runtime "does not exist" 'IOException' message.
+{- | The failing path from a runtime "does not exist" 'IOException' message,
+whose shape is @\<path\>: \<ioLocation\>: does not exist (\<reason\>)@.
+
+Matched structurally, because "does not exist" anywhere in the line is not
+enough: a @getAddrInfo@ DNS failure ends in it too, and reading the reason off
+the whole line made a failed host lookup surface as "the path
+\`(ConnectionFailure Network.Socket.getAddrInfo ...\` does not exist" and sent
+the model hunting for a file (@live_test33_wine@).
+-}
 notFoundPath :: Text -> Maybe FilePath
 notFoundPath err = listToMaybe (mapMaybe fromLine (T.lines err))
   where
     fromLine raw = case T.splitOn ": " (stripExceptionPrefix (T.strip raw)) of
-        (p : _ : rest@(_ : _))
-            | "does not exist" `T.isInfixOf` last rest, not (T.null p) ->
+        (p : loc : reason : _)
+            | "does not exist" `T.isPrefixOf` reason
+            , not (T.null p)
+            , pathLike p
+            , ioLocationLike loc ->
                 Just (T.unpack p)
         _ -> Nothing
     stripExceptionPrefix t =
         fromMaybe t (T.stripPrefix "*** Exception: " t)
+
+-- | Punctuation a work-dir path never carries, but a rendered record does.
+pathLike :: Text -> Bool
+pathLike = T.all (`notElem` ("(){}\"[]," :: String))
+
+-- | An IO operation name (@openFile@, @withFile@) — one bare word.
+ioLocationLike :: Text -> Bool
+ioLocationLike loc = not (T.null loc) && not (T.any (== ' ') loc)
 
 -- | How a failing path resolves against the real files under the work dir.
 data PathLookup
@@ -66,7 +86,8 @@ lookupPath wrong files = case basenameMatches of
   where
     basenameMatches = [f | f <- files, takeFileName f == takeFileName wrong]
     fuzzyMatches =
-        take candidateCap
+        take
+            candidateCap
             [ f
             | (f, s) <- sortOn (Down . snd) (map score files)
             , s >= fuzzyThreshold
@@ -78,7 +99,8 @@ the work dir it near-misses, prefixed @./@ so it resolves from the session's
 cwd. 'Nothing' when there is no failure to fix, no unique match, or the
 rewrite is a no-op.
 -}
-pathNearMissFix :: FilePath -> Either Text ExecutionResult -> Text -> IO (Maybe Text)
+pathNearMissFix ::
+    FilePath -> Either Text ExecutionResult -> Text -> IO (Maybe Text)
 pathNearMissFix workDir res src = case notFoundPath =<< runtimeErrorOf res of
     Nothing -> pure Nothing
     Just wrong -> do
@@ -97,12 +119,36 @@ pathNotFoundGuidance ::
     FilePath -> Either Text ExecutionResult -> IO (Maybe Guidance)
 pathNotFoundGuidance workDir res = case notFoundPath =<< runtimeErrorOf res of
     Nothing -> pure Nothing
-    Just wrong -> do
-        files <- workDirFiles workDir
-        pure $ case lookupPath wrong files of
-            Unique _ -> Nothing
-            Nearby cs -> Just (Guidance "file-not-found" (candidateMessage wrong cs))
-            NoneNearby -> Just (Guidance "file-not-found" (noneMessage wrong))
+    Just wrong
+        | isUrl wrong -> pure (Just (Guidance "url-as-path" (urlMessage wrong)))
+        | otherwise -> do
+            files <- workDirFiles workDir
+            pure $ case lookupPath wrong files of
+                Unique _ -> Nothing
+                Nearby cs -> Just (Guidance "file-not-found" (candidateMessage wrong cs))
+                NoneNearby -> Just (Guidance "file-not-found" (noneMessage wrong))
+
+{- | Does this failing "path" carry a URI scheme? A near-miss hunt over the
+work dir is meaningless for one, and so is asking the caller for the right
+path — there is no path to correct.
+-}
+isUrl :: FilePath -> Bool
+isUrl p = case break (== ':') p of
+    (scheme, ':' : '/' : '/' : _) ->
+        not (null scheme)
+            && all (\c -> isAlphaNum c || c `elem` ("+-." :: String)) scheme
+    _ -> False
+
+{- | The URL case, stated as the fact it is. It names what the argument IS,
+not what to do about it: which client to reach for is the caller's call.
+-}
+urlMessage :: FilePath -> Text
+urlMessage wrong =
+    "`"
+        <> T.pack wrong
+        <> "` is a URL, not a filesystem path. The file-opening functions \
+           \(readFile and its relatives) resolve local paths only; nothing \
+           \was fetched."
 
 candidateMessage :: FilePath -> [FilePath] -> Text
 candidateMessage wrong cs =

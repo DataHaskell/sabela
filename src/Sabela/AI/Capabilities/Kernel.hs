@@ -10,6 +10,8 @@ module Sabela.AI.Capabilities.Kernel (
     execKernelStatus,
     execInterrupt,
     execKernelRestart,
+    interruptOutcome,
+    restartOutcome,
     execAwaitIdle,
     execExportNotebook,
     haskellKernelBusy,
@@ -19,7 +21,7 @@ module Sabela.AI.Capabilities.Kernel (
     awaitTag,
 ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (void, when)
 import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
@@ -37,6 +39,9 @@ import Sabela.AI.Capabilities.KernelHealth (
  )
 import Sabela.AI.KernelState (KernelState, kernelStateJSON, kernelStateOf)
 import Sabela.AI.KernelVocab (
+    Holding (..),
+    LockOwner (..),
+    ownerLabel,
     tagIdle,
     tagKernelDead,
     tagSettled,
@@ -111,22 +116,104 @@ kernelStateBefore app = do
     ebGen <- readIORef (ebGeneration (appEvents app))
     pure (kernelStateOf (isJust mSess) gen busy compiling, ebGen)
 
--- | Abort the running cell (group SIGINT); no-op when idle.
-execInterrupt :: App -> IO ToolOutcome
-execInterrupt app = do
+{- | Abort the running cell (group SIGINT) and report the OUTCOME, not the
+attempt: @interrupted@ is true only when the lock actually released inside
+the grace window. An uninterruptible holder — a @cabal install@ subprocess
+is the legitimate case — answers false and names what still holds it, so the
+model never plans against an interrupt that interrupted nothing (G8).
+-}
+execInterrupt :: App -> AIStore -> IO ToolOutcome
+execInterrupt app store = do
     mSess <- getHaskellSession (appSessions app)
     maybe (pure ()) ST.sbInterrupt mSess
-    pure $ okOutcome $ object ["interrupted" .= True]
+    interruptOutcome <$> awaitRelease app store controlGraceRounds
+
+{- | The interrupt verdict as a function of what still holds the lock, so the
+honesty law is checkable without a wedged kernel (@false-interrupt@).
+-}
+interruptOutcome :: Maybe Holding -> ToolOutcome
+interruptOutcome still = okOutcome $ object $ case still of
+    Nothing -> ["interrupted" .= True]
+    Just (Holding owner ms) ->
+        [ "interrupted" .= False
+        , "holder" .= ownerLabel owner
+        , "elapsedMs" .= ms
+        , "detail"
+            .= ( "the interrupt did not release the lock; "
+                    <> ownerLabel owner
+                    <> " still holds it. A dependency install cannot be \
+                       \interrupted — wait for it, or kernel_restart."
+               )
+        ]
+
+{- | Poll until the run lock is free, up to @n@ grace rounds; 'Nothing' when
+it released, else the holder that outlasted the window.
+-}
+awaitRelease :: App -> AIStore -> Int -> IO (Maybe Holding)
+awaitRelease app store = go
+  where
+    go n = do
+        occupied <- haskellKernelOccupied app
+        holder <- runningHolder app store
+        if not (occupied || isJust holder)
+            then pure Nothing
+            else
+                if n <= 0
+                    then pure (holderOr occupied holder)
+                    else threadDelay controlGraceDelayUs >> go (n - 1)
+    holderOr True Nothing = Just (Holding (OwnedByOp "a run you did not start") 0)
+    holderOr _ h = h
+
+-- | ~2s of grace for a control operation to take effect before it answers.
+controlGraceRounds :: Int
+controlGraceRounds = 20
+
+controlGraceDelayUs :: Int
+controlGraceDelayUs = 100000
 
 {- | Hard-reset the kernel: force-kill the process (bypassing the run-lock a
 wedged cell holds) and respawn clean, reusing the env without rebuilding and
-without re-running cells. Forked so the response returns immediately; poll
-'execKernelStatus' until idle.
+without re-running cells. Reports the restart's OUTCOME: a restart that
+leaves the kernel cold is a failure verdict, never a bare
+@restartInitiated@ the model can mistake for a working kernel (G8).
 -}
-execKernelRestart :: ReactiveNotebook -> IO ToolOutcome
-execKernelRestart rn = do
+execKernelRestart :: App -> ReactiveNotebook -> IO ToolOutcome
+execKernelRestart app rn = do
     void (forkIO (rnRestartKernel rn))
-    pure $ okOutcome $ object ["restartInitiated" .= True]
+    restartOutcome <$> awaitKernelBack app restartGraceRounds
+
+{- | The restart verdict as a function of whether the kernel came back. A
+restart that leaves it cold is a failure verdict, never a bare
+@restartInitiated@ the model can mistake for a working kernel
+(@restart-into-death@).
+-}
+restartOutcome :: Bool -> ToolOutcome
+restartOutcome alive =
+    okOutcome $
+        object $
+            ["restartInitiated" .= True, "restarted" .= alive]
+                <> ["detail" .= restartFailedDetail | not alive]
+
+restartFailedDetail :: Text
+restartFailedDetail =
+    "the kernel did not come back within the restart window and is still \
+    \cold; this is an infrastructure fault, not something to retry blindly."
+
+-- | Poll until a Haskell session is attached again, up to @n@ rounds (~10s).
+awaitKernelBack :: App -> Int -> IO Bool
+awaitKernelBack app = go
+  where
+    go n = do
+        alive <- haskellKernelAlive app
+        if alive
+            then pure True
+            else
+                if n <= 0
+                    then pure False
+                    else threadDelay controlGraceDelayUs >> go (n - 1)
+
+restartGraceRounds :: Int
+restartGraceRounds = 100
 
 -- | Server-side bound on a single 'execAwaitIdle' long-poll (~45s).
 awaitIdleBudgetUs :: Int
@@ -148,7 +235,7 @@ execAwaitIdle app store = do
     -- Idle by the SAME evidence the admission bounce uses: a cascade releases
     -- the run-lock between cells, so sbBusy alone reported idle while the next
     -- write still bounced on a registered running write (live_test8).
-    holder <- runningHolder store
+    holder <- runningHolder app store
     if not (occupied || isJust holder)
         then finishAwait tagIdle []
         else do
@@ -160,7 +247,7 @@ execAwaitIdle app store = do
                     (haskellKernelAlive app)
             resource <-
                 if res == AwaitTimedOut
-                    then resourceField store seen
+                    then resourceField app store seen
                     else pure []
             finishAwait (awaitTag res) resource
   where

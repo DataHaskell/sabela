@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.Deps (
+    availablePackages,
     collectMetadata,
     collectMetadataFromContent,
     mergedMeta,
@@ -28,6 +29,14 @@ import ScriptHs.Parser (
     mergeMetas,
     parseScript,
  )
+
+{- | Packages a name could already be imported from HERE: the notebook's own
+@-- cabal:@ declarations plus the global\/preinstalled set. The scope keys
+B2 gates ranking on, so a hit from a package the session has nothing to do
+with cannot displace one it does.
+-}
+availablePackages :: Notebook -> S.Set Text -> S.Set Text
+availablePackages nb = S.union (S.fromList (metaDeps (collectMetadata nb)))
 
 collectMetadata :: Notebook -> CabalMeta
 collectMetadata nb =

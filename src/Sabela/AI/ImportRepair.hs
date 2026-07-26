@@ -12,6 +12,9 @@ module Sabela.AI.ImportRepair (
     renameModule,
     addImport,
     addScopedImport,
+    addQualifiedImport,
+    qualifiedAliases,
+    unboundAliasUses,
 ) where
 
 import Data.Char (isAlphaNum)
@@ -79,6 +82,76 @@ addScopedImport modul name src
     importLine = "import " <> modul <> " (" <> entity <> ")"
     entity = if isOperator name then "(" <> name <> ")" else name
     isOperator = T.all (`elem` operatorChars)
+
+{- | The @(alias, name)@ pairs GHC reports as a use of an alias the cell never
+bound, from its two-line form:
+
+> Not in scope: ‘T.lines’
+> Note: No module named ‘T’ is imported.
+
+Only an alias GHC itself names as unimported is returned, so this never
+guesses that @T@ means @Data.Text@ — the caller resolves the bare name
+against the session's own index instead.
+-}
+unboundAliasUses :: Text -> [(Text, Text)]
+unboundAliasUses err =
+    nubOrd
+        [ (alias, name)
+        | qualified <- concatMap quotedTokens (notInScopeLines err)
+        , let (dotted, name) = T.breakOnEnd "." qualified
+              alias = T.dropEnd 1 dotted
+        , not (T.null alias)
+        , not (T.null name)
+        , alias `elem` unimportedAliases err
+        ]
+  where
+    notInScopeLines = filter ("Not in scope:" `T.isInfixOf`) . T.lines
+    nubOrd = foldr (\x acc -> x : filter (/= x) acc) []
+
+-- | The aliases GHC's @No module named ‘X’ is imported@ notes name.
+unimportedAliases :: Text -> [Text]
+unimportedAliases err =
+    concat
+        [ quotedTokens l
+        | l <- T.lines err
+        , "No module named" `T.isInfixOf` l
+        , "is imported" `T.isInfixOf` l
+        ]
+
+-- | Every token GHC wrapped in its directional quotes on one line.
+quotedTokens :: Text -> [Text]
+quotedTokens = go
+  where
+    go t = case T.breakOn "\8216" t of
+        (_, rest)
+            | T.null rest -> []
+            | otherwise ->
+                let (tok, after) = T.breakOn "\8217" (T.drop 1 rest)
+                 in if T.null after then [] else tok : go (T.drop 1 after)
+
+{- | Insert @import qualified \<modul\> as \<alias\>@ for a use-site that
+names an alias the cell never bound — @T.lines@ with no @import qualified
+Data.Text as T@. A no-op when the alias is already bound, or when either
+argument is empty.
+-}
+addQualifiedImport :: Text -> Text -> Text -> Text
+addQualifiedImport modul alias src
+    | T.null modul || T.null alias = src
+    | alias `elem` qualifiedAliases src = src
+    | otherwise = insertImport importLine src
+  where
+    importLine = "import qualified " <> modul <> " as " <> alias
+
+-- | The aliases a source's @import qualified M as A@ lines already bind.
+qualifiedAliases :: Text -> [Text]
+qualifiedAliases src =
+    [ alias
+    | l <- map T.strip (T.lines src)
+    , "import qualified " `T.isPrefixOf` l
+    , (_, rest) <- [T.breakOn " as " l]
+    , not (T.null rest)
+    , alias <- take 1 (T.words (T.drop 4 rest))
+    ]
 
 -- | The characters a Haskell operator identifier is built from.
 operatorChars :: String

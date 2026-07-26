@@ -11,13 +11,19 @@ module Test.VerdictSurfaceSpec (verdictSurfaceSpec) where
 import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import Data.List (nub)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Verdict (VerdictClass (..), parseVerdict)
 import Siza.Agent.Messages (
+    VerifyFailure (..),
     doneSignalMsg,
     unconfirmedMsgWith,
+    verifyFailureOf,
+    verifyHeadline,
+    verifyMessage',
     verifyMsg,
     verifyMsgWith,
  )
@@ -30,6 +36,38 @@ content _ = ""
 
 verdictSurfaceSpec :: Spec
 verdictSurfaceSpec = describe "verify-channel verdict totality (section 5.3)" $ do
+    {- C2.7: one verdict, correctly named. live_test8 reported "✓ check
+    passed: True" to the user while the verify channel said the check still
+    failed — and what had actually gone wrong was that no cell existed,
+    which is not a check failure at all. -}
+    describe "check-verdict-contradiction (live_test8)" $ do
+        it "classifies a no-cell state as a precondition, not a check failure" $
+            verifyFailureOf 0 [] `shouldBe` NoDeliverable
+
+        it "an undefined deliverable is its own class, not a check failure" $
+            verifyFailureOf 2 ["sineWaveSvg"]
+                `shouldBe` DeliverableUndefined ["sineWaveSvg"]
+
+        it "only a written, defined deliverable can fail its check" $
+            verifyFailureOf 2 [] `shouldBe` CheckFailed
+
+        it "the no-cell message never claims the check failed" $ do
+            let msg = verifyMessage' 0 [] Nothing
+            msg `shouldSatisfy` T.isInfixOf "no deliverable cell exists"
+            msg `shouldSatisfy` T.isInfixOf "not a check failure"
+            msg `shouldNotSatisfy` T.isInfixOf "the deliverable's check still fails"
+
+        it "a genuine check failure still says so plainly" $
+            verifyMessage' 2 [] Nothing
+                `shouldSatisfy` T.isInfixOf "the deliverable's check still fails"
+
+        it "every class produces a distinct headline" $ do
+            let hs =
+                    map
+                        verifyHeadline
+                        [NoDeliverable, DeliverableUndefined ["x"], CheckFailed]
+            length (nub hs) `shouldBe` 3
+
     it "the done signal decodes as ok" $
         parseVerdict (content doneSignalMsg) `shouldBe` Just VerdictOk
     it "every diagnostic re-prompt decodes as diagnostic, over the grid" $

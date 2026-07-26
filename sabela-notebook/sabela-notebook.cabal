@@ -29,6 +29,7 @@ library
     exposed-modules:
         Sabela.Notebook
         Sabela.Notebook.Anim
+        Sabela.Notebook.Check
         Sabela.Notebook.Behavior
         Sabela.Notebook.Event
         Sabela.Notebook.Frp

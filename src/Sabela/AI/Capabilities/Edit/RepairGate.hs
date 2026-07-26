@@ -24,8 +24,9 @@ import Sabela.State (App)
 data CandidateVerdict
     = -- | Failed the compile gate: never touches the notebook.
       CandidateRejected
-    | -- | Compiles, but only by adding a dependency the model never wrote:
-      -- disclosed as a suggestion, never applied (G2 hard rule 1).
+    | {- | Compiles, but only by adding a dependency the model never wrote:
+      disclosed as a suggestion, never applied (G2 hard rule 1).
+      -}
       CandidateSuggested Value
     | -- | Compiles with no new dependency: may commit.
       CandidateApplyable Text

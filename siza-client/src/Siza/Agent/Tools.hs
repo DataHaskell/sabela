@@ -3,6 +3,8 @@ module Siza.Agent.Tools (
     catalogueWith,
     dispatch,
     offeredArgKeys,
+    toolSurfacePrompt,
+    toolSurfaceHelp,
     offeredNames,
     withInsertDefaults,
     renderOutcome,
@@ -13,7 +15,7 @@ import Data.Aeson (Value (..), encode, object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -65,7 +67,7 @@ baseCatalogue :: [Value]
 baseCatalogue =
     [ fn
         "list_cells"
-        "Map of EVERY cell in the notebook (the whole notebook in one call): each cell's id, position, type, language, the bindings it `defines`, and whether it errored. By default each cell shows only its first line; pass `full: true` to include each cell's source. To find which cell defines or uses a name, scan `defines` here or use find_cells_by_content."
+        "Map of EVERY cell in the notebook (the whole notebook in one call): each cell's id, position, type, language, the bindings it `defines`, and whether it errored. By default each cell shows only its first line; pass `full: true` to include each cell's source. To find which cell defines or uses a name, scan `defines` here or search for it with discover, which reports notebook cells alongside library results."
         ( props
             [
                 ( "full"
@@ -82,17 +84,6 @@ baseCatalogue =
             , ("full", boolProp "Include the cell's outputs (default false).")
             ]
             ["cell_id"]
-        )
-    , fn
-        "find_cells_by_content"
-        "Search the NOTEBOOK's own cell sources for a substring (e.g. \"model\", \"fitDecisionTree\"); returns matching cell ids and the matching lines. This is how you locate which cell defines or uses something so you can edit it — unlike discover, which searches installed LIBRARIES, not your notebook."
-        ( props
-            [
-                ( "pattern"
-                , prop "A substring to find in cell sources, e.g. \"fitDecisionTree\"."
-                )
-            ]
-            ["pattern"]
         )
     , fn
         "insert_cell"
@@ -258,3 +249,123 @@ enc = TE.decodeUtf8 . LBS.toStrict . encode
 
 trunc :: Text -> Text
 trunc t = if T.length t > 6000 then T.take 6000 t <> " …[truncated]" else t
+
+{- | The tool surface as the system prompt lists it, GENERATED from the
+catalogue itself so the two can never disagree: @describe_function@ was
+implemented, dispatched and catalogued in the product chat while absent from
+this list, so no episode could ever call it and its zero usage read as a
+verdict on the tool.
+
+Groups are the notebook's own nouns — cells, the session, and finding things —
+because that is how a caller decides which tool it wants. The one-line
+descriptions carry the rules that used to be prose: a tool that says it runs
+on write does not need a separate rule saying writes run.
+-}
+toolSurfacePrompt :: Text
+toolSurfacePrompt =
+    T.unlines $
+        ["Available tools:", ""]
+            <> concatMap group toolGroups
+  where
+    group (label, names) =
+        ("* " <> label <> ":")
+            : [ "    * " <> n <> ": " <> synopsis n
+              | n <- names
+              , not (T.null (synopsis n))
+              ]
+                <> [""]
+    synopsis n = firstSentence (fromMaybe "" (lookup n catalogueDescriptions))
+    -- A sentence break is ". ", except after an abbreviation: splitting
+    -- naively truncated find_cells_by_content at "for a substring (e.g."
+    firstSentence d = go (T.splitOn ". " d)
+      where
+        go [] = d
+        go [s] = s
+        go (s : ss)
+            | endsAbbrev s = s <> ". " <> go ss
+            | otherwise = s <> "."
+        endsAbbrev s = any (`T.isSuffixOf` s) ["e.g", "i.e", "etc", "cf", "vs"]
+
+-- | Which tools belong to which group, in the order a caller meets them.
+toolGroups :: [(Text, [Text])]
+toolGroups =
+    [
+        ( "Notebook"
+        ,
+            [ "list_cells"
+            , "read_cell"
+            , "insert_cell"
+            , "replace_cell_source"
+            , "execute_cell"
+            , "delete_cell"
+            ]
+        )
+    ,
+        ( "Finding things"
+        , ["discover", "check_type", "list_bindings"]
+        )
+    , ("Trying code", ["try"])
+    ,
+        ( "Kernel"
+        , ["kernel_status", "await_idle", "interrupt", "kernel_restart"]
+        )
+    ]
+
+-- | Every catalogued tool's (name, description), read back off the catalogue.
+catalogueDescriptions :: [(Text, Text)]
+catalogueDescriptions =
+    [ (n, d)
+    | Object o <- baseCatalogue
+    , Just (Object f) <- [KM.lookup "function" o]
+    , Just (String n) <- [KM.lookup "name" f]
+    , Just (String d) <- [KM.lookup "description" f]
+    ]
+
+{- | The human-facing surface listing behind @siza tools@: the same groups the
+system prompt shows, with each tool's FULL description and its arguments.
+
+Generated from the one catalogue, so what an operator reads and what an agent
+is offered cannot drift — the drift is how @describe_function@ stayed absent
+from the agent's list while present everywhere else.
+-}
+toolSurfaceHelp :: Text
+toolSurfaceHelp =
+    T.unlines $
+        ["Tools offered to an agent driving a Sabela notebook.", ""]
+            <> concatMap group toolGroups
+  where
+    group (label, names) =
+        (label <> ":")
+            : concat [entry n | n <- names, isJust (lookup n catalogueDescriptions)]
+                <> [""]
+    entry n =
+        [ "  " <> n <> argSummary n
+        , "      " <> fromMaybe "" (lookup n catalogueDescriptions)
+        , ""
+        ]
+    argSummary n = case lookup n catalogueArgs of
+        Just (ps, req)
+            | not (null ps) ->
+                " " <> T.unwords [render p (p `elem` req) | p <- ps]
+        _ -> ""
+    render p True = "<" <> p <> ">"
+    render p False = "[" <> p <> "]"
+
+{- | Every catalogued tool's (name, (property keys, required keys)), read back
+off the catalogue so the help can never advertise an argument the schema does
+not carry.
+-}
+catalogueArgs :: [(Text, ([Text], [Text]))]
+catalogueArgs =
+    [ (n, (props', req))
+    | Object o <- baseCatalogue
+    , Just (Object f) <- [KM.lookup "function" o]
+    , Just (String n) <- [KM.lookup "name" f]
+    , Just (Object params) <- [KM.lookup "parameters" f]
+    , let props' = case KM.lookup "properties" params of
+            Just (Object ps) -> map K.toText (KM.keys ps)
+            _ -> []
+    , let req = case KM.lookup "required" params of
+            Just (Array rs) -> [r | String r <- foldr (:) [] rs]
+            _ -> []
+    ]

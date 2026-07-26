@@ -47,17 +47,30 @@ loadHackageNames = do
                             (filter (not . T.null) (map T.strip (T.lines t)))
                         )
 
--- | Which of the candidate package names exist upstream, plus availability.
+{- | Which of the candidate package names exist upstream, plus availability.
+
+Matched case-insensitively but reported in the index's own spelling, so a
+caller who writes @frames@ is told about @Frames@ under the name a
+@-- cabal: build-depends:@ line actually needs.
+-}
 hackageInfoFor :: [Text] -> IO HackageInfo
 hackageInfoFor candidates = do
     mNames <- loadHackageNames
     pure $ case mNames of
         Nothing -> HackageInfo False []
-        Just names ->
-            HackageInfo True (filter (`S.member` names) candidates)
+        Just names -> HackageInfo True (concatMap (canonical names) candidates)
+  where
+    canonical names c = case [n | n <- S.toAscList names, eqIgnoreCase n c] of
+        (n : _) -> [n]
+        [] -> []
+    eqIgnoreCase a b = T.toLower a == T.toLower b
 
 {- | Package names lexically matching any topic token (name substring, tokens
 under 3 chars ignored), capped — the inventory mode's upstream candidates.
+
+Both sides are lowercased. Lowercasing only the token tested @"frames"@
+against the raw @"Frames"@, so every capitalised package on Hackage —
+@Frames@, @Chart@, @HUnit@ — was unreachable by keyword.
 -}
 hackageMatching :: Int -> [Text] -> IO [Text]
 hackageMatching cap tokens = do
@@ -65,6 +78,8 @@ hackageMatching cap tokens = do
     pure $ case mNames of
         Nothing -> []
         Just names ->
-            take cap [n | n <- S.toAscList names, any (`T.isInfixOf` n) usable]
+            take
+                cap
+                [n | n <- S.toAscList names, any (`T.isInfixOf` T.toLower n) usable]
   where
     usable = [T.toLower t | t <- tokens, T.length t >= 3]

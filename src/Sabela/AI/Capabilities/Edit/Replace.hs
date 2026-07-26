@@ -14,8 +14,8 @@ import Data.Aeson (Value (..), object, (.=))
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.AI.Capabilities.Edit.Admit (conflictJson, restickCabal)
 import Sabela.AI.Capabilities.Edit.Ack (withNote)
+import Sabela.AI.Capabilities.Edit.Admit (conflictJson, restickCabal)
 import Sabela.AI.Capabilities.Edit.CompileGate (compileGateCheck)
 import Sabela.AI.Capabilities.Edit.Run (autoExecuteAfterMutation)
 import Sabela.AI.Capabilities.Util (field, fieldInt, fieldText)
@@ -125,7 +125,8 @@ doReplace ::
     IO ToolOutcome
 doReplace app store rn cancelTok oldCell newSrc = do
     let cid = cellId oldCell
-    gate <- compileGateCheck app (Just cid) (cellLang oldCell) (cellType oldCell) newSrc
+    gate <-
+        compileGateCheck app (Just cid) (cellLang oldCell) (cellType oldCell) newSrc
     case gate of
         Left rejection -> pure (errOutcome rejection)
         Right () -> commitReplace app store rn cancelTok oldCell newSrc

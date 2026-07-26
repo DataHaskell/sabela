@@ -57,11 +57,11 @@ resourceTriggered budgetMs e =
         && (heapClimbing (reHeapBytes e) || reEventsSeen e == 0)
 
 {- | The single bounded diagnostic line: one line, <= 200 chars, naming the
-cell (when known), the elapsed wall time, the evidence, and the general
-recovery action. Never mentions cell content.
+lock's holder (when known), the elapsed wall time, the evidence, and the
+general recovery action. Never mentions cell content.
 -}
-resourceLine :: Int -> Maybe Int -> ResourceEvidence -> Maybe Text
-resourceLine budgetMs mCid e
+resourceLine :: Int -> Maybe Text -> ResourceEvidence -> Maybe Text
+resourceLine budgetMs mSubject e
     | not (resourceTriggered budgetMs e) = Nothing
     | otherwise =
         Just $
@@ -75,7 +75,7 @@ resourceLine budgetMs mCid e
                        \explosive; interrupt, then shrink the work \
                        \(smaller depth/bounds) and rewrite the cell."
   where
-    subject = maybe "the running cell" (\cid -> "cell " <> tshow cid) mCid
+    subject = fromMaybe "the running cell" mSubject
     evidenceClause =
         T.concat $
             ["," <> " heap climbing" | heapClimbing (reHeapBytes e)]

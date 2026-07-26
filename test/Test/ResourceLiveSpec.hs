@@ -31,8 +31,11 @@ import Sabela.Server (newApp)
 import Sabela.State (App (..), forceResetAllSessions)
 import Test.Hspec
 
-{- | Shrink the ack deadline, await budget and resource wall budget so the
-runaway is diagnosed in seconds; restored afterwards.
+{- | Shrink every budget this spec's runaway cell can wait on, so it is
+diagnosed in seconds; restored afterwards. The cell-execution cap is pinned
+too: leaving it at the production default tied the worst case of a
+deliberately non-terminating cell to whatever that default happens to be, and
+raising it to 30 minutes duly stalled the suite.
 -}
 withLiveEnv :: IO a -> IO a
 withLiveEnv =
@@ -40,10 +43,12 @@ withLiveEnv =
         ( setEnv "SABELA_WRITE_ACK_SECS" "2"
             >> setEnv "SABELA_AWAIT_IDLE_SECS" "4"
             >> setEnv "SABELA_RESOURCE_WALL_SECS" "3"
+            >> setEnv "SABELA_CELL_TIMEOUT_SECONDS" "20"
         )
         ( unsetEnv "SABELA_WRITE_ACK_SECS"
             >> unsetEnv "SABELA_AWAIT_IDLE_SECS"
             >> unsetEnv "SABELA_RESOURCE_WALL_SECS"
+            >> unsetEnv "SABELA_CELL_TIMEOUT_SECONDS"
         )
 
 field :: Text -> Value -> Maybe Value

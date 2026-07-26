@@ -1,3 +1,4 @@
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | The request headers siza sends to @/api/ai/*@. The hub gates proxied
@@ -10,6 +11,7 @@ and the bearer token is still emitted for the localhost trust model.
 module Test.TransportSpec (transportSpec, toolTimeoutSpec) where
 
 import Control.Exception (bracket)
+import Sabela.Session.Timeout (TimeoutConfig (..), defaultTimeoutConfig)
 import Siza.Transport (
     Env (..),
     aiHeaders,
@@ -91,9 +93,28 @@ cell cap is 120s (+5s resync), so a slow-but-healthy cell read as a transport
 failure and took the session source down with it.
 -}
 toolTimeoutSpec :: Spec
-toolTimeoutSpec = describe "client tool timeout vs the server cell cap" $ do
-    it "outlives the server's 120s execution cap and its resync window" $
-        defaultToolTimeoutSecs `shouldSatisfy` (> 125)
+toolTimeoutSpec = describe "client tool timeout vs the server ceilings" $ do
+    it "outlives the server's execution cap and its resync window" $ do
+        let tc = defaultTimeoutConfig
+        defaultToolTimeoutSecs
+            `shouldSatisfy` (> ((tcExecutionUs tc + tcResyncUs tc) `div` 1_000_000))
+
+    {- G8 task 6, the live_test22 regression. Asserting only the CELL cap let
+    this pass while the real invariant was broken: the compile gate budgets a
+    deliberate dependency commit at the BUILD ceiling, so a 900s build met a
+    180s client cap and the write became "may have landed". The bound is
+    computed from the server's own config, so it cannot drift again. -}
+    it "transport-cap-drift: outlives a dependency build plus its cell run" $ do
+        let tc = defaultTimeoutConfig
+            ceilingSecs =
+                (tcBuildUs tc + tcExecutionUs tc + tcResyncUs tc) `div` 1_000_000
+        defaultToolTimeoutSecs `shouldSatisfy` (> ceilingSecs)
+
+    it "is derived from the config, not a constant that can drift" $ do
+        -- If someone raises the build ceiling, this moves with it.
+        let tc = defaultTimeoutConfig
+        defaultToolTimeoutSecs
+            `shouldSatisfy` (> (tcBuildUs tc `div` 1_000_000))
 
     it "leaves headroom rather than racing the cap exactly" $
         defaultToolTimeoutSecs `shouldSatisfy` (>= 150)

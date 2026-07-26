@@ -85,13 +85,43 @@ matchNames v =
     field _ _ = Nothing
 
 spec :: Spec
-spec = describe "the notebook's own vocabulary is keyword-findable" $
+spec = describe "the notebook's own vocabulary is keyword-findable" $ do
+    {- G9.3: the prompt is the fast path, search is the fallback the model
+    reaches for when the prompt is thin. In live_test9 both were empty, and
+    the model spent its whole budget hunting a Picture -> String conversion
+    the builtins do not provide. -}
+    it "picture-undisplayable: Picture's display route is findable" $ do
+        requireLiveIntegration
+        withFixture "sabela-picture-route" $ \(app, store, rn) -> do
+            _ <-
+                callTool
+                    app
+                    store
+                    rn
+                    "insert_cell"
+                    (object ["source" .= ("sabelaWarm = (1 :: Int)" :: Text)])
+            let findFn q =
+                    matchNames
+                        <$> callTool app store rn "find_function" (object ["query" .= (q :: Text)])
+            -- Each is a query the live_test9 model actually ran and got
+            -- nothing for; every one must reach the display route.
+            names <- concat <$> mapM findFn ["Picture", "render", "svg", "display"]
+            (names `elem'` "displayPicture") `shouldBe` True
+
     it "surfaces lineChart/plot/animate for a plain keyword (live_test13)" $ do
         requireLiveIntegration
         withFixture "sabela-builtin-search" $ \(app, store, rn) -> do
             -- Any kernel-needing call warms GHCi; the index needs a session.
-            _ <- callTool app store rn "insert_cell" (object ["source" .= ("sabelaWarm = (1 :: Int)" :: Text)])
-            let findFn q = matchNames <$> callTool app store rn "find_function" (object ["query" .= (q :: Text)])
+            _ <-
+                callTool
+                    app
+                    store
+                    rn
+                    "insert_cell"
+                    (object ["source" .= ("sabelaWarm = (1 :: Int)" :: Text)])
+            let findFn q =
+                    matchNames
+                        <$> callTool app store rn "find_function" (object ["query" .= (q :: Text)])
             -- "chart" matches no Sabela name exactly; before the fix it
             -- returned nothing at all.
             findFn "chart" `shouldReturn'` "lineChart"

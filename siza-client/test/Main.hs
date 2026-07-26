@@ -5,9 +5,11 @@ import Test.AgentCheckSpec (agentCheckSpec)
 import Test.CandidateRankSpec (candidateRankSpec)
 import Test.CandidateSpec (candidateSpec)
 import Test.CardGateSpec (cardGateSpec)
+import Test.CheckGateSpec (checkGateSpec)
 import Test.ContextCharsSpec (contextCharsSpec)
 import Test.CounterexampleSpec (counterexampleSpec)
 import Test.CrossSeamSpec (crossSeamSpec)
+import Test.DeadlineStartSpec (deadlineStartSpec)
 import Test.DiscoverAbsentBoundSpec (discoverAbsentBoundSpec)
 import Test.DiscoverCatalogueSpec (discoverCatalogueSpec)
 import Test.DiscoverClosureSpec (discoverClosureSpec)
@@ -16,6 +18,7 @@ import Test.DiscoverEmissionSpec (discoverEmissionSpec)
 import Test.DiscoverEnvelopeSpec (discoverEnvelopeSpec)
 import Test.DiscoverGoalRankSpec (discoverGoalRankSpec)
 import Test.DiscoverGoalSpec (discoverGoalSpec)
+import Test.DiscoverHackageSpec (discoverHackageSpec)
 import Test.DiscoverHiddenDbSpec (discoverHiddenDbSpec)
 import Test.DiscoverHistorySpec (discoverHistorySpec)
 import Test.DiscoverInvariantSpec (discoverInvariantSpec)
@@ -38,7 +41,6 @@ import Test.DiscoverWorldChangeSpec (discoverWorldChangeSpec)
 import Test.DoneSignalSpec (doneSignalSpec)
 import Test.EmitLedgerProtectSpec (emitLedgerProtectSpec)
 import Test.EmitLedgerSpec (emitLedgerSpec)
-import Test.EscalateSpec (escalateSpec)
 import Test.FactSelectSpec (factSelectSpec)
 import Test.FutilitySpec (futilitySpec)
 import Test.GoalHonestySpec (goalHonestySpec)
@@ -60,13 +62,10 @@ import Test.LoginSpec (loginSpec)
 import Test.McpSpec (mcpSpec)
 import Test.NormalizeFindabilitySpec (normalizeFindabilitySpec)
 import Test.NoteLedgerSpec (noteLedgerSpec)
-import Test.NudgeSpec (nudgeSpec)
-import Test.NudgeTemplateSpec (nudgeTemplateSpec)
 import Test.OutcomeDistillSpec (outcomeDistillSpec)
 import Test.PostNudgeGateSpec (postNudgeGateSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
-import Test.ReadOnlyDedupSpec (readOnlyDedupSpec)
 import Test.RedStreakSpec (redStreakSpec)
 import Test.ReenterContrastSpec (reenterAlarmSpec, reenterContrastSpec)
 import Test.RenderContractSpec (renderContractSpec)
@@ -78,8 +77,8 @@ import Test.RepairTierGenSpec (repairTierGenSpec)
 import Test.RoutedUnblockSpec (routedUnblockSpec)
 import Test.ScaffoldChatSpec (scaffoldChatSpec)
 import Test.SchemaRecoverySpec (schemaRecoverySpec)
+import Test.StateQuerySpec (stateQuerySpec)
 import Test.SteerFeedSpec (steerFeedSpec)
-import Test.SteerLoopSpec (steerLoopSpec)
 import Test.SteerSpec (steerSpec)
 import Test.ToolRouteSpec (toolRouteSpec)
 import Test.TransportFailureSpec (transportFailureSpec)
@@ -96,7 +95,7 @@ import Test.WriteAckClientSpec (writeAckClientSpec)
 
 main :: IO ()
 main = hspec $ do
-    readOnlyDedupSpec
+    stateQuerySpec
     parseSpec
     securitySpec
     annotateSpec
@@ -134,6 +133,7 @@ main = hspec $ do
     discoverMissSpec
     discoverRequestSpec
     discoverEnvelopeSpec
+    discoverHackageSpec
     discoverHistorySpec
     discoverClosureSpec
     discoverEmissionSpec
@@ -163,12 +163,10 @@ main = hspec $ do
     counterexampleSpec
     contextCharsSpec
     noteLedgerSpec
-    nudgeSpec
     outcomeDistillSpec
     postNudgeGateSpec
     factSelectSpec
     steerSpec
-    steerLoopSpec
     wrapUpSpec
     wrapUpLoopSpec
     wrapUpIntegritySpec
@@ -178,10 +176,10 @@ main = hspec $ do
     emitLedgerProtectSpec
     adviceSpec
     candidateSpec
+    checkGateSpec
+    deadlineStartSpec
     candidateRankSpec
     holeProbeSpec
-    nudgeTemplateSpec
-    escalateSpec
     routedUnblockSpec
     renderContractSpec
     reEchoFixtureSpec

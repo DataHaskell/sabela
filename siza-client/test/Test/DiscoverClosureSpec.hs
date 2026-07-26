@@ -123,8 +123,10 @@ scopeGrid =
 
 scopeKeyedClosureSpec :: Spec
 scopeKeyedClosureSpec = describe "closure is scope-keyed (R3.8)" $ do
-    it "an unseen scope key after close is NEVER answered duplicate" $
-        forM_ (["gust", "bars", "lull"] :: [Text]) $ \q -> do
+    it
+        "closure-deadlock: an unseen scope key after close is NEVER answered duplicate"
+        $ forM_ (["gust", "bars", "lull"] :: [Text])
+        $ \q -> do
             let seen = requestKey q (args [])
                 (led1, _) = script emptyLedger [(seen, foundWith q foreignHit)]
                 led = ledgerClose led1

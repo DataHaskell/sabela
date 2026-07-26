@@ -41,7 +41,7 @@ spec :: Spec
 spec = describe "resource runaway diagnostic (R3.9/R6.5)" $ do
     it "any emitted line is ONE line and <= 200 chars, over the full grid" $
         forM_ evidenceGrid $ \e ->
-            forM_ [Nothing, Just 0, Just 3, Just 99999] $ \mCid ->
+            forM_ [Nothing, Just "cell 0", Just "cell 3", Just "the install"] $ \mCid ->
                 case resourceLine budget mCid e of
                     Nothing -> pure ()
                     Just line -> do
@@ -66,16 +66,17 @@ spec = describe "resource runaway diagnostic (R3.9/R6.5)" $ do
     it "the line is a function of the evidence alone (task-independence)" $ do
         -- Two 'tasks' with identical resource evidence produce the identical
         -- line: the function takes no cell content, and equal evidence maps
-        -- to equal text — only the cell id may differ.
+        -- to equal text — only the holder label may differ.
         let e = ResourceEvidence (4 * budget) [512000, 901000] 0
-        resourceLine budget (Just 2) e `shouldBe` resourceLine budget (Just 2) e
-        let lA = resourceLine budget (Just 2) e
-            lB = resourceLine budget (Just 5) e
+        resourceLine budget (Just "cell 2") e
+            `shouldBe` resourceLine budget (Just "cell 2") e
+        let lA = resourceLine budget (Just "cell 2") e
+            lB = resourceLine budget (Just "cell 5") e
         fmap (T.replace "cell 5" "cell 2") lB `shouldBe` lA
 
     it "names the interrupt-or-shrink action, never a library or task" $ do
         let e = ResourceEvidence (4 * budget) [512000, 901000] 0
-        case resourceLine budget (Just 0) e of
+        case resourceLine budget (Just "cell 0") e of
             Nothing -> expectationFailure "expected a resource line"
             Just line -> do
                 T.isInfixOf "interrupt" (T.toLower line) `shouldBe` True
@@ -84,9 +85,9 @@ spec = describe "resource runaway diagnostic (R3.9/R6.5)" $ do
     it "states the evidence it fired on" $ do
         let climbing = ResourceEvidence (2 * budget) [512000, 901000] 5
             silent = ResourceEvidence (2 * budget) [] 0
-        case resourceLine budget (Just 1) climbing of
+        case resourceLine budget (Just "cell 1") climbing of
             Nothing -> expectationFailure "expected a resource line"
             Just line -> T.isInfixOf "heap climbing" line `shouldBe` True
-        case resourceLine budget (Just 1) silent of
+        case resourceLine budget (Just "cell 1") silent of
             Nothing -> expectationFailure "expected a resource line"
             Just line -> T.isInfixOf "no output" line `shouldBe` True

@@ -28,6 +28,11 @@ module Sabela.AI.KernelVocab (
     resolveOccupied,
     busyRetryRounds,
     busyDenyJson,
+
+    -- * Lock ownership (G8)
+    LockOwner (..),
+    Holding (..),
+    ownerLabel,
 ) where
 
 import Data.Aeson (Value (..), (.=))
@@ -94,19 +99,38 @@ vocabularyLine =
     "Kernel states: cold|idle|building|executing. await_idle waited: \
     \idle|settled|timedOut|kernelDead. Write status: queued|executing|completed."
 
+{- | What holds the run lock. A cell id is only admissible for a cell the
+notebook actually contains; everything else — a dependency install, a kernel
+restart — is a named operation, so no verdict can cite a phantom cell (G8).
+-}
+data LockOwner = OwnedByCell !Int | OwnedByOp !Text
+    deriving (Eq, Show)
+
+-- | A lock owner and how long it has held the lock.
+data Holding = Holding
+    { hdOwner :: !LockOwner
+    , hdElapsedMs :: !Int
+    }
+    deriving (Eq, Show)
+
+-- | The owner as model-facing prose, for a busy verdict's message.
+ownerLabel :: LockOwner -> Text
+ownerLabel (OwnedByCell cid) = "cell " <> tshow cid
+ownerLabel (OwnedByOp op) = op
+
 {- | One lock-free busy observation plus the settle fence it is judged
 against: the generation last observed settled, the generation now, and the
-locking holder (cell id, elapsed ms) when a registry knows it.
+lock holder when a registry knows it.
 -}
 data BusyEvidence = BusyEvidence
     { beOccupied :: !Bool
     , beSettledGen :: !(Maybe Int)
     , beCurrentGen :: !Int
-    , beHolder :: !(Maybe (Int, Int))
+    , beHolder :: !(Maybe Holding)
     }
     deriving (Eq, Show)
 
-data BusyVerdict = AdmitNow | RetrySoon | DenyBusy (Maybe (Int, Int))
+data BusyVerdict = AdmitNow | RetrySoon | DenyBusy (Maybe Holding)
     deriving (Eq, Show)
 
 {- | The window law: occupancy while the generation has not advanced past the
@@ -139,22 +163,24 @@ resolveOccupied rounds delay sample = go rounds
                 | otherwise -> pure (DenyBusy (beHolder e))
             v -> pure v
 
-{- | The genuine-busy denial (R6.4): names the locking cell and elapsed time
-when known, labels the cause so it can never be mistaken for the own-write
-bounce, and steers to await_idle, never to a retry.
+{- | The genuine-busy denial (R6.4): names the lock's actual holder and its
+elapsed time when known, labels the cause so it can never be mistaken for the
+own-write bounce, and steers to await_idle, never to a retry.
 -}
-busyDenyJson :: Maybe (Int, Int) -> Value
+busyDenyJson :: Maybe Holding -> Value
 busyDenyJson holder =
     errorJsonWith msg (["busy" .= True, "cause" .= ("other-run" :: Text)] <> ids)
   where
     ids = case holder of
-        Just (cid, ms) -> ["cellId" .= cid, "elapsedMs" .= ms]
+        Just (Holding o ms) -> ownerField o <> ["elapsedMs" .= ms]
         Nothing -> []
+    ownerField (OwnedByCell cid) = ["cellId" .= cid]
+    ownerField (OwnedByOp op) = ["operation" .= op]
     msg = case holder of
-        Just (cid, ms) ->
-            "The kernel is busy: cell "
-                <> tshow cid
-                <> " has been executing for "
+        Just (Holding o ms) ->
+            "The kernel is busy: "
+                <> ownerLabel o
+                <> " has been running for "
                 <> tshow ms
                 <> "ms (not your in-flight write). Call await_idle; \
                    \interrupt only if it never settles."

@@ -21,7 +21,7 @@ module Siza.Agent.EmitLedger (
 import Data.Aeson (Value (..), decode, encode)
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
-import Data.Char (isSpace)
+import Data.Char (isDigit, isSpace)
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.List (mapAccumL)
 import Data.Map.Strict (Map)
@@ -69,6 +69,13 @@ loadBearingKeys =
 {- | G5.8: the diagnostic the model is being asked to act on, and the fix that
 resolves it. A repeat is the working material, not noise — live_test8 collapsed
 a rejection to a back-reference and withdrew the error it demanded be fixed.
+
+A cell's OWN output is the same material under a different key. A cell that
+succeeds while printing @Decode error: parse error (Failed reading …)@ carries
+its failure in @oiOutput@, not @error@, so the exemption missed it: live_test36
+read the truncated back-reference, said "we need full message", re-ran the cell
+and was handed the same citation, then stopped. Re-reading output is how a
+model checks its own work; it cannot be answered with a reference to itself.
 -}
 actionableKeys :: [Text]
 actionableKeys = ["diagnostic", "error", "stderr", "autofix"]
@@ -141,7 +148,8 @@ dedupText turn text led0 =
         | T.length chunk < blockFloor = (led, chunk)
         -- A chunk carrying an actionable diagnostic is never whole-replaced:
         -- the model is being asked to fix precisely this text.
-        | carriesActionable chunk = (recordBlock turn chunk led, chunk)
+        | carriesActionable chunk || carriesVerdict chunk || reportsFailure chunk =
+            (recordBlock turn chunk led, chunk)
         | otherwise = case rewriteBlock turn chunk led of
             (led', Just replacement) -> (led', replacement)
             (led', Nothing) -> spanPass turn chunk led'
@@ -156,6 +164,13 @@ carriesActionable chunk = any nonEmptyValue actionableKeys
     nonEmptyValue k =
         ("\"" <> k <> "\":\"") `T.isInfixOf` chunk
             && not (("\"" <> k <> "\":\"\"") `T.isInfixOf` chunk)
+
+{- | A verify-channel verdict is BY CONSTRUCTION the payload the model is
+being asked to act on, so it is never elided (G5.9). live_test9 collapsed it
+to a back-reference six times while still demanding the check be fixed.
+-}
+carriesVerdict :: Text -> Bool
+carriesVerdict = T.isInfixOf "\"tool_name\":\"verify\""
 
 -- | Record a text's blocks without rewriting (model-authored turns).
 recordText :: Int -> Text -> EmitLedger -> EmitLedger
@@ -271,17 +286,47 @@ eligibleBlocks text =
         , T.length chunk >= blockFloor
         ]
 
--- | Dedup a batch of injected messages' @content@ fields in place.
+{- | Dedup a batch of injected messages' @content@ fields in place, EXCEPT
+where the message answers a tool whose whole purpose is to hand content back
+('contentRequest'). Those are still recorded, so later incidental echoes of
+them can back-reference.
+-}
 dedupInjected :: IORef EmitLedger -> Int -> [Value] -> IO [Value]
 dedupInjected ref turn = mapM one
   where
     one (Object o)
+        | Just (String c) <- KM.lookup "content" o
+        , contentRequest o = do
+            atomicModifyIORef' ref $ \led -> (recordText turn c led, ())
+            pure (Object o)
         | Just (String c) <- KM.lookup "content" o = do
             c' <-
                 atomicModifyIORef' ref $ \led ->
                     let (out, led') = dedupText turn c led in (led', out)
             pure (Object (KM.insert "content" (String c') o))
     one v = pure v
+
+{- | Does this message answer a call that ASKED for content? Re-running or
+re-reading a cell is a request for that cell's output, so answering it with a
+citation of the output answers the question with the question.
+
+live_test36 printed @Decode error: parse error (Failed reading …)@ from a cell
+that SUCCEEDED, so the failure rode in @oiOutput@ and no key-based exemption
+applied. The model read the truncated back-reference, said "we need full
+message", called @execute_cell@, was handed the same citation, and stopped.
+
+Keyed on the CALLER, not the text: a cell that prints @Total squared error:
+0.0@ is reporting a result, and no keyword can separate the two — that
+distinction is what the caller's intent supplies.
+-}
+contentRequest :: KM.KeyMap Value -> Bool
+contentRequest o = case KM.lookup "tool_name" o of
+    Just (String n) -> n `elem` contentRequestTools
+    _ -> False
+
+-- | The tools whose result IS the content the caller asked to see.
+contentRequestTools :: [Text]
+contentRequestTools = ["execute_cell", "read_cell", "read_cell_output"]
 
 {- | The loop's per-turn seam: record the model's own turn (so injected
 echoes of it can back-reference), then dedup the injected tail. Returns
@@ -292,3 +337,54 @@ emitTurn ref turn turnMsg injected = do
     atomicModifyIORef' ref $ \led ->
         (recordText turn (TE.decodeUtf8 (LBS.toStrict (encode turnMsg))) led, ())
     (turnMsg :) <$> dedupInjected ref turn injected
+
+{- | Does a cell's own OUTPUT report a failure? Errors are sent in full and
+informational output is contracted, but a cell can SUCCEED while printing its
+failure, so the failure lands in @oiOutput@ where no @error@ key marks it.
+
+The discriminator is what follows the marker's colon. An error reports prose:
+
+> Decode error: parse error (Failed reading …)
+
+A statistic reports a number, and is not a failure at all:
+
+> Total squared error: 0.0
+
+so @squared error@, @standard error@ and @mean absolute error@ keep
+contracting, while a diagnostic the model must read never does
+(@live_test36@).
+-}
+reportsFailure :: Text -> Bool
+reportsFailure = any (any failureLine . T.lines) . outputValues
+  where
+    failureLine l = unambiguous l || markedProse l
+    unambiguous l = any (`T.isInfixOf` l) ["*** Exception", "Not in scope:", "CallStack"]
+    markedProse l = any (prosePast l) failureMarkers
+    prosePast l m = case T.breakOn (m <> ":") (T.toLower l) of
+        (_, rest)
+            | T.null rest -> False
+            | otherwise -> isProse (T.drop (T.length m + 1) rest)
+    isProse rest = case T.uncons (T.stripStart rest) of
+        Just (c, _) -> not (isDigit c) && c /= '-'
+        Nothing -> False
+
+{- | Words that head a failure report. Each must still be followed by a colon
+and prose to count, so a metric that merely contains one does not qualify.
+-}
+failureMarkers :: [Text]
+failureMarkers = ["error", "exception", "failure", "failed", "warning"]
+
+{- | The @oiOutput@ string values in a chunk. Scanned as text, never re-parsed
+as JSON: this runs on every injected message.
+-}
+outputValues :: Text -> [Text]
+outputValues = go
+  where
+    key = "\"oiOutput\":\""
+    go t = case T.breakOn key t of
+        (_, rest)
+            | T.null rest -> []
+            | otherwise ->
+                let body = T.drop (T.length key) rest
+                    (v, after) = T.breakOn "\"" (T.replace "\\\"" "  " body)
+                 in v : (if T.null after then [] else go (T.drop 1 after))

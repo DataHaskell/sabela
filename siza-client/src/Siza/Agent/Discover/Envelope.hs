@@ -99,14 +99,24 @@ schemaPromise =
         <> "; a hidden or absent-known package carries its -- cabal: \
            \build-depends: line."
 
-{- | Enforce the budget by construction: fold card exports into
-@moreExports@, then shed trailing hits into @omitted@ — counts always
+{- | Enforce the budget by construction: shed trailing hits into @omitted@,
+then fold card exports into @moreExports@ down to a FLOOR — counts always
 reconcile (R3.4). Load-bearing fields (a hit's @type@\/@cabal@, @next@) are
-never truncated (section 10): the bound sheds hits, never protected fields.
-Clamping unprotected advice text is the never-hit backstop.
+never truncated (section 10).
+
+Order matters, and exports go last with a floor: shedding them first emptied
+the card entirely (@exports: [], moreExports: 60@) while worst-ranked hits
+survived, and the export list is the evidence a caller decides FROM — shown
+useful exports, the live model imported the package 3/4; shown none, 0/4
+(probe-ollama). The raw probe then asked @module=DataFrame query=fromCsv@ and
+received a card with nothing in it.
 -}
 boundEnvelope :: Value -> Value
-boundEnvelope = shrinkWith [shrinkCard, dropLastHit, clampNotes]
+boundEnvelope = shrinkWith [dropLastHit, shrinkCard, clampNotes]
+
+-- | Exports the bound may never shed below: the card must keep its evidence.
+exportFloor :: Int
+exportFloor = 8
 
 shrinkWith :: [Value -> Maybe Value] -> Value -> Value
 shrinkWith steps v
@@ -130,7 +140,7 @@ shrinkCard = overKey "card" shrunk
     shrunk (Object c)
         | Just (Array es) <- KM.lookup "exports" c
         , let es' = toList es
-        , not (null es') =
+        , length es' > exportFloor =
             Just
                 . Object
                 . KM.insert "exports" (toJSON (init es'))

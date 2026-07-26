@@ -157,14 +157,14 @@ ladderEqualitySpec = describe "a goal-miss advances the SAME ladder state as a n
                 ladderState lA `shouldBe` ladderState lB
             -- Rung markers land on the same calls in both arms.
             forM_ (zip outsA outsB) $ \(a, b) ->
-                forM_ ["Already held", "write the deliverable"] $ \marker ->
+                forM_ ["Already held"] $ \marker ->
                     (marker `T.isInfixOf` adviceOf a)
                         `shouldBe` (marker `T.isInfixOf` adviceOf b)
             adviceOf (outsA !! 1) `shouldSatisfy` T.isInfixOf "Already held"
-            -- The third same-cluster call after satisfaction hits the R9-T2
-            -- k=2 gate: the one-line held-facts write steer, both arms.
+            -- Retired k=2 gate: the third call is ANSWERED like every other;
+            -- nothing is replaced by a held-facts citation.
             adviceOf (outsA !! 2)
-                `shouldSatisfy` T.isInfixOf "write the deliverable"
+                `shouldSatisfy` (not . T.isInfixOf "satisfied by held facts")
     it "dedup: a repeat of a goal-missed query short-circuits like a not_found's" $
         forM_ [(c, g) | (c, Just g) <- consumerGrid] $ \(c, g) -> do
             let q = "default" <> g
@@ -172,14 +172,14 @@ ladderEqualitySpec = describe "a goal-miss advances the SAME ladder state as a n
                 (lB, _) = walk (seedConsumer c) [(q, missEnv q)]
             fmap stateOf (ledgerShortcut lA q) `shouldBe` Just "duplicate"
             isJust (ledgerShortcut lB q) `shouldBe` True
-    it "closure: a post-close goal-miss goes to the give-up rung like a not_found" $
+    it "closure: a post-close goal-miss records like a not_found" $
         forM_ [(c, g) | (c, Just g) <- consumerGrid] $ \(c, g) -> do
             let led = ledgerClose (seedConsumer c)
                 (lA, outA) = ledgerRecord "freshSpell" (junkFound "freshSpell") led
                 (lB, outB) = ledgerRecord "freshSpell" (missEnv "freshSpell") led
             ladderState lA `shouldBe` ladderState lB
-            adviceOf outA `shouldSatisfy` T.isInfixOf "cannot help"
-            adviceOf outB `shouldSatisfy` T.isInfixOf "cannot help"
+            T.toLower (adviceOf outA) `shouldSatisfy` T.isInfixOf "already held"
+            T.toLower (adviceOf outB) `shouldSatisfy` T.isInfixOf "already held"
     it "budget: the R5.9 pressure floor binds a first goal-miss like a first miss" $
         forM_ [(c, g) | (c, Just g) <- consumerGrid] $ \(c, g) -> do
             let led = ledgerPressure 2 (seedConsumer c)
@@ -204,9 +204,9 @@ spellingSpec = describe "the standing goal outlives the query's spelling" $ do
         forM_ [(c, g) | (c, Just g) <- consumerGrid] $ \(c, g) -> do
             let (led, _) = walk (seedConsumer c) [(q, junkFound q) | q <- spellingsOf g]
                 (misses, _, _, _) = ladderState led
-            -- Two answered misses; the third call hits the k=2 gate (R9-T2)
-            -- and records no further miss.
-            map snd misses `shouldBe` [length (spellingsOf g) - 1]
+            -- One cluster, one miss per spelling: the retired k=2 gate used
+            -- to stop counting (and answering) after the second.
+            map snd misses `shouldBe` [length (spellingsOf g)]
     it "no held consumer evidence: a plain word derives no goal, search unchanged" $ do
         let (led, out) = ledgerRecord "default" (junkFound "default") emptyLedger
             (misses, _, _, _) = ladderState led
@@ -222,15 +222,25 @@ spellingSpec = describe "the standing goal outlives the query's spelling" $ do
                 ledgerRecord "defaultPlot" (junkFound "defaultPlot") emptyLedger
         goalType out `shouldBe` "Plot"
         goalSat out `shouldBe` Just (Bool False)
-    it "a satisfying exact-name answer is judged satisfied and adds no miss" $ do
+    it "an exact hit on the goal's OWN consumer satisfies, and adds no miss" $ do
+        let led =
+                seedConsumer
+                    ("bars", "[(Text, Double)] -> Plot -> Text", "Cumulus.Plot", "cumulus")
+            v = foundEnv "bars" [hitJ "bars" "Opts -> Text" "Cumulus.Plot" "cumulus" "exact"]
+            (led2, out) = ledgerRecord "bars" v led
+            (misses, _, _, _) = ladderState led2
+        goalSat out `shouldBe` Just (Bool True)
+        misses `shouldBe` []
+    {- live_test33_wine: goal FilePath (from readCsv) went satisfied on a
+    query for `summary` because a hit was named `summary`, and the armed gate
+    then collapsed the next three searches to duplicates. -}
+    it "an exact hit on a FOREIGN target does not satisfy the goal" $ do
         let led =
                 seedConsumer
                     ("bars", "[(Text, Double)] -> Plot -> Text", "Cumulus.Plot", "cumulus")
             v = foundEnv "lull" [hitJ "lull" "Wind -> Wind" "Stratus.Air" "stratus" "exact"]
-            (led2, out) = ledgerRecord "lull" v led
-            (misses, _, _, _) = ladderState led2
-        goalSat out `shouldBe` Just (Bool True)
-        misses `shouldBe` []
+            (_, out) = ledgerRecord "lull" v led
+        goalSat out `shouldBe` Just (Bool False)
 
 -- The one-envelope disclosure (R3.6) ----------------------------------------
 
@@ -282,10 +292,10 @@ barChartSpec = describe "barChart: six default-spelling walls can no longer star
         forM_ judgedOuts $ \o -> goalSat o `shouldBe` Just (Bool False)
         forM_ [o | o <- freshOuts, stateOf o `notElem` ["found", "not_found"]] $
             \o -> stateOf o `shouldBe` "duplicate"
-        -- Past the k=2 gate the walls answer the write steer (R9-T2), so
-        -- the hunt can never again spend 6+ calls searching.
-        any (T.isInfixOf "write the deliverable" . adviceOf) freshOuts
-            `shouldBe` True
+        -- Retired gate: every fresh wall stays a judged answer; only true
+        -- byte-repeats dedup.
+        any (T.isInfixOf "satisfied by held facts" . adviceOf) freshOuts
+            `shouldBe` False
         -- The repeated spelling dedups instead of re-walling.
         let dups = [o | (q, o, False) <- outs, q == "default"]
         when (null dups) $

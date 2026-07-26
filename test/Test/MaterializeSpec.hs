@@ -30,6 +30,7 @@ import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
 import Sabela.State.WidgetStore (setWidget)
 import Test.Materialize.Helpers (
+    hasCompleteMarker,
     listCacheBuckets,
     newPackageCandidate,
     nsToSeconds,
@@ -170,6 +171,7 @@ spec = describe "disposable notebook materialization" $ do
                             Just
                                 "bridgeSeed + read _bridge_fromNext + M.size (M.fromList [(1 :: Int, ())]) + 37"
                         , candidateReplacesCellId = Nothing
+                        , candidateDeliberate = False
                         }
             modifyNotebook (appNotebook app) (const notebook)
             notebookBefore <- readNotebook (appNotebook app)
@@ -226,7 +228,7 @@ spec = describe "disposable notebook materialization" $ do
             secondSeconds `shouldSatisfy` (< firstSeconds)
 
     it
-        "breaches its build budget with actionable guidance and discards the cache"
+        "breaches its build budget with actionable guidance, SHELVING the cache"
         $ withSystemTempDirectory "sabela-materialize-build-budget"
         $ \workDir ->
             bracket_
@@ -249,6 +251,15 @@ spec = describe "disposable notebook materialization" $ do
                     isNothing <$> getHaskellSession (appSessions app) `shouldReturn` True
                     isNothing liveBefore `shouldBe` True
 
+                    {- The store SURVIVES a budget breach so the next attempt
+                    resumes: discarding it is what made a heavy dependency
+                    unreachable rather than merely slow (the
+                    heavy-dep-never-converges regression in
+                    'Test.TryCacheSpec'). The bucket must still not be a
+                    usable hit, which 'acquireCacheEntry' enforces via the
+                    completion marker. -}
                     let cacheRoot = tryCacheRoot (envTmpDir (appEnv app))
                     buckets <- listCacheBuckets cacheRoot
-                    buckets `shouldBe` []
+                    buckets `shouldNotBe` []
+                    completeMarkers <- mapM (hasCompleteMarker cacheRoot) buckets
+                    or completeMarkers `shouldBe` False

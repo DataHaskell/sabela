@@ -7,7 +7,9 @@ scripts/
 *.md
 !README.md
 !CHANGELOG.md
+cabal.project.local
 
 # Heavy scratch dataset + the example that loads it — keep them out of the image
 examples/data/genz_social_media_usage_1M.csv
 examples/typed.md
+docs/

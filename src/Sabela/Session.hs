@@ -97,7 +97,7 @@ data SessionConfig = SessionConfig
     deriving (Eq, Show)
 
 {- | Build a 'SessionConfig', reading the execution budget from
-@SABELA_CELL_TIMEOUT_SECONDS@ (default 120s). The single chokepoint every
+@SABELA_CELL_TIMEOUT_SECONDS@ (default 30 minutes). The single chokepoint every
 real caller routes through, so the live session and exports never drift.
 -}
 mkSessionConfig :: FilePath -> FilePath -> IO SessionConfig

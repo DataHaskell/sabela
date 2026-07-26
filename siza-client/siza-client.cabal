@@ -49,11 +49,11 @@ library
                       Siza.Agent.Loop
                       Siza.Agent.Loop.Support
                       Siza.Agent.Loop.WrapUp
-                      Siza.Agent.Loop.Escalate
                       Siza.Agent.Loop.Route
                       Siza.Agent.EmitLedger
                       Siza.Agent.Chat
                       Siza.Agent.Check
+                      Siza.Agent.Check.Gate
                       Siza.Agent.Check.Vet
                       Siza.Agent.CheckExtract
                       Siza.Agent.Tools
@@ -177,6 +177,7 @@ test-suite siza-client-test
                       Test.DiscoverEmissionSpec
                       Test.DiscoverEnvelopeSpec
                       Test.DiscoverHiddenDbSpec
+                      Test.DiscoverHackageSpec
                       Test.DiscoverHistorySpec
                       Test.DiscoverClosureSpec
                       Test.DiscoverInvariantSpec
@@ -217,14 +218,12 @@ test-suite siza-client-test
                       Test.LoginSpec
                       Test.McpSpec
                       Test.NoteLedgerSpec
-                      Test.NudgeSpec
                       Test.OutcomeDistillSpec
                       Test.PostNudgeGateSpec
                       Test.CardGateSpec
                       Test.FactSelectSpec
                       Test.VerifierSurfaceSpec
                       Test.SteerSpec
-                      Test.SteerLoopSpec
                       Test.WrapUpSpec
                       Test.WrapUpLoopSpec
                       Test.WrapUpIntegritySpec
@@ -236,15 +235,15 @@ test-suite siza-client-test
                       Test.LeverSurfaceSpec
                       Test.VerdictSurfaceSpec
                       Test.EmitLedgerSpec
-                      Test.ReadOnlyDedupSpec
+                      Test.StateQuerySpec
                       Test.EmitLedgerProtectSpec
                       Test.AdviceSpec
                       Test.CandidateSpec
+                      Test.CheckGateSpec
+                      Test.DeadlineStartSpec
                       Test.HoleProbeSpec
                       Test.ProbeFixtures
-                      Test.NudgeTemplateSpec
                       Test.CandidateRankSpec
-                      Test.EscalateSpec
                       Test.RoutedUnblockSpec
                       Test.RenderContractSpec
                       Test.DoneSignalSpec

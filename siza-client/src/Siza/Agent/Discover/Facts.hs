@@ -6,11 +6,16 @@ harvest path ('Siza.Agent.Discover.Advice') and the ledger's own writers, so
 every fact — harvested or probed — enters the list the same way.
 -}
 module Siza.Agent.Discover.Facts (
+    factPackages,
     foldFacts,
     installFactKey,
     maxHeldFacts,
+    compilerFact,
+    compilerFactMark,
+    isCompilerFact,
 ) where
 
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -18,6 +23,25 @@ import Siza.Agent.Discover.Types (InstallState, installText)
 
 maxHeldFacts :: Int
 maxHeldFacts = 8
+
+{- | The provenance marker on a compiler-confirmed fact (G5.6), symmetric
+with G3's @via: hole-probe@. One source, so the producer and the ranker
+that promotes it cannot drift apart.
+-}
+compilerFactMark :: Text
+compilerFactMark = " — confirmed by the compiler (check_type)"
+
+{- | A green @check_type@ as a held fact. live_test9 confirmed
+@Sabela.Notebook.plot :: [(Double, Double)] -> Picture@ at turn 11 and the
+ledger never held it, while a lexical @plot@ card that merely shared the
+name was admitted.
+-}
+compilerFact :: Text -> Text -> Text
+compilerFact name sig = "`" <> name <> "` :: " <> sig <> compilerFactMark
+
+-- | Does this held fact carry the compiler's own confirmation?
+isCompilerFact :: Text -> Bool
+isCompilerFact = T.isInfixOf compilerFactMark
 
 {- | Fold new facts into a bounded held list. A fresh install-state fact
 REPLACES the package's earlier one — one package never holds two at once.
@@ -44,3 +68,26 @@ installFactKey f = case T.words f of
     _ -> Nothing
   where
     states = map installText [minBound .. maxBound :: InstallState]
+
+{- | The packages the held facts establish, install facts and signature
+provenance alike — the session's own footprint, for REFINEMENT: a later
+search ranks hits from these packages ahead of equal-tier strangers, so each
+search narrows rather than starting blind. Ranking only; a package absent
+from this list is never filtered.
+-}
+factPackages :: [Text] -> [Text]
+factPackages facts =
+    nubKeep
+        ( mapMaybe installFactKey facts
+            <> mapMaybe provenancePackage facts
+        )
+  where
+    provenancePackage f = case T.breakOn " — found in " f of
+        (_, rest)
+            | T.null rest -> Nothing
+            | otherwise -> case T.breakOn "(" rest of
+                (_, pkgPart)
+                    | T.null pkgPart -> Nothing
+                    | otherwise ->
+                        Just (T.takeWhile (/= ')') (T.drop 1 pkgPart))
+    nubKeep = foldr (\x acc -> x : filter (/= x) acc) []

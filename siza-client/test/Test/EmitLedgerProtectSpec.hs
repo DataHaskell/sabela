@@ -190,6 +190,18 @@ runSeq = go 1 emptyEmitLedger
         let (c', led') = dedupText turn c led
          in c' : go (turn + 1) led' cs
 
+{- | A verify verdict long enough to clear 'blockFloor', so the exemption is
+actually exercised rather than passing by the short-block rule.
+-}
+verifyBody :: Text
+verifyBody =
+    "The task is not done: the deliverable's check still fails. You have \
+    \written no cell yet - the deliverable must be DEFINED in a cell. Write \
+    \it now with insert_cell. Do not stop until the check passes."
+
+encodeT :: Value -> Text
+encodeT = TE.decodeUtf8 . LBS.toStrict . encode
+
 wholeReplacement :: Text -> Bool
 wholeReplacement oc =
     "[as established turn " `T.isPrefixOf` oc
@@ -224,7 +236,10 @@ bytesSaved :: [Text] -> Int
 bytesSaved cs = sum (zipWith (\i o -> T.length i - T.length o) cs (runSeq cs))
 
 emitLedgerProtectSpec :: Spec
-emitLedgerProtectSpec = describe "load-bearing fields are elision-exempt (R8-T1)" $ do
+emitLedgerProtectSpec = failureOutputSpec >> protectSpec
+
+protectSpec :: Spec
+protectSpec = describe "load-bearing fields are elision-exempt (R8-T1)" $ do
     it "the load-bearing key set is the section 10 contract" $
         forM_ ["type", "signature", "use", "cabal", "name", "next", "exports"] $
             \k -> loadBearingKeys `shouldSatisfy` elem k
@@ -239,7 +254,7 @@ emitLedgerProtectSpec = describe "load-bearing fields are elision-exempt (R8-T1)
         forM_ ["diagnostic", "error", "stderr", "autofix"] $
             \k -> loadBearingKeys `shouldSatisfy` elem k
 
-    it "a repeated rejection still carries its diagnostic in full" $ do
+    it "elided-diagnostic: a repeated rejection carries its diagnostic in full" $ do
         let rejection =
                 object
                     [ "refusal" .= ("compile-gate" :: Text)
@@ -249,6 +264,35 @@ emitLedgerProtectSpec = describe "load-bearing fields are elision-exempt (R8-T1)
                     ]
             rendered = renderOutcome (Right (ToolErr rejection))
         assertProtected [rendered, rendered]
+
+    {- G5.9: elision is not confined to diagnostics. live_test8 lost its
+    deliverable when a SUCCESSFUL try envelope was withdrawn, and live_test9
+    burned six turns on an identically-elided verify verdict. Both are the
+    payload the model is being asked to act on. -}
+    it "elided-success: a successful try envelope keeps its autofix note" $ do
+        let ok =
+                object
+                    [ "route" .= ("disposable_scratch" :: Text)
+                    , "outcome" .= ("ok" :: Text)
+                    , "autofix" .= longAutofix
+                    ]
+            rendered = renderOutcome (Right (ToolOk ok))
+        assertProtected [rendered, rendered, rendered]
+
+    it "elided-verify: a repeated verify verdict is never a back-reference" $ do
+        let verdict =
+                encodeT
+                    ( object
+                        [ "role" .= ("tool" :: Text)
+                        , "tool_name" .= ("verify" :: Text)
+                        , "content" .= verifyBody
+                        ]
+                    )
+            outs = runSeq [verdict, verdict, verdict, verdict, verdict, verdict]
+        forM_ (zip [1 :: Int ..] outs) $ \(i, o) ->
+            unless (verifyBody `T.isInfixOf` o) $
+                expectationFailure
+                    ("verify verdict elided on emission " <> show i <> ": " <> T.unpack o)
 
     describe "generated grid: protected values transmit byte-complete" $
         forM_ classes $ \(label, f) -> do
@@ -320,3 +364,34 @@ emitLedgerProtectSpec = describe "load-bearing fields are elision-exempt (R8-T1)
                         `shouldBe` "-- cabal: build-depends: cumulus"
   where
     tShow = T.pack . show
+
+{- | live_test36: errors are sent in full and informational output is
+contracted, but a cell can SUCCEED while printing its failure, so the failure
+lands in `oiOutput` where no `error` key marks it. The tell is what follows
+the marker's colon: prose is a diagnostic, a number is a metric.
+-}
+failureOutputSpec :: Spec
+failureOutputSpec = describe "a cell's own output: errors full, info contracted" $ do
+    let cellEcho out =
+            "{\"cellId\":6,\"ok\":true,\"outcome\":{\"tag\":\"Succeeded\"},\"error\":null,\
+            \\"outputs\":[{\"oiMime\":\"text/plain\",\"oiOutput\":\""
+                <> out
+                <> "\"}],\"warnings\":[],\"padding\":\""
+                <> T.replicate 200 "x"
+                <> "\"}"
+        twice block =
+            let (_, led) = dedupText 1 block emptyEmitLedger
+                (out, _) = dedupText 2 block led
+             in out
+    it "sends a decode error in full on a repeat" $
+        twice (cellEcho "Decode error: parse error (Failed reading builtin)")
+            `shouldSatisfy` T.isInfixOf "Decode error: parse error"
+    it "still contracts a squared error, which is a metric not a failure" $
+        twice (cellEcho "Total squared error: 0.0")
+            `shouldSatisfy` T.isInfixOf "as established turn"
+    it "sends an uncaught exception in full" $
+        twice (cellEcho "*** Exception: divide by zero")
+            `shouldSatisfy` T.isInfixOf "divide by zero"
+    it "contracts ordinary informational output" $
+        twice (cellEcho "Loaded rows: 178")
+            `shouldSatisfy` T.isInfixOf "as established turn"

@@ -20,6 +20,7 @@ import Siza.Agent.Discover.FactSelect (
     factsByteBudget,
     selectFacts,
  )
+import Siza.Agent.Discover.Facts (compilerFact, isCompilerFact)
 
 -- | The run-181440 revenueTotal deliverable context: goal + drafted cell.
 ctx181440 :: FactContext
@@ -32,6 +33,17 @@ ctx181440 =
 -- | The call-ready signature fact the nudge exists to echo.
 sigFact :: Text
 sigFact = "`col` :: Text -> Expr a — found in DataFrame (dataframe)"
+
+{- | live_test9's two facts about the name @plot@: the one GHC confirmed at
+turn 11, and the lexical card that merely shares the name. The ledger held
+the second and never the first.
+-}
+confirmedPlot :: Text
+confirmedPlot =
+    compilerFact "Sabela.Notebook.plot" "[(Double, Double)] -> Picture"
+
+lexicalPlot :: Text
+lexicalPlot = "`plot` :: Frame -> IO () — found in DataFrame.Viz (dataframe-viz)"
 
 -- | The cluster-referenced actionable survivor: hidden package + cabal line.
 survivorFact :: Text
@@ -62,6 +74,25 @@ relevantFacts = [sigFact, survivorFact]
 
 factSelectSpec :: Spec
 factSelectSpec = describe "held-facts ranked selection (R7-T4)" $ do
+    {- G5.6: the compiler outranks the lexical index — the prompt's own rule,
+    which the harness must obey too. -}
+    describe "unadmitted-signature (live_test9)" $ do
+        it "ranks a compiler-confirmed fact above a lexical namesake" $
+            forM_ [id, reverse] $ \order -> do
+                let selected =
+                        selectFacts ctx181440 (order [lexicalPlot, confirmedPlot])
+                take 1 selected `shouldBe` [confirmedPlot]
+
+        it "keeps the confirmed fact even when the query does not name it" $ do
+            let unrelated = factContext "draw a bar chart" [] []
+            selectFacts unrelated [lexicalPlot, confirmedPlot]
+                `shouldStartWith` [confirmedPlot]
+
+        it "marks its provenance, so a reader can tell it from a search hit" $ do
+            isCompilerFact confirmedPlot `shouldBe` True
+            isCompilerFact lexicalPlot `shouldBe` False
+            confirmedPlot `shouldSatisfy` T.isInfixOf "check_type"
+
     describe "R5.6 relevance property over generated mixed ledgers" $ do
         it "carries every relevance-passing fact and none failing it" $
             forM_ (take 40 (subsequences noiseFacts)) $ \noise ->

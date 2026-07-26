@@ -30,6 +30,7 @@ import Sabela.AI.Types (
     toolOutcomeIsError,
     toolOutcomeValue,
  )
+import Siza.Agent.Tools (toolSurfaceHelp)
 import Siza.Cli.Annotate (runAnnotate)
 import Siza.Cli.Await (awaitBudgetParser, runAwaitIdle)
 import Siza.Cli.Chat (ChatOpts, chatOptsParser, runChatCommand)
@@ -73,6 +74,7 @@ data Command
     | Login (Maybe Text)
     | Logout
     | Mcp
+    | Tools
     | Chat ChatOpts
     deriving (Show)
 
@@ -108,6 +110,7 @@ subcommands =
     , ("login", loginParser, "Authorize against a hub: siza login [HUB_URL].")
     , ("logout", pure Logout, "Forget the saved hub token.")
     , ("mcp", pure Mcp, "Serve the AI tool surface over MCP on stdio.")
+    , ("tools", pure Tools, "List the tools an agent is offered, with usage.")
     ,
         ( "chat"
         , Chat <$> chatOptsParser
@@ -204,6 +207,7 @@ runCommand = \case
     Await budget ->
         withConn $ \conn -> withFirstServer conn $ \srv ->
             runAwaitIdle conn (srvBaseUrl srv) budget
+    Tools -> TIO.putStr toolSurfaceHelp
     Mcp ->
         withConn $ \conn -> withFirstServer conn $ \srv ->
             runMcp conn (srvBaseUrl srv)

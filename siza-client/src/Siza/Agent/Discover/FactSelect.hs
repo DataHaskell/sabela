@@ -19,6 +19,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.Grammar.Synth (usedNames)
 import Siza.Agent.Discover.Advice (maxHeldFacts)
+import Siza.Agent.Discover.Facts (isCompilerFact)
 import Siza.Agent.Discover.Ledger (installFactKey)
 import Siza.Agent.Loop.Support (qualifiedBaseNames)
 
@@ -57,10 +58,20 @@ notes — never more than 'maxHeldFacts' or 'factsByteBudget' bytes.
 selectFacts :: FactContext -> [Text] -> [Text]
 selectFacts ctx facts =
     byteBound factsByteBudget . take maxHeldFacts $
-        [f | f <- facts, isSigFact f, signatureRelevant ctx f]
-            ++ [f | f <- facts, isSigFact f, not (signatureRelevant ctx f)]
-            ++ [f | f <- facts, isInstallFact f, installRelevant ctx f]
-            ++ [f | f <- facts, not (isSigFact f), not (isInstallFact f)]
+        -- G5.6: the compiler outranks the lexical index, so a confirmed
+        -- signature leads whatever the query relevance says.
+        [f | f <- facts, isCompilerFact f]
+            ++ [f | f <- facts, notCompiler f, isSigFact f, signatureRelevant ctx f]
+            ++ [f | f <- facts, notCompiler f, isSigFact f, not (signatureRelevant ctx f)]
+            ++ [f | f <- facts, notCompiler f, isInstallFact f, installRelevant ctx f]
+            ++ [ f
+               | f <- facts
+               , notCompiler f
+               , not (isSigFact f)
+               , not (isInstallFact f)
+               ]
+  where
+    notCompiler = not . isCompilerFact
 
 -- | A call-ready signature fact, as 'Siza.Agent.Discover.Advice' shapes them.
 isSigFact :: Text -> Bool

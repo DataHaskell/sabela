@@ -1,6 +1,5 @@
 module Test.AllSpecsA (allSpecsA) where
 
-import Test.Hspec (Spec)
 import qualified Test.ArgRepairSpec as ArgRepairSpec
 import qualified Test.BrowseCardSanitizeSpec as BrowseCardSanitizeSpec
 import qualified Test.BrowseCardSpec as BrowseCardSpec
@@ -34,7 +33,9 @@ import qualified Test.HoleProbeSpec as HoleProbeSpec
 import qualified Test.HoogleIntentSpec as HoogleIntentSpec
 import qualified Test.HoogleProseSpec as HoogleProseSpec
 import qualified Test.HoogleResolveSpec as HoogleResolveSpec
+import Test.Hspec (Spec)
 import qualified Test.ImportRepairSpec as ImportRepairSpec
+import qualified Test.IndexAnswerSpec as IndexAnswerSpec
 import qualified Test.InsertSupersedeSpec as InsertSupersedeSpec
 import qualified Test.JsonDiagSpec as JsonDiagSpec
 import qualified Test.MaterializeSpec as MaterializeSpec
@@ -43,6 +44,7 @@ import qualified Test.NonThreadedForkSpec as NonThreadedForkSpec
 import qualified Test.NormalizeGateSpec as NormalizeGateSpec
 import qualified Test.NormalizeProposalsSpec as NormalizeProposalsSpec
 import qualified Test.NotebookAnimSpec as NotebookAnimSpec
+import qualified Test.NotebookCheckSpec as NotebookCheckSpec
 import qualified Test.NotebookEditSpec as NotebookEditSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
@@ -83,82 +85,84 @@ import qualified Test.WidgetsSpec as WidgetsSpec
 
 allSpecsA :: Spec
 allSpecsA = do
-        NotebookFrpSpec.spec
-        NotebookEditSpec.spec
-        NotebookPictureSpec.spec
-        NotebookAnimSpec.spec
-        WidgetsSpec.spec
-        SessionSpec.spec
-        SessionLoopSpec.spec
-        SessionLiveSpec.spec
-        PureEvalLiveSpec.spec
-        MaterializeSpec.spec
-        StaleRunSpec.spec
-        SwitchNotebookSpec.spec
-        TopoSpec.spec
-        CompiledPlanSpec.spec
-        CompileEscalationSpec.spec
-        CompileGateSpec.spec
-        CompileGateRenderSpec.spec
-        CompileGateWireSpec.spec
-        ClassifyErrorSpec.spec
-        ErrorsJsonSpec.errorsJsonSpec
-        ErrorIndexSpec.spec
-        JsonDiagSpec.jsonDiagSpec
-        ExecuteCellSpec.spec
-        ExampleSearchSpec.spec
-        DiagnoseSpec.diagnoseSpec
-        DiagnosticMitigationSpec.spec
-        DiagnosticMitigationLiveSpec.spec
-        DiagnosticMitigationCompoundSpec.spec
-        SpineSpec.spineSpec
-        ModuleResolveSpec.spec
-        DiscoverToolSpec.spec
-        DepRepairSpec.spec
-        ExtRepairSpec.spec
-        ImportRepairSpec.spec
-        RepairGuardSpec.spec
-        HealthSpec.spec
-        OwnedSpec.spec
-        RepairEngineSpec.spec
-        RepairGateSpec.spec
-        RepairTraceWireSpec.spec
-        VerifyDownstreamSpec.spec
-        ToolInputRewriteSpec.spec
-        PromptUnifySpec.spec
-        DiscoverGrammarSpec.spec
-        HoogleIntentSpec.spec
-        HoogleProseSpec.spec
-        HoogleResolveSpec.spec
-        TypeDirectedResolveSpec.spec
-        TypeDiscoverySpec.spec
-        TypecheckPrimitiveSpec.spec
-        TryPlanSpec.spec
-        TrySpec.spec
-        TryOutcomeWireSpec.spec
-        TryHoleProbeSpec.spec
-        TryCacheSpec.spec
-        ThrowawayExecuteSpec.spec
-        NonThreadedForkSpec.spec
-        SelfHealSpec.spec
-        NormalizeGateSpec.spec
-        NormalizeProposalsSpec.spec
-        ValueEchoSpec.spec
-        ScratchVetSpec.spec
-        QualifiedNameSpec.spec
-        ScratchScopeSpec.spec
-        ArgRepairSpec.spec
-        RefinementFitSpec.spec
-        InsertSupersedeSpec.spec
-        TriageSpec.spec
-        CapabilitySearchSpec.spec
-        CapabilityApiSpec.spec
-        BrowseCardSpec.spec
-        BrowseCardSanitizeSpec.spec
-        CapabilitySpec.spec
-        NotebookViolationSpec.spec
-        GrammarRouteSpec.grammarRouteSpec
-        HoleFitsSpec.spec
-        HoleProbeSpec.spec
-        ExportSpec.spec
-        DefaultExtsSpec.spec
+    NotebookFrpSpec.spec
+    NotebookEditSpec.spec
+    NotebookPictureSpec.spec
+    NotebookAnimSpec.spec
+    NotebookCheckSpec.spec
+    WidgetsSpec.spec
+    SessionSpec.spec
+    SessionLoopSpec.spec
+    SessionLiveSpec.spec
+    PureEvalLiveSpec.spec
+    MaterializeSpec.spec
+    StaleRunSpec.spec
+    SwitchNotebookSpec.spec
+    TopoSpec.spec
+    CompiledPlanSpec.spec
+    CompileEscalationSpec.spec
+    CompileGateSpec.spec
+    CompileGateRenderSpec.spec
+    CompileGateWireSpec.spec
+    ClassifyErrorSpec.spec
+    ErrorsJsonSpec.errorsJsonSpec
+    ErrorIndexSpec.spec
+    JsonDiagSpec.jsonDiagSpec
+    ExecuteCellSpec.spec
+    ExampleSearchSpec.spec
+    DiagnoseSpec.diagnoseSpec
+    DiagnosticMitigationSpec.spec
+    DiagnosticMitigationLiveSpec.spec
+    DiagnosticMitigationCompoundSpec.spec
+    SpineSpec.spineSpec
+    ModuleResolveSpec.spec
+    DiscoverToolSpec.spec
+    DepRepairSpec.spec
+    ExtRepairSpec.spec
+    ImportRepairSpec.spec
+    RepairGuardSpec.spec
+    HealthSpec.spec
+    OwnedSpec.spec
+    RepairEngineSpec.spec
+    RepairGateSpec.spec
+    RepairTraceWireSpec.spec
+    VerifyDownstreamSpec.spec
+    ToolInputRewriteSpec.spec
+    PromptUnifySpec.spec
+    DiscoverGrammarSpec.spec
+    HoogleIntentSpec.spec
+    HoogleProseSpec.spec
+    HoogleResolveSpec.spec
+    TypeDirectedResolveSpec.spec
+    TypeDiscoverySpec.spec
+    TypecheckPrimitiveSpec.spec
+    TryPlanSpec.spec
+    TrySpec.spec
+    TryOutcomeWireSpec.spec
+    TryHoleProbeSpec.spec
+    TryCacheSpec.spec
+    ThrowawayExecuteSpec.spec
+    NonThreadedForkSpec.spec
+    SelfHealSpec.spec
+    NormalizeGateSpec.spec
+    NormalizeProposalsSpec.spec
+    ValueEchoSpec.spec
+    ScratchVetSpec.spec
+    QualifiedNameSpec.spec
+    ScratchScopeSpec.spec
+    ArgRepairSpec.spec
+    RefinementFitSpec.spec
+    InsertSupersedeSpec.spec
+    TriageSpec.spec
+    CapabilitySearchSpec.spec
+    CapabilityApiSpec.spec
+    BrowseCardSpec.spec
+    BrowseCardSanitizeSpec.spec
+    CapabilitySpec.spec
+    NotebookViolationSpec.spec
+    GrammarRouteSpec.grammarRouteSpec
+    HoleFitsSpec.spec
+    IndexAnswerSpec.spec
+    HoleProbeSpec.spec
+    ExportSpec.spec
+    DefaultExtsSpec.spec

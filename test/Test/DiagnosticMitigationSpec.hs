@@ -15,6 +15,7 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Capabilities.Edit.Repair.Mitigate (
+    Discharge (..),
     MitigationRow (..),
     fractionalIntCandidates,
     mitigationTable,
@@ -27,13 +28,20 @@ import Sabela.AI.Capabilities.Edit.Repair.Mitigate.Loop (
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Model (CellError (..), bareCellError)
 
--- | live_test5's four-diagnostic rejection, verbatim in shape: one root
--- cause (the sine cell's @w :: Int@ forcing Fractional\/Floating Int), and
--- two knock-on not-in-scope echoes for names the SAME cell defines.
+{- | live_test5's four-diagnostic rejection, verbatim in shape: one root
+cause (the sine cell's @w :: Int@ forcing Fractional\/Floating Int), and
+two knock-on not-in-scope echoes for names the SAME cell defines.
+-}
 liveTest5Errors :: [CellError]
 liveTest5Errors =
-    [ bareCellError (Just 254) (Just 65) "No instance for \8216Fractional Int\8217 arising from a use of \8216/\8217"
-    , bareCellError (Just 254) (Just 69) "No instance for \8216Floating Int\8217 arising from a use of \8216pi\8217"
+    [ bareCellError
+        (Just 254)
+        (Just 65)
+        "No instance for \8216Fractional Int\8217 arising from a use of \8216/\8217"
+    , bareCellError
+        (Just 254)
+        (Just 69)
+        "No instance for \8216Floating Int\8217 arising from a use of \8216pi\8217"
     , bareCellError (Just 258) (Just 24) "Variable not in scope: pathData :: [Char]"
     , bareCellError (Just 262) (Just 34) "Variable not in scope: svg :: String"
     ]
@@ -53,21 +61,142 @@ field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
+{- | live_test8's final-turn rejection: @import Data.Text as T@ with no
+@-- cabal:@ line, so GHC-87110 names the hidden package and the @T.pack@ /
+@T.unpack@ not-in-scope pair follow from it.
+-}
+liveTest8Errors :: [CellError]
+liveTest8Errors =
+    [ bareCellError
+        (Just 3)
+        (Just 1)
+        "Could not load module \8216Data.Text\8217. \
+        \It is a member of the hidden package \8216text-2.1.2\8217."
+    , bareCellError (Just 7) (Just 12) "Variable not in scope: T.pack"
+    , bareCellError (Just 9) (Just 20) "Variable not in scope: T.unpack"
+    ]
+
+liveTest8Src :: Text
+liveTest8Src = "import Data.Text as T\n\nsineWaveSvg = T.pack \"<svg/>\""
+
 spec :: Spec
 spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
+    {- live_test28: the model wrote `plot [...]` bare. It TYPECHECKS, so the
+    gate admits it, and the cell then goes red on "No instance for Show
+    Picture" — a red cell the invariant cannot catch, since the invariant is
+    about compiling. The identical run that wrote `displayPicture $ plot ...`
+    succeeded, so the difference between pass and fail was one wrapper. -}
+    describe "unshowable-display (live_test28)" $ do
+        let showErr =
+                bareCellError
+                    (Just 2)
+                    (Just 1)
+                    "No instance for `Show Picture' arising from a use of `print'"
+            src = "import Sabela.Notebook\nplot [(x, sin x) | x <- [0,0.1..2*pi]]"
+            row = find ((== "unshowable-display") . mitClass) mitigationTable
+
+        it "is a table row that APPLIES its fix" $
+            fmap mitDischarge row `shouldBe` Just Apply
+
+        it "detects an unshowable displayable, and nothing else" $ do
+            fmap (`mitDetect` showErr) row `shouldBe` Just True
+            fmap
+                (`mitDetect` bareCellError (Just 1) (Just 1) "No instance for `Show Foo'")
+                row
+                `shouldBe` Just False
+
+        it "wraps the final expression in its display function" $ case row of
+            Nothing -> expectationFailure "no unshowable-display row"
+            Just r -> do
+                cands <-
+                    mitGenerate
+                        r
+                        (error "generator must not touch App")
+                        (error "generator must not touch AIStore")
+                        (Right (ExecutionResult [] Nothing [showErr] []))
+                        src
+                case cands of
+                    (c : _) -> do
+                        c `shouldSatisfy` T.isInfixOf "displayPicture ("
+                        -- the import above it is untouched
+                        c `shouldSatisfy` T.isInfixOf "import Sabela.Notebook"
+                    [] -> expectationFailure "expected a wrapped candidate"
+
+        it "comprehension-not-bind: a comprehension arrow is not a bind" $ case row of
+            Nothing -> expectationFailure "no unshowable-display row"
+            Just r -> do
+                -- The live_test19 class: a bare " <- " scan reads the
+                -- comprehension arrow as a bind and refuses to wrap.
+                cands <-
+                    mitGenerate
+                        r
+                        (error "unused")
+                        (error "unused")
+                        (Right (ExecutionResult [] Nothing [showErr] []))
+                        "plot [(x, sin x) | x <- [0,0.1..2*pi]]"
+                cands `shouldSatisfy` (not . null)
+
+        it "never wraps a binding or an import" $ case row of
+            Nothing -> expectationFailure "no unshowable-display row"
+            Just r -> do
+                cands <-
+                    mitGenerate
+                        r
+                        (error "unused")
+                        (error "unused")
+                        (Right (ExecutionResult [] Nothing [showErr] []))
+                        "pic = plot []"
+                cands `shouldBe` []
+
+    describe "hidden-package-text (task 1's sixth row, live_test8)" $ do
+        it "is a table row, so the class is covered at all" $
+            fmap mitClass (find ((== "hidden-package") . mitClass) mitigationTable)
+                `shouldBe` Just "hidden-package"
+
+        it "serves the fix as an artifact and NEVER applies it" $
+            fmap mitDischarge (find ((== "hidden-package") . mitClass) mitigationTable)
+                `shouldBe` Just ServeAsArtifact
+
+        it "detects GHC's hidden-package wording, and nothing else" $ do
+            let row = find ((== "hidden-package") . mitClass) mitigationTable
+            fmap (\r -> map (mitDetect r) liveTest8Errors) row
+                `shouldBe` Just [True, False, False]
+
+        it "generates the committable source, cabal line first" $ do
+            let row = find ((== "hidden-package") . mitClass) mitigationTable
+            case row of
+                Nothing -> expectationFailure "no hidden-package row"
+                Just r -> do
+                    cands <-
+                        mitGenerate
+                            r
+                            (error "generator must not touch App")
+                            (error "generator must not touch AIStore")
+                            (Right (ExecutionResult [] Nothing liveTest8Errors []))
+                            liveTest8Src
+                    case cands of
+                        (c : _) -> do
+                            head (T.lines c)
+                                `shouldBe` "-- cabal: build-depends: text"
+                            c `shouldSatisfy` T.isInfixOf "sineWaveSvg"
+                        [] -> expectationFailure "expected a committable candidate"
     describe "rootErrors — root-cause fold (task 2)" $ do
-        it "keeps the Fractional/Floating root cause and drops the pathData/svg knock-ons" $ do
-            let roots = map ceMessage (rootErrors liveTest5Src liveTest5Result)
-            length roots `shouldBe` 2
-            all ("No instance for" `T.isInfixOf`) roots `shouldBe` True
+        it
+            "keeps the Fractional/Floating root cause and drops the pathData/svg knock-ons"
+            $ do
+                let roots = map ceMessage (rootErrors liveTest5Src liveTest5Result)
+                length roots `shouldBe` 2
+                all ("No instance for" `T.isInfixOf`) roots `shouldBe` True
         it "excludes not-in-scope diagnostics naming a name the cell itself defines" $ do
             let roots = rootErrors liveTest5Src liveTest5Result
             any (("pathData" `T.isInfixOf`) . ceMessage) roots `shouldBe` False
             any (("svg" `T.isInfixOf`) . ceMessage) roots `shouldBe` False
-        it "a not-in-scope diagnostic for a name the cell does NOT define is a root, not a knock-on" $ do
-            let ces = [bareCellError (Just 1) (Just 1) "Variable not in scope: frobnicate"]
-                roots = rootErrors "x = 1 :: Int" (Right (ExecutionResult [] Nothing ces []))
-            length roots `shouldBe` 1
+        it
+            "a not-in-scope diagnostic for a name the cell does NOT define is a root, not a knock-on"
+            $ do
+                let ces = [bareCellError (Just 1) (Just 1) "Variable not in scope: frobnicate"]
+                    roots = rootErrors "x = 1 :: Int" (Right (ExecutionResult [] Nothing ces []))
+                length roots `shouldBe` 1
 
     describe "fractionalIntCandidates — the fresh generator (task 1)" $ do
         let sineErrs =
@@ -80,8 +209,9 @@ spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
         it "proposes re-annotating the offending Int binding to Double" $
             fractionalIntCandidates sineSrc sineErrs
                 `shouldContain` ["w = 400 :: Double\nsineY = pi / w"]
-        it "never proposes the annotation-dropped variant when re-annotation already works" $
-            fractionalIntCandidates sineSrc sineErrs
+        it
+            "never proposes the annotation-dropped variant when re-annotation already works"
+            $ fractionalIntCandidates sineSrc sineErrs
                 `shouldNotContain` ["w = 400\nsineY = pi / w"]
         it "is empty when the offending line names no Int/Integer-annotated binding" $
             fractionalIntCandidates
@@ -98,8 +228,10 @@ spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
                 [bareCellError (Just 2) (Just 1) "Variable not in scope: sinX"]
                 `shouldBe` []
 
-    describe "the did-you-mean row never fires on live_test4's bare not-in-scope (negative case)" $
-        it "detects nothing for a not-in-scope diagnostic GHC gave no suggestion for" $ do
+    describe
+        "the did-you-mean row never fires on live_test4's bare not-in-scope (negative case)"
+        $ it "detects nothing for a not-in-scope diagnostic GHC gave no suggestion for"
+        $ do
             let pointErr = bareCellError (Just 1) (Just 1) "Variable not in scope: Point"
                 mRow = find ((== "did-you-mean") . mitClass) mitigationTable
             fmap (`mitDetect` pointErr) mRow `shouldBe` Just False

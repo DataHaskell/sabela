@@ -8,18 +8,15 @@ says act no channel says search more.
 -}
 module Test.DiscoverHistorySpec (discoverHistorySpec) where
 
-import Data.Aeson (Value, object, (.=))
-import Data.IORef (newIORef)
+import Data.Aeson (Value)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Discover.Envelope (envelopeChars)
 import Siza.Agent.Discover.History (
     SearchLedger,
     emptyLedger,
-    heldFacts,
     ledgerClose,
     ledgerRecord,
     ledgerShortcut,
@@ -36,7 +33,6 @@ import Siza.Agent.Discover.Types (
     okAnswer,
     seededBuiltins,
  )
-import Siza.Agent.Loop.Support (forceActMsgWith, nudgeK, updateNudge)
 import Test.DiscoverFixtures (stateOf, textField)
 
 -- | Notebook with an alias import and two bindings near the hunted name.
@@ -150,14 +146,14 @@ discoverHistorySpec = describe "discover history ledger (R3.8, R5.5-R5.7)" $ do
                     ]
             bad `shouldBe` []
 
-    describe "R5.6 escalation: facts by miss 2, act-or-blocker by miss 3" $ do
+    describe "R5.6 escalation: the record grows by rung, it never advises" $ do
         it "the second miss in a cluster surfaces the held facts" $ do
             let advice = adviceOf (outs !! 5)
             advice `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: cumulus"
             advice `shouldSatisfy` T.isInfixOf "alias D = DataFrame"
-        it "the third miss says searching cannot help and carries the facts" $ do
+        it "the third miss names what was consulted and carries the facts" $ do
             let advice = adviceOf (outs !! 6)
-            advice `shouldSatisfy` T.isInfixOf "cannot help"
+            advice `shouldSatisfy` T.isInfixOf "no match in any recorded answer"
             advice `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: cumulus"
         it "a fourth same-cluster query is a terse reference" $ do
             stateOf (outs !! 7) `shouldBe` "duplicate"
@@ -172,16 +168,16 @@ discoverHistorySpec = describe "discover history ledger (R3.8, R5.5-R5.7)" $ do
             let led2 = ledgerWorldChanged led
             ledgerShortcut led2 "colx" `shouldBe` Nothing
 
-    describe "R5.7 after the nudge says act, no channel says search more" $ do
+    describe "after close the record replays; no channel says search more" $ do
         -- Closure is scope-keyed (section 8.2): only a SEEN key shortcuts;
         -- an unseen key re-runs the backends even after close.
         let closed = ledgerClose led
             Just gated = ledgerShortcut closed "colx"
         it "an unseen scope key is never answered from the closed ledger" $
             ledgerShortcut closed "anything" `shouldBe` Nothing
-        it "a discover call after close is a terse act reference" $ do
+        it "a discover call after close is a terse replay of the record" $ do
             stateOf gated `shouldBe` "duplicate"
-            adviceOf gated `shouldSatisfy` T.isInfixOf "act"
+            adviceOf gated `shouldSatisfy` T.isInfixOf "Already held"
         it "the gated answer carries the held facts" $
             adviceOf gated
                 `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: cumulus"
@@ -191,19 +187,3 @@ discoverHistorySpec = describe "discover history ledger (R3.8, R5.5-R5.7)" $ do
             [ (t, b) | t <- texts, b <- banned, b `T.isInfixOf` T.toLower t
               ]
                 `shouldBe` []
-
-    describe "the held-facts budget nudge (R5.6/R5.7)" $ do
-        it "forceActMsgWith carries the facts and the remaining budget" $ do
-            let facts = heldFacts led
-                msg = forceActMsgWith facts "Remaining budget: 3 turns."
-                content = textField "content" msg
-            facts `shouldSatisfy` (not . null)
-            mapM_ (\f -> content `shouldSatisfy` T.isInfixOf f) facts
-            content `shouldSatisfy` T.isInfixOf "Remaining budget: 3 turns."
-            content `shouldSatisfy` T.isInfixOf "act"
-        it "updateNudge injects the built nudge when the trigger crosses" $ do
-            ref <- newIORef (0 :: Int)
-            let msg = forceActMsgWith ["fact one"] "Remaining budget: 5 rounds."
-                readCall = ToolCall "list_cells" (object ["full" .= True])
-            out <- updateNudge (pure msg) ref nudgeK True 5 (replicate nudgeK readCall)
-            out `shouldBe` [msg]

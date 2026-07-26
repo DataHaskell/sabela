@@ -10,7 +10,11 @@ module Test.TryCacheSpec (spec) where
 import Control.Monad (forM, forM_)
 import qualified Data.Text as T
 import ScriptHs.Parser (CabalMeta (..))
-import System.Directory (doesDirectoryExist, doesFileExist)
+import System.Directory (
+    createDirectoryIfMissing,
+    doesDirectoryExist,
+    doesFileExist,
+ )
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -35,6 +39,53 @@ metaWithDeps deps = emptyMeta{metaDeps = map T.pack deps}
 
 spec :: Spec
 spec = describe "Sabela.Session.TryCache" $ do
+    {- live_test21-23: `dataframe` never installed. A budget-breached build
+    was torn down store and all, and the next attempt's acquire wiped the
+    bucket again — so every attempt rebuilt from empty and re-breached the
+    same ceiling. A heavy dependency was not slow, it was unreachable. -}
+    describe "heavy-dep-never-converges" $ do
+        it "a budget breach keeps the store so the next attempt resumes" $
+            withSystemTempDirectory "try-cache-spec" $ \root -> do
+                let key = cacheKeyText (metaWithDeps ["dataframe"]) "9.12.2"
+                first <- acquireCacheEntry root key
+                createDirectoryIfMissing True (ceStoreDir first)
+                writeFile (ceStoreDir first </> "built.pkg") "partial build"
+
+                shelveCacheEntry (ceBucketDir first)
+
+                -- Never served as a usable environment ...
+                second <- acquireCacheEntry root key
+                ceOutcome second `shouldBe` CacheMiss
+                -- ... but the partial build survives for it to resume from.
+                doesFileExist (ceStoreDir second </> "built.pkg")
+                    `shouldReturn` True
+
+        it "acquiring a miss preserves the store, clearing only the project" $
+            withSystemTempDirectory "try-cache-spec" $ \root -> do
+                let key = cacheKeyText (metaWithDeps ["dataframe"]) "9.12.2"
+                first <- acquireCacheEntry root key
+                createDirectoryIfMissing True (ceStoreDir first)
+                createDirectoryIfMissing True (ceProjectDir first)
+                writeFile (ceStoreDir first </> "built.pkg") "partial build"
+                writeFile (ceProjectDir first </> "stale.cabal") "stale"
+
+                second <- acquireCacheEntry root key
+                doesFileExist (ceStoreDir second </> "built.pkg")
+                    `shouldReturn` True
+                doesFileExist (ceProjectDir second </> "stale.cabal")
+                    `shouldReturn` False
+
+        it "a build that THREW is still torn down store and all" $
+            withSystemTempDirectory "try-cache-spec" $ \root -> do
+                let key = cacheKeyText (metaWithDeps ["dataframe"]) "9.12.2"
+                first <- acquireCacheEntry root key
+                createDirectoryIfMissing True (ceStoreDir first)
+                writeFile (ceStoreDir first </> "built.pkg") "possibly corrupt"
+
+                discardCacheEntry (ceBucketDir first)
+
+                doesDirectoryExist (ceBucketDir first) `shouldReturn` False
+
     it "misses the first time and hits once the build is committed" $
         withSystemTempDirectory "try-cache-spec" $ \root -> do
             let key = cacheKeyText (metaWithDeps ["aeson"]) "9.12.2"
