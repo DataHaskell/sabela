@@ -189,7 +189,7 @@ closeCarriesHeldHitSpec = describe "a close never asserts absence over held evid
         s `shouldSatisfy` T.isInfixOf "bars"
         s `shouldSatisfy` T.isInfixOf "Cumulus.Plot"
         s `shouldSatisfy` T.isInfixOf "cumulus"
-        s `shouldSatisfy` T.isInfixOf "hidden"
+        s `shouldSatisfy` T.isInfixOf "installed-not-loaded"
         s `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: cumulus"
     it "rung-3 give-up advice hands over held evidence for the entity" $ do
         let (_, outs) =

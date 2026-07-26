@@ -30,7 +30,7 @@ discoverCatalogueSpec =
                     firstHit v "install" `shouldBe` "installed"
                 it "a hidden export says hidden and carries the exact cabal line" $ do
                     v <- runCat "bars"
-                    firstHit v "install" `shouldBe` "hidden"
+                    firstHit v "install" `shouldBe` "installed-not-loaded"
                     firstHit v "cabal"
                         `shouldBe` "-- cabal: build-depends: cumulus"
                 it "an absent-but-known package is absent-known with the install action (R5.4)" $ do

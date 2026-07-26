@@ -82,7 +82,8 @@ installRelevant ctx f
         Nothing -> False
 
 actionableState :: Text -> Bool
-actionableState s = s `elem` ["installed", "hidden", "notebook", "builtin"]
+actionableState s =
+    s `elem` ["installed", "installed-not-loaded", "notebook", "builtin"]
 
 factState :: Text -> Text
 factState f = case T.words f of

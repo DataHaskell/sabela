@@ -199,7 +199,7 @@ factWith pkg inst =
             , dhVersion = "0.3.1"
             }
     state = case inst of
-        "hidden" -> InstHidden
+        "installed-not-loaded" -> InstHidden
         "absent-known" -> InstAbsentKnown
         _ -> InstInstalled
 
@@ -210,7 +210,7 @@ factsCoherenceSpec = describe "held install-state facts never contradict" $ do
                 foldl
                     (\(l, _) (q, v) -> ledgerRecord q v l)
                     (emptyLedger, Null)
-                    [ ("bars", factWith "cumulus" "hidden")
+                    [ ("bars", factWith "cumulus" "installed-not-loaded")
                     , ("bars @2", factWith "cumulus" "absent-known")
                     , ("bars @3", factWith "cumulus" "installed")
                     ]
@@ -218,7 +218,7 @@ factsCoherenceSpec = describe "held install-state facts never contradict" $ do
                 [f | f <- heldFacts led, "cumulus (" `T.isInfixOf` f]
         cumulusFacts `shouldSatisfy` any (T.isInfixOf "(installed)")
     it "a world change drops stale install-state facts" $ do
-        let (led1, _) = ledgerRecord "bars" (factWith "cumulus" "hidden") emptyLedger
+        let (led1, _) = ledgerRecord "bars" (factWith "cumulus" "installed-not-loaded") emptyLedger
             led2 = ledgerWorldChanged led1
         filter ("cumulus (" `T.isInfixOf`) (heldFacts led2) `shouldBe` []
 

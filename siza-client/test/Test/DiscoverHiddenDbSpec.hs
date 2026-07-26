@@ -114,7 +114,7 @@ rowViolations p m n shape v mRank =
                        ]
         ]
   where
-    want = if spHidden p then "hidden" else "installed"
+    want = if spHidden p then "installed-not-loaded" else "installed"
     tag = spName p <> "." <> n <> " (" <> shape <> "): "
     tShow = T.pack . show
 
@@ -156,7 +156,7 @@ preFixIndexSpec = describe "the pre-fix names-only index misses the local packag
         v <- runWorldQ preFixWorld "Breeze.Chart" (args [])
         stateOf v `shouldBe` "found"
         let states = map (hitText "install") (hitsOf v)
-        states `shouldSatisfy` elem "hidden"
+        states `shouldSatisfy` elem "installed-not-loaded"
     it "GREEN: the extended (whole-installed-DB) index reaches the symbol" $ do
         v <- runCatArgsIn extended "chartz" (args [])
         stateOf v `shouldBe` "found"
@@ -184,7 +184,7 @@ exactTierLivenessSpec = describe "stage-0 exact tier is live for prose/scoped sh
         v <- run "chartz breeze" (args [])
         stateOf v `shouldBe` "found"
         targetHit "chartz" "Breeze.Chart" v
-            `shouldSatisfy` maybe False ((== "hidden") . hitText "install")
+            `shouldSatisfy` maybe False ((== "installed-not-loaded") . hitText "install")
     it "a package-shaped query consults the exact tier" $ do
         v <- run "breeze" (args [])
         stateOf v `shouldBe` "found"
@@ -210,7 +210,7 @@ probeOrderSpec = describe "query-named package outranks fuzzy noise in the probe
         v <- runCatArgsIn universe "chartz breeze" (args [])
         stateOf v `shouldBe` "found"
         targetHit "chartz" "Breeze.Chart" v
-            `shouldSatisfy` maybe False ((== "hidden") . hitText "install")
+            `shouldSatisfy` maybe False ((== "installed-not-loaded") . hitText "install")
         targetHit "chartz" "Breeze.Chart" v
             `shouldSatisfy` maybe
                 False

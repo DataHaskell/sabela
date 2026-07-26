@@ -227,7 +227,7 @@ discoverEnvelopeSpec =
                             | v <- vs
                             , h <- hitsOf v
                             , hitText "install" h
-                                `elem` ["hidden", "absent-known"]
+                                `elem` ["installed-not-loaded", "absent-known"]
                             , T.null (hitText "cabal" h)
                             ]
                     bad `shouldBe` []

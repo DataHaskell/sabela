@@ -148,7 +148,8 @@ factPackagesSpec :: Spec
 factPackagesSpec = describe "the session footprint from held facts" $ do
     it "reads an install fact's package" $
         factPackages
-            ["dataframe (hidden): -- cabal: build-depends: dataframe — provides `readCsv`"]
+            [ "dataframe (installed-not-loaded): -- cabal: build-depends: dataframe — provides `readCsv`"
+            ]
             `shouldBe` ["dataframe"]
     it "reads a signature fact's provenance" $
         factPackages

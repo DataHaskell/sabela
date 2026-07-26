@@ -38,7 +38,7 @@ installText s = case s of
     InstBuiltin -> "builtin"
     InstNotebook -> "notebook"
     InstInstalled -> "installed"
-    InstHidden -> "hidden"
+    InstHidden -> "installed-not-loaded"
     InstAbsentKnown -> "absent-known"
     InstAbsentUnknown -> "absent-unknown"
 

@@ -99,7 +99,7 @@ discoverVariantDedupSpec =
         it "the surviving variant row keeps install state and the cabal line" $ do
             let v = runMerge 8 run130012Hits
                 variants = filter isVariantStubRow (hitsOf v)
-            map (hitText "install") variants `shouldBe` ["hidden"]
+            map (hitText "install") variants `shouldBe` ["installed-not-loaded"]
             map (hitText "cabal") variants
                 `shouldBe` ["-- cabal: build-depends: zephyr"]
         it "a real function named like its package is never fused away" $ do

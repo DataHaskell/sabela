@@ -186,7 +186,7 @@ provenanceViolation q = do
             [ "builtin"
             , "notebook"
             , "installed"
-            , "hidden"
+            , "installed-not-loaded"
             , "absent-known"
             , "absent-unknown"
             ]

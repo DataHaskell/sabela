@@ -43,7 +43,7 @@ discoverModules disp errText = case notInScopeFromDiag errText of
   where
     pkgOf h =
         let inst = hitText "install" h
-         in if inst `elem` ["hidden", "absent-known"]
+         in if inst `elem` ["installed-not-loaded", "absent-known"]
                 then Just (hitText "package" h)
                 else Nothing
 

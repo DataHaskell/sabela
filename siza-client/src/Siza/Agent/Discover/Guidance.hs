@@ -27,8 +27,10 @@ actionNext hits = case hits of
         | dhInstall h == InstHidden
         , Just c <- dhCabal h ->
             Just
-                ( "installed but hidden — expose it by making a cell's first line: "
+                ( "installed but not loaded — load it by making a cell's first"
+                    <> " line: "
                     <> c
+                    <> " (already built; no download or rebuild)"
                 )
         | dhInstall h == InstAbsentKnown
         , Just c <- dhCabal h ->

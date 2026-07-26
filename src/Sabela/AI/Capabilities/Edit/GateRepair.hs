@@ -7,15 +7,17 @@ module Sabela.AI.Capabilities.Edit.GateRepair (
 ) where
 
 import Data.List (nub)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.CompileGate (compileGateSpec, rejectionJson)
 import Sabela.AI.Capabilities.Edit.Repair.Mitigate (substituteNameInCode)
 import Sabela.AI.Capabilities.Util (featureEnabled)
+import Sabela.AI.DepRepair (addBuildDepend)
 import Sabela.AI.ExtRepair (addExtension)
 import Sabela.AI.Hints (Hint (..), RenameCandidate (..), parseHints)
+import Sabela.Diagnose (ambiguousOccurrence, hiddenPackage)
 import Sabela.Model (CellType (..))
 import Sabela.Session.Materialize (
     DisposableResult (..),
@@ -71,9 +73,12 @@ repairCandidates diagnostic src =
     hints = parseHints diagnostic
     renames = [(w, cs) | HintRename w cs <- hints, not (T.null w), not (null cs)]
     extensions = nub [e | HintExtension e <- hints]
+    ambiguity = ambiguousOccurrence diagnostic
+    hiddenPkg = hiddenPackage diagnostic
     varied = [i | (i, (_, cs)) <- zip [0 ..] renames, length cs > 1]
     composite k
-        | null renames && null extensions = Nothing
+        | null renames && null extensions && isNothing ambiguity && isNothing hiddenPkg =
+            Nothing
         | otherwise =
             let picks =
                     [ (w, pick j k cs)
@@ -84,16 +89,25 @@ repairCandidates diagnostic src =
                         (\acc (w, c) -> substituteNameInCode w (rcName c) acc)
                         src
                         picks
-                withExts = foldl (flip addExtension) substituted extensions
+                qualified = case ambiguity of
+                    Just (nm, cands@(_ : _)) ->
+                        substituteNameInCode nm (cands !! min k (length cands - 1)) substituted
+                    _ -> substituted
+                withExts = foldl (flip addExtension) qualified extensions
+                withDep = maybe withExts (`addBuildDepend` withExts) hiddenPkg
                 fixes =
                     [ w <> " -> " <> rcName c <> provNote c
                     | (w, c) <- picks
                     , substituteNameInCode w (rcName c) src /= src
                     ]
+                        <> ["qualified "
+                              <> nm <> " as " <> (cands !! min k (length cands - 1)) |
+                              qualified /= substituted, Just (nm, cands@(_ : _)) <- [ambiguity]]
                         <> ["enabled " <> e | e <- extensions]
-             in if withExts == src || null fixes
+                        <> ["declared build-depends: " <> p | Just p <- [hiddenPkg]]
+             in if withDep == src || null fixes
                     then Nothing
-                    else Just (withExts, fixes)
+                    else Just (withDep, fixes)
     pick j k cs = case varied of
         (v : _) | j == v -> cs !! min k (length cs - 1)
         _ -> head cs

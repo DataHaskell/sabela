@@ -187,7 +187,7 @@ discoverToolSpec = describe "discover tool (plumbing)" $ do
             let d = discoverToolDescription
             mapM_
                 (\s -> d `shouldSatisfy` T.isInfixOf s)
-                ["installed", "hidden", "absent-known", "absent-unknown"]
+                ["installed", "installed-not-loaded", "absent-known", "absent-unknown"]
         it "no longer promises never-empty results or unconditional cabal lines" $ do
             let d = discoverToolDescription
             d `shouldSatisfy` (not . T.isInfixOf "Never returns nothing")

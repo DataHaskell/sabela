@@ -62,7 +62,7 @@ events =
 stateGrid :: [(Text, Text)]
 stateGrid =
     [ ("gust", "installed")
-    , ("bars", "hidden")
+    , ("bars", "installed-not-loaded")
     , ("drizzle", "absent-known")
     ]
 

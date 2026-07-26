@@ -188,7 +188,7 @@ discoverInventorySpec = describe "inventory mode + demotion (R3-T3)" $ do
                     Just InstInstalled ->
                         hitText "install" h `shouldBe` "installed"
                     Just InstHidden -> do
-                        hitText "install" h `shouldBe` "hidden"
+                        hitText "install" h `shouldBe` "installed-not-loaded"
                         hitText "cabal" h
                             `shouldSatisfy` T.isInfixOf "build-depends"
                     Just InstAbsentKnown -> do
@@ -217,7 +217,7 @@ discoverInventorySpec = describe "inventory mode + demotion (R3-T3)" $ do
                     ]
             rows `shouldSatisfy` (not . null)
             forM_ (take 1 rows) $ \h -> do
-                hitText "install" h `shouldBe` "hidden"
+                hitText "install" h `shouldBe` "installed-not-loaded"
                 hitText "cabal" h
                     `shouldBe` "-- cabal: build-depends: http-client"
 
