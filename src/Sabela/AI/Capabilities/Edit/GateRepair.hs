@@ -3,22 +3,32 @@
 module Sabela.AI.Capabilities.Edit.GateRepair (
     gatedCandidate,
     repairCandidates,
+    aliasImportCandidates,
     proofCap,
 ) where
 
 import Data.List (nub)
 import Data.Maybe (mapMaybe)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.CompileGate (compileGateSpec, rejectionJson)
 import Sabela.AI.Capabilities.Edit.Repair.Mitigate (substituteNameInCode)
+import Sabela.AI.Capabilities.ModuleSearch (resolveNameToModules)
 import Sabela.AI.Capabilities.Util (featureEnabled)
+import Sabela.AI.Capability (Capability (..))
 import Sabela.AI.DepRepair (addBuildDepend)
 import Sabela.AI.ExtRepair (addExtension)
 import Sabela.AI.Hints (Hint (..), RenameCandidate (..), parseHints)
-import Sabela.Diagnose (ambiguousOccurrence, hiddenPackage)
+import Sabela.AI.ImportRepair (
+    addQualifiedImport,
+    importedAliasMisses,
+    unboundAliasUses,
+ )
+import Sabela.Diagnose (ambiguousOccurrence, hiddenPackages)
 import Sabela.Model (CellType (..))
+import Sabela.Parse (cellNames)
 import Sabela.Session.Materialize (
     DisposableResult (..),
     DisposableVerdict (..),
@@ -45,11 +55,18 @@ gatedCandidate app mReplaces lang ty src
             DisposableOk -> pure (Right (src, []))
             verdict -> do
                 enabled <- featureEnabled "SABELA_GATE_REPAIR"
-                let tries
-                        | enabled && verdict == DisposableCompileError =
-                            repairCandidates (diagnosticOf result) src
+                let repairable = enabled && verdict == DisposableCompileError
+                    diagnostic = diagnosticOf result
+                    tries
+                        | repairable = repairCandidates diagnostic src
                         | otherwise = []
-                attempt (rejectionJson mReplaces src verdict result) tries
+                aliases <-
+                    if repairable
+                        then aliasCandidates app diagnostic src
+                        else pure []
+                attempt
+                    (rejectionJson mReplaces src verdict result)
+                    (take proofCap (nub (aliases <> tries)))
   where
     attempt rejection [] = pure (Left rejection)
     attempt rejection ((candidate, fixes) : rest) = do
@@ -61,6 +78,23 @@ gatedCandidate app mReplaces lang ty src
         "Applied GHC's suggested fix before committing: "
             <> T.intercalate "; " fixes
             <> "."
+
+aliasCandidates :: App -> Text -> Text -> IO [(Text, [Text])]
+aliasCandidates app diagnostic src =
+    concat
+        <$> mapM forPair (importedAliasMisses diagnostic <> unboundAliasUses diagnostic)
+  where
+    forPair (alias, name) = do
+        caps <- resolveNameToModules app name
+        pure (aliasImportCandidates alias (take 2 (map capModule caps)) src)
+
+aliasImportCandidates :: Text -> [Text] -> Text -> [(Text, [Text])]
+aliasImportCandidates alias modules src =
+    [ (src', ["imported " <> m <> " as " <> alias])
+    | m <- modules
+    , let src' = addQualifiedImport m alias src
+    , src' /= src
+    ]
 
 diagnosticOf :: DisposableResult -> Text
 diagnosticOf result =
@@ -75,21 +109,31 @@ repairCandidates :: Text -> Text -> [(Text, [Text])]
 repairCandidates diagnostic src =
     take proofCap (nub (mapMaybe candidate variations))
   where
-    variations = [(s, k) | s <- scopes, k <- [0 .. proofCap - 1]]
+    variations =
+        [(p, s, k) | p <- [True, False], s <- scopes, k <- [0 .. proofCap - 1]]
+    defined = fst (cellNames src)
     hints = parseHints diagnostic
-    renames = [(w, cs) | HintRename w cs <- hints, not (T.null w), not (null cs)]
+    allRenames = [(w, cs) | HintRename w cs <- hints, not (T.null w), not (null cs)]
     extensions = nub [e | HintExtension e <- hints]
     ambiguity = ambiguousOccurrence diagnostic
-    hiddenPkg = hiddenPackage diagnostic
-    varied = [i | (i, (_, cs)) <- zip [(0 :: Int) ..] renames, length cs > 1]
+    hiddenPkgs = hiddenPackages diagnostic
 
-    candidate (scope, k)
+    renamesFor prune
+        | prune = filter (\(w, _) -> not (w `Set.member` defined)) allRenames
+        | otherwise = allRenames
+
+    candidate (prune, scope, k)
         | null applied || repaired == src = Nothing
         | otherwise = Just (repaired, applied)
       where
+        renames = renamesFor prune
+        varied = [i | (i, (_, cs)) <- zip [(0 :: Int) ..] renames, length cs > 1]
+        pick j cs = case varied of
+            (v : _) | j == v -> choose k cs
+            _ -> choose 0 cs
         picks
             | scopeBody scope =
-                [(w, pick j k cs) | (j, (w, cs)) <- zip [(0 :: Int) ..] renames]
+                [(w, pick j cs) | (j, (w, cs)) <- zip [(0 :: Int) ..] renames]
             | otherwise = []
         renamed =
             foldl' (\acc (w, c) -> substituteNameInCode w (rcName c) acc) src picks
@@ -99,23 +143,22 @@ repairCandidates diagnostic src =
                 substituteNameInCode nm (choose k cands) renamed
             _ -> renamed
         exts = if scopeHeader scope then extensions else []
-        dep = if scopeHeader scope then hiddenPkg else Nothing
+        deps = if scopeHeader scope then hiddenPkgs else []
         repaired =
-            maybe id addBuildDepend dep (foldl' (flip addExtension) qualified exts)
+            foldl' (flip addBuildDepend) (foldl' (flip addExtension) qualified exts) deps
         applied =
             [ w <> " -> " <> rcName c <> provNote c
             | (w, c) <- picks
             , substituteNameInCode w (rcName c) src /= src
             ]
-                <> ["qualified " <> nm <> " as " <> choose k cands |
-                      qualified /= renamed, Just (nm, cands@(_ : _)) <- [toQualify]]
+                <> [ "qualified " <> nm <> " as " <> choose k cands
+                   | qualified /= renamed
+                   , Just (nm, cands@(_ : _)) <- [toQualify]
+                   ]
                 <> map ("enabled " <>) exts
-                <> map ("declared build-depends: " <>) (maybe [] pure dep)
+                <> map ("declared build-depends: " <>) deps
 
     choose k cs = cs !! min k (length cs - 1)
-    pick j k cs = case varied of
-        (v : _) | j == v -> choose k cs
-        _ -> choose 0 cs
     provNote c
         | T.null (rcProvenance c) = ""
         | otherwise = " (" <> rcProvenance c <> ")"

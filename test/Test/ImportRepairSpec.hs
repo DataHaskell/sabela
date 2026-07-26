@@ -7,6 +7,7 @@ import qualified Data.Text as T
 import Sabela.AI.ImportRepair (
     addQualifiedImport,
     addScopedImport,
+    importedAliasMisses,
     moduleRenameFix,
     qualifiedAliases,
     renameModule,
@@ -92,6 +93,20 @@ spec = describe "Sabela.AI.ImportRepair" $ do
             unboundAliasUses "Couldn't match type \8216Int\8217 with \8216Bool\8217"
                 `shouldBe` []
 
+    describe "importedAliasMisses" $ do
+        it "pairs an alias the cell does import with the member it lacks" $
+            importedAliasMisses wineAliasError `shouldBe` [("T", "putStrLn")]
+
+        it "leaves the unbound-alias case to unboundAliasUses" $
+            importedAliasMisses ghcAliasError `shouldBe` []
+
+        it "ignores an unqualified not-in-scope name" $
+            importedAliasMisses "Not in scope: \8216foo\8217" `shouldBe` []
+
+        it "does not mistake the suggested replacement for the missing name" $
+            map snd (importedAliasMisses wineAliasError)
+                `shouldSatisfy` notElem "putStrLn'"
+
     describe "addQualifiedImport" $ do
         it "binds the alias GHC said was missing" $
             addQualifiedImport "Data.Text" "T" "x = 1"
@@ -104,10 +119,25 @@ spec = describe "Sabela.AI.ImportRepair" $ do
                 "import qualified Data.Text as T\nx = 1"
                 `shouldBe` "import qualified Data.Text as T\nx = 1"
 
+        it "adds a second module under an existing alias, which GHC merges" $
+            addQualifiedImport
+                "Data.Text.IO"
+                "T"
+                "import qualified Data.Text as T\nx = 1"
+                `shouldBe` "import qualified Data.Text as T\n\
+                           \import qualified Data.Text.IO as T\nx = 1"
+
         it "reads the aliases a source already binds" $
             qualifiedAliases
                 "import qualified Data.Text as T\nimport qualified Data.Map as M\nx = 1"
                 `shouldBe` ["T", "M"]
+
+wineAliasError :: Text
+wineAliasError =
+    "<interactive>:245:13: error: [GHC-76037]\n\
+    \    Not in scope: \8216T.putStrLn\8217\n\
+    \    Suggested fix:\n\
+    \      Perhaps use \8216LBS.putStrLn\8217 (imported from Data.ByteString.Lazy.Char8)"
 
 ghcAliasError :: Text
 ghcAliasError =

@@ -6,7 +6,11 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Sabela.AI.Capabilities.Edit.GateRepair (proofCap, repairCandidates)
+import Sabela.AI.Capabilities.Edit.GateRepair (
+    aliasImportCandidates,
+    proofCap,
+    repairCandidates,
+ )
 
 twoRenames :: Text
 twoRenames =
@@ -52,23 +56,68 @@ definesServer =
     \data Server = Server { _name :: String }\n\
     \declareLens :: (s -> a) -> Lens s t a b\n"
 
+qualifiedRename :: Text
+qualifiedRename =
+    "<interactive>:245:13: error: [GHC-76037]\n\
+    \    Not in scope: \8216T.putStrLn\8217\n\
+    \    Suggested fix:\n\
+    \      Perhaps use \8216LBS.putStrLn\8217 (imported from Data.ByteString.Lazy.Char8)"
+
 spec :: Spec
 spec = describe "gate-side repair candidates" $ do
+    describe "an alias bound to the wrong module is repaired by import" $ do
+        it "binds the resolved module under the alias the cell already uses" $ do
+            let src = "import qualified Data.Text as T\nmain = T.putStrLn (toCsv df)"
+                cs = aliasImportCandidates "T" ["Data.Text.IO"] src
+            map fst cs
+                `shouldBe` [ "import qualified Data.Text as T\n\
+                             \import qualified Data.Text.IO as T\n\
+                             \main = T.putStrLn (toCsv df)"
+                           ]
+            map snd cs `shouldBe` [["imported Data.Text.IO as T"]]
+
+        it "leaves the call site alone — the alias is already what the model wrote" $ do
+            let src = "import qualified Data.Text as T\nmain = T.putStrLn x"
+                (c : _) = map fst (aliasImportCandidates "T" ["Data.Text.IO"] src)
+            c `shouldSatisfy` T.isInfixOf "T.putStrLn x"
+
+        it "yields nothing when the module is already bound to that alias" $
+            aliasImportCandidates "T" ["Data.Text"] "import qualified Data.Text as T\nx = 1"
+                `shouldBe` []
+
+    it "declares every hidden package GHC named, not just the first" $ do
+        let diag =
+                "<no location info>: error: [GHC-87110]\n\
+                \    It is a member of the hidden package \8216bytestring-0.12.2.0\8217.\n\
+                \<no location info>: error: [GHC-87110]\n\
+                \    It is a member of the hidden package \8216text-2.1.2\8217."
+            src = "import qualified Data.Text as T\nmain = T.putStrLn \"x\""
+            ((c, fixes) : _) = repairCandidates diag src
+        c `shouldSatisfy` T.isInfixOf "bytestring"
+        c `shouldSatisfy` T.isInfixOf "text"
+        fixes
+            `shouldBe` [ "declared build-depends: bytestring"
+                       , "declared build-depends: text"
+                       ]
+
+    it "applies a rename whose names are module-qualified" $ do
+        let src = "import qualified Data.Text as T\nmain = T.putStrLn (toCsv df)"
+            cs = repairCandidates qualifiedRename src
+        map fst cs
+            `shouldSatisfy` any (T.isInfixOf "LBS.putStrLn (toCsv df)")
+
     describe "one doubtful hint sinks only the candidates carrying it" $ do
-        it "offers the fused fix first, for when both hints are sound" $ do
+        it "proves the extension alone first, dropping the knock-on rename" $ do
             let (_, fixes) : _ = repairCandidates mixedQuality definesServer
-            fixes `shouldSatisfy` elem "enabled RankNTypes"
+            fixes `shouldBe` ["enabled RankNTypes"]
+
+        it "still offers the rename as a fallback rather than ruling it out" $ do
+            let cs = repairCandidates mixedQuality definesServer
+            concatMap snd cs `shouldSatisfy` any (T.isInfixOf "Server -> Setter")
+
+        it "keeps a rename whose subject the cell does not define" $ do
+            let (_, fixes) : _ = repairCandidates mixedQuality "x = Server 1"
             fixes `shouldSatisfy` any (T.isInfixOf "Server -> Setter")
-
-        it "also offers the extension alone, so the rename cannot sink it" $ do
-            let cs = repairCandidates mixedQuality definesServer
-            map snd cs `shouldSatisfy` elem ["enabled RankNTypes"]
-
-        it "and the rename alone, in case the extension was the doubtful one" $ do
-            let cs = repairCandidates mixedQuality definesServer
-            map snd cs
-                `shouldSatisfy` any
-                    (\fs -> length fs == 1 && any (T.isInfixOf "Server -> Setter") fs)
 
     it "fixes every rename hint in ONE composite, not one at a time" $ do
         let src = "xs = filtered odd [1,2,3]\nloc = location dc"

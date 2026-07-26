@@ -10,6 +10,7 @@ module Sabela.Diagnose (
     topLevelLetMessage,
     holeFitGoal,
     hiddenPackage,
+    hiddenPackages,
     neededExtension,
     misnamedModule,
     couldNotFindModule,
@@ -25,6 +26,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (Pair)
 import Data.Char (isAlphaNum, isDigit, isUpper)
 import Data.List (nub)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -98,8 +100,16 @@ missingModule err
                        \ the FIRST line of the cell: -- cabal: build-depends: <package>  (not\
                        \ `cabal install`)."
 
+hiddenPackages :: Text -> [Text]
+hiddenPackages err =
+    nub
+        [ packageFromHidden pkg
+        | seg <- drop 1 (T.splitOn "hidden package " err)
+        , Just pkg <- [quotedToken seg]
+        ]
+
 hiddenPackage :: Text -> Maybe Text
-hiddenPackage err = packageFromHidden <$> afterPhrase "hidden package " err
+hiddenPackage = listToMaybe . hiddenPackages
 
 neededExtension :: Text -> Maybe Text
 neededExtension err = firstJust (concatMap fromLine (T.lines err))

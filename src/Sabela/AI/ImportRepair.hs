@@ -7,6 +7,8 @@ module Sabela.AI.ImportRepair (
     addScopedImport,
     addQualifiedImport,
     qualifiedAliases,
+    qualifiedImports,
+    importedAliasMisses,
     unboundAliasUses,
 ) where
 
@@ -58,8 +60,8 @@ addScopedImport modul name src
     entity = if isOperator name then "(" <> name <> ")" else name
     isOperator = T.all (`elem` operatorChars)
 
-unboundAliasUses :: Text -> [(Text, Text)]
-unboundAliasUses err =
+qualifiedNotInScope :: Text -> [(Text, Text)]
+qualifiedNotInScope err =
     nubOrd
         [ (alias, name)
         | qualified <- concatMap quotedTokens (notInScopeLines err)
@@ -67,11 +69,22 @@ unboundAliasUses err =
               alias = T.dropEnd 1 dotted
         , not (T.null alias)
         , not (T.null name)
-        , alias `elem` unimportedAliases err
         ]
   where
     notInScopeLines = filter ("Not in scope:" `T.isInfixOf`) . T.lines
     nubOrd = foldr (\x acc -> x : filter (/= x) acc) []
+
+unboundAliasUses :: Text -> [(Text, Text)]
+unboundAliasUses err =
+    [ p | p@(alias, _) <- qualifiedNotInScope err, alias `elem` unimportedAliases err
+    ]
+
+importedAliasMisses :: Text -> [(Text, Text)]
+importedAliasMisses err =
+    [ p
+    | p@(alias, _) <- qualifiedNotInScope err
+    , alias `notElem` unimportedAliases err
+    ]
 
 unimportedAliases :: Text -> [Text]
 unimportedAliases err =
@@ -95,20 +108,24 @@ quotedTokens = go
 addQualifiedImport :: Text -> Text -> Text -> Text
 addQualifiedImport modul alias src
     | T.null modul || T.null alias = src
-    | alias `elem` qualifiedAliases src = src
+    | (modul, alias) `elem` qualifiedImports src = src
     | otherwise = insertImport importLine src
   where
     importLine = "import qualified " <> modul <> " as " <> alias
 
-qualifiedAliases :: Text -> [Text]
-qualifiedAliases src =
-    [ alias
+qualifiedImports :: Text -> [(Text, Text)]
+qualifiedImports src =
+    [ (modul, alias)
     | l <- map T.strip (T.lines src)
     , "import qualified " `T.isPrefixOf` l
-    , (_, rest) <- [T.breakOn " as " l]
+    , let (before, rest) = T.breakOn " as " l
     , not (T.null rest)
+    , modul <- take 1 (reverse (T.words before))
     , alias <- take 1 (T.words (T.drop 4 rest))
     ]
+
+qualifiedAliases :: Text -> [Text]
+qualifiedAliases = map snd . qualifiedImports
 
 operatorChars :: String
 operatorChars = "!#$%&*+./<=>?@\\^|-~:"

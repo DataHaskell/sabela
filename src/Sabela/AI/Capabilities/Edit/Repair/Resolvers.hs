@@ -34,6 +34,7 @@ import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQuery, hoogleResolveTopK)
 import Sabela.AI.ImportRepair (
     addQualifiedImport,
     addScopedImport,
+    importedAliasMisses,
     renameModule,
     unboundAliasUses,
  )
@@ -173,8 +174,9 @@ qualifiedImportCandidates app store res src = do
     enabled <- featureEnabled "SABELA_IMPORT_RESOLVE"
     if not enabled
         then pure []
-        else concat <$> mapM candidatesFor (unboundAliasUses (resultErrorText res))
+        else concat <$> mapM candidatesFor (aliasRepairs (resultErrorText res))
   where
+    aliasRepairs err = unboundAliasUses err <> importedAliasMisses err
     candidatesFor (alias, name) = do
         caps <- resolveNameToModules app name
         vetted <-
