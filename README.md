@@ -21,22 +21,11 @@ Open `localhost:3000/index.html`, then either:
   California housing data through to a Hasktorch linear-regression model, or
 * click the book icon, top left, for ready-to-run snippets.
 
+There are examples in the folder showcasing different features like widgets,
+and Python integration.
+
 The execution and dependency model is based on
 [scripths](https://github.com/DataHaskell/scripths).
-
-## What you can do
-
-* **Run cells reactively.** Sabela reruns the cells that
-  depend on what you changed, and nothing else.
-* **Add interactive controls/widgets.** A `slider`,
-  `dropdown`, or `button` is one line of Haskell; drag it and the cell reruns
-  with the new value.
-* **Mix Haskell and Python in one notebook.** Load and type-check data in
-  Haskell, hand it to pandas or matplotlib, pass the results back.
-* **Pair with Claude Code.** Point the `siza` skill at your running notebook and
-  Claude can read, run, and edit cells while you watch them change in the browser.
-* **Present it.** Turn a notebook into a live dashboard or slideshow, or export
-  it to standalone HTML, Markdown, or a runnable `.hs`.
 
 # Tutorial
 
@@ -144,7 +133,9 @@ won't chase a link that exists only through a typeclass instance, but for
 everyday notebook code it tracks the dependencies accurately.
 
 Cells still read best from top to bottom with one definition per name, though
-you no longer have to keep the execution order right by hand.
+you no longer have to keep the execution order right by hand. There are still
+a number of gaps in the reactivity semantics e.g. type classes definition changes
+don't yet propagate bu, but the common cases are covered.
 
 ---
 
@@ -163,9 +154,6 @@ let triples =
 
 print triples
 ```
-
-The book icon in the top left opens a gallery of ready-to-run snippets: basics,
-library usage, rich display, concurrency, QuickCheck, and file I/O.
 
 ---
 
@@ -202,7 +190,7 @@ For dependencies you want in every notebook, put the same directives in a
 ### Compiled cells (`-- compile`)
 
 Cells normally run interpreted in GHCi — instant, but 10–100× slower than
-native code for tight Haskell loops. Mark a cell **compiled** and its
+native code for tight Haskell loops. Mark a cell compiled and its
 declarations are built into a generated module at `-O2` instead:
 
 ````markdown
@@ -217,33 +205,19 @@ trainEpoch model batches   -- calls native -O2 code
 ```
 ````
 
-The mental model is one sentence: **a compiled cell defines things; it never
-runs things.** The rules:
-
 1. A compiled cell contains only what is legal at the top of a module:
    imports, type signatures, bindings, `data`/`class`/`instance`
-   declarations. No bare expressions, no `x <- action`, no widgets or
-   `display*` calls — put those in an ordinary cell below.
-2. Downstream cells use compiled names directly; nothing to import.
+   declarations.
+2. Downstream cells use compiled names directly with no imports.
 3. Duplicate top-level names across cells are an error (compiled definitions
    cannot be shadowed), and a compiled cell cannot use a name defined in an
-   interpreted cell — pass the value as an argument instead.
-4. Editing a compiled cell recompiles (seconds, not milliseconds) and
-   re-runs its dependents. Editing interpreted cells never triggers a
-   compile, so tweak call sites freely.
+   interpreted cell.
 
 `-- compile: Training` names the generated module explicitly; cells sharing
 a name merge into one module (which also permits mutual recursion between
 them), and modules import each other automatically when one uses the
 other's names. Use the ⚡ button in a cell's actions to toggle the
 directive without typing it.
-
-Where the speedup comes from (and doesn't): pure Haskell loops gain
-10–300×; loops dominated by large native calls (e.g. big hasktorch
-matmuls) gain little, since the tensor math was already native. Keep the
-hot loop *inside* the compiled cell and return small, strict results — a
-compiled producer of a lazy list consumed by an interpreted `sum` keeps
-most of the slowness.
 
 ---
 
@@ -403,15 +377,13 @@ walk through it.
 
 ---
 
-## 10. Pair-programming with Claude Code (siza)
+## 10. Pair-programming with Claude Code (siza skill)
 
 Sabela exposes its notebook over a small REST API at `/api/ai/*`, and **siza** is
 a Claude Code skill that drives it. With your notebook open in the browser and
 siza installed in a second terminal, Claude can list cells, read them, run them,
-propose edits you approve in the UI, and use one `try` operation for
+propose edits you approve in the UI, and use a `try` operation for
 non-committing experiments against notebook context and candidate dependencies.
-Every change shows up live in your browser, against the same GHCi session you're
-already using.
 
 Install it from inside Claude Code:
 
@@ -439,9 +411,8 @@ open. Full details are in `cli-skill/README.md`.
 ### Pair with a local model (`siza chat`)
 
 The `siza` binary also has a `chat` subcommand that drives your notebook with a
-**local Ollama model** instead of Claude Code — the same tool surface, no cloud
-call. It is for local single-user use: the model edits the live notebook against
-your own GHCi session.
+**local Ollama model** .
+Siza is a harness that's integrated into both the Haskell package ecosystem and the
 
 Prerequisites: [Ollama](https://ollama.com) running with a model pulled (e.g.
 `ollama pull gpt-oss:20b`), and a Sabela server up (`cabal run`). Then:
@@ -450,11 +421,6 @@ Prerequisites: [Ollama](https://ollama.com) running with a model pulled (e.g.
 cabal run exe:siza -- chat                     # discovers the running server
 cabal run exe:siza -- chat --model gemma4:latest --url http://localhost:3000
 ```
-
-It preflights Ollama and the server, then reads free-form requests at a prompt.
-Type a request and it works in the notebook, proposing a covering check you
-confirm before it accepts the result. **Ctrl-C** cancels the current request and
-returns to the prompt; **Ctrl-D** quits.
 
 | Flag | Default | Meaning |
 |------|---------|---------|
