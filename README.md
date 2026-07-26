@@ -412,7 +412,10 @@ open. Full details are in `cli-skill/README.md`.
 
 The `siza` binary also has a `chat` subcommand that drives your notebook with a
 **local Ollama model** .
-Siza is a harness that's integrated into both the Haskell package ecosystem and the
+Siza is a harness that's integrated into both the Haskell package ecosystem and
+GHC as a compiler. The harness has hooks that apply deterministic repair to code,
+perform contextual package searches, and embed the reactive notebook semantics as
+constraints for what the LLM can output.
 
 Prerequisites: [Ollama](https://ollama.com) running with a model pulled (e.g.
 `ollama pull gpt-oss:20b`), and a Sabela server up (`cabal run`). Then:
