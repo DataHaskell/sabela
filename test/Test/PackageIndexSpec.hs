@@ -76,6 +76,15 @@ componentSpec = describe "a module component resolves to its module" $ do
     it "a dotted query is judged whole, never by its last component" $
         candidateModules 1 "Zzz.Svg" pool `shouldBe` []
 
+    let contested = "Granite.Data.Frame" : pool
+    it "the dot-stripped spelling beats a module merely containing the components" $
+        candidateModules 1 "Data.Frame" contested `shouldBe` ["DataFrame"]
+    it "but the component-run match is still offered second" $
+        candidateModules 2 "Data.Frame" contested
+            `shouldBe` ["DataFrame", "Granite.Data.Frame"]
+    it "a prefixed spelling of an absent module falls back to its bare form" $
+        candidateModules 1 "Granite.Data.Frame" pool `shouldBe` ["DataFrame"]
+
 indexSpec :: Spec
 indexSpec = describe "Sabela.AI.PackageIndex" $ do
     describe "parsePackageDump" $ do

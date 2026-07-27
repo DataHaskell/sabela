@@ -123,6 +123,8 @@ systemPrompt =
     T.unlines
         [ "Pair on a live Sabela reactive Haskell notebook through tools."
         , "Editing or running a cell re-runs every cell downstream of it."
+        , "insert_cell and replace_cell_source only commit code that compiles;"
+            <> " a rejection carries the compiler's diagnostic so you can fix it and retry."
         , ""
         ]
         <> toolSurfacePrompt

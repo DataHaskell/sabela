@@ -16,6 +16,7 @@ module Sabela.Diagnose (
     couldNotFindModule,
     notInScopeName,
     ambiguousOccurrence,
+    ambiguousOccurrences,
     packageNeedsFlag,
     GrammarRoute (..),
     routeFailure,
@@ -223,24 +224,28 @@ arisingFromName l
         afterInfix "arising from a use of" l >>= quotedToken
     | otherwise = Nothing
 
-ambiguousOccurrence :: Text -> Maybe (Text, [Text])
-ambiguousOccurrence err
-    | not ("Ambiguous occurrence" `T.isInfixOf` err) = Nothing
-    | otherwise = do
-        header <- afterInfix "Ambiguous occurrence" err
-        name <- quotedToken (T.takeWhile (/= '\n') header)
-        let cands =
-                [ q
-                | l <- T.lines err
-                , isCandidateLine l
-                , Just q <- [quotedToken l]
-                , "." `T.isInfixOf` q
-                ]
-        if null cands then Nothing else Just (name, cands)
+ambiguousOccurrences :: Text -> [(Text, [Text])]
+ambiguousOccurrences err =
+    [(name, cands) |
+       seg <- drop 1 (T.splitOn "Ambiguous occurrence" err),
+       let cands
+             = [q |
+                  l <- takeWhile (not . startsNextDiagnostic) (T.lines seg),
+                  isCandidateLine l,
+                  Just q <- [quotedToken l],
+                  "." `T.isInfixOf` q],
+       not (null cands),
+       Just name <- [quotedToken (T.takeWhile (/= '\n') seg)]]
   where
     isCandidateLine l =
         let s = T.stripStart l
          in "either " `T.isPrefixOf` s || "or " `T.isPrefixOf` s
+    startsNextDiagnostic l =
+        T.null (T.strip l)
+            || any (`T.isPrefixOf` T.stripStart l) ["<interactive>:", "<no location info>:"]
+
+ambiguousOccurrence :: Text -> Maybe (Text, [Text])
+ambiguousOccurrence = listToMaybe . ambiguousOccurrences
 
 ambiguousType :: Text -> [Guidance]
 ambiguousType err

@@ -63,8 +63,47 @@ qualifiedRename =
     \    Suggested fix:\n\
     \      Perhaps use \8216LBS.putStrLn\8217 (imported from Data.ByteString.Lazy.Char8)"
 
+dataFrameClash :: Text
+dataFrameClash =
+    "<interactive>:211:164: error: [GHC-87543]\n\
+    \    Ambiguous occurrence \8216null\8217.\n\
+    \    It could refer to\n\
+    \       either \8216DataFrame.null\8217,\n\
+    \              imported from \8216DataFrame\8217\n\
+    \           or \8216Prelude.null\8217,\n\
+    \              imported from \8216Prelude\8217\n\
+    \<interactive>:222:16: error: [GHC-87543]\n\
+    \    Ambiguous occurrence \8216filter\8217.\n\
+    \    It could refer to\n\
+    \       either \8216DataFrame.filter\8217,\n\
+    \              imported from \8216DataFrame\8217\n\
+    \           or \8216Prelude.filter\8217,\n\
+    \              imported from \8216Prelude\8217"
+
+dataFrameSrc :: Text
+dataFrameSrc =
+    "import DataFrame\n\
+    \go df = if null df then 0 else length (filter id df)\n"
+
 spec :: Spec
 spec = describe "gate-side repair candidates" $ do
+    describe "a diagnostic with more than one ambiguous occurrence" $ do
+        it "resolves every clash in one composite, not just the first" $ do
+            let (c, _) : _ = repairCandidates dataFrameClash dataFrameSrc
+            c `shouldSatisfy` T.isInfixOf "DataFrame.null df"
+            c `shouldSatisfy` T.isInfixOf "DataFrame.filter id df"
+
+        it "discloses both qualifications, named as ordinary substitutions" $ do
+            let (_, fixes) : _ = repairCandidates dataFrameClash dataFrameSrc
+            fixes `shouldBe` ["null -> DataFrame.null", "filter -> DataFrame.filter"]
+
+        it "never substitutes a clash's own candidate for another clash's name" $ do
+            let composites = T.concat (map fst (repairCandidates dataFrameClash dataFrameSrc))
+            -- "null df" only ever becomes a *.null qualification, never a
+            -- \*.filter one bleeding in from the second clash's candidate list.
+            composites `shouldNotSatisfy` T.isInfixOf "DataFrame.filter df"
+            composites `shouldNotSatisfy` T.isInfixOf "Prelude.filter df"
+
     describe "an alias bound to the wrong module is repaired by import" $ do
         it "binds the resolved module under the alias the cell already uses" $ do
             let src = "import qualified Data.Text as T\nmain = T.putStrLn (toCsv df)"

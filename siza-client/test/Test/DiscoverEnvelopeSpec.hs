@@ -108,7 +108,7 @@ discoverEnvelopeSpec =
                     length (hitsOf v) `shouldBe` intField "shown" v
                     intField "shown" v + intField "omitted" v
                         `shouldBe` intField "total" v
-                it "sheds hits before card exports, and floors the exports" $ do
+                it "shrinks the card before shedding hits — hits are the answer" $ do
                     let v =
                             boundEnvelope
                                 ( discoverEnvelope
@@ -123,6 +123,9 @@ discoverEnvelopeSpec =
                                 )
                     envelopeChars v `shouldSatisfy` (<= envelopeCharBudget)
                     length (exportsOf v) `shouldSatisfy` (>= 8)
+                    length (hitsOf v) `shouldSatisfy` (> 0)
+                    map (hitText "module") (take 1 (hitsOf v))
+                        `shouldBe` [dhModule (wideHit 1)]
 
                 it "bounds a wide card by moving exports into moreExports" $ do
                     let v =

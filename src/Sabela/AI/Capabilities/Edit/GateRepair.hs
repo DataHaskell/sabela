@@ -7,7 +7,7 @@ module Sabela.AI.Capabilities.Edit.GateRepair (
     proofCap,
 ) where
 
-import Data.List (nub, foldl')
+import Data.List (foldl', nub)
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -26,7 +26,7 @@ import Sabela.AI.ImportRepair (
     importedAliasMisses,
     unboundAliasUses,
  )
-import Sabela.Diagnose (ambiguousOccurrence, hiddenPackages)
+import Sabela.Diagnose (ambiguousOccurrences, hiddenPackages)
 import Sabela.Model (CellType (..))
 import Sabela.Parse (cellNames)
 import Sabela.Session.Materialize (
@@ -115,7 +115,10 @@ repairCandidates diagnostic src =
     hints = parseHints diagnostic
     allRenames = [(w, cs) | HintRename w cs <- hints, not (T.null w), not (null cs)]
     extensions = nub [e | HintExtension e <- hints]
-    ambiguity = ambiguousOccurrence diagnostic
+    ambiguities =
+        [ (nm, [RenameCandidate c "" "" | c <- cands])
+        | (nm, cands) <- ambiguousOccurrences diagnostic
+        ]
     hiddenPkgs = hiddenPackages diagnostic
 
     renamesFor prune
@@ -126,7 +129,7 @@ repairCandidates diagnostic src =
         | null applied || repaired == src = Nothing
         | otherwise = Just (repaired, applied)
       where
-        renames = renamesFor prune
+        renames = renamesFor prune <> ambiguities
         varied = [i | (i, (_, cs)) <- zip [(0 :: Int) ..] renames, length cs > 1]
         pick j cs = case varied of
             (v : _) | j == v -> choose k cs
@@ -137,24 +140,15 @@ repairCandidates diagnostic src =
             | otherwise = []
         renamed =
             foldl' (\acc (w, c) -> substituteNameInCode w (rcName c) acc) src picks
-        toQualify = if scopeBody scope then ambiguity else Nothing
-        qualified = case toQualify of
-            Just (nm, cands@(_ : _)) ->
-                substituteNameInCode nm (choose k cands) renamed
-            _ -> renamed
         exts = if scopeHeader scope then extensions else []
         deps = if scopeHeader scope then hiddenPkgs else []
         repaired =
-            foldl' (flip addBuildDepend) (foldl' (flip addExtension) qualified exts) deps
+            foldl' (flip addBuildDepend) (foldl' (flip addExtension) renamed exts) deps
         applied =
             [ w <> " -> " <> rcName c <> provNote c
             | (w, c) <- picks
             , substituteNameInCode w (rcName c) src /= src
             ]
-                <> [ "qualified " <> nm <> " as " <> choose k cands
-                   | qualified /= renamed
-                   , Just (nm, cands@(_ : _)) <- [toQualify]
-                   ]
                 <> map ("enabled " <>) exts
                 <> map ("declared build-depends: " <>) deps
 

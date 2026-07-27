@@ -83,6 +83,7 @@ import Test.SchemaRecoverySpec (schemaRecoverySpec)
 import Test.StateQuerySpec (stateQuerySpec)
 import Test.SteerFeedSpec (steerFeedSpec)
 import Test.SteerSpec (steerSpec)
+import Test.SystemPromptSpec (systemPromptSpec)
 import Test.ToolRouteSpec (toolRouteSpec)
 import Test.TransportFailureSpec (transportFailureSpec)
 import Test.TransportSpec (toolTimeoutSpec, transportSpec)
@@ -112,6 +113,7 @@ main = hspec $ do
     transportFailureSpec
     futilitySpec
     renderOutcomeSpec
+    systemPromptSpec
     hubTokenSpec
     loginSpec
     mcpSpec

@@ -20,7 +20,7 @@ import Control.Exception (SomeException, try)
 import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
 import Data.Char (isAlpha)
-import Data.List (nub, partition, sortOn)
+import Data.List (isInfixOf, isSuffixOf, nub, partition, sortOn)
 import Data.Maybe (listToMaybe)
 import Data.Ord (Down (..))
 import Data.Set (Set)
@@ -81,26 +81,36 @@ resolveModule pkgs modName = case packagesExposingModule pkgs modName of
   where
     allModules = concatMap peModules pkgs
 
+squashModule :: Text -> Text
+squashModule = T.toLower . T.filter (/= '.')
+
 candidateModules :: Int -> Text -> [Text] -> [Text]
 candidateModules k modName mods =
-    take
-        k
-        ( named
-            <> [m | m <- closestModules k moduleNearness modName mods, m `notElem` named]
-        )
+    take k (nub (squashEq <> named <> squashNear <> trigram))
   where
-    named = rankPublic (componentMatches modName mods)
+    pool = nub mods
+    q = squashModule modName
+    squashEq = rankPublic [m | m <- pool, squashModule m == q]
+    named = rankPublic (componentMatches modName pool)
+    squashNear
+        | T.length q >= 4 =
+            rankPublic
+                [ m
+                | m <- pool
+                , let s = squashModule m
+                , q `T.isSuffixOf` s || s `T.isSuffixOf` q
+                ]
+        | otherwise = []
+    trigram = closestModules k moduleNearness modName pool
 
 componentMatches :: Text -> [Text] -> [Text]
 componentMatches q mods
-    | T.null q || T.any (== '.') q = []
+    | T.null q = []
     | otherwise = endsWith <> [m | m <- carries, m `notElem` endsWith]
   where
-    endsWith = [m | m <- nub mods, lastComponent m == q]
-    carries = [m | m <- nub mods, q `elem` T.splitOn "." m]
-    lastComponent m = case reverse (T.splitOn "." m) of
-        (c : _) -> c
-        [] -> m
+    qc = T.splitOn "." q
+    endsWith = [m | m <- nub mods, qc `isSuffixOf` T.splitOn "." m]
+    carries = [m | m <- nub mods, qc `isInfixOf` T.splitOn "." m]
 
 rankPublic :: [Text] -> [Text]
 rankPublic ms =

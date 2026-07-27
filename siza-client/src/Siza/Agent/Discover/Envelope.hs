@@ -82,7 +82,7 @@ schemaPromise =
            \build-depends: line."
 
 boundEnvelope :: Value -> Value
-boundEnvelope = shrinkWith [dropLastHit, shrinkCard, clampNotes]
+boundEnvelope = shrinkWith [shrinkCard, dropLastHit, clampNotes]
 
 exportFloor :: Int
 exportFloor = 8
@@ -191,7 +191,7 @@ envelopeViolations v@(Object o) =
     stateViols =
         ["state missing or unknown: " <> state | state `notElem` envelopeStates]
     hitViols = case KM.lookup "hits" o of
-        Just (Array hs) -> concatMap hitViol (toList hs)
+        Just (Array hs) -> concatMap hitViol hs
         Just _ -> ["hits is not an array"]
         Nothing -> []
 envelopeViolations _ = ["envelope is not an object"]
@@ -210,7 +210,7 @@ hitViol _ = ["hit is not an object"]
 
 stringViols :: Value -> [Text]
 stringViols (Object o) = concatMap stringViols (KM.elems o)
-stringViols (Array a) = concatMap stringViols (toList a)
+stringViols (Array a) = concatMap stringViols a
 stringViols (String s) =
     [ "serialisation inside a string: " <> T.take 40 s
     | embeddedSerialisation s

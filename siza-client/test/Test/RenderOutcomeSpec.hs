@@ -48,7 +48,8 @@ diagnosticOutcome =
 
 couldNotRunOutcome :: Value
 couldNotRunOutcome =
-    object ["verdict" .= ("could-not-run" :: Text), "outcome" .= ("unavailable" :: Text)]
+    object
+        ["verdict" .= ("could-not-run" :: Text), "outcome" .= ("unavailable" :: Text)]
 
 infraOutcome :: Value
 infraOutcome = object ["verdict" .= ("no-verdict-infra" :: Text)]

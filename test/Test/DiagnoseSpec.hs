@@ -12,6 +12,7 @@ import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (
     Guidance (..),
     ambiguousOccurrence,
+    ambiguousOccurrences,
     cellResultWithExtraGuidance,
     cellResultWithGuidance,
     couldNotFindModule,
@@ -121,6 +122,46 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
                 `shouldBe` Nothing
         it "is Nothing for an unrelated error" $
             ambiguousOccurrence "Couldn't match Int with Bool" `shouldBe` Nothing
+
+    describe "ambiguousOccurrences (every clash, not just the first)" $ do
+        let dataFrameClash =
+                T.unlines
+                    [ "<interactive>:211:164: error: [GHC-87543]"
+                    , "    Ambiguous occurrence \8216null\8217."
+                    , "    It could refer to"
+                    , "       either \8216DataFrame.null\8217,"
+                    , "              imported from \8216DataFrame\8217"
+                    , "              (and originally defined in \8216dataframe-core-2.1.0.0:DataFrame.Internal.DataFrame\8217),"
+                    , "           or \8216Prelude.null\8217,"
+                    , "              imported from \8216Prelude\8217"
+                    , "              (and originally defined in \8216ghc-internal-9.1202.0:GHC.Internal.Data.Foldable\8217)."
+                    , ""
+                    , "<interactive>:222:16: error: [GHC-87543]"
+                    , "    Ambiguous occurrence \8216filter\8217."
+                    , "    It could refer to"
+                    , "       either \8216DataFrame.filter\8217,"
+                    , "              imported from \8216DataFrame\8217"
+                    , "              (and originally defined in \8216DataFrame.Operations.Subset\8217),"
+                    , "           or \8216Prelude.filter\8217,"
+                    , "              imported from \8216Prelude\8217"
+                    , "              (and originally defined in \8216ghc-internal-9.1202.0:GHC.Internal.List\8217)."
+                    ]
+        it "reads both clashes, not just the first" $
+            map fst (ambiguousOccurrences dataFrameClash) `shouldBe` ["null", "filter"]
+
+        it "keeps each clash's candidates scoped to its own block" $
+            ambiguousOccurrences dataFrameClash
+                `shouldBe` [ ("null", ["DataFrame.null", "Prelude.null"])
+                           , ("filter", ["DataFrame.filter", "Prelude.filter"])
+                           ]
+
+        it
+            "the singular reader is the first of the plural, unchanged for existing callers"
+            $ ambiguousOccurrence dataFrameClash
+                `shouldBe` Just ("null", ["DataFrame.null", "Prelude.null"])
+
+        it "is empty for an unrelated error" $
+            ambiguousOccurrences "Couldn't match Int with Bool" `shouldBe` []
 
     describe "ambiguousCandidates (span-safe qualification)" $ do
         let ambigMsg =
