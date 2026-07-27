@@ -7,7 +7,7 @@ module Sabela.AI.Capabilities.Edit.GateRepair (
     proofCap,
 ) where
 
-import Data.List (nub)
+import Data.List (nub, foldl')
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text)
