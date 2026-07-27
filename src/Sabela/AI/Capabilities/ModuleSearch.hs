@@ -23,15 +23,13 @@ import Sabela.AI.Capabilities.ModuleCard (
  )
 import Sabela.AI.Capabilities.Resolve (lookupByName)
 import Sabela.AI.Capabilities.Util (fieldText)
-import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.Capability (
     Capability (..),
-    Hit (..),
-    Match (..),
     defaultSynonyms,
     parseCapabilities,
     searchCapabilities,
  )
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
 import Sabela.Model (Cell (..), Notebook (..))

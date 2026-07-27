@@ -235,6 +235,7 @@ test-suite siza-client-test
                       Test.SchemaRecoverySpec
                       Test.InstallAffordanceSpec
                       Test.GrammarCardSpec
+                      Test.RenderOutcomeSpec
                       Test.LeverSurfaceSpec
                       Test.VerdictSurfaceSpec
                       Test.EmitLedgerSpec

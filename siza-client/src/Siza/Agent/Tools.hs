@@ -21,6 +21,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
+import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Siza.Agent.Ack (reconcileWrite)
 import Siza.Agent.Discover.Request (requestProperties, requestRequired)
 import Siza.Agent.DiscoverTool (
@@ -213,7 +214,17 @@ withInsertDefaults v = v
 renderOutcome :: Either Text ToolOutcome -> Text
 renderOutcome (Left e) = "transport error: " <> e
 renderOutcome (Right (ToolOk v)) = trunc (enc (distillOutcome v))
-renderOutcome (Right (ToolErr v)) = "TOOL ERROR: " <> trunc (enc (distillOutcome v))
+renderOutcome (Right (ToolErr v)) = errLabel v <> ": " <> trunc (enc (distillOutcome v))
+
+errLabel :: Value -> Text
+errLabel (Object o)
+    | Just (String t) <- KM.lookup "verdict" o
+    , t == verdictTag VerdictDiagnostic =
+        "CODE ISSUE"
+    | Just (String t) <- KM.lookup "verdict" o
+    , t == verdictTag VerdictCouldNotRun =
+        "NOT RUN"
+errLabel _ = "TOOL ERROR"
 
 enc :: Value -> Text
 enc = TE.decodeUtf8 . LBS.toStrict . encode

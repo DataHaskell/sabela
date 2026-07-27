@@ -175,7 +175,8 @@ packageCardSpec = describe "an installed-but-hidden package is not absent" $ do
     it "names the package the store has" $
         fmap (str "package") (cardFor "granite") `shouldBe` Just (Just "granite")
     it "reports hidden-package, which is the state the classifier reads" $
-        fmap (str "status") (cardFor "granite") `shouldBe` Just (Just "installed-not-loaded")
+        fmap (str "status") (cardFor "granite")
+            `shouldBe` Just (Just "installed-not-loaded")
     it "carries the cabal line that exposes it" $
         fmap (str "cabal") (cardFor "granite")
             `shouldBe` Just (Just "-- cabal: build-depends: granite")

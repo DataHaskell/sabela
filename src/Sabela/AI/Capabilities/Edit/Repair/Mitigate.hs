@@ -25,7 +25,6 @@ import Sabela.AI.Capabilities.Util (featureEnabled)
 import Sabela.AI.DepRepair (addBuildDepend)
 import Sabela.AI.ExtRepair (addExtension, extFromResult)
 import Sabela.AI.Health (scopeSubject)
-import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.HoleRepair (
     goalFromError,
     orderBySimilarity,
@@ -33,6 +32,7 @@ import Sabela.AI.HoleRepair (
     suggestedNames,
  )
 import Sabela.AI.ImportRepair (unboundAliasUses)
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (ambiguousOccurrence, hiddenPackage, notInScopeName)

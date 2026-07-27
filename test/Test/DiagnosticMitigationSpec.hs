@@ -133,7 +133,9 @@ spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
                 `shouldBe` Just "installed-not-loaded"
 
         it "serves the fix as an artifact and NEVER applies it" $
-            fmap mitDischarge (find ((== "installed-not-loaded") . mitClass) mitigationTable)
+            fmap
+                mitDischarge
+                (find ((== "installed-not-loaded") . mitClass) mitigationTable)
                 `shouldBe` Just ServeAsArtifact
 
         it "detects GHC's hidden-package wording, and nothing else" $ do

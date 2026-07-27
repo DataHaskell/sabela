@@ -71,6 +71,7 @@ import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
 import Test.RedStreakSpec (redStreakSpec)
 import Test.ReenterContrastSpec (reenterAlarmSpec, reenterContrastSpec)
 import Test.RenderContractSpec (renderContractSpec)
+import Test.RenderOutcomeSpec (renderOutcomeSpec)
 import Test.RepairCascadeSpec (repairCascadeSpec)
 import Test.RepairDispatchSpec (repairDispatchSpec)
 import Test.RepairGridSpec (repairGridSpec)
@@ -110,6 +111,7 @@ main = hspec $ do
     toolTimeoutSpec
     transportFailureSpec
     futilitySpec
+    renderOutcomeSpec
     hubTokenSpec
     loginSpec
     mcpSpec

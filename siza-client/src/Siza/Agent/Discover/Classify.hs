@@ -101,8 +101,9 @@ cardAnswer :: Interpreted -> Text -> Value -> SourceAnswer
 cardAnswer interp st v0 = case (st, scrubCardUnits v0) of
     ("ok", v@(Object _)) ->
         (okAnswer "session" (exportHits interp v)){saCard = Just v}
-    (s, v@(Object o)) | s == diagClassText ClassHiddenPackage ->
-        (okAnswer "session" (hiddenHit o)){saCard = Just v}
+    (s, v@(Object o))
+        | s == diagClassText ClassHiddenPackage ->
+            (okAnswer "session" (hiddenHit o)){saCard = Just v}
     ("not-found", Object o) ->
         (okAnswer "session" (suggestHits o))
             { saNote = "module not found; did-you-mean listed"
@@ -177,8 +178,8 @@ capabilityAnswer _ Nothing =
     unavailableAnswer "hoogle" "hoogle/capability channel unreachable"
 capabilityAnswer interp (Just (Object o))
     | Just (Array hs) <- KM.lookup "hits" o =
-        (okAnswer "hoogle" (concatMap (bucketHits interp) (toList hs)))
-            { saPkgModules = concatMap bucketModules (toList hs)
+        (okAnswer "hoogle" (concatMap (bucketHits interp) hs))
+            { saPkgModules = concatMap bucketModules hs
             }
 capabilityAnswer _ (Just _) = okAnswer "hoogle" []
 
@@ -270,7 +271,7 @@ notebookAnswer :: Interpreted -> Maybe Value -> SourceAnswer
 notebookAnswer _ Nothing = okAnswer "notebook" []
 notebookAnswer interp (Just (Object o))
     | Just (Array ms) <- KM.lookup "matches" o =
-        okAnswer "notebook" (concatMap (cellHit interp) (toList ms))
+        okAnswer "notebook" (concatMap (cellHit interp) ms)
 notebookAnswer _ (Just _) = okAnswer "notebook" []
 
 cellHit :: Interpreted -> Value -> [DHit]
