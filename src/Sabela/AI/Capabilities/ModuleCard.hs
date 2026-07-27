@@ -14,6 +14,7 @@ module Sabela.AI.Capabilities.ModuleCard (
     matchesOutcomeWithDocs,
     importLineFor,
     docSynopsis,
+    hitJSON,
 ) where
 
 import Control.Exception (SomeException, try)
@@ -254,7 +255,11 @@ hitJSON doc h =
           ]
             <> ["doc" .= doc | not (T.null doc)]
             <> ["import" .= imp | Just imp <- [importLineFor (hitCap h)]]
+            <> ["field" .= recordUpdateSyntax (hitCap h) ty | Just ty <- [capField (hitCap h)]]
         )
+
+recordUpdateSyntax :: Capability -> Text -> Text
+recordUpdateSyntax c ty = ty <> " { " <> capName c <> " = ... }"
 
 importLineFor :: Capability -> Maybe Text
 importLineFor c

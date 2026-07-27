@@ -26,6 +26,7 @@ data Capability = Capability
     { capModule :: Text
     , capName :: Text
     , capType :: Text
+    , capField :: Maybe Text
     }
     deriving (Eq, Show)
 
@@ -150,7 +151,7 @@ parseCapabilities :: Text -> Text -> [Capability]
 parseCapabilities modName raw =
     concat
         [ case valueBinding ent of
-            Just (nm, ty) -> [Capability modName (unqualify nm) (cleanType ty)]
+            Just (nm, ty) -> [Capability modName (unqualify nm) (cleanType ty) Nothing]
             Nothing ->
                 typeDeclaration modName ent
                     ++ recordSelectors modName ent
@@ -160,7 +161,7 @@ parseCapabilities modName raw =
 
 typeDeclaration :: Text -> Text -> [Capability]
 typeDeclaration modName ent =
-    [ Capability modName (unqualify nm) (cleanType head_)
+    [ Capability modName (unqualify nm) (cleanType head_) Nothing
     | Just kw <- [keywordOf ent]
     , let head_ = declHead kw
           nm = T.takeWhile (\c -> c /= ' ' && c /= ':') head_
@@ -191,7 +192,7 @@ classMethods modName line
     | "class " `T.isPrefixOf` line
     , (_, afterWhere) <- T.breakOn " where " line
     , not (T.null afterWhere) =
-        [ Capability modName (unqualify nm) (ctx <> cleanType ty)
+        [ Capability modName (unqualify nm) (ctx <> cleanType ty) Nothing
         | (nm, ty) <- methodSigs (T.drop 7 afterWhere)
         ]
     | otherwise = []
@@ -220,6 +221,7 @@ recordSelectors modName line
             modName
             (unqualify (T.strip nm))
             (tyName <> " -> " <> cleanType (T.strip ty))
+            (Just tyName)
         | grp <- groupFields (T.splitOn ", " braces)
         , let (nm, rest) = T.breakOn " :: " grp
         , not (T.null rest)

@@ -159,6 +159,7 @@ matchHit interp m =
         , dhInstall = InstInstalled
         , dhOrigin = "session"
         , dhKind = kind
+        , dhUse = maybeTextAt "field" m
         }
   where
     n = textAt' "name" m
@@ -266,6 +267,12 @@ textAt k o = case KM.lookup k o of
 textAt' :: K.Key -> Value -> Text
 textAt' k (Object o) = textAt k o
 textAt' _ _ = ""
+
+maybeTextAt :: K.Key -> Value -> Maybe Text
+maybeTextAt k (Object o) = case KM.lookup k o of
+    Just (String s) -> Just s
+    _ -> Nothing
+maybeTextAt _ _ = Nothing
 
 notebookAnswer :: Interpreted -> Maybe Value -> SourceAnswer
 notebookAnswer _ Nothing = okAnswer "notebook" []

@@ -81,12 +81,13 @@ rankExports mQuery ls = map snd (sortOn key (zip [0 :: Int ..] ls))
         _ -> 0
     asCap l
         | isTypeLevel l = case T.words l of
-            (_ : n : _) -> Capability "" (unqualify n) (T.unwords (drop 2 (T.words l)))
-            _ -> Capability "" "" l
+            (_ : n : _) ->
+                Capability "" (unqualify n) (T.unwords (drop 2 (T.words l))) Nothing
+            _ -> Capability "" "" l Nothing
         | (n, rest) <- T.breakOn " :: " l
         , not (T.null rest) =
-            Capability "" (unqualify (T.strip n)) (T.drop 4 rest)
-        | otherwise = Capability "" "" l
+            Capability "" (unqualify (T.strip n)) (T.drop 4 rest) Nothing
+        | otherwise = Capability "" "" l Nothing
     band l
         | "_" `T.isPrefixOf` l = 2 :: Int
         | isTypeLevel l = 1

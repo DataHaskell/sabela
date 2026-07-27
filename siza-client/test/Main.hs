@@ -68,6 +68,7 @@ import Test.OutcomeDistillSpec (outcomeDistillSpec)
 import Test.PostNudgeGateSpec (postNudgeGateSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
+import Test.RecordFieldUseSpec (recordFieldUseSpec)
 import Test.RedStreakSpec (redStreakSpec)
 import Test.ReenterContrastSpec (reenterAlarmSpec, reenterContrastSpec)
 import Test.RenderContractSpec (renderContractSpec)
@@ -113,6 +114,7 @@ main = hspec $ do
     transportFailureSpec
     futilitySpec
     renderOutcomeSpec
+    recordFieldUseSpec
     systemPromptSpec
     hubTokenSpec
     loginSpec

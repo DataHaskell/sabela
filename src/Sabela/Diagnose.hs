@@ -226,16 +226,18 @@ arisingFromName l
 
 ambiguousOccurrences :: Text -> [(Text, [Text])]
 ambiguousOccurrences err =
-    [(name, cands) |
-       seg <- drop 1 (T.splitOn "Ambiguous occurrence" err),
-       let cands
-             = [q |
-                  l <- takeWhile (not . startsNextDiagnostic) (T.lines seg),
-                  isCandidateLine l,
-                  Just q <- [quotedToken l],
-                  "." `T.isInfixOf` q],
-       not (null cands),
-       Just name <- [quotedToken (T.takeWhile (/= '\n') seg)]]
+    [ (name, cands)
+    | seg <- drop 1 (T.splitOn "Ambiguous occurrence" err)
+    , let cands =
+            [ q
+            | l <- takeWhile (not . startsNextDiagnostic) (T.lines seg)
+            , isCandidateLine l
+            , Just q <- [quotedToken l]
+            , "." `T.isInfixOf` q
+            ]
+    , not (null cands)
+    , Just name <- [quotedToken (T.takeWhile (/= '\n') seg)]
+    ]
   where
     isCandidateLine l =
         let s = T.stripStart l

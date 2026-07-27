@@ -8,9 +8,9 @@ import Test.Hspec
 
 caps :: [Capability]
 caps =
-    [ Capability "DataFrame" "readCsv" "FilePath -> IO DataFrame"
-    , Capability "DataFrame" "columnAsList" "Text -> DataFrame -> [a]"
-    , Capability "Other.Mod" "readCsv" "X -> Y"
+    [ Capability "DataFrame" "readCsv" "FilePath -> IO DataFrame" Nothing
+    , Capability "DataFrame" "columnAsList" "Text -> DataFrame -> [a]" Nothing
+    , Capability "Other.Mod" "readCsv" "X -> Y" Nothing
     ]
 
 spec :: Spec
@@ -28,9 +28,10 @@ spec = describe "Sabela.AI.Capabilities.Resolve" $ do
 
     describe "resolutionImport" $ do
         it "builds the import line and resolves the package via the curated table" $
-            resolutionImport (Capability "DataFrame" "readCsv" "FilePath -> IO DataFrame")
+            resolutionImport
+                (Capability "DataFrame" "readCsv" "FilePath -> IO DataFrame" Nothing)
                 `shouldBe` ("import DataFrame", Just "dataframe")
 
         it "yields no package for an uncurated module (dep fixer backstops at runtime)" $
-            resolutionImport (Capability "Some.Random.Mod" "foo" "X")
+            resolutionImport (Capability "Some.Random.Mod" "foo" "X" Nothing)
                 `shouldBe` ("import Some.Random.Mod", Nothing)

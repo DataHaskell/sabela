@@ -16,36 +16,39 @@ import Sabela.AI.Capability (
  )
 import Test.Hspec
 
+cap :: Text -> Text -> Text -> Capability
+cap m n t = Capability m n t Nothing
+
 idx :: [Capability]
 idx =
-    [ Capability
+    [ cap
         "Sabela.Notebook.Anim"
         "animate"
         "Double -> (Double -> Picture) -> IO ()"
-    , Capability
+    , cap
         "Sabela.Notebook.Anim"
         "animateB"
         "Double -> Behavior Picture -> IO ()"
-    , Capability
+    , cap
         "DataFrame.LinearModel.Logistic"
         "defaultLogisticConfig"
         "LogisticConfig"
-    , Capability
+    , cap
         "DataFrame.LinearModel.Regression"
         "defaultLinearConfig"
         "LinearConfig"
-    , Capability "DataFrame.Model" "fit" "cfg -> Expr Double -> DataFrame -> model"
-    , Capability
+    , cap "DataFrame.Model" "fit" "cfg -> Expr Double -> DataFrame -> model"
+    , cap
         "DataFrame.Operations.Statistics"
         "summarize"
         "DataFrame -> DataFrame"
-    , Capability
+    , cap
         "Granite.Svg"
         "lineGraph"
         "[(Text, [(Double, Double)])] -> Plot -> Text"
-    , Capability "Granite.Svg" "bars" "[(Text, Double)] -> Plot -> Text"
-    , Capability "Sabela.Notebook" "group" "[Picture] -> Picture"
-    , Capability "Sabela.Notebook" "displayPicture" "Picture -> IO ()"
+    , cap "Granite.Svg" "bars" "[(Text, Double)] -> Plot -> Text"
+    , cap "Sabela.Notebook" "group" "[Picture] -> Picture"
+    , cap "Sabela.Notebook" "displayPicture" "Picture -> IO ()"
     ]
 
 top :: Text -> Maybe (Text, Text)
@@ -64,8 +67,8 @@ spec =
 
 relevanceSpec :: Spec
 relevanceSpec = describe "one relevance scale for search and cards" $ do
-    let summarize = Capability "DataFrame" "summarize" "DataFrame -> DataFrame"
-        columns = Capability "DataFrame" "columns" "DataFrame -> Vector Column"
+    let summarize = cap "DataFrame" "summarize" "DataFrame -> DataFrame"
+        columns = cap "DataFrame" "columns" "DataFrame -> Vector Column"
         score = relevanceScore defaultSynonyms
     it "a near-spelling query outranks an unrelated export" $
         score "summary" summarize `shouldSatisfy` (> score "summary" columns)
@@ -117,9 +120,9 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
 
     describe "context economy — focused hits, not walls" $ do
         let wallIdx =
-                Capability "Synth.Osc" "osc" "Wave a => Text -> Gen a"
-                    : Capability "Synth.Patch.Deep.Internal.Wire" "oscillator" "Patch -> Int"
-                    : [ Capability
+                cap "Synth.Osc" "osc" "Wave a => Text -> Gen a"
+                    : cap "Synth.Patch.Deep.Internal.Wire" "oscillator" "Patch -> Int"
+                    : [ cap
                             "Synth.Codec.Midi.Internal.Frame"
                             ("evt_osc_internal_" <> T.pack (show i))
                             "MidiEvent -> Int"
@@ -145,16 +148,16 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
             length hits `shouldSatisfy` (<= 8)
         it "ties prefer the SHORTER module path (public API over internals)" $ do
             let idx2 =
-                    [ Capability "Geo.Shape.Internal.Mesh.Raw" "areaOf" "Mesh -> Double"
-                    , Capability "Geo" "area" "Shape -> Double"
+                    [ cap "Geo.Shape.Internal.Mesh.Raw" "areaOf" "Mesh -> Double"
+                    , cap "Geo" "area" "Shape -> Double"
                     ]
                 hits = searchCapabilities defaultSynonyms idx2 "area"
             (capModule . hitCap <$> take 1 hits) `shouldBe` ["Geo"]
 
     describe "synonyms match whole tokens, never substrings" $ do
         let idx =
-                [ Capability "Sound.Fx" "reverb" "Time -> Audio -> Audio"
-                , Capability "Mail.Send" "sendMail" "Message -> IO ()"
+                [ cap "Sound.Fx" "reverb" "Time -> Audio -> Audio"
+                , cap "Mail.Send" "sendMail" "Message -> IO ()"
                 ]
             syns = [("email", ["sendmail"]), ("verb", ["sendmail"])]
         it "a substring of a query word does not trigger the synonym tier" $
@@ -204,6 +207,16 @@ searchSpec = describe "Sabela.AI.Capability.searchCapabilities" $ do
             lookup "pairs" [(capName c, capType c) | c <- recCaps]
                 `shouldBe` Just "Cfg -> [(Int, Int)]"
 
+        it "names the record a field belongs to, unlike an ordinary function" $ do
+            let recCaps =
+                    parseCapabilities
+                        "M"
+                        "data M.Cfg = M.Cfg {M.pairs :: [(Int, Int)], M.n :: Int}"
+            lookup "pairs" [(capName c, capField c) | c <- recCaps]
+                `shouldBe` Just (Just "Cfg")
+            lookup "animate" [(capName c, capField c) | c <- idx]
+                `shouldBe` Just Nothing
+
         it "extracts a class method as a capability (the polymorphic verb)" $ do
             let cs =
                     parseCapabilities
@@ -249,15 +262,15 @@ unqualifySpec :: Spec
 unqualifySpec = describe "browse names unqualify structurally" $ do
     it "a qualified operator keeps its whole name" $
         parseCapabilities "M" "(DataFrame..&&.) :: Expr Bool -> Expr Bool -> Expr Bool"
-            `shouldBe` [Capability "M" "(.&&.)" "Expr Bool -> Expr Bool -> Expr Bool"]
+            `shouldBe` [cap "M" "(.&&.)" "Expr Bool -> Expr Bool -> Expr Bool"]
     it "a unit-prefixed re-export drops the unit and the qualifier" $
         parseCapabilities
             "M"
             "dataframe-core-2.1.0.0:DataFrame.Internal.DataFrame.columns :: DataFrame -> Vector Column"
-            `shouldBe` [Capability "M" "columns" "DataFrame -> Vector Column"]
+            `shouldBe` [cap "M" "columns" "DataFrame -> Vector Column"]
     it "a plain qualified name still unqualifies" $
         parseCapabilities "M" "DataFrame.readCsv :: FilePath -> IO DataFrame"
-            `shouldBe` [Capability "M" "readCsv" "FilePath -> IO DataFrame"]
+            `shouldBe` [cap "M" "readCsv" "FilePath -> IO DataFrame"]
 
 typeIndexSpec :: Spec
 typeIndexSpec = describe "a type declaration is indexed like any other name" $ do
@@ -295,13 +308,13 @@ importLineSpec :: Spec
 importLineSpec = describe "a hit carries the import that uses it" $ do
     let impOf = importLineFor
     it "a type imports scoped to itself" $
-        impOf (Capability "Control.Concurrent.STM" "TBQueue" "TBQueue a")
+        impOf (cap "Control.Concurrent.STM" "TBQueue" "TBQueue a")
             `shouldBe` Just "import Control.Concurrent.STM (TBQueue)"
     it "a value imports the same way" $
-        impOf (Capability "Control.Monad.STM" "atomically" "STM a -> IO a")
+        impOf (cap "Control.Monad.STM" "atomically" "STM a -> IO a")
             `shouldBe` Just "import Control.Monad.STM (atomically)"
     it "an operator is wrapped in parens" $
-        impOf (Capability "Data.Csv" "!" "Record -> Int -> Parser a")
+        impOf (cap "Data.Csv" "!" "Record -> Int -> Parser a")
             `shouldBe` Just "import Data.Csv ((!))"
     it "a hit with no module carries no import" $
-        impOf (Capability "" "orphan" "Int") `shouldBe` Nothing
+        impOf (cap "" "orphan" "Int") `shouldBe` Nothing

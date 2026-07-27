@@ -59,6 +59,7 @@ import qualified Test.ProviderSelectSpec as ProviderSelectSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.QueryDistillSpec as QueryDistillSpec
 import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
+import qualified Test.RecordFieldDiscoverySpec as RecordFieldDiscoverySpec
 import qualified Test.RenderSpec as RenderSpec
 import qualified Test.ReplProjectSpec as ReplProjectSpec
 import qualified Test.ResolveSpec as ResolveSpec
@@ -95,6 +96,7 @@ allSpecsB = do
     PackageIndexSpec.spec
     PathRepairSpec.spec
     GateRepairSpec.spec
+    RecordFieldDiscoverySpec.spec
     HintsSpec.spec
     StderrFailureSpec.spec
     PeekDataSpec.spec
