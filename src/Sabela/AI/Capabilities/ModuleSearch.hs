@@ -23,6 +23,7 @@ import Sabela.AI.Capabilities.ModuleCard (
  )
 import Sabela.AI.Capabilities.Resolve (lookupByName)
 import Sabela.AI.Capabilities.Util (fieldText)
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.Capability (
     Capability (..),
     Hit (..),
@@ -144,7 +145,7 @@ missOutcome modName q =
 
 usableCard :: Value -> Bool
 usableCard (Object o) = case KM.lookup "status" o of
-    Just (String st) -> st `notElem` ["error", "hidden-package"]
+    Just (String st) -> st `notElem` ["error", diagClassText ClassHiddenPackage]
     _ -> False
 usableCard _ = False
 

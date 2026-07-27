@@ -72,7 +72,7 @@ refusedSource :: ToolCall -> ToolOutcome -> Maybe Text
 refusedSource tc out
     | not (isOwningTool (tcName tc)) = Nothing
     | ToolErr (Object o) <- out
-    , Just (String _) <- KM.lookup "refusal" o =
+    , Just (String _) <- KM.lookup "notCommitted" o =
         case toolCallSource tc of
             src | not (T.null (T.strip src)) -> Just src
             _ -> Nothing

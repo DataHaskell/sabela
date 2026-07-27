@@ -58,7 +58,7 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                             Just (MaterializeFailure StageCandidateSetup Nothing "parse error on input")
                         }
                 v = rejectionJson Nothing "broken = " DisposableCompileError result
-            textField "refusal" v `shouldBe` Just "compile-gate"
+            textField "notCommitted" v `shouldBe` Just "compile-gate"
             field "cellId" v `shouldBe` Nothing
             textField "verdict" v `shouldBe` Just "diagnostic"
             textField "stage" v `shouldBe` Just "candidate_setup"

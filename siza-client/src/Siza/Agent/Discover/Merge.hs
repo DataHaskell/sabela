@@ -13,6 +13,7 @@ import Data.Maybe (catMaybes, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Siza.Agent.Discover.Guidance (actionNext, cabalLine, missNext)
 import Siza.Agent.Discover.Interpret (stripVersion)
 import Siza.Agent.Discover.Rank (
@@ -166,7 +167,8 @@ mergedHitsRecent recentPkgs env interp answers hk =
                 ++ [ p
                    | a <- answers
                    , Just (Object o) <- [saCard a]
-                   , Just (String "hidden-package") <- [KM.lookup "status" o]
+                   , Just (String s) <- [KM.lookup "status" o]
+                   , s == diagClassText ClassHiddenPackage
                    , Just (String p) <- [KM.lookup "package" o]
                    ]
     sessionMods =

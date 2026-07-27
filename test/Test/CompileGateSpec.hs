@@ -166,7 +166,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
                 let brokenSrc = "import Data.Maybe (fromJust)\nbroken = 1 +"
                 ack <- insertSrc app store rn brokenSrc
 
-                textField "refusal" ack `shouldBe` Just "compile-gate"
+                textField "notCommitted" ack `shouldBe` Just "compile-gate"
                 textField "verdict" ack `shouldBe` Just "diagnostic"
                 textField "diagnostic" ack `shouldSatisfy` maybe False (/= "")
                 textField "source" ack `shouldBe` Just brokenSrc
@@ -183,7 +183,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
         withFixture "sabela-compilegate-signature" $ \(app, store, rn) -> do
             countBefore <- cellCount app
             ack <- insertSrc app store rn "sabelaSigned :: Int\nsabelaSigned = 21 * 2"
-            field "refusal" ack `shouldBe` Nothing
+            field "notCommitted" ack `shouldBe` Nothing
             textField "diagnostic" ack `shouldBe` Nothing
             field "cellId" ack `shouldSatisfy` (/= Nothing)
             cellCount app `shouldReturn` (countBefore + 1)
@@ -198,7 +198,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
                 ack <- insertSrc app store rn "sabelaOk = (21 :: Int) * 2"
 
                 field "error" ack `shouldBe` Nothing
-                field "refusal" ack `shouldBe` Nothing
+                field "notCommitted" ack `shouldBe` Nothing
                 field "cellId" ack `shouldSatisfy` (/= Nothing)
                 countAfter <- cellCount app
                 countAfter `shouldBe` countBefore + 1
@@ -219,7 +219,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
                         \import qualified Data.Map.Strict as M\n\
                         \broken = M.notARealFunctionAnywhere"
 
-                textField "refusal" ack `shouldBe` Just "compile-gate"
+                textField "notCommitted" ack `shouldBe` Just "compile-gate"
                 textField "verdict" ack `shouldBe` Just "diagnostic"
 
                 depsAfter <- getHaskellDeps (appDeps app)
@@ -243,7 +243,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
                             rn
                             "-- cabal: build-depends: split\n1 + (1 :: Int)"
 
-                    textField "refusal" ack `shouldBe` Just "compile-gate"
+                    textField "notCommitted" ack `shouldBe` Just "compile-gate"
                     textField "verdict" ack `shouldBe` Just "no-verdict-infra"
                     countAfter <- cellCount app
                     countAfter `shouldBe` countBefore
@@ -265,7 +265,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
                         rn
                         "import Sabela.Notebook\nline (_ :: Point) (_ :: Point)"
 
-                textField "refusal" probeAck `shouldBe` Just "compile-gate"
+                textField "notCommitted" probeAck `shouldBe` Just "compile-gate"
                 textField "verdict" probeAck `shouldBe` Just "diagnostic"
                 textField "diagnostic" probeAck `shouldSatisfy` maybe False (/= "")
 
@@ -306,7 +306,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
             let holed = "import Data.List (sort)\nsabelaHole = max (_ :: Int) (_ :: Int)"
             ack <- insertSrc app store rn holed
 
-            textField "refusal" ack `shouldBe` Just "compile-gate"
+            textField "notCommitted" ack `shouldBe` Just "compile-gate"
             textField "verdict" ack `shouldBe` Just "diagnostic"
             case field "holeFits" ack of
                 Just (Array fits) -> length fits `shouldSatisfy` (> 0)

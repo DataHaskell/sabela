@@ -159,7 +159,7 @@ discoverToolSpec = describe "discover tool (plumbing)" $ do
             blankPayload
                 ( object
                     [ "module" .= ("Data.Conduit" :: Text)
-                    , "status" .= ("hidden-package" :: Text)
+                    , "status" .= ("installed-not-loaded" :: Text)
                     , "package" .= ("conduit" :: Text)
                     ]
                 )

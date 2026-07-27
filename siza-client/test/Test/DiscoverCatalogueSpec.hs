@@ -83,7 +83,7 @@ discoverCatalogueSpec =
                     v <- runCat "bar plot cumulus"
                     case field "card" v of
                         Just c -> do
-                            textField "status" c `shouldBe` "hidden-package"
+                            textField "status" c `shouldBe` "installed-not-loaded"
                             textField "cabal" c
                                 `shouldBe` "-- cabal: build-depends: cumulus"
                         Nothing -> expectationFailure "no card in envelope"
@@ -93,7 +93,7 @@ discoverCatalogueSpec =
                     ToolOk v <- runDiscoverTool True graniteCall "bar chart granite"
                     case field "card" v of
                         Just c -> do
-                            textField "status" c `shouldBe` "hidden-package"
+                            textField "status" c `shouldBe` "installed-not-loaded"
                             textField "cabal" c
                                 `shouldBe` "-- cabal: build-depends: granite"
                         Nothing -> expectationFailure "no card in envelope"
@@ -126,7 +126,7 @@ graniteCall FindFunction args
         pure . Right . ToolOk $
             object
                 [ "module" .= ("Graphics.Granite" :: Text)
-                , "status" .= ("hidden-package" :: Text)
+                , "status" .= ("installed-not-loaded" :: Text)
                 , "package" .= ("granite" :: Text)
                 , "cabal" .= ("-- cabal: build-depends: granite" :: Text)
                 ]

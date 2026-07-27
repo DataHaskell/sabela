@@ -161,7 +161,7 @@ simSession sessionPkgs q mScope
             | spHidden p ->
                 object
                     [ "module" .= m
-                    , "status" .= ("hidden-package" :: Text)
+                    , "status" .= ("installed-not-loaded" :: Text)
                     , "package" .= spName p
                     , "cabal" .= ("-- cabal: build-depends: " <> spName p)
                     ]

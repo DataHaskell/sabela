@@ -153,7 +153,7 @@ usableCardSpec = describe "a card answers, or it falls through" $ do
     it "an ok listing answers" $
         usableCard (card "ok") `shouldBe` True
     it "a hidden-package card does not answer: it names the wall" $
-        usableCard (card "hidden-package") `shouldBe` False
+        usableCard (card "installed-not-loaded") `shouldBe` False
     it "an error card does not answer" $
         usableCard (card "error") `shouldBe` False
     it "a statusless value is not a card" $
@@ -175,7 +175,7 @@ packageCardSpec = describe "an installed-but-hidden package is not absent" $ do
     it "names the package the store has" $
         fmap (str "package") (cardFor "granite") `shouldBe` Just (Just "granite")
     it "reports hidden-package, which is the state the classifier reads" $
-        fmap (str "status") (cardFor "granite") `shouldBe` Just (Just "hidden-package")
+        fmap (str "status") (cardFor "granite") `shouldBe` Just (Just "installed-not-loaded")
     it "carries the cabal line that exposes it" $
         fmap (str "cabal") (cardFor "granite")
             `shouldBe` Just (Just "-- cabal: build-depends: granite")

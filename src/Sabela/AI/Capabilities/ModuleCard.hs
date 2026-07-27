@@ -27,6 +27,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.Types (ToolOutcome, okOutcome)
 import Sabela.SessionTypes (SessionBackend (..))
 import System.Exit (ExitCode (ExitSuccess))
@@ -152,7 +153,7 @@ cardFor mQuery db pkg modName asked = do
                 ( [ "module" .= modName
                   , "package" .= peName pkg
                   , "version" .= peVersion pkg
-                  , "status" .= ("hidden-package" :: Text)
+                  , "status" .= diagClassText ClassHiddenPackage
                   , "cabal" .= ("-- cabal: build-depends: " <> peName pkg)
                   ]
                     <> ["resolvedFrom" .= a | Just a <- [asked]]
@@ -329,7 +330,7 @@ packageCard p syn =
     object
         ( [ "package" .= peName p
           , "version" .= peVersion p
-          , "status" .= ("hidden-package" :: Text)
+          , "status" .= diagClassText ClassHiddenPackage
           , "cabal" .= ("-- cabal: build-depends: " <> peName p)
           , "modules" .= take packageModuleCap (peModules p)
           ]

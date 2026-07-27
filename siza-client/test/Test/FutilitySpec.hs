@@ -61,7 +61,7 @@ futilitySpec = describe "Siza.Agent.Futility (retry-futility guard)" $ do
         let gateRejection =
                 ToolErr
                     ( object
-                        [ "refusal" .= ("compile-gate" :: Text)
+                        [ "notCommitted" .= ("compile-gate" :: Text)
                         , "verdict" .= ("diagnostic" :: Text)
                         , "diagnostic"
                             .= ("<interactive>:238:1: error: [GHC-88464]" :: Text)

@@ -49,7 +49,7 @@ noteFor out
 
 deterministicRejection :: Either Text ToolOutcome -> Bool
 deterministicRejection (Right (ToolErr (Object o))) =
-    KM.member (K.fromText "refusal") o
+    KM.member (K.fromText "notCommitted") o
         || KM.lookup (K.fromText "verdict") o == Just (String "diagnostic")
         || KM.member (K.fromText "diagnostic") o
 deterministicRejection _ = False

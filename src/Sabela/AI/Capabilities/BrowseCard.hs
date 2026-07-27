@@ -21,6 +21,7 @@ import Sabela.AI.Capability (
     unqualify,
  )
 import Sabela.AI.Grammar.Synth (sanitizeTypeText)
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.Errors.Json (parseJsonInteractive)
 import Sabela.Model (CellError (..))
 
@@ -31,7 +32,7 @@ browseCardFor :: Maybe Text -> Text -> Text -> Value
 browseCardFor mQuery modName raw
     | null msgLines = listingCard mQuery modName raw
     | Just pkg <- hiddenPackage msgLines =
-        object (base "hidden-package" <> cabalPairs pkg)
+        object (base (diagClassText ClassHiddenPackage) <> cabalPairs pkg)
     | not (null suggests) =
         object
             ( base "not-found"

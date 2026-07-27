@@ -25,7 +25,7 @@ interp = Interpreted "col" "col" Nothing "name" "" []
 leakCard :: Value
 leakCard =
     object
-        [ "status" .= ("hidden-package" :: Text)
+        [ "status" .= ("installed-not-loaded" :: Text)
         , "module" .= ("DataFrame.Internal.Expression" :: Text)
         , "package" .= ("dataframe-core-2.0.0.0:internal" :: Text)
         , "cabal"
@@ -84,7 +84,7 @@ discoverUnitScrubSpec = describe "card unit-name scrub (R3.10/P6)" $ do
                     let unit = p <> "-" <> ver <> s
                         card =
                             object
-                                [ "status" .= ("hidden-package" :: Text)
+                                [ "status" .= ("installed-not-loaded" :: Text)
                                 , "module" .= ("M" :: Text)
                                 , "package" .= unit
                                 , "cabal"
@@ -96,7 +96,7 @@ discoverUnitScrubSpec = describe "card unit-name scrub (R3.10/P6)" $ do
                         w `shouldSatisfy` (not . versionQualified)
                     let plain =
                             object
-                                [ "status" .= ("hidden-package" :: Text)
+                                [ "status" .= ("installed-not-loaded" :: Text)
                                 , "package" .= p
                                 , "cabal" .= ("-- cabal: build-depends: " <> p)
                                 ]

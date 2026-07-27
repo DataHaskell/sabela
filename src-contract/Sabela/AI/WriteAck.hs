@@ -97,7 +97,7 @@ refusalAck kind mCell (Object o) =
     Object (KM.union o (KM.fromList extras))
   where
     extras =
-        (Key.fromText "refusal", String kind)
+        (Key.fromText "notCommitted", String kind)
             : [(Key.fromText "cellId", jsonInt c) | Just c <- [mCell]]
     jsonInt = Number . fromIntegral
 refusalAck _ _ v = v
@@ -144,7 +144,7 @@ parseAckEnvelope (Object o)
     | KM.lookup "busy" o == Just (Bool True)
     , Just (String "own-write") <- KM.lookup "cause" o =
         EnvBusy <$> (BusyAck <$> intF "cellId" <*> intF "elapsedMs")
-    | Just (String kind) <- KM.lookup "refusal" o =
+    | Just (String kind) <- KM.lookup "notCommitted" o =
         Just (EnvRefusal (RefusalAck kind (intF "cellId") (msgField)))
     | otherwise = do
         cid <- intF "cellId"

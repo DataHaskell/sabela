@@ -129,20 +129,20 @@ spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
 
     describe "hidden-package-text (task 1's sixth row, live_test8)" $ do
         it "is a table row, so the class is covered at all" $
-            fmap mitClass (find ((== "hidden-package") . mitClass) mitigationTable)
-                `shouldBe` Just "hidden-package"
+            fmap mitClass (find ((== "installed-not-loaded") . mitClass) mitigationTable)
+                `shouldBe` Just "installed-not-loaded"
 
         it "serves the fix as an artifact and NEVER applies it" $
-            fmap mitDischarge (find ((== "hidden-package") . mitClass) mitigationTable)
+            fmap mitDischarge (find ((== "installed-not-loaded") . mitClass) mitigationTable)
                 `shouldBe` Just ServeAsArtifact
 
         it "detects GHC's hidden-package wording, and nothing else" $ do
-            let row = find ((== "hidden-package") . mitClass) mitigationTable
+            let row = find ((== "installed-not-loaded") . mitClass) mitigationTable
             fmap (\r -> map (mitDetect r) liveTest8Errors) row
                 `shouldBe` Just [True, False, False]
 
         it "generates the committable source, cabal line first" $ do
-            let row = find ((== "hidden-package") . mitClass) mitigationTable
+            let row = find ((== "installed-not-loaded") . mitClass) mitigationTable
             case row of
                 Nothing -> expectationFailure "no hidden-package row"
                 Just r -> do

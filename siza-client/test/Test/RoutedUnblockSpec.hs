@@ -37,7 +37,7 @@ pendingRefusal =
                     <> " has an unresolved error, so a new cell cannot be added. \
                        \Fix it with replace_cell_source, or remove it with delete_cell."
                )
-        , "refusal" .= ("pending-error" :: Text)
+        , "notCommitted" .= ("pending-error" :: Text)
         , "cellId" .= blockedCellId
         , "pendingErrorCell" .= blockedCellId
         ]

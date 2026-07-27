@@ -25,6 +25,7 @@ import Sabela.AI.Capabilities.Util (featureEnabled)
 import Sabela.AI.DepRepair (addBuildDepend)
 import Sabela.AI.ExtRepair (addExtension, extFromResult)
 import Sabela.AI.Health (scopeSubject)
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.HoleRepair (
     goalFromError,
     orderBySimilarity,
@@ -68,7 +69,7 @@ mitigationTable =
         Apply
     , MitigationRow "fractional-int" detectFractionalInt fractionalIntGenerate Apply
     , MitigationRow
-        "hidden-package"
+        (diagClassText ClassHiddenPackage)
         detectHiddenPackage
         hiddenPackageGenerate
         ServeAsArtifact

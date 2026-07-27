@@ -50,7 +50,7 @@ data DiagClass
 
 diagClassText :: DiagClass -> Text
 diagClassText c = case c of
-    ClassHiddenPackage -> "hidden-package"
+    ClassHiddenPackage -> "installed-not-loaded"
     ClassModuleNotFound -> "module-not-found"
     ClassMissingExtension -> "missing-extension"
     ClassAmbiguous -> "ambiguous-occurrence"

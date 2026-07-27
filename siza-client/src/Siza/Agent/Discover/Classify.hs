@@ -14,6 +14,7 @@ import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Siza.Agent.Discover.Interpret (stripVersion)
 import Siza.Agent.Discover.Types (
     DHit (..),
@@ -100,7 +101,7 @@ cardAnswer :: Interpreted -> Text -> Value -> SourceAnswer
 cardAnswer interp st v0 = case (st, scrubCardUnits v0) of
     ("ok", v@(Object _)) ->
         (okAnswer "session" (exportHits interp v)){saCard = Just v}
-    ("hidden-package", v@(Object o)) ->
+    (s, v@(Object o)) | s == diagClassText ClassHiddenPackage ->
         (okAnswer "session" (hiddenHit o)){saCard = Just v}
     ("not-found", Object o) ->
         (okAnswer "session" (suggestHits o))

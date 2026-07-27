@@ -92,7 +92,7 @@ cardE q =
         , "card"
             .= object
                 [ "module" .= ("Cumulus.Plot" :: Text)
-                , "status" .= ("hidden-package" :: Text)
+                , "status" .= ("installed-not-loaded" :: Text)
                 , "exports" .= ["bars :: " <> longSig, "cols :: " <> longSig]
                 ]
         ]
@@ -234,7 +234,7 @@ protectSpec = describe "load-bearing fields are elision-exempt (R8-T1)" $ do
     it "elided-diagnostic: a repeated rejection carries its diagnostic in full" $ do
         let rejection =
                 object
-                    [ "refusal" .= ("compile-gate" :: Text)
+                    [ "notCommitted" .= ("compile-gate" :: Text)
                     , "verdict" .= ("diagnostic" :: Text)
                     , "diagnostic" .= longDiagnostic
                     , "autofix" .= longAutofix

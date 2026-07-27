@@ -59,7 +59,7 @@ cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
     describe "hidden-package diagnostics distil to one actionable card" $ do
         it "the verbatim 11x-repeated wire fixture becomes one package + cabal line" $ do
             let card = browseCard "Network.HTTP.Client" hiddenBlob
-            field "status" card `shouldBe` Just (String "hidden-package")
+            field "status" card `shouldBe` Just (String "installed-not-loaded")
             field "package" card `shouldBe` Just (String "http-client")
             field "cabal" card
                 `shouldBe` Just (String "-- cabal: build-depends: http-client")
