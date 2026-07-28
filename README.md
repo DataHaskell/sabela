@@ -126,15 +126,7 @@ before the cells that read it. Two situations are reported instead of run:
 * **Cycles.** If two cells come to depend on each other, both are reported as a
   cycle rather than looping.
 
-The analysis is scope-conservative: a name bound locally inside a `where`, a
-`let`, a lambda, or a comprehension counts as bound, so it never invents a
-dependency on another cell. It reasons about names rather than types, so it
-won't chase a link that exists only through a typeclass instance, but for
-everyday notebook code it tracks the dependencies accurately.
-
-Cells still read best from top to bottom with one definition per name, though
-you no longer have to keep the execution order right by hand. There are still
-a number of gaps in the reactivity semantics e.g. type classes definition changes
+There are still a number of gaps in the reactivity semantics e.g. type classes definition changes
 don't yet propagate bu, but the common cases are covered.
 
 ---
@@ -189,9 +181,7 @@ For dependencies you want in every notebook, put the same directives in a
 
 ### Compiled cells (`-- compile`)
 
-Cells normally run interpreted in GHCi — instant, but 10–100× slower than
-native code for tight Haskell loops. Mark a cell compiled and its
-declarations are built into a generated module at `-O2` instead:
+Unlike other notebooks, can also compile cells with heavy computations:
 
 ````markdown
 ```haskell
@@ -397,7 +387,7 @@ Then start Sabela (`cabal run`), open a notebook, and ask Claude things like
 *"what's in my notebook?"*, *"run cell 3 and tell me what it prints"*, or
 *"add a cell that plots median income against house value."* siza finds the
 running server on its own: Sabela writes `~/.local/state/sabela/servers/<port>.json`
-on startup, and the skill reads it.
+on startup so the skill can read it.
 
 On a shared or remote machine, gate the bridge with a token:
 
