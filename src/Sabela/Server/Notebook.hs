@@ -82,7 +82,7 @@ loadNotebookH app _rn (LoadRequest path) = liftIO $ do
             putStrLn $ "[sabela] load rejected (path outside workspace): " ++ path
             readNotebook (appNotebook app)
         Just absPath -> do
-            raw <- TIO.readFile absPath
+            raw <- fmap (T.replace "\r\n" "\n") (TIO.readFile absPath)
             cells <-
                 mapM
                     (segmentToCell (appNotebook app))

@@ -94,7 +94,7 @@ parseMarker l =
 
 parseMimeOutputs :: Text -> [(Text, Text)]
 parseMimeOutputs raw =
-    let ls = T.lines raw
+    let ls = map (T.dropWhileEnd (== '\r')) (T.lines raw)
         (finalMime, finalLines, acc) = foldl step ("text/plain", [], []) ls
         finalBlock = T.unlines (reverse finalLines)
         result =
