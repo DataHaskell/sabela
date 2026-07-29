@@ -7,6 +7,7 @@ module Sabela.AI.Capabilities.Try.Payload (
     planErrorPayload,
     invariantPayload,
     inputErrorPayload,
+    skippedCellHint,
     trialPlanErrorText,
 ) where
 
@@ -88,7 +89,18 @@ skippedCellValue skip =
     object
         [ "cellId" .= skippedCellId skip
         , "reason" .= skippedReason skip
+        , "hint" .= skippedCellHint (skippedCellId skip)
         ]
+
+skippedCellHint :: Int -> Text
+skippedCellHint cid =
+    "cell "
+        <> tShow cid
+        <> " was not replayed because of its own unresolved error (the reason \
+           \field), so nothing it imports or defines is in scope for your \
+           \candidate. Declare what you need in the candidate itself, or fix \
+           \that cell first. Its names being not in scope here is not a \
+           \verdict on your code."
 
 attributableCell :: MaterializeFailure -> Maybe Int
 attributableCell failure = case (failureStage failure, failureCellId failure) of

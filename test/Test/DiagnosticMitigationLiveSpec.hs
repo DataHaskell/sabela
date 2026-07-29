@@ -85,6 +85,29 @@ spec = describe "G6 seed-class mitigations (live)" $ do
                     Nothing -> expectationFailure "cell vanished"
 
     it
+        "unshowable-display: bare plot heals to displayPicture, import widened (live_gemma)"
+        $ do
+            requireLiveIntegration
+            withSystemTempDirectory "sabela-mitigate-unshowable" $ \dir -> do
+                (clean, mitigations, post) <-
+                    mitigate
+                        dir
+                        "import Sabela.Notebook (plot)\n\
+                        \\n\
+                        \-- Generate the points\n\
+                        \dataPoints = zip [0.0, 0.1] [0.0, 0.2]\n\
+                        \\n\
+                        \-- Plot the data using the Sabela.Notebook function\n\
+                        \plot dataPoints"
+                clean `shouldBe` True
+                fmap classesOf mitigations `shouldBe` Just ["unshowable-display"]
+                case post of
+                    Just s -> do
+                        s `shouldSatisfy` T.isInfixOf "displayPicture (plot dataPoints)"
+                        s `shouldSatisfy` T.isInfixOf "displayPicture)"
+                    Nothing -> expectationFailure "cell vanished"
+
+    it
         "multi-green ambiguity: nothing applied, the fact list names every compiling candidate"
         $ do
             requireLiveIntegration

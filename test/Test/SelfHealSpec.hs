@@ -37,6 +37,12 @@ gemmaErr =
         , "  `takeWhile_' (imported from Text.Megaparsec)"
         ]
 
+unshowableErr :: Text
+unshowableErr =
+    "cell 7, line 15: No instance for `Show\n\
+    \                   sabela-notebook-0.2.0.0:Sabela.Notebook.Picture.Internal.Picture'\n\
+    \  arising from a use of `print'"
+
 spec :: Spec
 spec = describe "loud + conservative self-heal (intention)" $ do
     describe "plausibleRename — decline a lexically distant substitution" $ do
@@ -66,6 +72,18 @@ spec = describe "loud + conservative self-heal (intention)" $ do
                 Just line -> do
                     line `shouldSatisfy` T.isInfixOf "`takeWhile1`"
                     line `shouldSatisfy` (not . T.isInfixOf "takeWhile1\\n")
+        it "falls through to the unshowable contrast for a Show-at-print red" $
+            case contrastLine unshowableErr of
+                Nothing -> expectationFailure "no unshowable contrast"
+                Just line -> do
+                    line `shouldSatisfy` T.isInfixOf "displayPicture"
+                    line `shouldSatisfy` T.isInfixOf "Sabela.Notebook"
+        it "stays Nothing for an unrelated runtime error" $
+            contrastLine "cell 3: divide by zero" `shouldBe` Nothing
+        it "unescapes before the unshowable contrast too" $
+            case contrastLine (T.replace "\n" "\\n" unshowableErr) of
+                Nothing -> expectationFailure "no contrast from escaped blob"
+                Just line -> line `shouldSatisfy` T.isInfixOf "displayPicture"
         it "is Nothing on a module-load cascade (the names are not phantoms)" $ do
             let cascade =
                     T.unlines

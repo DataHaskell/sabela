@@ -21,6 +21,10 @@ spec = describe "the builtins block points, it does not enumerate" $ do
         T.isInfixOf "mempty" sabelaBuiltins `shouldBe` False
         T.isInfixOf "<>" sabelaBuiltins `shouldBe` False
 
+    it "hands over the canonical wholesale import line (live_gemma2)" $ do
+        T.isInfixOf "import Sabela.Notebook" sabelaBuiltins `shouldBe` True
+        T.isInfixOf "selective" (T.toLower sabelaBuiltins) `shouldBe` True
+
     it "still says WHERE they live, so the search has a target" $ do
         T.isInfixOf "Sabela.Notebook" sabelaBuiltins `shouldBe` True
         T.isInfixOf "search" (T.toLower sabelaBuiltins) `shouldBe` True

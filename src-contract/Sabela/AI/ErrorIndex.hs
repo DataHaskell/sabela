@@ -46,6 +46,7 @@ remediationFor (GhcCode n) = case n of
     87110 -> AutoRepaired "dependency"
     35235 -> AutoRepaired "dependency"
     88464 -> ModelCandidates
+    39999 -> ModelCandidates
     83865 -> ManualFix
     59692 -> ManualFix
     40910 -> ManualFix

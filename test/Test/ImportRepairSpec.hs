@@ -7,11 +7,13 @@ import qualified Data.Text as T
 import Sabela.AI.ImportRepair (
     addQualifiedImport,
     addScopedImport,
+    dropImportList,
     importedAliasMisses,
     moduleRenameFix,
     qualifiedAliases,
     renameModule,
     unboundAliasUses,
+    widenImportList,
  )
 import Sabela.AI.Types (ExecutionResult (..))
 import Test.Hspec
@@ -73,6 +75,47 @@ spec = describe "Sabela.AI.ImportRepair" $ do
         it "inserts after the -- cabal: line when the cell has no imports" $
             addScopedImport "Conduit" "runConduit" "-- cabal: build-depends: conduit\nx = 1"
                 `shouldBe` "-- cabal: build-depends: conduit\nimport Conduit (runConduit)\nx = 1"
+
+    describe "widenImportList" $ do
+        it "adds every missing name to the existing selective import" $
+            widenImportList
+                "Sabela.Notebook"
+                ["defaultAnim", "animCanvas"]
+                "import Sabela.Notebook (plot, animateWith)\nx = 1"
+                `shouldBe` "import Sabela.Notebook (plot, animateWith, defaultAnim, animCanvas)\nx = 1"
+
+        it "skips names the list already carries" $
+            widenImportList
+                "Sabela.Notebook"
+                ["plot"]
+                "import Sabela.Notebook (plot)\nx = 1"
+                `shouldBe` "import Sabela.Notebook (plot)\nx = 1"
+
+        it "is a no-op without a selective import of that module" $ do
+            widenImportList "Sabela.Notebook" ["animate"] "import Data.List (nub)\nx = 1"
+                `shouldBe` "import Data.List (nub)\nx = 1"
+            widenImportList "Sabela.Notebook" ["animate"] "import Sabela.Notebook\nx = 1"
+                `shouldBe` "import Sabela.Notebook\nx = 1"
+
+        it "wraps an operator name in parens" $
+            widenImportList
+                "Text.Regex.TDFA"
+                ["=~"]
+                "import Text.Regex.TDFA (Regex)\nx = 1"
+                `shouldBe` "import Text.Regex.TDFA (Regex, (=~))\nx = 1"
+
+    describe "dropImportList" $ do
+        it "rewrites a selective import to the wholesale module" $
+            dropImportList
+                "Sabela.Notebook"
+                "import Sabela.Notebook (plot, Time)\nx = 1"
+                `shouldBe` "import Sabela.Notebook\nx = 1"
+
+        it "leaves other modules and wholesale imports alone" $ do
+            dropImportList "Sabela.Notebook" "import Data.List (nub)\nx = 1"
+                `shouldBe` "import Data.List (nub)\nx = 1"
+            dropImportList "Sabela.Notebook" "import Sabela.Notebook\nx = 1"
+                `shouldBe` "import Sabela.Notebook\nx = 1"
 
     describe "unboundAliasUses" $ do
         it "pairs the alias with the bare name from GHC's two-line form" $

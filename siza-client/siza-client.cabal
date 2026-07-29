@@ -52,6 +52,7 @@ library
                       Siza.Agent.Loop.Route
                       Siza.Agent.EmitLedger
                       Siza.Agent.Chat
+                      Siza.Agent.Chat.Export
                       Siza.Agent.Compact
                       Siza.Agent.Check
                       Siza.Agent.Check.Gate
@@ -161,6 +162,7 @@ test-suite siza-client-test
     main-is:          Main.hs
     other-modules:    Test.Fixtures
                       Test.AgentCheckSpec
+                      Test.ChatExportSpec
                       Test.KernelVocabClientSpec
                       Test.WriteAckClientSpec
                       Test.DiscoverToolClientSpec

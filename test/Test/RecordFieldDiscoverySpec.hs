@@ -10,7 +10,12 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Capabilities.ModuleCard (hitJSON)
-import Sabela.AI.Capability (Capability (..), Hit (..), Match (..), parseCapabilities)
+import Sabela.AI.Capability (
+    Capability (..),
+    Hit (..),
+    Match (..),
+    parseCapabilities,
+ )
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o

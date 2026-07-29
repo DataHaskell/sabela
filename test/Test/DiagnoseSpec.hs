@@ -16,6 +16,7 @@ import Sabela.Diagnose (
     cellResultWithExtraGuidance,
     cellResultWithGuidance,
     couldNotFindModule,
+    couldNotFindModules,
     diagnose,
     guidanceForCell,
     guidancePairs,
@@ -88,6 +89,23 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
                 `shouldBe` Just "Data.DataFrame"
         it "couldNotFindModule is Nothing when no module is named" $
             couldNotFindModule "Not in scope: foo" `shouldBe` Nothing
+
+        it "couldNotFindModules reads every missing module, not just the first" $
+            couldNotFindModules
+                ( T.unlines
+                    [ "<no location info>: error: [GHC-35235]"
+                    , "    Could not find module `DataFrame'."
+                    , "<no location info>: error: [GHC-35235]"
+                    , "    Could not find module `DataFrame.IO.CSV'."
+                    ]
+                )
+                `shouldBe` ["DataFrame", "DataFrame.IO.CSV"]
+
+        it
+            "the singular reader is the first of the plural, unchanged for existing callers"
+            $ couldNotFindModule
+                "Could not find module `DataFrame'.\nCould not find module `X'."
+                `shouldBe` Just "DataFrame"
 
     describe "ambiguousOccurrence (name-collision auto-fix)" $ do
         let ambigErr =
@@ -252,6 +270,29 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
                         "Couldn't match expected type \8216Int\8217 with actual type \8216[Char]\8217"
             cats g `shouldBe` ["type-mismatch"]
             msgs g `shouldSatisfy` T.isInfixOf "Int"
+
+    describe "unshowable result (the live_gemma plotting failure)" $ do
+        it "names the wrap for the package-qualified Show-at-print failure" $ do
+            let g =
+                    diagnose
+                        "No instance for `Show\n\
+                        \  sabela-notebook-0.2.0.0:Sabela.Notebook.Picture.Internal.Picture'\n\
+                        \  arising from a use of `print'"
+            cats g `shouldBe` ["unshowable-result"]
+            msgs g `shouldSatisfy` T.isInfixOf "displayPicture ("
+            msgs g `shouldSatisfy` T.isInfixOf "Sabela.Notebook"
+        it "points an unknown type at the goal-type discover query" $ do
+            let g = diagnose "No instance for `Show Wind' arising from a use of `print'"
+            cats g `shouldBe` ["unshowable-result"]
+            msgs g `shouldSatisfy` T.isInfixOf "Wind -> IO ()"
+        it "stays silent for a Show failure away from the interactive print" $
+            diagnose "No instance for `Show Foo'" `shouldBe` []
+        it "stays silent for a Fractional no-instance failure" $
+            cats
+                ( diagnose
+                    "No instance for \8216Fractional Int\8217 arising from a use of \8216/\8217"
+                )
+                `shouldNotContain` ["unshowable-result"]
 
     describe "clean output" $
         it "produces no guidance for a benign or empty message" $ do

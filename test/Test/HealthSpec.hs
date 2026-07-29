@@ -14,6 +14,7 @@ import Sabela.AI.Health (
     improvesHealthFor,
     isClean,
     normalizeMsg,
+    scopeSubject,
  )
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Model (CellError (..), bareCellError)
@@ -125,6 +126,20 @@ spec = describe "Sabela.AI.Health" $ do
                 (healthOfResult (result Nothing [nsB, latent1]))
                 (healthOfResult (result Nothing [nsB, latent2]))
                 `shouldBe` False
+
+    describe "scopeSubject — every GHC not-in-scope form yields its subject" $ do
+        it "extracts the plain variable form" $
+            scopeSubject "Variable not in scope: frobnicate :: Int"
+                `shouldBe` Just "frobnicate"
+        it "skips the type-constructor descriptor" $
+            scopeSubject "Not in scope: type constructor or class \8216Time\8217"
+                `shouldBe` Just "Time"
+        it "skips the data-constructor descriptor" $
+            scopeSubject "Not in scope: data constructor \8216Blank\8217"
+                `shouldBe` Just "Blank"
+        it "strips unicode quotes from the subject" $
+            scopeSubject "Not in scope: \8216frobnicate\8217"
+                `shouldBe` Just "frobnicate"
 
     describe "knock-on scope noise — cell-defined names are excluded" $ do
         let defined =

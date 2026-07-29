@@ -12,6 +12,7 @@ module Sabela.AI.Health (
     healthMsgsFor,
     normalizeMsg,
     scopeSubject,
+    skipScopeDescriptors,
 ) where
 
 import Data.Maybe (listToMaybe, maybeToList)
@@ -122,7 +123,22 @@ scopeSubject m = do
     if T.null post
         then Nothing
         else do
-            let rest = T.drop (T.length pre + T.length ("not in scope:" :: Text)) (normalizeMsg m)
+            let rest =
+                    skipScopeDescriptors
+                        ( T.drop
+                            (T.length pre + T.length ("not in scope:" :: Text))
+                            (normalizeMsg m)
+                        )
             w <- listToMaybe (T.words rest)
-            let name = T.dropAround (`elem` ("`'()" :: String)) w
+            let name = T.dropAround (`elem` ("`'()\8216\8217" :: String)) w
             if T.null name then Nothing else Just name
+
+skipScopeDescriptors :: Text -> Text
+skipScopeDescriptors t0 = go (T.stripStart t0)
+  where
+    go t = case [d | d <- descriptors, matches d t] of
+        (d : _) -> go (T.stripStart (T.drop (T.length d) t))
+        [] -> t
+    matches d t = T.toLower d `T.isPrefixOf` T.toLower t
+    descriptors =
+        ["type constructor or class", "data constructor", "record field"]

@@ -3,6 +3,7 @@
 module Sabela.AI.Capabilities.Query.IndexAnswer (
     IndexHit (..),
     IndexAnswer (..),
+    builtinAnswer,
     classifyIndexHit,
     fillSilence,
     renderIndexAnswer,
@@ -22,6 +23,7 @@ import qualified Data.Text as T
 import ScriptHs.Parser (CabalMeta (..))
 
 import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQuery, rankResolveTopK)
+import Sabela.AI.PromptCore (builtinNames, drawingBuiltins)
 import Sabela.Deps (collectMetadata)
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
@@ -95,12 +97,28 @@ looksNotInScope t =
 fillSilence :: App -> Text -> Text -> Text -> IO (Text, Text)
 fillSilence app expr via result
     | not (looksNotInScope result) = pure (via, result)
+    | Just b <- builtinAnswer expr = pure (viaLocalIndex, b)
     | otherwise = do
         mHit <- indexLookup expr
         available <- availablePackages app
         pure $ case classifyIndexHit available mHit of
             UnknownName srcs -> (via, result <> "\n" <> renderIndexAnswer (UnknownName srcs))
             answer -> (viaLocalIndex, renderIndexAnswer answer)
+
+builtinAnswer :: Text -> Maybe Text
+builtinAnswer expr
+    | expr `elem` drawingBuiltins =
+        Just $
+            expr
+                <> " is Sabela's built-in drawing vocabulary (module \
+                   \Sabela.Notebook, installed). Add this import:\n\
+                   \import Sabela.Notebook"
+    | expr `elem` builtinNames =
+        Just $
+            expr
+                <> " is a session-prelude builtin — in scope at session \
+                   \start; no import needed."
+    | otherwise = Nothing
 
 indexLookup :: Text -> IO (Maybe IndexHit)
 indexLookup name = do

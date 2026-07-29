@@ -17,7 +17,7 @@ import Sabela.AI.Health (DiagnosticKey (..), Health (..), normalizeMsg)
 import Sabela.AI.RepairDispatch (acceptRepair)
 import Sabela.Model (CellType (..))
 import Sabela.Parse (unparseableChunks)
-import Sabela.Parse.Normalize (looksLikeHaskellCode, normalizeCode)
+import Sabela.Parse.Normalize (definesMain, looksLikeHaskellCode, normalizeCode)
 
 parseHealth :: Text -> Health
 parseHealth src = Health (null bad) (Set.fromList (map key bad))
@@ -50,9 +50,16 @@ gatedRewrite :: Text -> (Text, [Text])
 gatedRewrite src
     | cand == src = (src, notes)
     | acceptsRewrite src cand = (cand, notes <> [currentSourceNote cand])
-    | otherwise = (src, [revertNote src cand])
+    | otherwise = (src, revertNote src cand : mainOutcomeNote src)
   where
     (cand, notes) = normalizeCode src
+
+mainOutcomeNote :: Text -> [Text]
+mainOutcomeNote src =
+    [ "The committed cell defines `main` but nothing invokes it, so running \
+      \the cell executes nothing. Write the body as a top-level `do` block."
+    | definesMain src
+    ]
 
 currentSourceNote :: Text -> Text
 currentSourceNote src' =

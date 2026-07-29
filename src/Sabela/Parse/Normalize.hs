@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.Parse.Normalize (
+    definesMain,
     looksLikeHaskellCode,
     unwrapMain,
     rewriteTopLevelLet,
@@ -23,6 +24,7 @@ import Sabela.AI.NormalizeProposals (
  )
 import Sabela.Model (CellType (..))
 import Sabela.Parse (CellSymbols (..), cellSymbols)
+import Sabela.Parse.Normalize.HoistWhere (hoistMainWhere)
 import Sabela.Parse.Preprocess (noTopLevelIn)
 
 definesMain :: Text -> Bool
@@ -42,7 +44,7 @@ definesMain = any isTopMain . T.lines
 unwrapMain :: Text -> Text
 unwrapMain src
     | not (definesMain src) = src
-    | otherwise = T.unlines (concatMap step (T.lines src))
+    | otherwise = T.unlines (concatMap step (hoistMainWhere (T.lines src)))
   where
     step l
         | isMainLine l, " :: " `T.isInfixOf` l, not ("=" `T.isInfixOf` l) = []
@@ -104,6 +106,9 @@ fixRawNewlineInString src = T.pack (outside (T.unpack src))
     outside ('-' : '-' : rest) =
         let (body, rest') = break (== '\n') rest
          in '-' : '-' : body ++ outside rest'
+    outside ('\'' : '"' : '\'' : rest) = '\'' : '"' : '\'' : outside rest
+    outside ('\'' : '\\' : '"' : '\'' : rest) =
+        '\'' : '\\' : '"' : '\'' : outside rest
     outside (c@'"' : rest) = c : inside rest
     outside (c : rest) = c : outside rest
     inside [] = []

@@ -4,7 +4,7 @@ module Test.CellShapeSpec (spec) where
 
 import qualified Data.Text as T
 import Sabela.Model (CellType (..))
-import Sabela.Parse (staleBindings, validateCellShape)
+import Sabela.Parse (staleBindings, unparseableChunks, validateCellShape)
 import Sabela.Parse.Normalize (looksLikeHaskellCode, unwrapMain)
 import Test.Hspec
 
@@ -63,6 +63,139 @@ spec = describe "Sabela.Parse.validateCellShape" $ do
             out `shouldSatisfy` (not . T.isInfixOf "main ::")
             out `shouldSatisfy` (not . T.isInfixOf "main = do")
             out `shouldSatisfy` T.isInfixOf "url ="
+
+    describe "unwrapMain (where bindings become lets above first use)" $ do
+        it "gives each independent binding its own let above its own use" $
+            unwrapMain
+                ( T.unlines
+                    [ "main = do"
+                    , "  putStrLn (greeting \"world\")"
+                    , "  print 0"
+                    , "  putStrLn farewell"
+                    , "  where"
+                    , "    greeting w = \"hi \" <> w"
+                    , "    farewell = \"bye\""
+                    ]
+                )
+                `shouldBe` T.unlines
+                    [ "do"
+                    , "  let greeting w = \"hi \" <> w"
+                    , "  putStrLn (greeting \"world\")"
+                    , "  print 0"
+                    , "  let farewell = \"bye\""
+                    , "  putStrLn farewell"
+                    ]
+
+        it "hoists a where binding to a let above its first use" $
+            unwrapMain
+                ( T.unlines
+                    [ "main :: IO ()"
+                    , "main = do"
+                    , "  putStrLn \"start\""
+                    , "  print (double 2)"
+                    , "  where"
+                    , "    double n = n * 2"
+                    ]
+                )
+                `shouldBe` T.unlines
+                    [ "do"
+                    , "  putStrLn \"start\""
+                    , "  let double n = n * 2"
+                    , "  print (double 2)"
+                    ]
+
+        it "puts the let at the top when the first statement uses it" $
+            unwrapMain
+                ( T.unlines
+                    [ "main = do"
+                    , "  print (double 2)"
+                    , "  putStrLn \"done\""
+                    , "  where"
+                    , "    double n = n * 2"
+                    ]
+                )
+                `shouldBe` T.unlines
+                    [ "do"
+                    , "  let double n = n * 2"
+                    , "  print (double 2)"
+                    , "  putStrLn \"done\""
+                    ]
+
+        it "groups bindings that reference each other into one let" $
+            unwrapMain
+                ( T.unlines
+                    [ "main = do"
+                    , "  putStrLn \"areas:\""
+                    , "  print (area 3)"
+                    , "  where"
+                    , "    area r = tau * r * r"
+                    , "    tau = 6.28"
+                    ]
+                )
+                `shouldBe` T.unlines
+                    [ "do"
+                    , "  putStrLn \"areas:\""
+                    , "  let area r = tau * r * r"
+                    , "      tau = 6.28"
+                    , "  print (area 3)"
+                    ]
+
+        it "keeps a multi-line, multi-equation binding intact and parseable" $ do
+            let out =
+                    unwrapMain
+                        ( T.unlines
+                            [ "main :: IO ()"
+                            , "main = do"
+                            , "  mapM_ printItem [0, 1]"
+                            , "  where"
+                            , "    printItem 0 = do"
+                            , "      putStrLn \"zero\""
+                            , "      pure ()"
+                            , "    printItem n = print n"
+                            ]
+                        )
+            out
+                `shouldBe` T.unlines
+                    [ "do"
+                    , "  let printItem 0 = do"
+                    , "        putStrLn \"zero\""
+                    , "        pure ()"
+                    , "      printItem n = print n"
+                    , "  mapM_ printItem [0, 1]"
+                    ]
+            unparseableChunks out `shouldBe` []
+
+        it "carries a signature with its binding" $
+            unwrapMain
+                ( T.unlines
+                    [ "main = do"
+                    , "  print (val + 1)"
+                    , "  where"
+                    , "    val :: Int"
+                    , "    val = 41"
+                    ]
+                )
+                `shouldBe` T.unlines
+                    [ "do"
+                    , "  let val :: Int"
+                    , "      val = 41"
+                    , "  print (val + 1)"
+                    ]
+
+        it "places an unused where binding at the top of the do block" $
+            unwrapMain
+                ( T.unlines
+                    [ "main = do"
+                    , "  putStrLn \"hi\""
+                    , "  where"
+                    , "    unused = 99"
+                    ]
+                )
+                `shouldBe` T.unlines
+                    [ "do"
+                    , "  let unused = 99"
+                    , "  putStrLn \"hi\""
+                    ]
 
     describe "well-formed cells pass" $ do
         it "a plain value binding in a code cell passes" $

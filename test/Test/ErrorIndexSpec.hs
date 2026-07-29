@@ -32,6 +32,8 @@ spec = describe "Sabela.AI.ErrorIndex" $ do
             remediationFor (GhcCode 87110) `shouldBe` AutoRepaired "dependency"
         it "a not-in-scope name yields model-picked candidates" $
             remediationFor (GhcCode 88464) `shouldBe` ModelCandidates
+        it "a no-instance failure yields model-picked candidates" $
+            remediationFor (GhcCode 39999) `shouldBe` ModelCandidates
         it "a type mismatch is a manual fix" $
             remediationFor (GhcCode 83865) `shouldBe` ManualFix
         it "an unseeded code defaults to manual, never a false auto-promise" $

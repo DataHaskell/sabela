@@ -33,9 +33,11 @@ import Sabela.AI.Health (
     healthMsgsFor,
     improvesHealthFor,
     isClean,
+    skipScopeDescriptors,
  )
 import Sabela.AI.Hints (extensionHints)
 import Sabela.AI.HoleRepair (afterInfixCI, arityFromError, goalFromError)
+import Sabela.AI.Unshowable (unshowableShowType)
 
 data DiagClass
     = ClassHiddenPackage
@@ -45,6 +47,7 @@ data DiagClass
     | ClassNotInScope
     | ClassArity
     | ClassRefinement
+    | ClassUnshowable
     | ClassOther
     deriving (Bounded, Enum, Eq, Ord, Show)
 
@@ -57,6 +60,7 @@ diagClassText c = case c of
     ClassNotInScope -> "not-in-scope"
     ClassArity -> "arity"
     ClassRefinement -> "refinement"
+    ClassUnshowable -> "unshowable-display"
     ClassOther -> "other"
 
 data RepairTier
@@ -69,6 +73,7 @@ data RepairTier
     | TierTypeDirected
     | TierHoleFit
     | TierArity
+    | TierRenderWrap
     deriving (Bounded, Enum, Eq, Ord, Show)
 
 tierText :: RepairTier -> Text
@@ -82,6 +87,7 @@ tierText t = case t of
     TierTypeDirected -> "type-directed"
     TierHoleFit -> "hole-fit"
     TierArity -> "arity"
+    TierRenderWrap -> "render-wrap"
 
 classifyDiag :: Text -> DiagClass
 classifyDiag t
@@ -91,6 +97,7 @@ classifyDiag t
     | has "perhaps you intended to use" = ClassMissingExtension
     | has "ambiguous occurrence" = ClassAmbiguous
     | has "not in scope" = ClassNotInScope
+    | isJust (unshowableShowType t) = ClassUnshowable
     | isJust (arityFromError t) = ClassArity
     | has "found hole" = ClassRefinement
     | otherwise = ClassOther
@@ -108,6 +115,7 @@ tiersFor c = case c of
         [TierNameResolve, TierAddImport, TierHoleFit, TierTypeDirected]
     ClassArity -> [TierArity]
     ClassRefinement -> [TierHoleFit, TierTypeDirected]
+    ClassUnshowable -> [TierRenderWrap]
     ClassOther -> []
 
 tierRequiresRestart :: RepairTier -> Bool
@@ -162,19 +170,9 @@ notInScopeFromDiag err =
   where
     bare = do
         rest <- afterInfixCI "not in scope:" err
-        w <- listToMaybe (T.words (skipDescriptors rest))
+        w <- listToMaybe (T.words (skipScopeDescriptors rest))
         let n = T.dropAround (`elem` ("\8216\8217`'()" :: String)) w
         if T.null n then Nothing else Just n
-
-skipDescriptors :: Text -> Text
-skipDescriptors t0 = go (T.stripStart t0)
-  where
-    go t = case listToMaybe [d | d <- descriptors, matches d t] of
-        Just d -> go (T.stripStart (T.drop (T.length d) t))
-        Nothing -> t
-    matches d t = T.toLower d `T.isPrefixOf` T.toLower t
-    descriptors =
-        ["type constructor or class", "data constructor", "record field"]
 
 acceptRepair ::
     Set Text -> [(Text, Health)] -> [(Text, Health)] -> Text -> Bool

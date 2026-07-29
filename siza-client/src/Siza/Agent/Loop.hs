@@ -16,6 +16,7 @@ module Siza.Agent.Loop (
     stopDecision,
     discoverModules,
     systemPrompt,
+    mcpInstructions,
     sampleK,
     writeSource,
     qualifiedBaseNames,
@@ -119,7 +120,13 @@ data AgentRun = AgentRun
     deriving (Show)
 
 systemPrompt :: Text
-systemPrompt =
+systemPrompt = introBlock <> toolSurfacePrompt <> examplesBlock <> sabelaBuiltins
+
+mcpInstructions :: Text
+mcpInstructions = introBlock <> examplesBlock <> sabelaBuiltins
+
+introBlock :: Text
+introBlock =
     T.unlines
         [ "Pair on a live Sabela reactive Haskell notebook through tools."
         , "Editing or running a cell re-runs every cell downstream of it."
@@ -127,22 +134,24 @@ systemPrompt =
             <> " a rejection carries the compiler's diagnostic so you can fix it and retry."
         , ""
         ]
-        <> toolSurfacePrompt
-        <> T.unlines
-            [ "Examples:"
-            , ""
-            , "* \"what is already here?\" -> list_cells, then read_cell on the one you care about"
-            , "* \"which cell defines the counter?\" -> discover {query: \"counter\"}"
-            , "* \"is there a priority queue?\" -> discover {query: \"priority queue\"}"
-            , "* \"what is in Data.Map?\" -> discover {module: \"Data.Map\"}"
-            , "* \"how do I merge two maps?\""
-                <> " -> discover {query: \"Map k v -> Map k v -> Map k v\"}"
-            , "* \"how do I thread state?\" -> discover {query: \"StateT\"}"
-            , "* \"will this compile?\" -> try {code: \"...\"}, then insert_cell once it runs"
-            , "* \"the kernel says busy\" -> await_idle"
-            , ""
-            ]
-        <> sabelaBuiltins
+
+examplesBlock :: Text
+examplesBlock =
+    T.unlines
+        [ "Examples:"
+        , ""
+        , "* \"what is already here?\" -> list_cells, then read_cell on the one you care about"
+        , "* \"which cell defines the counter?\" -> discover {query: \"counter\"}"
+        , "* \"is there a priority queue?\" -> discover {query: \"priority queue\"}"
+        , "* \"what is in Data.Map?\" -> discover {module: \"Data.Map\"}"
+        , "* \"how do I merge two maps?\""
+            <> " -> discover {query: \"Map k v -> Map k v -> Map k v\"}"
+        , "* \"how do I thread state?\" -> discover {query: \"StateT\"}"
+        , "* \"what arguments does mapAccumL take?\" -> check_type {expr: \"mapAccumL\"}"
+        , "* \"will this compile?\" -> try {code: \"...\"}, then insert_cell once it runs"
+        , "* \"the kernel says busy\" -> await_idle"
+        , ""
+        ]
 
 stopTagFor :: CheckResult -> Text
 stopTagFor CheckPassed = "done"

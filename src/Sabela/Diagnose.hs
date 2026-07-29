@@ -14,6 +14,7 @@ module Sabela.Diagnose (
     neededExtension,
     misnamedModule,
     couldNotFindModule,
+    couldNotFindModules,
     notInScopeName,
     ambiguousOccurrence,
     ambiguousOccurrences,
@@ -33,6 +34,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.CellResult (CellOutcome (..), CellResult, crOutcome)
 import Sabela.AI.Hints (knownExtensions)
+import Sabela.AI.Unshowable (unshowableGuidanceMessage)
 import Sabela.Diagnose.Packages (packageForModule, resolvePackageToken)
 import Sabela.Model (CellError (..))
 
@@ -49,7 +51,18 @@ diagnose :: Text -> [Guidance]
 diagnose err = nub (concatMap ($ err) rules)
 
 rules :: [Text -> [Guidance]]
-rules = [missingModule, didYouMean, letParse, ambiguousType, typeMismatch]
+rules =
+    [ missingModule
+    , didYouMean
+    , letParse
+    , ambiguousType
+    , typeMismatch
+    , unshowableResult
+    ]
+
+unshowableResult :: Text -> [Guidance]
+unshowableResult err =
+    [Guidance "unshowable-result" m | Just m <- [unshowableGuidanceMessage err]]
 
 guidanceForCell :: CellResult -> [Guidance]
 guidanceForCell = nub . concatMap diagnose . outcomeErrors . crOutcome
@@ -126,8 +139,16 @@ misnamedModule err = do
     right <- moduleAfter "Perhaps you meant" err
     pure (wrong, right)
 
+couldNotFindModules :: Text -> [Text]
+couldNotFindModules err =
+    nub
+        [ m
+        | seg <- drop 1 (T.splitOn "Could not find module " err)
+        , Just m <- [quotedToken seg]
+        ]
+
 couldNotFindModule :: Text -> Maybe Text
-couldNotFindModule = afterPhrase "Could not find module "
+couldNotFindModule = listToMaybe . couldNotFindModules
 
 moduleAfter :: Text -> Text -> Maybe Text
 moduleAfter phrase err = do

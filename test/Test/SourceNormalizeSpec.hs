@@ -25,6 +25,7 @@ import Sabela.AI.Types (ToolOutcome, toolOutcomeIsError, toolOutcomeValue)
 import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
 import Sabela.Handlers (ReactiveNotebook, setupReactive)
 import Sabela.Model (CellType (..))
+import Sabela.Parse.Normalize (fixRawNewlineInString)
 import Sabela.Server (newApp)
 import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.State (App (..))
@@ -64,6 +65,16 @@ stillUnterminatedCandidate =
 spuriousUnicodeCandidate :: Text
 spuriousUnicodeCandidate =
     "tag = \"\\u003csvg\\u003e\"\ntag\n"
+
+charLiteralMainCandidate :: Text
+charLiteralMainCandidate =
+    T.unlines
+        [ "main = do"
+        , "  putStrLn (quoteFree \"ab\")"
+        , ""
+        , "quoteFree :: String -> String"
+        , "quoteFree s = filter (/='\"') s"
+        ]
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
@@ -112,6 +123,18 @@ pureSpec = describe "pure generator + gate behaviour" $ do
             normalized `shouldBe` stillUnterminatedCandidate
             notes `shouldSatisfy` any (T.isInfixOf "reverted")
 
+    describe "char literals do not open string mode (live_hard cell 2)" $ do
+        it "a '\"' char literal leaves the raw-newline fix a no-op" $
+            fixRawNewlineInString charLiteralMainCandidate
+                `shouldBe` charLiteralMainCandidate
+        it "an escaped '\\\"' char literal is equally opaque" $ do
+            let s = "isQuote c = c == '\\\"'\nisQuote 'x'\n"
+            fixRawNewlineInString s `shouldBe` s
+        it "main followed by a (/='\"') decl unwraps instead of reverting" $ do
+            let (src', notes) = gatedRewrite charLiteralMainCandidate
+            src' `shouldSatisfy` (not . T.isInfixOf "main = do")
+            notes `shouldSatisfy` any (T.isInfixOf "Rewrote `main`")
+
     describe "spurious \\uXXXX escapes" $
         it "are rewritten to the characters they denote" $ do
             let (normalized, notes) = gatedRewrite spuriousUnicodeCandidate
@@ -141,6 +164,7 @@ codeGrid =
     , rawNewlineCandidate
     , stillUnterminatedCandidate
     , spuriousUnicodeCandidate
+    , charLiteralMainCandidate
     , ""
     ]
 

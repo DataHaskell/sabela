@@ -6,6 +6,7 @@ import Test.ArtifactSpec (artifactSpec)
 import Test.CandidateRankSpec (candidateRankSpec)
 import Test.CandidateSpec (candidateSpec)
 import Test.CardGateSpec (cardGateSpec)
+import Test.ChatExportSpec (chatExportSpec)
 import Test.CheckGateSpec (checkGateSpec)
 import Test.CompactSpec (compactSpec)
 import Test.ContextCharsSpec (contextCharsSpec)
@@ -172,6 +173,7 @@ main = hspec $ do
     verifyDiagSpec
     counterexampleSpec
     contextCharsSpec
+    chatExportSpec
     noteLedgerSpec
     outcomeDistillSpec
     postNudgeGateSpec

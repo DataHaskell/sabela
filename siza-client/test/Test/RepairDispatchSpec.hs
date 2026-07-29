@@ -78,6 +78,13 @@ templates =
         ( ClassRefinement
         , \(_, m) -> "Found hole: _ :: " <> m <> ".Wind -> Int"
         )
+    ,
+        ( ClassUnshowable
+        , \(_, m) ->
+            "No instance for ‘Show "
+                <> m
+                <> ".Wind’ arising from a use of ‘print’"
+        )
     ]
 
 libNames :: [(Text, Text)]
@@ -113,6 +120,37 @@ repairDispatchSpec = describe "repair cascade dispatch (R3-T5)" $ do
         it "only the dep-add tier requires a restart (R7.3)" $
             [t | t <- [minBound .. maxBound], tierRequiresRestart t]
                 `shouldBe` [TierDepAdd]
+
+    describe "render-wrap tier (unshowable-display)" $ do
+        let input d s = TierInput d s "" (const []) (const [])
+            showDiag =
+                "No instance for \8216Show Picture\8217 arising from a use of \8216print\8217"
+        it "wraps the trailing expression and imports the wrap's module" $ do
+            let cands = candidatesFor [TierRenderWrap] (input showDiag "plot [(0,0)]")
+            cands `shouldSatisfy` all ((== TierRenderWrap) . cdTier)
+            cands
+                `shouldSatisfy` any
+                    ( \c ->
+                        "displayPicture (plot [(0,0)])" `T.isInfixOf` cdSource c
+                            && "import Sabela.Notebook (displayPicture)"
+                                `T.isInfixOf` cdSource c
+                    )
+        it "widens a selective import rather than assuming scope" $ do
+            let src = "import Sabela.Notebook (plot)\nplot [(0,0)]"
+                cands = candidatesFor [TierRenderWrap] (input showDiag src)
+            cands
+                `shouldSatisfy` any
+                    ( T.isInfixOf "import Sabela.Notebook (displayPicture)"
+                        . cdSource
+                    )
+        it "proposes nothing when the last line is a binding" $
+            candidatesFor [TierRenderWrap] (input showDiag "pic = plot []")
+                `shouldBe` []
+        it "proposes nothing off-class" $
+            candidatesFor
+                [TierRenderWrap]
+                (input "Variable not in scope: plot" "plot []")
+                `shouldBe` []
 
     describe "acceptance law over generated notebooks (R7.5)" $ do
         let target = "1" :: Text

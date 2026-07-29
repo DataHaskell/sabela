@@ -6,7 +6,9 @@ import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Either (isLeft, isRight)
+import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
+import Siza.Agent.Loop (mcpInstructions, systemPrompt)
 import Siza.Mcp (
     Rpc (..),
     decodeRpc,
@@ -60,6 +62,23 @@ mcpSpec = describe "Siza.Mcp" $ do
             let r = initializeResult (object [])
             (field "capabilities" r >>= field "tools") `shouldSatisfy` (/= Nothing)
             (field "serverInfo" r >>= field "name") `shouldBe` Just (String "siza")
+
+        it "orients a client with no system prompt of its own via `instructions`" $ do
+            let r = initializeResult (object [])
+            field "instructions" r `shouldBe` Just (String mcpInstructions)
+
+        it "the instructions say what the notebook is, not just tool names" $
+            mcpInstructions `shouldSatisfy` T.isInfixOf "reactive Haskell notebook"
+
+        it "the instructions carry the worked examples pointing at discover" $
+            mcpInstructions `shouldSatisfy` T.isInfixOf "discover {query:"
+
+        it
+            "does not duplicate the generated tool-surface listing tools/list already sends"
+            $ mcpInstructions `shouldNotSatisfy` T.isInfixOf "Available tools:"
+
+        it "is systemPrompt minus the generated per-tool listing" $
+            T.length mcpInstructions `shouldSatisfy` (< T.length systemPrompt)
 
     describe "toMcpTool (drift guard: input_schema -> inputSchema)" $ do
         let td =

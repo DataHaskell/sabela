@@ -27,7 +27,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.CellResult (CellId)
-import Sabela.AI.SelfHeal (contrastLine)
+import Sabela.AI.SelfHeal (contrastLine, diagQuoteLine)
 import Sabela.AI.Verdict (VerdictClass (..), verdictMarker)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 
@@ -54,6 +54,7 @@ reenterMessage reds =
         <> " that you wrote still have errors. Read each cell's error, fix it with \
            \replace_cell_source, and do not stop until every cell you wrote runs \
            \without error."
+        <> T.concat ["\n" <> diagQuoteLine d | (_, d) <- reds]
         <> T.concat ["\n" <> c | Just c <- map (contrastLine . snd) reds]
 
 reenterAlarmMsg :: [(CellId, Text, Bool)] -> Value

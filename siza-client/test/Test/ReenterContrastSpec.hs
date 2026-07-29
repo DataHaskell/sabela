@@ -20,6 +20,12 @@ diag =
         , "  `takeWhile_' (imported from Text.Megaparsec)"
         ]
 
+unshowableDiag :: Text
+unshowableDiag =
+    "cell 7, line 15: No instance for `Show\n\
+    \                   sabela-notebook-0.2.0.0:Sabela.Notebook.Picture.Internal.Picture'\n\
+    \  arising from a use of `print'"
+
 reenterContrastSpec :: Spec
 reenterContrastSpec = describe "reenterMessage — wrong-vs-real contrast" $ do
     it "still names the red cells" $
@@ -32,6 +38,17 @@ reenterContrastSpec = describe "reenterMessage — wrong-vs-real contrast" $ do
         let msg = reenterMessage [(1, "cell 1: some unrelated error")]
         msg `shouldSatisfy` T.isInfixOf "1"
         msg `shouldSatisfy` (not . T.isInfixOf "does not exist")
+    it "quotes each red cell's diagnostic so the model need not read_cell" $ do
+        let msg = reenterMessage [(7, unshowableDiag)]
+        msg `shouldSatisfy` T.isInfixOf "No instance for"
+        msg `shouldSatisfy` T.isInfixOf "Picture"
+    it "flattens the quoted diagnostic onto one line and clamps it" $ do
+        let long = "cell 9: " <> T.replicate 80 "verylongtoken "
+            msg = reenterMessage [(9, long)]
+        msg `shouldSatisfy` (not . T.isInfixOf (T.unwords (T.words long)))
+    it "names the unshowable wrap on the gate rail" $ do
+        let msg = reenterMessage [(7, unshowableDiag)]
+        msg `shouldSatisfy` T.isInfixOf "displayPicture"
 
 reenterAlarmSpec :: Spec
 reenterAlarmSpec = describe "reenterAlarmMessage — G1 invariant canary" $ do

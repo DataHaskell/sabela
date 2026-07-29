@@ -5,11 +5,13 @@ module Sabela.AI.SelfHeal (
     attachSelfHealSuggestions,
     contrastLine,
     dependencySuggestionNote,
+    diagQuoteLine,
     plausibleRename,
     selfHealNote,
     sourceDelta,
 ) where
 
+import Control.Applicative ((<|>))
 import Data.Aeson (Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.List (nub)
@@ -22,6 +24,7 @@ import Sabela.AI.HoleRepair (
     orderBySimilarity,
     suggestedNames,
  )
+import Sabela.AI.Unshowable (unshowableContrast)
 
 plausibleRename :: Text -> Text -> Bool
 plausibleRename wrong chose =
@@ -30,24 +33,35 @@ plausibleRename wrong chose =
 contrastLine :: Text -> Maybe Text
 contrastLine raw
     | cascadeNoise err = Nothing
-    | otherwise = do
-        (wrong, _) <- goalFromError err
-        case orderBySimilarity wrong (nub (suggestedNames err)) of
-            [] -> Nothing
-            cands ->
-                Just $
-                    "`"
-                        <> wrong
-                        <> "` does not exist here. Closest real names: "
-                        <> T.intercalate ", " (map tick (take 3 cands))
-                        <> ". Use one of these — verify its exact signature with check_type first — and do not write `"
-                        <> wrong
-                        <> "` again."
+    | otherwise = scopeContrast err <|> unshowableContrast err
   where
     err = unescapeDiag raw
-    tick n = "`" <> n <> "`"
     cascadeNoise t =
         any (`T.isInfixOf` t) ["Could not load module", "hidden package"]
+
+scopeContrast :: Text -> Maybe Text
+scopeContrast err = do
+    (wrong, _) <- goalFromError err
+    case orderBySimilarity wrong (nub (suggestedNames err)) of
+        [] -> Nothing
+        cands ->
+            Just $
+                "`"
+                    <> wrong
+                    <> "` does not exist here. Closest real names: "
+                    <> T.intercalate ", " (map tick (take 3 cands))
+                    <> ". Use one of these — verify its exact signature with check_type first — and do not write `"
+                    <> wrong
+                    <> "` again."
+  where
+    tick n = "`" <> n <> "`"
+
+diagQuoteLine :: Text -> Text
+diagQuoteLine raw
+    | T.length flat <= 200 = flat
+    | otherwise = T.take 200 flat <> "…"
+  where
+    flat = T.unwords (T.words (unescapeDiag raw))
 
 unescapeDiag :: Text -> Text
 unescapeDiag =

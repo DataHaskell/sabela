@@ -8,9 +8,14 @@ import Test.Hspec
 
 import Sabela.AI.Capabilities.Edit.GateRepair (
     aliasImportCandidates,
+    exactMatchOnly,
+    importWidenCandidates,
+    missingModuleCandidates,
     proofCap,
     repairCandidates,
  )
+import Sabela.AI.PackageIndex (PackageEntry (..))
+import System.Directory (findExecutable)
 
 twoRenames :: Text
 twoRenames =
@@ -86,7 +91,70 @@ dataFrameSrc =
     \go df = if null df then 0 else length (filter id df)\n"
 
 spec :: Spec
-spec = describe "gate-side repair candidates" $ do
+spec = gateRepairSpec >> missingModuleSpec
+
+animateDiag :: Text
+animateDiag =
+    "<interactive>:245:17: error: [GHC-88464]\n\
+    \    Variable not in scope: animCanvas :: Sabela.Notebook.Anim.AnimOpts\n\
+    \\n\
+    \<interactive>:245:28: error: [GHC-88464]\n\
+    \    Variable not in scope: defaultAnim :: Time"
+
+animateSrc :: Text
+animateSrc =
+    "import Sabela.Notebook (plot, Time, Picture, animateWith)\n\
+    \sinWavePicture t = plot [(t, sin t)]\n\
+    \animateWith animCanvas defaultAnim sinWavePicture"
+
+gateRepairSpec :: Spec
+gateRepairSpec = describe "gate-side repair candidates" $ do
+    describe "selective-import widening (live_gemma2 animate)" $ do
+        it "widens the existing selective import with every missing name" $ do
+            let cands = map fst (importWidenCandidates animateDiag animateSrc)
+            cands
+                `shouldSatisfy` any
+                    ( T.isInfixOf
+                        "import Sabela.Notebook (plot, Time, Picture, animateWith, animCanvas, defaultAnim)"
+                    )
+
+        it "offers the wholesale import as a fallback candidate" $ do
+            let cands = map fst (importWidenCandidates animateDiag animateSrc)
+            cands `shouldSatisfy` any (T.isInfixOf "import Sabela.Notebook\n")
+
+        it "discloses what it added" $ do
+            let fixes = concatMap snd (importWidenCandidates animateDiag animateSrc)
+            T.concat fixes `shouldSatisfy` T.isInfixOf "animCanvas"
+            T.concat fixes `shouldSatisfy` T.isInfixOf "defaultAnim"
+
+        it "ignores knock-on names the candidate itself defines" $ do
+            let diag =
+                    animateDiag
+                        <> "\n\n<interactive>:246:40: error: [GHC-88464]\n\
+                           \    Variable not in scope: sinWavePicture :: Time -> Picture"
+                cands = map fst (importWidenCandidates diag animateSrc)
+            cands `shouldSatisfy` (not . any (T.isInfixOf "sinWavePicture)"))
+
+        it "is module-agnostic: widens any library's selective import" $ do
+            let cands =
+                    map fst $
+                        importWidenCandidates
+                            "Variable not in scope: fromMaybe :: Maybe Int -> Int"
+                            "import Data.Maybe (mapMaybe)\nx = fromMaybe 0 (Just 1)"
+            cands
+                `shouldSatisfy` any
+                    (T.isInfixOf "import Data.Maybe (mapMaybe, fromMaybe)")
+
+        it "ignores qualified names (the alias generator's turf)" $
+            importWidenCandidates
+                "Variable not in scope: D.take"
+                "import Sabela.Notebook (plot)\nx = D.take 5"
+                `shouldBe` []
+
+        it "proposes nothing without a selective import" $
+            importWidenCandidates animateDiag "animateWith animCanvas defaultAnim f"
+                `shouldBe` []
+
     describe "a diagnostic with more than one ambiguous occurrence" $ do
         it "resolves every clash in one composite, not just the first" $ do
             let (c, _) : _ = repairCandidates dataFrameClash dataFrameSrc
@@ -201,3 +269,50 @@ spec = describe "gate-side repair candidates" $ do
     it "is bounded by proofCap" $
         length (repairCandidates multiCandidate "d = datacenters org")
             `shouldSatisfy` (<= proofCap)
+
+fakeEntry :: PackageEntry
+fakeEntry = PackageEntry "somepkg" "1.0" "" ["Some.Module"]
+
+missingModuleSpec :: Spec
+missingModuleSpec = describe "a missing module is repaired only when verified, not guessed" $ do
+    describe "exactMatchOnly (the G2 safety boundary)" $ do
+        it "accepts a resolution whose name matches verbatim" $
+            exactMatchOnly "DataFrame" (Just ("DataFrame", fakeEntry))
+                `shouldBe` Just fakeEntry
+
+        it "rejects a near-spelling fallback — never silently guess the wrong package" $
+            exactMatchOnly "DataFram" (Just ("DataFrame", fakeEntry)) `shouldBe` Nothing
+
+        it "rejects when nothing resolved at all" $
+            exactMatchOnly "Nope" Nothing `shouldBe` Nothing
+
+    describe "missingModuleCandidates (live local store)" $ do
+        let missingModuleDiag =
+                "<no location info>: error: [GHC-35235]\n\
+                \    Could not find module \8216Data.Text\8217.\n\
+                \    It is not a module in the current program, or in any known package."
+        it "declares build-depends for a module genuinely in the local store" $ do
+            mGhc <- findExecutable "ghc"
+            case mGhc of
+                Nothing -> pendingWith "ghc not on PATH"
+                Just _ -> do
+                    cs <-
+                        missingModuleCandidates
+                            missingModuleDiag
+                            "import Data.Text\nmain = print (1 :: Int)"
+                    case cs of
+                        ((c, fixes) : _) -> do
+                            c `shouldSatisfy` T.isInfixOf "build-depends: text"
+                            fixes `shouldBe` ["declared build-depends: text"]
+                        [] -> expectationFailure "text is a project dependency; must resolve"
+
+        it "never invents a package for a module that does not exist anywhere" $ do
+            mGhc <- findExecutable "ghc"
+            case mGhc of
+                Nothing -> pendingWith "ghc not on PATH"
+                Just _ -> do
+                    cs <-
+                        missingModuleCandidates
+                            "Could not find module \8216Zzznope.Totally.Fake\8217."
+                            "x = 1"
+                    cs `shouldBe` []

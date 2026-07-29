@@ -79,6 +79,7 @@ import qualified Test.TrySpec as TrySpec
 import qualified Test.TypeDirectedResolveSpec as TypeDirectedResolveSpec
 import qualified Test.TypeDiscoverySpec as TypeDiscoverySpec
 import qualified Test.TypecheckPrimitiveSpec as TypecheckPrimitiveSpec
+import qualified Test.UnshowableSpec as UnshowableSpec
 import qualified Test.ValueEchoSpec as ValueEchoSpec
 import qualified Test.VerifyDownstreamSpec as VerifyDownstreamSpec
 import qualified Test.WidgetsSpec as WidgetsSpec
@@ -144,6 +145,7 @@ allSpecsA = do
     ThrowawayExecuteSpec.spec
     NonThreadedForkSpec.spec
     SelfHealSpec.spec
+    UnshowableSpec.spec
     NormalizeGateSpec.spec
     NormalizeProposalsSpec.spec
     ValueEchoSpec.spec

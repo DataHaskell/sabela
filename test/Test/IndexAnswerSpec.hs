@@ -9,6 +9,7 @@ import Test.Hspec
 import Sabela.AI.Capabilities.Query.IndexAnswer (
     IndexAnswer (..),
     IndexHit (..),
+    builtinAnswer,
     classifyIndexHit,
     consultedSources,
     looksNotInScope,
@@ -64,6 +65,21 @@ spec = describe "check_type index answers (G10)" $ do
             a `shouldNotBe` b
             b `shouldNotBe` c
             a `shouldNotBe` c
+
+    describe "builtin tier answers before the Hackage index (live_gemma)" $ do
+        it "displayPicture resolves to Sabela.Notebook, never gloss-rendering" $
+            case builtinAnswer "displayPicture" of
+                Nothing -> expectationFailure "no builtin answer"
+                Just t -> do
+                    t `shouldSatisfy` T.isInfixOf "import Sabela.Notebook"
+                    t `shouldNotSatisfy` T.isInfixOf "-- cabal:"
+                    t `shouldNotSatisfy` T.isInfixOf "gloss"
+        it "a session-prelude builtin answers in-scope, no import" $
+            case builtinAnswer "displayHtml" of
+                Nothing -> expectationFailure "no builtin answer"
+                Just t -> t `shouldSatisfy` T.isInfixOf "no import needed"
+        it "knows nothing about arbitrary names" $
+            builtinAnswer "frobnicate" `shouldBe` Nothing
 
     describe "the via provenance vocabulary (G10.1)" $ do
         it "names the answering source, one closed set" $ do

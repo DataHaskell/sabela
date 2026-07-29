@@ -76,6 +76,43 @@ spec = describe "one acceptance law over every rewrite (section 9.3)" $ do
             src' `shouldBe` "xs = [1,2,3]"
             fst (gatedRewrite "let xs = [1,2,3]") `shouldBe` "xs = [1,2,3]"
 
+    describe "a main with a where clause unwraps instead of reverting (live_hard)" $ do
+        it "the cell-9 shape (do body + where helpers) is accepted, main gone" $ do
+            let cell9 =
+                    T.unlines
+                        [ "import Network.HTTP.Simple (httpLBS)"
+                        , "main :: IO ()"
+                        , "main = do"
+                        , "  resp <- httpLBS \"https://x?ref=main\""
+                        , "  mapM_ printItem [0, 1]"
+                        , "  where"
+                        , "    printItem 0 = putStrLn \"zero\""
+                        , "    printItem n = print n"
+                        ]
+                (src', notes) = gatedRewrite cell9
+            src' `shouldSatisfy` (not . T.isInfixOf "main ::")
+            src' `shouldSatisfy` (not . T.isInfixOf "main = do")
+            src' `shouldSatisfy` T.isInfixOf "let printItem"
+            notes `shouldSatisfy` any (T.isInfixOf "Rewrote `main`")
+
+        it "a reverted main rewrite states the outcome: nothing executes" $ do
+            let patBind =
+                    T.unlines
+                        [ "main = do"
+                        , "  print (a + b)"
+                        , "  where"
+                        , "    (a, b) = (1, 2)"
+                        ]
+                (src', notes) = gatedRewrite patBind
+            src' `shouldBe` patBind
+            notes `shouldSatisfy` any (T.isInfixOf "reverted")
+            notes `shouldSatisfy` any (T.isInfixOf "executes nothing")
+
+        it "a non-main revert does not claim a main outcome" $ do
+            let (src', notes) = gatedRewrite danglingIn
+            src' `shouldBe` danglingIn
+            notes `shouldSatisfy` (not . any (T.isInfixOf "executes nothing"))
+
     describe "acceptance-law universality: the ONE cascade law, no second rule" $ do
         it "the gate's verdict IS acceptRepair over parse healths (whole grid)" $
             forM_ sourceGrid $ \src -> do

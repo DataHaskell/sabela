@@ -23,7 +23,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.AI.Capabilities.ToolName (ToolName, resolveToolCall)
+import Sabela.AI.Capabilities.ToolName (ToolName, resolveToolCall, toolWireName)
 import Sabela.AI.HoleRepair (editDistance)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..), rawWithCalls)
 import Siza.Agent.Discover.Request (discoverQuery)
@@ -47,6 +47,10 @@ routeCallWith vocab tc = case routeCall tc of
             | otherwise ->
                 RouteBadArgs
                     (parseFailureHint name (schemaMatches vocab (plainArgs tc)))
+    RouteTool tn a
+        | Just schema <- lookup (toolWireName tn) vocab
+        , not (argsFit a schema) ->
+            RouteBadArgs (badArgsHint (toolWireName tn) a schema)
     route -> route
 
 recoverTurn :: [(Text, ([Text], [Text]))] -> Turn -> Turn
@@ -83,11 +87,28 @@ schemaMatches vocab v@(Object o)
 schemaMatches _ _ = []
 
 argsFit :: Value -> ([Text], [Text]) -> Bool
-argsFit (Object o) (propsK, reqK) =
+argsFit v (propsK, reqK) =
     all (`elem` propsK) keys && all (`elem` keys) reqK
   where
-    keys = map K.toText (KM.keys o)
-argsFit _ _ = False
+    keys = argKeys v
+
+argKeys :: Value -> [Text]
+argKeys (Object o) = map K.toText (KM.keys o)
+argKeys _ = []
+
+badArgsHint :: Text -> Value -> ([Text], [Text]) -> Text
+badArgsHint name args (propsK, reqK) =
+    "bad arguments for '"
+        <> name
+        <> "': "
+        <> T.intercalate "; " (missingPart <> extraPart)
+        <> ". Re-send with exactly this tool's arguments."
+  where
+    given = argKeys args
+    missing = filter (`notElem` given) reqK
+    extra = filter (`notElem` propsK) given
+    missingPart = ["missing required: " <> T.intercalate ", " missing | not (null missing)]
+    extraPart = ["unrecognized: " <> T.intercalate ", " extra | not (null extra)]
 
 nameCandidates :: [Text] -> Text -> [Text]
 nameCandidates names name

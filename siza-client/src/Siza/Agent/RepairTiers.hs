@@ -36,6 +36,11 @@ import Sabela.AI.RepairDispatch (
     notInScopeFromDiag,
  )
 import Sabela.AI.SelfHeal (plausibleRename)
+import Sabela.AI.Unshowable (
+    renderVocabulary,
+    unshowableShowType,
+    wrapTrailingExpression,
+ )
 
 data TierInput = TierInput
     { tiDiag :: Text
@@ -124,7 +129,22 @@ tierCandidates tier input = case tier of
         , let src' = substituteName wrong m src
         , src' /= src
         ]
+    TierRenderWrap ->
+        [ Candidate TierRenderWrap src'' [fnHead]
+        | Just _ <- [unshowableShowType diag]
+        , (fn, mImp) <- renderVocabulary
+        , let fnHead = T.takeWhile (/= ' ') fn
+        , Just src' <- [wrapTrailingExpression fn src]
+        , let src'' = maybe src' (renderImport fnHead src') mImp
+        , src'' /= src
+        ]
   where
+    renderImport fnHead wrapped m
+        | ("import " <> m) `elem` map T.stripStart (T.lines wrapped) = wrapped
+        | otherwise =
+            insertImportLine
+                ("import " <> m <> " (" <> fnHead <> ")")
+                wrapped
     diag = tiDiag input
     src = tiSource input
     withDep Nothing s = s

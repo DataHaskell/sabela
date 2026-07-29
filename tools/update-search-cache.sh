@@ -20,9 +20,13 @@ INDEX_TAR="${CABAL_INDEX_TAR:-$HOME/.cabal/packages/hackage.haskell.org/01-index
 DO_NAMES=1
 DO_HOOGLE=1
 DO_CAPABILITY=0
+DO_LOCAL=0
 case "${1:-}" in
     --names-only) DO_HOOGLE=0 ;;
     --hoogle-only) DO_NAMES=0 ;;
+    # Rebuild only data/hoogle-local.hoo (installed + in-repo packages);
+    # skips the slow full-Hackage download.
+    --local-hoogle-only) DO_NAMES=0; DO_HOOGLE=0; DO_LOCAL=1 ;;
     # The SHIP capability-search index (vectors+sidecar+revdeps). Opt-in: it is
     # heavier and needs a local ollama (nomic-embed-text). See tools/build_capability_index.hs.
     --capability-index) DO_NAMES=0; DO_HOOGLE=0; DO_CAPABILITY=1 ;;
@@ -83,17 +87,38 @@ generate_hoogle() {
 # evidence still classifies their install state live).
 generate_local_hoogle() {
     local_db="$REPO_ROOT/data/hoogle-local.hoo"
-    echo "==> hoogle generate --local (whole installed package DB, hidden included)" >&2
-    if hoogle generate --local --database="$local_db" >&2; then
+    echo "==> hoogle generate --local (installed DB + in-repo packages)" >&2
+    # In-repo packages (never on Hackage) index from haddock-hoogle output;
+    # the bare --local form needs store haddocks that a machine may lack.
+    (cd "$REPO_ROOT" && cabal haddock sabela-notebook --haddock-hoogle >&2) \
+        || echo "   cabal haddock sabela-notebook failed; skipping repo docs" >&2
+    repo_docs=$(find "$REPO_ROOT/dist-newstyle" -name "sabela-notebook.txt" 2>/dev/null | head -1)
+    ok=0
+    if [ -n "$repo_docs" ]; then
+        repo_dir="$(dirname "$repo_docs")"
+        if hoogle generate --local --local="$repo_dir" --database="$local_db" >&2 \
+            && hoogle search --database="$local_db" --count=1 displayPicture 2>/dev/null \
+                | grep -q displayPicture; then
+            ok=1
+        elif hoogle generate --local="$repo_dir" --database="$local_db" >&2; then
+            echo "   store haddocks unusable; indexed in-repo packages only" >&2
+            ok=1
+        fi
+    elif hoogle generate --local --database="$local_db" >&2; then
+        ok=1
+    fi
+    if [ "$ok" = 1 ]; then
         echo "   wrote installed-DB index -> $local_db" >&2
         echo "   set SABELA_HOOGLE_LOCAL_DB=$local_db so queries union it in" >&2
     else
+        rm -f "$local_db"
         echo "   local generation failed; installed-only symbols stay unindexed" >&2
     fi
 }
 
 [ "$DO_NAMES" = 1 ] && { refresh_index; write_names; }
 [ "$DO_HOOGLE" = 1 ] && generate_hoogle
+[ "$DO_LOCAL" = 1 ] && { ensure_hoogle; generate_local_hoogle; }
 [ "$DO_CAPABILITY" = 1 ] && { build_capability_index; exit 0; }
 
 {

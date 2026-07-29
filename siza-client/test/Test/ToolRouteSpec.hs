@@ -14,8 +14,9 @@ import Siza.Agent.ToolRoute (
     Route (..),
     normalizeToolCall,
     routeCall,
+    routeCallWith,
  )
-import Siza.Agent.Tools (offeredNames)
+import Siza.Agent.Tools (offeredArgKeys, offeredNames)
 
 flatArgs :: Value
 flatArgs =
@@ -126,3 +127,46 @@ toolRouteSpec = describe "tool-call routing boundary (R1.7/M8 class)" $ do
         it "'discover granite' carries its inline query" $
             routeCall (ToolCall "discover granite" (object []))
                 `shouldBe` RouteDiscover "granite" (object [])
+
+    describe "a correctly-named call still gets its OWN schema checked" $ do
+        it
+            "insert_cell with invented keys reprompts instead of silently emptying source"
+            $ do
+                let payload =
+                        object
+                            [ "filePath" .= ("test.md" :: Text)
+                            , "line" .= (3 :: Int)
+                            , "content" .= ("main = print 1" :: Text)
+                            ]
+                case routeCallWith offeredArgKeys (ToolCall "insert_cell" payload) of
+                    RouteBadArgs hint -> do
+                        hint `shouldSatisfy` T.isInfixOf "insert_cell"
+                        hint `shouldSatisfy` T.isInfixOf "source"
+                    other -> expectationFailure ("expected RouteBadArgs, got " <> show other)
+
+        it "names what was given but not recognized, not just what's missing" $ do
+            let payload = object ["filePath" .= ("test.md" :: Text)]
+            case routeCallWith offeredArgKeys (ToolCall "insert_cell" payload) of
+                RouteBadArgs hint -> hint `shouldSatisfy` T.isInfixOf "filePath"
+                other -> expectationFailure ("expected RouteBadArgs, got " <> show other)
+
+        it "a well-named, well-shaped call is unaffected" $ do
+            let payload = object ["source" .= ("main = print 1" :: Text)]
+            routeCallWith offeredArgKeys (ToolCall "insert_cell" payload)
+                `shouldSatisfy` isTool
+
+        it "an unrecognized extra key alongside every required one still reprompts" $ do
+            -- Consistent with the name-recovery path's own argsFit: a
+            -- schema match is exact, not "required fields present, plus
+            -- whatever else."
+            let payload =
+                    object
+                        [ "source" .= ("main = print 1" :: Text)
+                        , "not_a_real_field" .= ("x" :: Text)
+                        ]
+            case routeCallWith offeredArgKeys (ToolCall "insert_cell" payload) of
+                RouteBadArgs hint -> hint `shouldSatisfy` T.isInfixOf "not_a_real_field"
+                other -> expectationFailure ("expected RouteBadArgs, got " <> show other)
+  where
+    isTool (RouteTool _ _) = True
+    isTool _ = False

@@ -14,6 +14,7 @@ import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.PromptCore (drawingBuiltins)
 import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Siza.Agent.Discover.Interpret (stripVersion)
 import Siza.Agent.Discover.Types (
@@ -38,7 +39,9 @@ candidatePackages interp answers =
 
 envAnswer :: NotebookEnv -> Interpreted -> SourceAnswer
 envAnswer env interp =
-    okAnswer "notebook" (builtin ++ binding ++ dslModule ++ importedMod)
+    okAnswer
+        "notebook"
+        (builtin ++ dslName ++ binding ++ dslModule ++ importedMod)
   where
     n = iName interp
     builtin =
@@ -48,6 +51,16 @@ envAnswer env interp =
             , dhUse = Just "in scope at session start — no import needed"
             }
         | n `elem` neBuiltins env
+        , n `notElem` drawingBuiltins
+        ]
+    dslName =
+        [ (envHit n "Sabela.Notebook" "sabela-notebook")
+            { dhVersion = "builtin"
+            , dhInstall = InstBuiltin
+            , dhUse = Just "import Sabela.Notebook"
+            }
+        | n `elem` drawingBuiltins
+        , n `elem` neBuiltins env
         ]
     binding =
         [ (envHit n "(notebook)" "(notebook)")

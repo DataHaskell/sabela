@@ -12,7 +12,7 @@ import Data.Unique (newUnique)
 import Test.Hspec
 
 import Sabela.AI.Capabilities.Try (execTry)
-import Sabela.AI.Capabilities.Try.Payload (disposablePayload)
+import Sabela.AI.Capabilities.Try.Payload (disposablePayload, skippedCellHint)
 import Sabela.AI.Types (toolOutcomeIsError, toolOutcomeValue)
 import Sabela.Server (newApp)
 import Sabela.Session.Materialize (
@@ -168,7 +168,7 @@ spec = describe "try outcome envelope wire pins" $ do
         textField "purityAssurance" v `shouldBe` Just "type_only"
         textField "pollutionContract" v `shouldBe` Just "disposable_session"
 
-    it "disposable: skippedCells renders as an array of {cellId, reason}" $ do
+    it "disposable: skippedCells renders as {cellId, reason, hint}" $ do
         let result =
                 disposableSample
                     { disposableSkippedCells =
@@ -182,10 +182,16 @@ spec = describe "try outcome envelope wire pins" $ do
                         ( object
                             [ "cellId" .= (4 :: Int)
                             , "reason" .= ("Variable not in scope: notInScope" :: Text)
+                            , "hint" .= skippedCellHint 4
                             ]
                         )
                     )
                 )
+
+    it "disposable: the skip hint says the cell's names are out of scope" $ do
+        skippedCellHint 4 `shouldSatisfy` T.isInfixOf "cell 4"
+        skippedCellHint 4 `shouldSatisfy` T.isInfixOf "not in scope"
+        skippedCellHint 4 `shouldSatisfy` T.isInfixOf "own unresolved error"
 
     it
         "disposable replay failure leads with attribution, not the candidate's own error"

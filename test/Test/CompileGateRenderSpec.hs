@@ -71,6 +71,17 @@ sharesABlock sig bind rendered =
 blockCount :: Text -> Int
 blockCount = length . filter (T.isInfixOf "= do") . T.lines
 
+probeContinuationsIndented :: Text -> Bool
+probeContinuationsIndented rendered = go (T.lines rendered)
+  where
+    go [] = True
+    go (l : ls)
+        | "_sabelaGateProbe" `T.isInfixOf` l =
+            let (body, rest) = break (== ":}") ls
+             in all indentedOrBlank body && go rest
+        | otherwise = go ls
+    indentedOrBlank t = T.null t || " " `T.isPrefixOf` t
+
 spec :: Spec
 spec = do
     describe "renderForDiagnostics (G6 evidence rendering)" $ do
@@ -98,6 +109,19 @@ spec = do
         it "never leaves a bare executable statement" $
             renderForDiagnostics "x = 1\nprint x"
                 `shouldSatisfy` noBareStatement
+
+        it
+            "a comment attached to the trailing expression stays layout-safe (live_gemma)"
+            $ do
+                let rendered =
+                        renderForDiagnostics
+                            "-- Plot the data\nplot [(0, 0), (1, 1)]"
+                rendered `shouldSatisfy` probeContinuationsIndented
+                rendered `shouldSatisfy` T.isInfixOf "plot [(0, 0), (1, 1)]"
+
+        it "a multi-line probe body never continues at column 1" $
+            renderForDiagnostics "print\n  (1 :: Int)"
+                `shouldSatisfy` probeContinuationsIndented
 
     describe "renderNonExecuting (G1 compile-gate candidate rendering)" $ do
         describe "gate-drops-bind (live_test24)" $ do

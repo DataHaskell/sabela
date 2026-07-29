@@ -25,6 +25,7 @@ import qualified Data.Text.Encoding as TE
 import Sabela.AI.Capabilities.ToolName (ToolName (..), parseToolName)
 import Sabela.AI.Types (ToolOutcome, toolOutcomeIsError, toolOutcomeValue)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
+import qualified Siza.Agent.Loop as AgentLoop
 import qualified Siza.Agent.Tools as AgentTools
 import Siza.Language (Diagnostic, renderDiagnostic)
 import Siza.Preflight (preflight)
@@ -154,6 +155,7 @@ initializeResult params =
         , "capabilities" .= object ["tools" .= object []]
         , "serverInfo"
             .= object ["name" .= ("siza" :: Text), "version" .= ("0.3.0" :: Text)]
+        , "instructions" .= AgentLoop.mcpInstructions
         ]
 
 negotiatedVersion :: Value -> Text

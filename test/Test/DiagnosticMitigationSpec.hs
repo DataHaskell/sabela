@@ -76,6 +76,20 @@ spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
                     "No instance for `Show Picture' arising from a use of `print'"
             src = "import Sabela.Notebook\nplot [(x, sin x) | x <- [0,0.1..2*pi]]"
             row = find ((== "unshowable-display") . mitClass) mitigationTable
+            qualifiedShowErr =
+                bareCellError
+                    (Just 7)
+                    (Just 15)
+                    "No instance for `Show\n\
+                    \                   sabela-notebook-0.2.0.0:Sabela.Notebook.Picture.Internal.Picture'\n\
+                    \  arising from a use of `print'\n\
+                    \In a stmt of an interactive GHCi command: print it"
+            gemmaSrc =
+                "import Sabela.Notebook (plot)\n\
+                \\n\
+                \dataPoints = zip [0.0, 0.1] [0.0, 0.1]\n\
+                \\n\
+                \plot dataPoints"
 
         it "is a table row that APPLIES its fix" $
             fmap mitDischarge row `shouldBe` Just Apply
@@ -86,6 +100,44 @@ spec = describe "G6 diagnostic-class mitigation (pure core)" $ do
                 (`mitDetect` bareCellError (Just 1) (Just 1) "No instance for `Show Foo'")
                 row
                 `shouldBe` Just False
+
+        it "detects the package-qualified hidden-module form (live_gemma)" $
+            fmap (`mitDetect` qualifiedShowErr) row `shouldBe` Just True
+
+        it "widens a selective import so the wrap is in scope (live_gemma)" $
+            case row of
+                Nothing -> expectationFailure "no unshowable-display row"
+                Just r -> do
+                    cands <-
+                        mitGenerate
+                            r
+                            (error "unused")
+                            (error "unused")
+                            (Right (ExecutionResult [] Nothing [qualifiedShowErr] []))
+                            gemmaSrc
+                    case cands of
+                        (c : _) -> do
+                            c `shouldSatisfy` T.isInfixOf "displayPicture (plot dataPoints)"
+                            c
+                                `shouldSatisfy` T.isInfixOf
+                                    "import Sabela.Notebook (displayPicture)"
+                        [] -> expectationFailure "expected a wrapped candidate"
+
+        it "adds the import when the cell has none at all" $ case row of
+            Nothing -> expectationFailure "no unshowable-display row"
+            Just r -> do
+                cands <-
+                    mitGenerate
+                        r
+                        (error "unused")
+                        (error "unused")
+                        (Right (ExecutionResult [] Nothing [qualifiedShowErr] []))
+                        "plot [(0, 0), (1, 1)]"
+                case cands of
+                    (c : _) -> do
+                        c `shouldSatisfy` T.isInfixOf "displayPicture (plot [(0, 0), (1, 1)])"
+                        c `shouldSatisfy` T.isInfixOf "import Sabela.Notebook (displayPicture)"
+                    [] -> expectationFailure "expected a wrapped candidate"
 
         it "wraps the final expression in its display function" $ case row of
             Nothing -> expectationFailure "no unshowable-display row"

@@ -6,6 +6,7 @@ module Sabela.AI.PromptCore (
     sabelaBuiltins,
     builtinNames,
     builtinModules,
+    drawingBuiltins,
     toolSurfaceBlock,
 ) where
 
@@ -51,8 +52,9 @@ sabelaBuiltins =
         [ "## Sabela's own library (installed, nothing to add)"
         , ""
         , "- Display and interactive widgets are in scope at session start."
-        , "- Drawing, charts, animation and FRP live in `Sabela.Notebook`"
-        , "  and its submodules; import it to bring them into scope."
+        , "- Drawing, charts, animation and FRP live in `Sabela.Notebook`."
+        , "  Bring them into scope with: import Sabela.Notebook"
+        , "  (the whole module, not a selective list)."
         , ""
         , "Find the entry points the same way you find anything else: search"
         , "for what you want to DO in your own words, browse the module, and"

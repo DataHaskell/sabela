@@ -12,6 +12,7 @@ import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.Time.Clock (getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Network.HTTP.Client (Manager)
 import System.IO (hFlush, isEOF, stdout)
@@ -20,6 +21,7 @@ import System.Timeout (timeout)
 import Data.Map.Strict (Map)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..), chat, chatSeeded)
+import Siza.Agent.Chat.Export (exportCommand, exportFileName, exportText)
 import Siza.Agent.Check (
     CheckResult (..),
     classifyCheck,
@@ -71,7 +73,8 @@ runChat cfg mgr conn base = do
             <> (if verbose then " \183 verbose (full audit + thinking)" else "")
     instructions =
         "This edits the LIVE notebook at that URL (adds and changes cells). Type a \
-        \request; Ctrl-C cancels the current request, Ctrl-D quits.\n"
+        \request; /export [path] saves the transcript as markdown; Ctrl-C cancels \
+        \the current request, Ctrl-D quits.\n"
     loop prev = do
         TIO.putStr "\8250 "
         hFlush stdout
@@ -80,9 +83,23 @@ runChat cfg mgr conn base = do
             then TIO.putStrLn "\nbye"
             else do
                 line <- TIO.getLine
-                if T.strip line `elem` ["quit", "exit", ":q"]
-                    then TIO.putStrLn "bye"
-                    else runTurn prev line
+                case exportCommand line of
+                    Just mPath -> exportTranscript prev mPath >> loop prev
+                    Nothing
+                        | T.strip line `elem` ["quit", "exit", ":q"] ->
+                            TIO.putStrLn "bye"
+                        | otherwise -> runTurn prev line
+    exportTranscript prev mPath
+        | null prev = TIO.putStrLn "  nothing to export yet"
+        | otherwise = do
+            path <- maybe (exportFileName <$> getCurrentTime) pure mPath
+            TIO.writeFile path (exportText model prev)
+            TIO.putStrLn
+                ( "  exported "
+                    <> tshow (length prev)
+                    <> " messages -> "
+                    <> T.pack path
+                )
     runTurn prev line = do
         res <-
             try (timeout (ccRequestTimeoutSecs cfg * 1000000) (turn prev line)) ::

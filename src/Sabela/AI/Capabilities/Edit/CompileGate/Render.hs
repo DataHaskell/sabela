@@ -141,7 +141,9 @@ wrapDecl body = [":{"] ++ T.lines body ++ [":}"]
 
 probeDecl :: Int -> Text -> [Text]
 probeDecl i body =
-    [":{", "_sabelaGateProbe" <> T.pack (show i) <> " = (" <> body <> ")", ":}"]
+    [":{", "_sabelaGateProbe" <> T.pack (show i) <> " = ("]
+        ++ map ("    " <>) (T.lines body)
+        ++ ["    )", ":}"]
 
 dropBindPattern :: Text -> Text
 dropBindPattern t = fromMaybe t (bindStatementBody t)

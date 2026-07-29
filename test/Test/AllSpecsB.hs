@@ -31,6 +31,7 @@ import qualified Test.ExportGoldenSpec as ExportGoldenSpec
 import qualified Test.GateRepairSpec as GateRepairSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import qualified Test.HintsSpec as HintsSpec
+import qualified Test.HoleNudgeSpec as HoleNudgeSpec
 import Test.Hspec (Spec)
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
 import qualified Test.KernelState.HolderSpec as KernelStateHolderSpec
@@ -96,6 +97,7 @@ allSpecsB = do
     PackageIndexSpec.spec
     PathRepairSpec.spec
     GateRepairSpec.spec
+    HoleNudgeSpec.spec
     RecordFieldDiscoverySpec.spec
     HintsSpec.spec
     StderrFailureSpec.spec

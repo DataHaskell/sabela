@@ -10,7 +10,7 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
-import Sabela.AI.PromptCore (builtinNames)
+import Sabela.AI.PromptCore (builtinNames, drawingBuiltins)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.DiscoverTool (runDiscoverTool)
 import Test.DiscoverFixtures (hitText, hitsOf, installNamesFile, stateOf)
@@ -34,6 +34,20 @@ discoverSeedSpec =
                                 (map (hitText "install") (hitsOf v))
                         ]
                 bad `shouldBe` []
+            it "a drawing builtin's card says import Sabela.Notebook, never 'no import'" $ do
+                bad <- fmap concat . forM drawingBuiltins $ \n -> do
+                    ToolOk v <- runDiscoverTool False (nbCall []) n
+                    let use = T.concat (map (hitText "use") (hitsOf v))
+                    pure
+                        [ n
+                        | not ("import Sabela.Notebook" `T.isInfixOf` use)
+                            || "no import needed" `T.isInfixOf` use
+                        ]
+                bad `shouldBe` []
+            it "a prelude builtin still answers 'no import needed'" $ do
+                ToolOk v <- runDiscoverTool False (nbCall []) "displayHtml"
+                T.concat (map (hitText "use") (hitsOf v))
+                    `shouldSatisfy` T.isInfixOf "no import needed"
             it "a module-shaped query answers 'imported by cell 0 as D'" $ do
                 let cells = [AliasImport "DataFrame" "D"]
                 ToolOk v <- runDiscoverTool False (nbCall cells) "DataFrame"

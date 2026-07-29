@@ -31,10 +31,11 @@ import Sabela.AI.HoleRepair (
     substituteName,
     suggestedNames,
  )
-import Sabela.AI.ImportRepair (unboundAliasUses)
+import Sabela.AI.ImportRepair (addScopedImport, unboundAliasUses)
 import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
 import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ExecutionResult (..))
+import Sabela.AI.Unshowable (renderVocabulary, unshowableShowType)
 import Sabela.Diagnose (ambiguousOccurrence, hiddenPackage, notInScopeName)
 import Sabela.Model
 import Sabela.Parse (cellNames)
@@ -81,36 +82,22 @@ mitigationTable =
     ]
 
 detectUnshowable :: CellError -> Bool
-detectUnshowable ce =
-    "No instance for" `T.isInfixOf` msg
-        && any (\t -> ("Show " <> t) `T.isInfixOf` msg) displayableTypes
-  where
-    msg = ceMessage ce
-
-displayFunctions :: [(Text, Text)]
-displayFunctions = [("Picture", "displayPicture")]
-
-displayableTypes :: [Text]
-displayableTypes = map fst displayFunctions
+detectUnshowable = isJust . unshowableShowType . ceMessage
 
 unshowableGenerate ::
     App -> AIStore -> Either Text ExecutionResult -> Text -> IO [Text]
-unshowableGenerate _ _ res src =
+unshowableGenerate _ _ _ src =
     pure
-        [ wrapped
-        | fn <- displayFnFor res
+        [ ensureWrapScope mImp fn wrapped
+        | (fn, mImp) <- renderVocabulary
         , Just wrapped <- [wrapFinalExpression fn src]
         ]
 
-displayFnFor :: Either Text ExecutionResult -> [Text]
-displayFnFor res =
-    take
-        1
-        [ fn
-        | (ty, fn) <- displayFunctions
-        , ce <- errorsOf res
-        , ("Show " <> ty) `T.isInfixOf` ceMessage ce
-        ]
+ensureWrapScope :: Maybe Text -> Text -> Text -> Text
+ensureWrapScope Nothing _ src = src
+ensureWrapScope (Just m) fn src
+    | ("import " <> m) `elem` map T.stripStart (T.lines src) = src
+    | otherwise = addScopedImport m (T.takeWhile (/= ' ') fn) src
 
 wrapFinalExpression :: Text -> Text -> Maybe Text
 wrapFinalExpression fn src = case reverse (T.lines src) of

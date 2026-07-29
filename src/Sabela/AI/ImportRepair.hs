@@ -6,6 +6,8 @@ module Sabela.AI.ImportRepair (
     addImport,
     addScopedImport,
     addQualifiedImport,
+    dropImportList,
+    widenImportList,
     qualifiedAliases,
     qualifiedImports,
     importedAliasMisses,
@@ -56,9 +58,38 @@ addScopedImport modul name src
     | importLine `elem` map T.stripStart (T.lines src) = src
     | otherwise = insertImport importLine src
   where
-    importLine = "import " <> modul <> " (" <> entity <> ")"
-    entity = if isOperator name then "(" <> name <> ")" else name
-    isOperator = T.all (`elem` operatorChars)
+    importLine = "import " <> modul <> " (" <> importEntity name <> ")"
+
+importEntity :: Text -> Text
+importEntity name
+    | T.all (`elem` operatorChars) name = "(" <> name <> ")"
+    | otherwise = name
+
+widenImportList :: Text -> [Text] -> Text -> Text
+widenImportList modul names src
+    | T.null modul || null names = src
+    | otherwise = T.intercalate "\n" (map widen (T.lines src))
+  where
+    widen l = case T.stripPrefix ("import " <> modul <> " (") (T.stripStart l) of
+        Just rest
+            | ")" `T.isSuffixOf` T.stripEnd rest
+            , not (null fresh) ->
+                "import " <> modul <> " (" <> T.intercalate ", " (listed <> fresh) <> ")"
+          where
+            listed = map T.strip (T.splitOn "," (T.dropEnd 1 (T.stripEnd rest)))
+            fresh = [importEntity n | n <- names, n `notElem` map bare listed]
+            bare = T.dropAround (`elem` ("()" :: String))
+        _ -> l
+
+-- | Rewrite the module's selective import to the wholesale form.
+dropImportList :: Text -> Text -> Text
+dropImportList modul src
+    | T.null modul = src
+    | otherwise = T.intercalate "\n" (map widen (T.lines src))
+  where
+    widen l = case T.stripPrefix ("import " <> modul <> " (") (T.stripStart l) of
+        Just rest | ")" `T.isSuffixOf` T.stripEnd rest -> "import " <> modul
+        _ -> l
 
 qualifiedNotInScope :: Text -> [(Text, Text)]
 qualifiedNotInScope err =
