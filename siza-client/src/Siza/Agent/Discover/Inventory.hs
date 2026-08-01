@@ -6,7 +6,7 @@ module Siza.Agent.Discover.Inventory (
 
 import Data.Aeson (Value)
 import Data.List (sortOn)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -21,7 +21,7 @@ import Siza.Agent.Discover.Types (
     MatchKind (..),
     NotebookEnv,
     Scope,
-    SourceAnswer,
+    SourceAnswer (..),
  )
 
 topicTokens :: Interpreted -> [Text]
@@ -39,9 +39,13 @@ inventoryEnvelope ::
     [Text] ->
     Value
 inventoryEnvelope env interp scope limit answers hk lexical =
-    envelopeFrom env interp scope limit answers hk Nothing rows
+    envelopeFrom env interp scope limit answers hk card rows
   where
     rows = inventoryRows (mergedHits env interp answers hk) interp lexical
+    -- Inventory is the mode the miss guidance recommends for "what is
+    -- available"; dropping the card here answered that question with a bare
+    -- row naming the package and nothing it contains.
+    card = listToMaybe (mapMaybe saCard answers)
 
 inventoryRows :: [DHit] -> Interpreted -> [Text] -> [DHit]
 inventoryRows merged interp lexical =
@@ -61,6 +65,7 @@ inventoryRows merged interp lexical =
             "hackage"
             (Just (cabalLine n))
             Nothing
+            Nothing
         | n <- lexical
         , n `notElem` map fst grouped
         ]
@@ -76,6 +81,7 @@ inventoryRows merged interp lexical =
             , dhOrigin = firstNonEmpty (map dhOrigin hs)
             , dhCabal = cabalFor p state hs
             , dhUse = Nothing
+            , dhClash = Nothing
             }
       where
         state = minimum (map dhInstall hs)

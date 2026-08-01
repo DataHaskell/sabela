@@ -11,10 +11,10 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.HTTP.Client (defaultManagerSettings, newManager)
-import System.Directory (doesFileExist, findExecutable)
-import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
+
+import Test.Live (requireLiveFor)
 
 import Sabela.AI.Capabilities (executeTool)
 import qualified Sabela.AI.Store as AIStore
@@ -25,16 +25,8 @@ import Sabela.Server (newApp)
 import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.State (App (..), forceResetAllSessions)
 
-requireLiveIntegration :: IO ()
-requireLiveIntegration = do
-    cabal <- findExecutable "cabal"
-    case cabal of
-        Nothing -> pendingWith "cabal not found on PATH; skipping builtin search"
-        Just _ -> pure ()
-    present <- doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if present
-        then pure ()
-        else pendingWith "sabela-notebook support source not on disk; skipping"
+requireLiveIntegration :: Expectation
+requireLiveIntegration = requireLiveFor "builtin search"
 
 withFixture ::
     String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a

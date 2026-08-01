@@ -10,6 +10,7 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Types (ToolOutcome (..))
+import Sabela.AI.Verdict (VerdictClass (..), parseVerdict)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
 import Siza.Agent.Loop (
@@ -19,7 +20,6 @@ import Siza.Agent.Loop (
     GrammarMode (..),
     runEpisodeSeeded,
  )
-import Siza.Agent.Messages (doneSignal, noCheckSignal)
 import Test.DiscoverFixtures (textField)
 
 cleanWrite :: Value
@@ -74,7 +74,7 @@ runScript batches verdict = do
                 { drvChat = chat
                 , drvDispatch = dispatchScript
                 , drvNow = pure 0
-                , drvVerify = pure verdict
+                , drvVerify = const (pure verdict)
                 }
     runEpisodeSeeded
         []
@@ -85,6 +85,12 @@ runScript batches verdict = do
         "define jsonSum :: Int summing the numbers"
         12
 
+passed :: (CheckResult, Maybe Text)
+passed = (CheckPassed, Just "jsonSum == 60")
+
+noCheck :: (CheckResult, Maybe Text)
+noCheck = (CheckNotApplicable, Just "the proposed check was discarded")
+
 write :: ToolCall
 write = ToolCall "insert_cell" (object ["source" .= ("jsonSum = 60" :: Text)])
 
@@ -94,46 +100,57 @@ readOnly = ToolCall "list_bindings" (object [])
 search :: ToolCall
 search = ToolCall "discover" (object ["query" .= ("bars" :: Text)])
 
+-- | Transcript positions carrying an ok verdict from the harness's own gate.
 signalMsgs :: AgentRun -> [Int]
 signalMsgs run =
     [ i
     | (i, m) <- zip [0 ..] (arTranscript run)
-    , doneSignal `T.isInfixOf` textField "content" m
+    , parseVerdict (textField "content" m) == Just VerdictOk
+    ]
+
+couldNotRunMsgs :: AgentRun -> [Int]
+couldNotRunMsgs run =
+    [ i
+    | (i, m) <- zip [0 ..] (arTranscript run)
+    , parseVerdict (textField "content" m) == Just VerdictCouldNotRun
     ]
 
 doneSignalSpec :: Spec
 doneSignalSpec = describe "deliverable-green done-signal (R5.5/R5.7/R9.8)" $ do
-    it "happy path: never fires before/without need, episode on the floor" $ do
-        run <- runScript [[write]] (CheckPassed, Nothing)
+    it "happy path: fires beside the landing write, episode on the floor" $ do
+        run <- runScript [[write]] passed
         arStopped run `shouldBe` "done"
         arTurns run `shouldSatisfy` (<= 5)
-        signalMsgs run `shouldBe` []
+        length (signalMsgs run) `shouldBe` 1
 
     it "fires exactly once when tools keep coming after a green deliverable" $ do
-        run <- runScript [[write], [readOnly], [readOnly]] (CheckPassed, Nothing)
+        run <- runScript [[write], [readOnly], [readOnly]] passed
         arStopped run `shouldBe` "done"
         length (signalMsgs run) `shouldBe` 1
 
     it "never claims a passing check when none applied" $ do
-        run <- runScript [[write], [readOnly], [readOnly]] (CheckNotApplicable, Nothing)
+        run <- runScript [[write], [readOnly], [readOnly]] noCheck
         arStopped run `shouldBe` "done_unverified"
         signalMsgs run `shouldBe` []
 
     it "reserves the done tag for a check that actually passed" $ do
-        passed <- runScript [[write]] (CheckPassed, Nothing)
-        unchecked <- runScript [[write]] (CheckNotApplicable, Nothing)
-        arStopped passed `shouldBe` "done"
+        green <- runScript [[write]] passed
+        unchecked <- runScript [[write]] noCheck
+        arStopped green `shouldBe` "done"
         arStopped unchecked `shouldSatisfy` (/= "done")
 
-    it "discloses the no-check state instead of nagging a landed deliverable" $ do
-        run <- runScript [[write], [readOnly], [readOnly]] (CheckNotApplicable, Nothing)
+    it "discloses the no-check state as could-not-run, never as ok" $ do
+        run <- runScript [[write], [readOnly], [readOnly]] noCheck
         arStopped run `shouldNotBe` "stuck"
+        couldNotRunMsgs run `shouldNotBe` []
         arTranscript run
             `shouldSatisfy` any
-                (T.isInfixOf noCheckSignal . textField "content")
+                ( T.isInfixOf "No covering check reached a verdict this turn"
+                    . textField "content"
+                )
 
     it "fires only AFTER the write's outcome is in the transcript" $ do
-        run <- runScript [[write], [readOnly], [readOnly]] (CheckPassed, Nothing)
+        run <- runScript [[write], [readOnly], [readOnly]] passed
         let writeIdx =
                 [ i
                 | (i, m) <- zip [0 ..] (arTranscript run)
@@ -149,14 +166,14 @@ doneSignalSpec = describe "deliverable-green done-signal (R5.5/R5.7/R9.8)" $ do
 
     it "never fires on a read-only spiral with no deliverable write" $ do
         run <-
-            runScript [[readOnly], [readOnly], [readOnly]] (CheckPassed, Nothing)
+            runScript [[readOnly], [readOnly], [readOnly]] passed
         signalMsgs run `shouldBe` []
 
     it "R5.7: no channel emits search/read advice after the signal" $ do
         run <-
             runScript
                 [[write], [search], [readOnly], [readOnly], [readOnly]]
-                (CheckPassed, Nothing)
+                passed
         case signalMsgs run of
             (s : _) -> do
                 let after = drop (s + 1) (arTranscript run)

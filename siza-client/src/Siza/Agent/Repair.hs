@@ -2,6 +2,7 @@
 
 module Siza.Agent.Repair (
     Dispatch,
+    fitsBlob,
     substituteAndVerify,
     repairRedCells,
     repairOne,
@@ -238,7 +239,7 @@ queryHoleFits disp ty = do
                 "find_by_type"
                 (object ["goal" .= ("_ :: " <> ty)])
             )
-    pure (strField "result" out)
+    pure (fitsBlob out)
 
 readCellSource :: Dispatch -> CellId -> IO (Maybe Text)
 readCellSource disp cid = do
@@ -250,6 +251,25 @@ readCellSource disp cid = do
 replaceCall :: CellId -> Text -> ToolCall
 replaceCall cid src =
     ToolCall "replace_cell_source" (object ["cell_id" .= cid, "new_source" .= src])
+
+{- | Re-renders a find_by_type answer into the plain form `parseHoleFits` owns,
+so the tool's structured fits reach the consumers that read GHC's rendering.
+-}
+fitsBlob :: Either Text ToolOutcome -> Text
+fitsBlob out = case fitsOf out of
+    [] -> ""
+    fits -> T.unlines ("Valid hole fits include" : concatMap entry fits)
+  where
+    fitsOf (Right (ToolOk (Object o))) = case KM.lookup (K.fromText "fits") o of
+        Just (Array xs) -> [f | Object f <- toList xs]
+        _ -> []
+    fitsOf _ = []
+    entry f =
+        ["  " <> lookupText "write" f <> " :: " <> lookupText "type" f]
+            <> [ "    (imported from \8216" <> m <> "\8217)"
+               | let m = lookupText "module" f
+               , not (T.null m)
+               ]
 
 strField :: Text -> Either Text ToolOutcome -> Text
 strField k (Right (ToolOk (Object o))) = lookupText k o

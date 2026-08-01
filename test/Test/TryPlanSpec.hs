@@ -45,8 +45,18 @@ spec = describe "try candidate planning" $ do
         planTrial "answer\nanswer = (42 :: Int)"
             `shouldBe` Left TrialExpressionNotFinal
 
-    it "rejects IO binds, GHCi commands, TH, FFI, unsafe purity escapes, and flags" $ do
-        planTrial "x <- readFile \"secret\"" `shouldSatisfy` isEffectReject
+    it "admits an IO bind, and pins it to the contained session" $ do
+        let Right plan = planTrial "x <- readFile \"secret\""
+        trialTier plan `shouldBe` TierContained
+        candidateNeedsDisposable plan `shouldBe` True
+        trialSetup plan `shouldSatisfy` T.isInfixOf "x <- readFile"
+
+    it "admits a purity escape, and pins it to the contained session" $ do
+        let Right plan = planTrial "v = unsafePerformIO (readFile \"p\")"
+        trialTier plan `shouldBe` TierContained
+        candidateNeedsDisposable plan `shouldBe` True
+
+    it "rejects GHCi state commands, TH, FFI, and flags" $ do
         planTrial ":! touch escaped" `shouldSatisfy` isMetaReject
         planTrial "$(pure [])" `shouldSatisfy` isUnsafeReject
         planTrial "$compileTimeAction" `shouldSatisfy` isUnsafeReject
@@ -54,8 +64,6 @@ spec = describe "try candidate planning" $ do
         planTrial "foreign import ccall unsafe \"getpid\" pid :: Int\npid"
             `shouldSatisfy` isUnsafeReject
         planTrial "foreign  import ccall unsafe \"getpid\" pid :: Int\npid"
-            `shouldSatisfy` isUnsafeReject
-        planTrial "unsafePerformIO (writeFile \"escaped\" \"x\")"
             `shouldSatisfy` isUnsafeReject
         planTrial "-- cabal: ghc-options: -fplugin Evil\n42"
             `shouldSatisfy` isUnsafeReject
@@ -75,10 +83,6 @@ spec = describe "try candidate planning" $ do
     it "does not confuse the ordinary application operator with a splice" $ do
         let Right plan = planTrial "sum $ map id [1 :: Int, 2]"
         trialExpression plan `shouldBe` Just "sum $ map id [1 :: Int, 2]"
-
-isEffectReject :: Either TrialPlanError TrialPlan -> Bool
-isEffectReject (Left (TrialEffectfulStatement _)) = True
-isEffectReject _ = False
 
 isMetaReject :: Either TrialPlanError TrialPlan -> Bool
 isMetaReject (Left (TrialMetaCommand _)) = True

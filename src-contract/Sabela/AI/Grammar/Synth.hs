@@ -25,6 +25,7 @@ import Sabela.AI.Grammar (
     normalizeName,
     parseBrowse,
  )
+import Sabela.AI.LeakShape (scrubLeakyToken)
 
 data Surface = Surface
     { surfModule :: Text
@@ -190,28 +191,19 @@ renderTerminal style (BrowseEntry name typ) =
         <> sanitizeTypeText typ
         <> envHint (displayEnvelope typ)
 
+{- | Build provenance is removed by the one leak predicate, so what this
+presents and what 'Sabela.AI.LeakShape.leakyToken' detects cannot disagree —
+a second local predicate let hash-suffixed unit ids through.
+-}
 sanitizeTypeText :: Text -> Text
 sanitizeTypeText = mapIdentRuns sanitizeToken
   where
     sanitizeToken t
-        | Just rest <- stripVersionQualifier t = sanitizeToken rest
+        | Just rest <- scrubLeakyToken t
+        , rest /= t =
+            sanitizeToken rest
         | ".Internal." `T.isInfixOf` t = lastSeg t
         | otherwise = t
-
-stripVersionQualifier :: Text -> Maybe Text
-stripVersionQualifier t = case T.breakOn ":" t of
-    (pre, post)
-        | not (T.null post)
-        , versionSuffixed pre ->
-            Just (T.drop 1 post)
-    _ -> Nothing
-  where
-    versionSuffixed pre = case T.splitOn "-" pre of
-        parts@(_ : _ : _) ->
-            let v = last parts
-             in not (T.null v)
-                    && T.all (\c -> isDigit c || c == '.') v
-        _ -> False
 
 mapIdentRuns :: (Text -> Text) -> Text -> Text
 mapIdentRuns f = T.concat . map apply . T.groupBy sameClass

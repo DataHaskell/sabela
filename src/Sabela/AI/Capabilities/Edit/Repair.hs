@@ -24,7 +24,7 @@ import Sabela.AI.ImportRepair (moduleRenameFix)
 import Sabela.AI.ModuleResolve (closestModules)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (couldNotFindModule, misnamedModule, notInScopeName)
-import Sabela.Diagnose.Packages (packageForModule, table)
+import Sabela.Diagnose.Packages (findModulePackage)
 import Sabela.Model (CellError (..))
 import Sabela.Parse (cellNames)
 
@@ -67,18 +67,23 @@ dependencySuggestion res src = do
 moduleDepStep :: Either Text ExecutionResult -> Text -> IO (Maybe Text)
 moduleDepStep res src = do
     enabled <- featureEnabled "SABELA_MODULE_RESOLVE"
-    pure (guard enabled >> moduleDepFix res src)
+    if enabled then moduleDepFix res src else pure Nothing
 
-moduleDepFix :: Either Text ExecutionResult -> Text -> Maybe Text
-moduleDepFix res src = do
-    wrong <- couldNotFindModule errText
-    guard (isNothing (misnamedModule errText))
-    best <-
-        listToMaybe (closestModules 1 moduleFuzzyThreshold wrong (map fst table))
-    pkg <- packageForModule best
-    let src' = addBuildDepend pkg src
-    guard (src' /= src)
-    pure src'
+{- | Declare the package that exposes the module GHC could not find, asking the
+installed package db about the module itself rather than fuzzy-matching the
+name against a hand-written table.
+-}
+moduleDepFix :: Either Text ExecutionResult -> Text -> IO (Maybe Text)
+moduleDepFix res src
+    | Just wrong <- couldNotFindModule errText
+    , isNothing (misnamedModule errText) = do
+        mPkg <- findModulePackage wrong
+        pure $ do
+            pkg <- mPkg
+            let src' = addBuildDepend pkg src
+            guard (src' /= src)
+            pure src'
+    | otherwise = pure Nothing
   where
     errText = resultErrorText res
 

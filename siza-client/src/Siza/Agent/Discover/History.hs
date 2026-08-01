@@ -15,6 +15,8 @@ module Siza.Agent.Discover.History (
     callReadyFacts,
     duplicateEnvelope,
     missClusters,
+    slGoalSpent,
+    takeEscalation,
 ) where
 
 import Data.Aeson (Value)
@@ -34,6 +36,7 @@ import Siza.Agent.Discover.Advice (
     harvestInto,
     missSummary,
     resolvedTarget,
+    scopedFacts,
     setField,
     stripTried,
     strongEvidence,
@@ -46,6 +49,7 @@ import Siza.Agent.Discover.Closure (
     closedSummary,
     consultedOf,
     entityOf,
+    heldHitsFor,
     protectedBy,
     recordEvidence,
  )
@@ -57,7 +61,10 @@ import Siza.Agent.Discover.Goal (
     withGoal,
  )
 import Siza.Agent.Discover.Ledger
-import Siza.Agent.Discover.MissLadder (missAdvice)
+import Siza.Agent.Discover.MissLadder (
+    MissOutcome (..),
+    missAdvice,
+ )
 import Siza.Agent.Discover.Resolved (resolvedWhy)
 import Siza.Agent.Discover.Steer (goalTypeOf)
 import Siza.Agent.Discover.Types (StandingGoal (..))
@@ -66,11 +73,16 @@ ledgerShortcut :: SearchLedger -> Text -> Maybe Value
 ledgerShortcut led q
     | slClosed led = case closedSeen of
         Just (_, summary) ->
-            Just . duplicateEnvelope qn "already answered" $
-                closedSummary
-                    (bestHeldFor (slEvidence led) (entityOf qn))
-                    (factsClause (slFacts led))
-                    summary
+            Just $
+                duplicateEnvelope
+                    qn
+                    "already answered"
+                    ( closedSummary
+                        (bestHeldFor (slEvidence led) scopedKey)
+                        (factsClause (scopedFacts qn (slFacts led)))
+                        summary
+                    )
+                    held
         Nothing -> Nothing
     | Just (n, summary) <- Map.lookup qn (slSeen led) =
         Just
@@ -78,10 +90,13 @@ ledgerShortcut led q
                 qn
                 ("call " <> tShow n)
                 (stripTried (slTried led) summary)
+                held
             )
     | otherwise = Nothing
   where
     qn = T.strip q
+    scopedKey = entityOf qn <> clusterScope qn
+    held = heldHitsFor (slEvidence led) scopedKey
     closedSeen =
         case Map.lookup qn (slSeen led) of
             Just hit -> Just hit
@@ -100,10 +115,10 @@ ledgerRecord q v led0
     | state == "bad_request" = (led, v)
     | state == "not_found" =
         case protectedFact led cluster of
-            Just why -> announce (led, blockedDenial qn why)
+            Just why -> announce (led, blockedDenial heldForQuery qn why)
             Nothing
                 | entity `Set.member` slResolved led ->
-                    announce (led, blockedDenial qn resolvedWhy)
+                    announce (led, blockedDenial heldForQuery qn resolvedWhy)
                 | otherwise -> announce (missWalk (missSummary v) (discoverFresh led))
     | Just sg <- mGoal
     , not (goalSatisfied sg target v) =
@@ -117,7 +132,7 @@ ledgerRecord q v led0
             Just (n, q0)
                 | q0 /= qn ->
                     let (repeated, _hard) = discoverRepeat qn (assertFound led)
-                     in (repeated, answerDup (strongEvidence v) qn n q0)
+                     in (repeated, answerDup v qn n q0)
             _ ->
                 let led' = assertFound led
                  in ( (discoverFresh led')
@@ -134,12 +149,23 @@ ledgerRecord q v led0
     cluster = clusterOf v qn
     entity = clusterName v qn
     target = resolvedTarget v qn
-    evidence' = recordEvidence entity v (slEvidence led)
+    evidence' = recordEvidence cluster v (slEvidence led)
+    heldForQuery = heldHitsFor (slEvidence led) cluster
     standing = standingGoal (slFacts led)
     mGoal = case standing of
         Just sg -> Just sg
         Nothing -> (\t -> StandingGoal t "" "") <$> goalTypeOf target
-    missCluster = maybe cluster (goalClusterKey . sgType) standing
+    -- Scope belongs in the miss key: two package scopes are two questions.
+    -- Spelling deliberately does not: those converge on one cluster.
+    scopeKey =
+        T.concat
+            [ seg
+            | seg <- T.words qn
+            , "[" `T.isPrefixOf` seg
+            , not ("[limit=" `T.isPrefixOf` seg)
+            ]
+    missCluster =
+        maybe cluster (\sg -> goalClusterKey (sgType sg) <> scopeKey) standing
     vG = maybe v (\sg -> withGoal sg target v) mGoal
     announce (l, out) = case slWorldNote l of
         Just note ->
@@ -167,7 +193,7 @@ ledgerRecord q v led0
       where
         l =
             markSatisfied
-                (clearGoal l0{slEvidence = recordEvidence entity v (slEvidence l0)})
+                (clearGoal l0{slEvidence = recordEvidence cluster v (slEvidence l0)})
     clearGoal l = case standing of
         Just sg
             | goalProduced (sgType sg) v ->
@@ -185,18 +211,37 @@ ledgerRecord q v led0
                 (remember summary ledIn)
                     { slMisses = Map.insert missCluster n (slMisses ledIn)
                     }
-            bestHeld = bestHeldFor (slEvidence led') entity
+            held = heldHitsFor (slEvidence led') cluster
+            bestHeld = bestHeldFor (slEvidence led') cluster
             consulted = Set.toAscList (slConsulted led')
-         in ( led'
-            , missAdvice
-                (slTried led')
-                (slFacts led')
-                bestHeld
-                consulted
-                n
-                qn
-                vG
-            )
+         in arm led' $
+                missAdvice
+                    held
+                    (slTried led')
+                    (slFacts led')
+                    bestHeld
+                    consulted
+                    unspentGoal
+                    n
+                    qn
+                    vG
+    {- The goal is worth a type query only while it stands unsatisfied and no
+    query has been spent on its cluster; the spend is recorded when decided. -}
+    unspentGoal = case standing of
+        Just sg
+            | not (goalSatisfied sg target v)
+            , goalClusterKey (sgType sg) `Set.notMember` slGoalSpent led ->
+                Just sg
+        _ -> Nothing
+    arm l (Advise out) = (l, out)
+    arm l (EscalateType sg out) =
+        ( l
+            { slGoalSpent =
+                Set.insert (goalClusterKey (sgType sg)) (slGoalSpent l)
+            , slEscalate = Just sg
+            }
+        , out
+        )
 
 noteConsulted :: Value -> SearchLedger -> SearchLedger
 noteConsulted v led =

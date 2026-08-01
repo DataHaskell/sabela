@@ -5,6 +5,8 @@ module Test.DiscoverScopeConserveSpec (discoverScopeConserveSpec) where
 import Data.Aeson (Value, object, (.=))
 import qualified Data.Text as T
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck
 
 import Siza.Agent.Discover.Facts (factPackages)
 import Siza.Agent.Discover.Interpret (interpret)
@@ -12,6 +14,8 @@ import Siza.Agent.Discover.Merge (
     discoverEnvelopeRecent,
     discoverEnvelopeScoped,
  )
+import Siza.Agent.Discover.Request (scopeActive)
+import Siza.Agent.Discover.ScopeFilter (scopeRemovedNote)
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
@@ -32,8 +36,18 @@ env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 hk0 :: HackageInfo
 hk0 = HackageInfo True []
 
-reExportHits :: [DHit]
-reExportHits =
+{- | One entity two sources describe: the same package, and a record whose
+module the harness did not compute. The filter must speak for that record.
+-}
+attributedHits :: [DHit]
+attributedHits =
+    [ (mkHit "colList" "" "frameio"){dhOrigin = "session"}
+    , (mkHit "colList" "Frame" "frameio"){dhOrigin = "hoogle"}
+    ]
+
+-- | Two entities that share nothing but a name.
+namesakeHits :: [DHit]
+namesakeHits =
     [ (mkHit "colList" "Frame" ""){dhOrigin = "session"}
     , (mkHit "colList" "Ops.Internal" "frameio"){dhOrigin = "hoogle"}
     ]
@@ -53,33 +67,52 @@ discoverScopeConserveSpec = do
     refinementSpec
     factPackagesSpec
     scopedCardSpec
+    narrowNoteSpec
     describe "post-union scope predicate (section 3.3)" $ do
         it "keeps an exact hit whose attributed sibling module satisfies the filter" $ do
-            let v = scoped (Scope (Just "Frame") Nothing) reExportHits
+            let v = scoped (Scope (Just "Frame") Nothing) attributedHits
             stateOf v `shouldBe` "found"
             map (textField "module") (hitsOf v)
-                `shouldMatchList` ["Frame", "Ops.Internal"]
+                `shouldMatchList` ["", "Frame"]
 
         it "conserves totals: the filtered total equals the attributed-kept count" $ do
-            let v = scoped (Scope (Just "Frame") Nothing) reExportHits
+            let v = scoped (Scope (Just "Frame") Nothing) attributedHits
             length (hitsOf v) `shouldBe` 2
 
-        it "a filter that excludes everything discloses the removed candidates' modules" $ do
-            let v = scoped (Scope (Just "Granite") Nothing) reExportHits
+        it "drops a namesake whose only claim on the module is the name (A1)" $ do
+            let v = scoped (Scope (Just "Frame") Nothing) namesakeHits
+            stateOf v `shouldBe` "found"
+            map (textField "module") (hitsOf v) `shouldBe` ["Frame"]
+            textField "narrow" v `shouldSatisfy` ("Ops.Internal" `T.isInfixOf`)
+
+        it "a filter that excludes everything names the removed candidates" $ do
+            let v = scoped (Scope (Just "Granite") Nothing) namesakeHits
             stateOf v `shouldBe` "not_found"
             let narrow = textField "narrow" v
             narrow `shouldSatisfy` ("removed" `T.isInfixOf`)
+            narrow `shouldSatisfy` ("colList" `T.isInfixOf`)
             narrow `shouldSatisfy` ("Frame" `T.isInfixOf`)
             narrow `shouldSatisfy` ("Ops.Internal" `T.isInfixOf`)
 
         it
-            "package filters honour same-name attribution (a session hit missing its package)"
+            "package filters honour module attribution (a session hit missing its package)"
             $ do
                 let hits =
                         [ (mkHit "colList" "Frame" ""){dhOrigin = "session"}
                         , (mkHit "colList" "Frame.Ops" "frameio"){dhOrigin = "hoogle"}
                         ]
-                    v = scoped (Scope Nothing (Just "frameio")) hits
+                    answer =
+                        (okAnswer "hoogle" hits)
+                            { saPkgModules = [("frameio", ["Frame", "Frame.Ops"])]
+                            }
+                    v =
+                        discoverEnvelopeScoped
+                            env0
+                            (interpret env0 "colList")
+                            (Scope Nothing (Just "frameio"))
+                            8
+                            [answer]
+                            hk0
                 stateOf v `shouldBe` "found"
                 length (hitsOf v) `shouldBe` 2
 
@@ -90,6 +123,12 @@ scopedCardSpec = describe "a scoped request never carries a foreign card" $ do
                 [ "module" .= (m :: T.Text)
                 , "status" .= ("ok" :: T.Text)
                 , "exports" .= (["x :: Int"] :: [T.Text])
+                ]
+        pkgCardFor p =
+            object
+                [ "package" .= (p :: T.Text)
+                , "status" .= ("installed-not-loaded" :: T.Text)
+                , "modules" .= (["Some.Module"] :: [T.Text])
                 ]
         envWith scope c =
             discoverEnvelopeScoped
@@ -114,6 +153,35 @@ scopedCardSpec = describe "a scoped request never carries a foreign card" $ do
             (textField "module")
             (field "card" (envWith (Scope Nothing Nothing) (cardFor "Data.ByteString")))
             `shouldBe` Just "Data.ByteString"
+    it "drops a card whose package is not the scoped one" $
+        field
+            "card"
+            (envWith (Scope Nothing (Just "cassava")) (pkgCardFor "bytestring"))
+            `shouldBe` Nothing
+    it "keeps the card when it IS the scoped package" $
+        fmap
+            (textField "package")
+            ( field
+                "card"
+                (envWith (Scope Nothing (Just "cassava")) (pkgCardFor "cassava"))
+            )
+            `shouldBe` Just "cassava"
+    it "a scope that drops the only card, with no hits, is not_found" $
+        stateOf
+            (envWith (Scope (Just "Data.Csv") Nothing) (cardFor "Data.ByteString"))
+            `shouldBe` "not_found"
+    it "a package scope that drops the only card, with no hits, is not_found" $
+        stateOf
+            (envWith (Scope Nothing (Just "cassava")) (pkgCardFor "bytestring"))
+            `shouldBe` "not_found"
+    it "keeps a card that does not state the scoped axis at all" $
+        fmap
+            (textField "module")
+            ( field
+                "card"
+                (envWith (Scope Nothing (Just "cassava")) (cardFor "Data.Csv"))
+            )
+            `shouldBe` Just "Data.Csv"
 
 refinementSpec :: Spec
 refinementSpec = describe "a search refines what the session established" $ do
@@ -143,6 +211,50 @@ refinementSpec = describe "a search refines what the session established" $ do
         head (rankedWith []) `shouldBe` "colAaa"
     it "refinement never drops the stranger" $
         length (rankedWith ["session"]) `shouldBe` 2
+
+{- | C2-smaller-narrow: a scope disclosure must name the candidates it removed
+and must never leave a dangling clause behind an empty field.
+-}
+narrowNoteSpec :: Spec
+narrowNoteSpec = describe "the narrow disclosure is well formed (C2-smaller-narrow)" $ do
+    prop "no note has an empty segment, whatever fields the hits lack" $
+        forAll genRemovalCase $ \(hits, scope) ->
+            let narrow = textField "narrow" (scoped scope hits)
+             in counterexample (T.unpack narrow) (property (wellFormed narrow))
+    prop "a removal note names an excluded candidate, or says nothing at all" $
+        forAll ((,) <$> listOf1 genHit <*> genScope) $ \(removed, scope) ->
+            case scopeRemovedNote scope removed of
+                Nothing -> property (not (scopeActive scope))
+                Just note ->
+                    counterexample (T.unpack note) . property $
+                        wellFormed note
+                            && any (\h -> dhName h `T.isInfixOf` note) removed
+
+wellFormed :: T.Text -> Bool
+wellFormed narrow =
+    T.null narrow
+        || ( not (": ;" `T.isInfixOf` narrow)
+                && not (": ," `T.isInfixOf` narrow)
+                && not (": " `T.isSuffixOf` narrow)
+                && not (any (T.null . T.strip) (T.splitOn "; " narrow))
+           )
+
+genRemovalCase :: Gen ([DHit], Scope)
+genRemovalCase = (,) <$> listOf1 genHit <*> genScope
+
+genScope :: Gen Scope
+genScope =
+    Scope
+        <$> elements [Nothing, Just "Ctx.One", Just "Absent.Module"]
+        <*> elements [Nothing, Just "pctx", Just "absentpkg"]
+
+genHit :: Gen DHit
+genHit = do
+    n <- elements ["colList", "insertWith", "splitOn", "encode", "pack"]
+    m <- elements ["", "Ctx.One", "Far.Two", "Ops.Internal"]
+    p <- elements ["", "pctx", "pfar"]
+    ty <- elements ["", "Int -> Int", "Ord k => k -> Map k a -> Maybe a"]
+    pure (mkHit n m p){dhType = ty, dhOrigin = "hoogle"}
 
 factPackagesSpec :: Spec
 factPackagesSpec = describe "the session footprint from held facts" $ do

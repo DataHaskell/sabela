@@ -27,6 +27,25 @@ spec = describe "classifyError" $ do
             )
             `shouldBe` Nothing
 
+    it "a GHC warning is no error, so the gate cannot refuse a valid cell" $
+        classify
+            ( "<interactive>:577:15: warning: [GHC-63394] [-Wx-partial]\n"
+                <> "    In the use of \8216head\8217\n"
+                <> "    (imported from Prelude): \"This is a partial function, it\n"
+                <> "    throws an error on empty lists.\"\n"
+            )
+            `shouldBe` Nothing
+
+    it "a warning next to a real error keeps the error" $
+        case classify
+            ( "<interactive>:1:1: warning: [GHC-63394] [-Wx-partial]\n"
+                <> "    In the use of \8216head\8217\n"
+                <> "<interactive>:2:1: error: [GHC-88464]\n"
+                <> "    Variable not in scope: zorp\n"
+            ) of
+            Nothing -> expectationFailure "expected the error to survive"
+            Just msg -> msg `shouldSatisfy` T.isInfixOf "zorp"
+
     it "a real error survives, with the linker noise dropped" $ do
         let err =
                 "ld: warning: -keep_dwarf_unwind is obsolete\n"

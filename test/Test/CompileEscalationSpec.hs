@@ -10,23 +10,26 @@ import qualified Data.Text as T
 import Data.Unique (newUnique)
 
 import Sabela.Compiled (CompilePlan (..))
-import Sabela.Handlers.Plan (runPlanPhases)
+import Sabela.Deps (collectMetadata)
+import Sabela.Handlers.Lifecycle (neededEnvSig)
+import Sabela.Handlers.Plan (planInputs, runPlanPhases)
 import Sabela.Handlers.Shared (bumpGeneration)
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import Sabela.Reactivity (
     ExecutionPlan (..),
+    ModuleState (..),
     computeExecutionPlan,
+    computeExecutionPlanIn,
     computeStaleExecutionPlan,
     escalatedCellsToRun,
-    markAllInterpretedDirty,
  )
 import Sabela.Server (newApp)
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..))
+import Sabela.State (App (..), setLoadedModules)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
-import Sabela.State.SessionManager (setHaskellSession)
+import Sabela.State.SessionManager (getHaskellSession, installHaskellSession)
+import Test.CellFixture (mkCell)
 import Test.Hspec
-import Test.TopoSpec.Helpers (mkCell)
 
 nbOf :: [Cell] -> Notebook
 nbOf cs = Notebook{nbTitle = "t", nbCells = cs}
@@ -72,9 +75,27 @@ mkApp respond = do
     app <- newApp "." Set.empty Nothing Nothing []
     transcript <- newIORef []
     backend <- fakeBackend transcript respond
-    setHaskellSession (appSessions app) (Just backend)
     modifyNotebook (appNotebook app) (\nb -> nb{nbCells = cells})
+    nb <- readNotebook (appNotebook app)
+    installHaskellSession
+        (appSessions app)
+        backend
+        (neededEnvSig app (collectMetadata nb))
     pure (app, transcript)
+
+seedLoaded :: App -> M.Map Text Text -> IO ()
+seedLoaded app mods = do
+    mSess <- getHaskellSession (appSessions app)
+    case mSess of
+        Nothing -> error "seedLoaded: no session"
+        Just backend -> setLoadedModules app (ST.sbSessionId backend) mods
+
+-- | Build the plan the way a real edit does, so the module state is detected.
+planFor :: App -> Int -> IO ExecutionPlan
+planFor app cid = do
+    nb <- readNotebook (appNotebook app)
+    (env, mods) <- planInputs app nb
+    pure (computeExecutionPlanIn env mods cid cells nb)
 
 alwaysOk :: Text -> (Text, Text)
 alwaysOk _ = ("", "")
@@ -102,32 +123,36 @@ spec = describe "compile-reload escalation" $ do
             map cellId (escalatedCellsToRun (nbOf cs))
                 `shouldBe` [2, 3, 4]
 
-    describe "markAllInterpretedDirty" $ do
-        let prose = (mkCell 6 "notes"){cellType = ProseCell}
-            python = (mkCell 7 "x = 1"){cellLang = ST.Python}
-            marked = markAllInterpretedDirty (nbOf (cells ++ [prose, python]))
+    describe "a pending :load is a plan input, not an afterthought" $ do
+        it "detects that the kernel's modules no longer match the notebook" $ do
+            (app, _) <- mkApp alwaysOk
+            seedLoaded app (M.singleton "Model" "old")
+            nb <- readNotebook (appNotebook app)
+            snd <$> planInputs app nb `shouldReturn` ModulesWiped
 
-        it "dirties interpreted Haskell code cells only" $
-            [(cellId c, cellDirty c) | c <- nbCells marked]
-                `shouldBe` [ (1, False)
-                           , (2, True)
-                           , (3, True)
-                           , (4, True)
-                           , (6, False)
-                           , (7, False)
-                           ]
+        it "sees nothing pending when the kernel already has these modules" $ do
+            (app, _) <- mkApp alwaysOk
+            nb0 <- readNotebook (appNotebook app)
+            seedLoaded app (cpModulesOf (computeExecutionPlan 1 cells nb0))
+            nb <- readNotebook (appNotebook app)
+            snd <$> planInputs app nb `shouldReturn` ModulesLoaded
 
-        it "makes the stale plan recover every interpreted cell" $ do
-            let stale = computeStaleExecutionPlan (nbCells marked) marked
-            map cellId (epCellsToRun stale) `shouldBe` [2, 3, 4]
+        it
+            "runs every interpreted cell when a load is coming, because the\
+            \ wipe takes their bindings with it"
+            $ do
+                (app, _) <- mkApp alwaysOk
+                seedLoaded app (M.singleton "Model" "old")
+                plan <- planFor app 1
+                map cellId (epCellsToRun plan) `shouldBe` [2, 3, 4]
 
     describe "runPlanPhases after a compiled-cell edit" $ do
         it "a changed module reloads, then re-runs every interpreted cell" $ do
             (app, transcript) <- mkApp alwaysOk
-            writeIORef (appCompiledModules app) (M.singleton "Model" "old")
-            nb <- readNotebook (appNotebook app)
+            seedLoaded app (M.singleton "Model" "old")
+            plan <- planFor app 1
             gen <- bumpGeneration app
-            runPlanPhases app gen (computeExecutionPlan 1 cells nb)
+            runPlanPhases app gen plan
             ts <- readIORef transcript
             let loads = hits ":load" ts
             length loads `shouldBe` 1
@@ -140,11 +165,9 @@ spec = describe "compile-reload escalation" $ do
 
         it "an unchanged module neither reloads nor escalates" $ do
             (app, transcript) <- mkApp alwaysOk
-            nb <- readNotebook (appNotebook app)
-            let plan = computeExecutionPlan 1 cells nb
-            writeIORef
-                (appCompiledModules app)
-                (cpModulesOf plan)
+            nb0 <- readNotebook (appNotebook app)
+            seedLoaded app (cpModulesOf (computeExecutionPlan 1 cells nb0))
+            plan <- planFor app 1
             gen <- bumpGeneration app
             runPlanPhases app gen plan
             ts <- readIORef transcript
@@ -158,10 +181,10 @@ spec = describe "compile-reload escalation" $ do
                         ("Failed, no modules loaded.", "sabela-cell-1:2:1: error:\n    boom")
                     | otherwise = ("", "")
             (app, transcript) <- mkApp failLoads
-            writeIORef (appCompiledModules app) (M.singleton "Model" "old")
-            nb <- readNotebook (appNotebook app)
+            seedLoaded app (M.singleton "Model" "old")
+            plan <- planFor app 1
             gen <- bumpGeneration app
-            runPlanPhases app gen (computeExecutionPlan 1 cells nb)
+            runPlanPhases app gen plan
             ts <- readIORef transcript
             length (hits "a = 1" ts) `shouldBe` 1
             length (hits "c = a + 1" ts) `shouldBe` 1

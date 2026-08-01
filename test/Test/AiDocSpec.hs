@@ -10,14 +10,12 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
+import Test.CellFixture (mkCell)
 import Test.Hspec
 
 import Sabela.AI.Doc (cellHash, defaultDocOpts, renderNotebookDoc)
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import Sabela.SessionTypes (CellLang (..))
-
-mkCell :: Int -> Text -> Cell
-mkCell cid src = Cell cid CodeCell Haskell src [] Nothing False
 
 lookupKey :: Text -> Value -> Maybe Value
 lookupKey k (Object o) = KM.lookup (Key.fromText k) o

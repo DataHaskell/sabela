@@ -41,18 +41,37 @@ arrowSegments = map (T.strip . T.pack) . go (0 :: Int) "" . T.unpack
         | c `elem` (")]" :: String) = -1
         | otherwise = 0
 
+{- | A signature GHC or Hoogle could have produced: delimiters balance and no
+@=@ survives at depth zero. Splitting a synonym right-hand side on @->@
+invents an argument type nothing asked for.
+-}
+wellFormedSignature :: Text -> Bool
+wellFormedSignature = balanced (0 :: Int) . T.unpack
+  where
+    balanced d [] = d == 0
+    balanced d ('=' : '>' : rest) = balanced d rest
+    balanced 0 ('=' : _) = False
+    balanced d (c : rest)
+        | c `elem` ("([" :: String) = balanced (d + 1) rest
+        | c `elem` (")]" :: String) = d > 0 && balanced (d - 1) rest
+        | otherwise = balanced d rest
+
 dropConstraints :: Text -> Text
 dropConstraints = last . T.splitOn "=>"
 
 argTypesOf :: Text -> [Text]
-argTypesOf ty = case arrowSegments (dropConstraints ty) of
-    [] -> []
-    segs -> init segs
+argTypesOf ty
+    | not (wellFormedSignature ty) = []
+    | otherwise = case arrowSegments (dropConstraints ty) of
+        [] -> []
+        segs -> init segs
 
 resultOf :: Text -> Text
-resultOf ty = case arrowSegments (dropConstraints ty) of
-    [] -> ""
-    segs -> last segs
+resultOf ty
+    | not (wellFormedSignature ty) = ""
+    | otherwise = case arrowSegments (dropConstraints ty) of
+        [] -> ""
+        segs -> last segs
 
 nominalArgType :: Text -> Bool
 nominalArgType t =
@@ -123,9 +142,12 @@ goalSatisfied sg target v = provenanceCard || any ok (jsonHits v)
     namesGoalsOwnBusiness h =
         jsonText "name" h == target
             && (target == sgConsumer sg || producesExact g target)
+    -- Coming from the goal's package is provenance, not satisfaction: 23 of 81
+    -- live `satisfied` claims rested on this clause alone.
     provenanceCard =
         not (T.null (sgPackage sg))
             && cardPackage v == Just (sgPackage sg)
+            && cardProduces g v
 
 goalProduced :: Text -> Value -> Bool
 goalProduced g v = any (producesGoal g . jsonText "type") (jsonHits v)
@@ -157,6 +179,21 @@ withGoal sg target v@(Object o) =
                    )
         [] -> ""
 withGoal _ _ v = v
+
+{- | Does any export on the envelope's card produce the goal type? A card that
+lists nothing producing @g@ has not satisfied a goal of @g@, however it was
+reached.
+-}
+cardProduces :: Text -> Value -> Bool
+cardProduces g (Object o) = case KM.lookup "card" o of
+    Just (Object c) -> case KM.lookup "exports" c of
+        Just (Array es) -> any producesIt es
+        _ -> False
+    _ -> False
+  where
+    producesIt (String e) = producesGoal g (T.strip (snd (T.breakOnEnd "::" e)))
+    producesIt _ = False
+cardProduces _ _ = False
 
 cardPackage :: Value -> Maybe Text
 cardPackage (Object o) = case KM.lookup "card" o of

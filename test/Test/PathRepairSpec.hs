@@ -107,6 +107,16 @@ spec = describe "Sabela.AI.PathRepair" $ do
                         "x = (1 :: Bool)"
                 got `shouldBe` Nothing
 
+        it "does not rewrite a same-stem file of a different extension" $
+            withSystemTempDirectory "path-repair" $ \root -> do
+                writeFixture root "examples/data/iris.parquet"
+                got <-
+                    pathNearMissFix
+                        root
+                        (raising (doesNotExist "./examples/data/iris.csv"))
+                        "readCsv \"./examples/data/iris.csv\""
+                got `shouldBe` Nothing
+
     describe "pathNotFoundGuidance" $ do
         it "is Nothing when the path uniquely resolves (no need to ask)" $
             withSystemTempDirectory "path-repair" $ \root -> do
@@ -126,6 +136,29 @@ spec = describe "Sabela.AI.PathRepair" $ do
                 gCategory g `shouldBe` "file-not-found"
                 forM_ ["a/housing.csv", "b/housing.csv"] $ \c ->
                     gMessage g `shouldSatisfy` (T.pack c `T.isInfixOf`)
+
+        it "offers a same-stem file whose extension differs" $
+            withSystemTempDirectory "path-repair" $ \root -> do
+                writeFixture root "examples/data/iris.parquet"
+                writeFixture root "examples/data/gdp_data.csv"
+                Just g <-
+                    pathNotFoundGuidance
+                        root
+                        (raising (doesNotExist "./examples/data/iris.csv"))
+                gCategory g `shouldBe` "file-not-found"
+                gMessage g `shouldSatisfy` ("examples/data/iris.parquet" `T.isInfixOf`)
+
+        it "ranks the same-stem file ahead of an unrelated neighbour" $
+            withSystemTempDirectory "path-repair" $ \root -> do
+                writeFixture root "examples/data/iris.parquet"
+                writeFixture root "examples/data/gdp_data.csv"
+                Just g <-
+                    pathNotFoundGuidance
+                        root
+                        (raising (doesNotExist "./examples/data/iris.csv"))
+                let parquetAt = T.breakOn "iris.parquet" (gMessage g)
+                    gdpAt = T.breakOn "gdp_data.csv" (gMessage g)
+                T.length (fst parquetAt) `shouldSatisfy` (< T.length (fst gdpAt))
 
         it "says plainly that nothing was found when there is no close match" $
             withSystemTempDirectory "path-repair" $ \root -> do

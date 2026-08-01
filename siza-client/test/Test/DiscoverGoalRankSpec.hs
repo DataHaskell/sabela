@@ -17,6 +17,7 @@ import Siza.Agent.Discover.Envelope (
     envelopeChars,
     envelopeViolations,
  )
+import Siza.Agent.Discover.Goal (producesGoal)
 import Siza.Agent.Discover.HistoryGuard (guardDiscover, newSearchLedger)
 import Siza.Agent.Discover.Types (
     DHit (..),
@@ -202,18 +203,16 @@ provenanceLoopSpec = describe "provenance flows from the ledger's held consumer 
         installNamesFileWith ["plume", "chartx"]
         outs <- runGuard provWorld [constructPlot]
         map (take 1 . names) outs `shouldBe` [["aaaPlot"]]
-    it "a junk wall mid-hunt is judged unsatisfied, and never steered" $ do
+    -- C1: a lost search under a standing goal fetches the goal's own
+    -- producers, so the verdict follows the payload, not the provenance.
+    it "a junk wall mid-hunt is judged on what its envelope carries" $ do
         installNamesFileWith ["plume", "chartx"]
-        outs <-
-            runGuard
-                provWorld
-                [ object ["query" .= ("bars" :: Text)]
-                , object ["query" .= ("default" :: Text)]
-                , object ["query" .= ("defaultP" :: Text)]
-                ]
-        let sat o = field "goal" o >>= field "satisfied"
-        sat (outs !! 1) `shouldBe` Just (Bool False)
-        sat (outs !! 2) `shouldBe` Just (Bool False)
+        let qs = ["bars", "default", "defaultP"] :: [Text]
+        outs <- runGuard provWorld [object ["query" .= q] | q <- qs]
+        let carries o = any (producesGoal "Plot" . hitText "type") (hitsOf o)
+            sat o = field "goal" o >>= field "satisfied"
+        forM_ outs $ \o -> forM_ (sat o) (`shouldBe` Bool (carries o))
+        carries (outs !! 1) `shouldBe` True
         textField "next" (outs !! 2)
             `shouldNotSatisfy` T.isInfixOf "mode=\"construct\""
 

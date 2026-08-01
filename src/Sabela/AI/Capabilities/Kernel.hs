@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.AI.Capabilities.Kernel (
+    kernelStatusValue,
     execKernelStatus,
     execInterrupt,
     execKernelRestart,
@@ -45,6 +46,7 @@ import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ToolOutcome, okOutcome, toolOutcomeValue)
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model
+import Sabela.Reactivity (RestartMode (..))
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.EventBus (
@@ -53,7 +55,7 @@ import Sabela.State.EventBus (
     awaitExecutionDoneCounting,
  )
 import Sabela.State.NotebookStore (readNotebook)
-import Sabela.State.SessionManager (getHaskellSession)
+import Sabela.State.SessionManager (currentKernelEpoch, getHaskellSession)
 
 haskellKernelBusy :: App -> IO Bool
 haskellKernelBusy app =
@@ -66,10 +68,16 @@ haskellKernelOccupied app = do
     pure (busy || building)
 
 execKernelStatus :: App -> IO ToolOutcome
-execKernelStatus app = do
+execKernelStatus app = okOutcome <$> kernelStatusValue app
+
+{- | The kernel's state as a value. Shared with @GET \/api\/kernel@ so the
+browser and the agent are told the same thing by the same code.
+-}
+kernelStatusValue :: App -> IO Value
+kernelStatusValue app = do
     mSess <- getHaskellSession (appSessions app)
     busy <- maybe (pure False) ST.sbBusy mSess
-    gen <- maybe (pure 0) ST.sbSessionGen mSess
+    gen <- currentKernelEpoch (appSessions app)
     ebGen <- readIORef (ebGeneration (appEvents app))
     mSince <- readIORef (appBuildingSince app)
     now <- getMonotonicTimeNSec
@@ -77,19 +85,18 @@ execKernelStatus app = do
         buildingMs = (\t0 -> (now - t0) `div` 1000000) <$> mSince
         kstate = kernelStateOf (isJust mSess) gen busy compiling
     pure $
-        okOutcome $
-            object $
-                [ "state" .= kernelStateJSON kstate
-                , "ksGen" .= gen
-                , "ebGeneration" .= ebGen
-                ]
-                    ++ ["buildingMs" .= ms | Just ms <- [buildingMs]]
+        object $
+            [ "state" .= kernelStateJSON kstate
+            , "ksGen" .= gen
+            , "ebGeneration" .= ebGen
+            ]
+                ++ ["buildingMs" .= ms | Just ms <- [buildingMs]]
 
 kernelStateBefore :: App -> IO (KernelState, Int)
 kernelStateBefore app = do
     mSess <- getHaskellSession (appSessions app)
     busy <- maybe (pure False) ST.sbBusy mSess
-    gen <- maybe (pure 0) ST.sbSessionGen mSess
+    gen <- currentKernelEpoch (appSessions app)
     compiling <- readIORef (appBuilding app)
     ebGen <- readIORef (ebGeneration (appEvents app))
     pure (kernelStateOf (isJust mSess) gen busy compiling, ebGen)
@@ -138,7 +145,7 @@ controlGraceDelayUs = 100000
 
 execKernelRestart :: App -> ReactiveNotebook -> IO ToolOutcome
 execKernelRestart app rn = do
-    void (forkIO (rnRestartKernel rn))
+    void (forkIO (rnRestart rn RestartOnly))
     restartOutcome <$> awaitKernelBack app restartGraceRounds
 
 restartOutcome :: Bool -> ToolOutcome

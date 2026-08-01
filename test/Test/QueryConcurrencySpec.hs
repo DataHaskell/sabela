@@ -12,15 +12,20 @@ import Control.Concurrent (
     tryReadMVar,
  )
 import Control.Concurrent.MVar (newMVar, withMVar)
+import Control.Concurrent.STM (newTVarIO)
 import Data.IORef (newIORef)
 import Data.Maybe (isJust, isNothing)
 import Data.Unique (newUnique)
 import Sabela.Session (
     Session (..),
     SessionConfig (..),
+    isBusy,
+    withQueryLocks,
+    withRunLock,
  )
 import Sabela.Session.Proc (ProcSession (..))
 import Sabela.Session.Reader (newOutQueue)
+import System.Timeout (timeout)
 import Test.Hspec (
     Spec,
     describe,
@@ -49,9 +54,9 @@ dummySession = do
     cbRef <- newIORef (\_ -> pure ())
     killLock <- newMVar ()
     uid <- newUnique
-    busy <- newIORef False
     lastIntRef <- newIORef Nothing
     gen <- newIORef 1
+    owner <- newTVarIO Nothing
     let ps =
             ProcSession
                 { psId = uid
@@ -68,12 +73,12 @@ dummySession = do
             { sessProcSess = ps
             , sessLock = lock
             , sessQueryLock = queryLock
+            , sessLockOwner = owner
             , sessErrBuf = errRef
             , sessBaselineBindings = errRef
             , sessCounter = ctrRef
             , sessConfig = defaultCfg
             , sessErrCallback = cbRef
-            , sessBusy = busy
             , sessNonce = 12_345
             , sessLastInterruptTime = lastIntRef
             , sessionGen = gen
@@ -81,25 +86,30 @@ dummySession = do
 
 spec :: Spec
 spec = describe "query side-channel: sessQueryLock (stress case 20)" $ do
-    it "the query lock is distinct from the cell run-lock" $ do
+    it "a query holds the run lock too: one drain at a time on one queue" $ do
         sess <- dummySession
-        withMVar (sessQueryLock sess) $ \_ -> do
-            runFree <- isJust <$> tryReadMVar (sessLock sess)
-            runFree `shouldBe` True
+        withQueryLocks sess $ do
+            runHeld <- isNothing <$> tryReadMVar (sessLock sess)
+            runHeld `shouldBe` True
             queryHeld <- isNothing <$> tryReadMVar (sessQueryLock sess)
             queryHeld `shouldBe` True
 
-    it "holding the run-lock leaves the query lock free" $ do
+    it "a query waits for a running cell rather than draining underneath it" $ do
         sess <- dummySession
-        withMVar (sessLock sess) $ \_ -> do
-            queryFree <- isJust <$> tryReadMVar (sessQueryLock sess)
-            queryFree `shouldBe` True
+        done <- newEmptyMVar
+        withRunLock sess $ do
+            _ <- forkIO (withQueryLocks sess (pure ()) >> putMVar done ())
+            threadDelay 50_000
+            started <- tryReadMVar done
+            isJust started `shouldBe` False
+        finished <- timeout 1_000_000 (takeMVar done)
+        finished `shouldBe` Just ()
 
-    it "two concurrent queries serialize on sessQueryLock" $ do
+    it "two concurrent queries serialize" $ do
         sess <- dummySession
         results <- newEmptyMVar
         let query name =
-                withMVar (sessQueryLock sess) $ \_ -> do
+                withQueryLocks sess $ do
                     threadDelay 100_000
                     putMVar results name
         _ <- forkIO (query ("query1" :: String))
@@ -108,3 +118,19 @@ spec = describe "query side-channel: sessQueryLock (stress case 20)" $ do
         r1 <- takeMVar results
         r2 <- takeMVar results
         [r1, r2] `shouldBe` ["query1", "query2"]
+
+    describe "busy means a cell is running, not merely that the lock is held" $ do
+        it "is True while a cell runs" $ do
+            sess <- dummySession
+            withRunLock sess (isBusy sess) `shouldReturn'` True
+
+        it "is False while an editor query holds the lock" $ do
+            sess <- dummySession
+            withQueryLocks sess (isBusy sess) `shouldReturn'` False
+
+        it "is False once the run releases" $ do
+            sess <- dummySession
+            withRunLock sess (pure ())
+            isBusy sess `shouldReturn'` False
+  where
+    shouldReturn' act expected = act >>= (`shouldBe` expected)

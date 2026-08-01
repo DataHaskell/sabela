@@ -27,11 +27,15 @@ spec = describe "Sabela.AI.Capabilities.Resolve" $ do
             lookupByName "nope" caps `shouldBe` []
 
     describe "resolutionImport" $ do
-        it "builds the import line and resolves the package via the curated table" $
-            resolutionImport
-                (Capability "DataFrame" "readCsv" "FilePath -> IO DataFrame" Nothing)
-                `shouldBe` ("import DataFrame", Just "dataframe")
+        it "builds the import line and resolves the package from the store" $ do
+            (line, pkg) <-
+                resolutionImport
+                    (Capability "Data.Text" "pack" "String -> Text" Nothing)
+            line `shouldBe` "import Data.Text"
+            pkg `shouldBe` Just "text"
 
-        it "yields no package for an uncurated module (dep fixer backstops at runtime)" $
-            resolutionImport (Capability "Some.Random.Mod" "foo" "X" Nothing)
-                `shouldBe` ("import Some.Random.Mod", Nothing)
+        it "yields no package for a module nothing installed exposes" $ do
+            (line, pkg) <-
+                resolutionImport (Capability "Some.Random.Mod" "foo" "X" Nothing)
+            line `shouldBe` "import Some.Random.Mod"
+            pkg `shouldBe` Nothing

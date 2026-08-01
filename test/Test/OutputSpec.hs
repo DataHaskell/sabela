@@ -24,7 +24,7 @@ inputRenameSpec = describe "effectful widget type Input (renamed from Behavior)"
         prelude `shouldSatisfy` T.isInfixOf "currentValue ::"
         prelude `shouldSatisfy` T.isInfixOf "showInput ::"
         prelude `shouldSatisfy` T.isInfixOf "constInput ::"
-        prelude `shouldSatisfy` T.isInfixOf "display :: Input a -> IO a"
+        prelude `shouldSatisfy` T.isInfixOf "mkWidget :: Input a -> IO a"
     it "keeps a one-release deprecated Behavior alias (prelude only)" $
         prelude `shouldSatisfy` T.isInfixOf "type Behavior = Input"
     it "retires the effectful Behavior record and its fields everywhere" $ do

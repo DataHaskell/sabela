@@ -139,32 +139,32 @@ builtinExamples =
         "Interactive Slider"
         "Temperature converter with a live slider"
         "Widgets"
-        "c <- display (slider \"celsius\" (20 :: Int) (-40) 120)\nlet f = c * 9 `div` 5 + 32\n    k = c + 273\n\ndisplayHtml $ \"<p><b>\" ++ show c ++ \" \176C</b> = \" ++ show f ++ \" \176F = \" ++ show k ++ \" K</p>\""
+        "c <- mkWidget (slider \"celsius\" (20 :: Int) (-40) 120)\nlet f = c * 9 `div` 5 + 32\n    k = c + 273\n\ndisplayHtml $ \"<p><b>\" ++ show c ++ \" \176C</b> = \" ++ show f ++ \" \176F = \" ++ show k ++ \" K</p>\""
     , Example
         "Interactive Dropdown"
         "Shape viewer driven by a select control"
         "Widgets"
-        "shape <- display (dropdown \"shape\" [\"Circle\", \"Square\", \"Triangle\"] \"Circle\")\nlet svg = case shape of\n      \"Circle\"   -> \"<circle cx='60' cy='60' r='50' fill='#3498db'/>\"\n      \"Square\"   -> \"<rect x='10' y='10' width='100' height='100' rx='4' fill='#e74c3c'/>\"\n      _          -> \"<polygon points='60,10 110,110 10,110' fill='#2ecc71'/>\"\n\ndisplayHtml $ \"<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>\" ++ svg ++ \"</svg>\""
+        "shape <- mkWidget (dropdown \"shape\" [\"Circle\", \"Square\", \"Triangle\"] \"Circle\")\nlet svg = case shape of\n      \"Circle\"   -> \"<circle cx='60' cy='60' r='50' fill='#3498db'/>\"\n      \"Square\"   -> \"<rect x='10' y='10' width='100' height='100' rx='4' fill='#e74c3c'/>\"\n      _          -> \"<polygon points='60,10 110,110 10,110' fill='#2ecc71'/>\"\n\ndisplayHtml $ \"<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>\" ++ svg ++ \"</svg>\""
     , Example
         "Interactive Button"
         "Prime sieve with a slider and compute button"
         "Widgets"
-        "clicked <- display (button \"Compute primes\" \"go\")\nn <- display (slider \"limit\" (50 :: Int) 2 500)\nlet sieve []     = []\n    sieve (p:xs) = p : sieve [x | x <- xs, x `mod` p /= 0]\n\ncase clicked of\n  Nothing -> displayHtml \"<p>Press the button to compute.</p>\"\n  Just () -> let ps = sieve [2..n] in displayHtml $ \"<p><b>\" ++ show (length ps) ++ \" primes \\8804 \" ++ show n ++ \"</b><br>\" ++ unwords (map show ps) ++ \"</p>\""
+        "clicked <- mkWidget (button \"Compute primes\" \"go\")\nn <- mkWidget (slider \"limit\" (50 :: Int) 2 500)\nlet sieve []     = []\n    sieve (p:xs) = p : sieve [x | x <- xs, x `mod` p /= 0]\n\ncase clicked of\n  Nothing -> displayHtml \"<p>Press the button to compute.</p>\"\n  Just () -> let ps = sieve [2..n] in displayHtml $ \"<p><b>\" ++ show (length ps) ++ \" primes \\8804 \" ++ show n ++ \"</b><br>\" ++ unwords (map show ps) ++ \"</p>\""
     , Example
         "Interactive Checkbox"
         "Gate output behind a checkbox"
         "Widgets"
-        "verbose <- display (checkbox \"verbose\" False)\nn <- display (slider \"n\" (1000 :: Int) 1 10000)\n\nif verbose then displayMarkdown (\"Computing sum from 1 to \" ++ show n) else return ()\n\ndisplayHtml $ \"<p>Result: <b>\" ++ show (sum [1..n]) ++ \"</b></p>\""
+        "verbose <- mkWidget (checkbox \"verbose\" False)\nn <- mkWidget (slider \"n\" (1000 :: Int) 1 10000)\n\nif verbose then displayMarkdown (\"Computing sum from 1 to \" ++ show n) else return ()\n\ndisplayHtml $ \"<p>Result: <b>\" ++ show (sum [1..n]) ++ \"</b></p>\""
     , Example
         "Interactive Text Input"
         "Greet a name entered in a text box"
         "Widgets"
-        "name <- display (textInput \"name\" \"World\")\ndisplayHtml $ \"<h2>Hello, \" ++ name ++ \"!</h2>\""
+        "name <- mkWidget (textInput \"name\" \"World\")\ndisplayHtml $ \"<h2>Hello, \" ++ name ++ \"!</h2>\""
     , Example
         "Composed Inputs"
         "Combine two sliders with liftA2"
         "Widgets"
-        "area <- display (liftA2 (*) (slider \"width\" (10 :: Int) 1 100) (slider \"height\" (10 :: Int) 1 100))\ndisplayHtml $ \"<p>Area: <b>\" ++ show area ++ \"</b></p>\""
+        "area <- mkWidget (liftA2 (*) (slider \"width\" (10 :: Int) 1 100) (slider \"height\" (10 :: Int) 1 100))\ndisplayHtml $ \"<p>Area: <b>\" ++ show area ++ \"</b></p>\""
     , Example
         "Concurrent IO"
         "Async with threads"

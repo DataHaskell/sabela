@@ -2,6 +2,7 @@
 
 module Sabela.Parse.Preprocess (
     preprocess,
+    hasTopLevelLet,
     noTopLevelIn,
 ) where
 
@@ -30,6 +31,15 @@ preprocess src = concatMap rewriteLine (T.lines src)
             || ":" `T.isPrefixOf` t
             || "-- cabal:" `T.isPrefixOf` t
             || "--cabal:" `T.isPrefixOf` t
+
+{- | A cell writes a top-level @let@ when a line opens a @let@ statement, not
+when a binder's name merely starts with those letters. The one implementation:
+the notebook's shape check and the classifier's advice must agree.
+-}
+hasTopLevelLet :: Text -> Bool
+hasTopLevelLet = any isStmtLet . T.lines
+  where
+    isStmtLet raw = maybe False noTopLevelIn (T.stripPrefix "let " raw)
 
 noTopLevelIn :: Text -> Bool
 noTopLevelIn = go (0 :: Int) (0 :: Int) . T.unpack

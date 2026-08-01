@@ -58,15 +58,18 @@ import Siza.Agent.Discover.Merge (
     discoverEnvelopeRecent,
     discoverEnvelopeScoped,
  )
-import Siza.Agent.Discover.ProducerCard (establishedFallback)
+import Siza.Agent.Discover.ProducerCard (
+    establishedFallback,
+    withProducerHint,
+ )
 import Siza.Agent.Discover.Request (
     DiscoverMode (..),
     DiscoverRequest (..),
     defaultRequest,
     discoverKey,
     discoverQuery,
+    effectiveQuery,
     parseRequest,
-    scopeFallbackQuery,
  )
 import Siza.Agent.Discover.Types (
     HackageInfo,
@@ -106,8 +109,11 @@ discoverToolDescription =
     \index, and the Hackage name list, and unions their answers into one \
     \ranked result (exact name first). "
         <> schemaPromise
-        <> " A miss lists what was consulted. This searches LIBRARIES, not \
-           \your notebook — for the notebook use find_cells_by_content."
+        <> " A miss lists what was consulted. Notebook cells are searched \
+           \too: a hit a cell defines says so. Ask in your own words if you \
+           \do not know the name ({query: \"plot a sine wave\"}). The \
+           \notebook's own library is not on Hackage and is in no file you \
+           \can grep - this is the only index of it."
 
 runDiscoverTool ::
     Bool ->
@@ -159,7 +165,7 @@ runDiscoverGoal mSG recent capSearch call req0
                 vOut <-
                     establishedFallback mSG call req $
                         modeRedirect req env interp0 answers hk v
-                pure (ToolOk (boundEnvelope vOut))
+                pure (ToolOk (boundEnvelope (withProducerHint vOut)))
             else do
                 sess <- fetchSessionScoped call (scModule (drScope req)) interp
                 cap <- fetchOk call SearchCapability (capabilityArgs capSearch interp)
@@ -183,16 +189,13 @@ runDiscoverGoal mSG recent capSearch call req0
                 vOut <-
                     establishedFallback mSG call req $
                         modeRedirect req env interp0 answers hk v
-                pure (ToolOk (boundEnvelope vOut))
+                pure (ToolOk (boundEnvelope (withProducerHint vOut)))
   where
-    q = case (T.strip (drQuery req0), drMode req0) of
-        ("", ModeInventory) ->
-            fromMaybe "" (scopeFallbackQuery (drScope req0))
-        (q0, _) -> q0
+    q = effectiveQuery req0
     req = req0{drQuery = q}
     blankReason =
-        "query must be a non-blank string (or set module/package with \
-        \mode=\"inventory\" to list a scope's card)"
+        "query must be a non-blank string, or name a module or package to ask \
+        \for that scope's card"
 
 isConstruct :: DiscoverRequest -> Interpreted -> Bool
 isConstruct req interp = drMode req == ModeConstruct || iShape interp == "construct"

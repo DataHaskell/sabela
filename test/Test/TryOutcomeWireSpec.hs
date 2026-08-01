@@ -5,6 +5,7 @@ module Test.TryOutcomeWireSpec (spec) where
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
+import Data.List (isInfixOf)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -12,8 +13,13 @@ import Data.Unique (newUnique)
 import Test.Hspec
 
 import Sabela.AI.Capabilities.Try (execTry)
+import Sabela.AI.Capabilities.Try.Commit (dependenciesAdded)
 import Sabela.AI.Capabilities.Try.Payload (disposablePayload, skippedCellHint)
+import Sabela.AI.Capabilities.TryPlan (planTrial)
 import Sabela.AI.Types (toolOutcomeIsError, toolOutcomeValue)
+import Sabela.Deps (collectMetadata)
+import Sabela.Handlers.Lifecycle (neededEnvSig)
+import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import Sabela.Server (newApp)
 import Sabela.Session.Materialize (
     DisposableResult (..),
@@ -22,9 +28,11 @@ import Sabela.Session.Materialize (
     MaterializeStage (..),
     SkippedCell (..),
  )
+import Sabela.SessionTypes (CellLang (..))
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
-import Sabela.State.SessionManager (setHaskellSession)
+import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
+import Sabela.State.SessionManager (installHaskellSession)
 
 fakePureBackend :: ST.PureEvalResult -> IO ST.SessionBackend
 fakePureBackend result = do
@@ -56,7 +64,11 @@ appWithPureResult :: ST.PureEvalResult -> IO App
 appWithPureResult result = do
     app <- newApp "." Set.empty Nothing Nothing []
     backend <- fakePureBackend result
-    setHaskellSession (appSessions app) (Just backend)
+    nb <- readNotebook (appNotebook app)
+    installHaskellSession
+        (appSessions app)
+        backend
+        (neededEnvSig app (collectMetadata nb))
     pure app
 
 pureResult :: ST.PureEvalVerdict -> Text -> Text -> ST.PureEvalResult
@@ -80,6 +92,17 @@ textField :: Text -> Value -> Maybe Text
 textField key value = case field key value of
     Just (String text) -> Just text
     _ -> Nothing
+
+declaringCell :: Int -> Text -> Cell
+declaringCell cid pkg =
+    Cell
+        cid
+        CodeCell
+        Haskell
+        ("-- cabal: build-depends: " <> pkg <> "\nseed = 1")
+        []
+        Nothing
+        False
 
 disposableSample :: DisposableResult
 disposableSample =
@@ -161,7 +184,60 @@ spec = describe "try outcome envelope wire pins" $ do
                 `shouldBe` Just
                     "cells accept this; try does not, because a trial previews exactly \
                     \one result and cannot follow more than one final expression; a \
-                    \committed cell may run as many statements as it likes; no code ran"
+                    \committed cell may run as many statements as it likes; no code \
+                    \ran. insert_cell is the tool this source goes to."
+
+    it "commit disclosure: a trial carries the source the compiler read" $ do
+        app <- appWithPureResult (pureResult ST.PureEvalSucceeded "Int" "")
+        outcome <- execTry app (object ["code" .= ("21 * 2" :: Text)])
+        textField "source" (toolOutcomeValue outcome) `shouldBe` Just "21 * 2"
+
+    it "commit disclosure: dependencies are the delta, not the closure" $ do
+        app <- newApp "." Set.empty Nothing Nothing []
+        modifyNotebook
+            (appNotebook app)
+            (const (Notebook "deps.md" [declaringCell 1 "containers"]))
+        let planFor src = case planTrial src of
+                Right p -> p
+                Left e -> error (show e)
+        alreadyThere <-
+            dependenciesAdded app (planFor "-- cabal: build-depends: containers\nx = 1")
+        alreadyThere `shouldBe` []
+        newOne <-
+            dependenciesAdded
+                app
+                (planFor "-- cabal: build-depends: containers, aeson\nx = 1")
+        newOne `shouldBe` ["aeson"]
+
+    it "meta query: a read-only type command is routed, not refused" $ do
+        app <- newApp "." Set.empty Nothing Nothing []
+        outcome <-
+            execTry
+                app
+                (object ["code" .= ("import Data.Map\n:type insert" :: Text)])
+        let v = toolOutcomeValue outcome
+        textField "routedFrom" v `shouldBe` Just ":type"
+        show v `shouldNotSatisfy` isInfixOf "not admitted by try"
+
+    it "meta query: a scope this server cannot open is never an ok trial" $ do
+        app <- newApp "." Set.empty Nothing Nothing []
+        outcome <-
+            execTry
+                app
+                (object ["code" .= ("import Data.Map\n:type insert" :: Text)])
+        let v = toolOutcomeValue outcome
+        textField "route" v `shouldBe` Just "check_type"
+        (toolOutcomeIsError outcome, textField "outcome" v)
+            `shouldBe` (True, Just "unavailable")
+
+    it "meta query: a state-touching command stays refused, naming a tool" $ do
+        app <- newApp "." Set.empty Nothing Nothing []
+        outcome <- execTry app (object ["code" .= (":cd /tmp" :: Text)])
+        toolOutcomeIsError outcome `shouldBe` True
+        let v = toolOutcomeValue outcome
+        textField "route" v `shouldBe` Just "unavailable"
+        textField "reason" v `shouldSatisfy` maybe False ("check_type" `T.isInfixOf`)
+        textField "reason" v `shouldSatisfy` maybe False (":cd /tmp" `T.isInfixOf`)
 
     it "disposable: the route reports isolation as its contract" $ do
         let v = disposablePayload disposableSample

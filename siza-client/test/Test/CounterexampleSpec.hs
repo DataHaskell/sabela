@@ -10,7 +10,7 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Test.Hspec
 
-import Data.Aeson (Value (..), decode)
+import Data.Aeson (Value (..), decode, object, (.=))
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.Check (
@@ -81,6 +81,9 @@ counterexampleSpec = describe "counterexample-naming verify (intention)" $ do
             src `shouldSatisfy` T.isInfixOf "CE_NONE"
             src `shouldSatisfy` T.isInfixOf "evalExpr \"2 +\" == Nothing"
             src `shouldSatisfy` T.isInfixOf "zip [(0 :: Int) ..]"
+        it "uses no partial function, which the gate refuses on sight" $
+            ceMarkerSrc (conjuncts evalExprCheck)
+                `shouldSatisfy` (not . T.isInfixOf "head ")
         it "parses the failing index back out of the output" $ do
             parseCeIndex "\"CE_2\\n\"" `shouldBe` Just 2
             parseCeIndex "CE_0" `shouldBe` Just 0
@@ -157,6 +160,7 @@ scriptedCaller outs = do
                     modifyIORef' ref (const rest)
                     pure (Right (ToolOk (asValue x)))
                 [] -> pure (Right (ToolOk (String "")))
+        InsertCell -> pure (Right (ToolOk (object ["cellId" .= (1 :: Int)])))
         _ -> pure (Right (ToolOk (String "ok")))
   where
     asValue x =

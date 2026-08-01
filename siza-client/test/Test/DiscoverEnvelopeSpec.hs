@@ -9,6 +9,7 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Grammar (discoverGrammarBlock)
+import Siza.Agent.Discover.Affordance (moduleShaped, writableName)
 import Siza.Agent.Discover.Envelope (
     badRequest,
     boundEnvelope,
@@ -27,6 +28,7 @@ import Siza.Agent.Discover.Types (
     InstallState (..),
     NotebookEnv (..),
     SourceAnswer (..),
+    hitJson,
     mkHit,
     okAnswer,
     seededBuiltins,
@@ -154,7 +156,7 @@ discoverEnvelopeSpec =
                                     hk0
                                 )
                         err = boundEnvelope (badRequest "" "query must be non-blank")
-                        dup = duplicateEnvelope "col" "call 3" "3 hits; top: col"
+                        dup = duplicateEnvelope "col" "call 3" "3 hits; top: col" []
                     map
                         envelopeChars
                         [miss, err, dup]
@@ -175,7 +177,7 @@ discoverEnvelopeSpec =
                                    , blank
                                    , ambiguous 40 25
                                    , boundEnvelope (badRequest "" "blank")
-                                   , duplicateEnvelope "q" "call 2" "no match"
+                                   , duplicateEnvelope "q" "call 2" "no match" []
                                    ]
                     concatMap envelopeViolations all' `shouldBe` []
                 it "flags a serialisation format inside a string" $ do
@@ -199,14 +201,20 @@ discoverEnvelopeSpec =
                                 ]
                     envelopeViolations bad `shouldSatisfy` (not . null)
 
-            describe "R3.8 a byte-identical repeat is a one-line reference" $
-                it "the duplicate envelope is a fraction of the budget" $ do
-                    let dup =
+            describe "R3.8 a byte-identical repeat carries the answer it stands for" $
+                it "the duplicate returns its held hits, inside the budget" $ do
+                    let held = map hitJson [wideHit 1, wideHit 2, wideHit 3]
+                        dup =
                             duplicateEnvelope
                                 "col"
                                 "call 12"
                                 "3 hits; top: col :: Columnable a => Text -> Expr a"
-                    envelopeChars dup `shouldSatisfy` (< 400)
+                                held
+                    envelopeChars (boundEnvelope dup)
+                        `shouldSatisfy` (<= envelopeCharBudget)
+                    map (hitText "name") (hitsOf dup)
+                        `shouldBe` map (hitText "name") held
+                    envelopeViolations dup `shouldBe` []
                     textField "state" dup `shouldBe` "duplicate"
 
             describe "R1.7 the description is generated from the schema" $ do
@@ -223,6 +231,20 @@ discoverEnvelopeSpec =
                             , T.null (hitText k h)
                             ]
                     missing `shouldBe` []
+                it "promises `use` conditionally, and delivers it there" $ do
+                    schemaPromise
+                        `shouldSatisfy` T.isInfixOf
+                            "an importable module and a writable name says in `use`"
+                    vs <- mapM runCat discoverables
+                    let bad =
+                            [ (hitText "name" h, hitText "module" h)
+                            | v <- vs
+                            , h <- hitsOf v
+                            , moduleShaped (hitText "module" h)
+                            , writableName (hitText "name" h)
+                            , T.null (hitText "use" h)
+                            ]
+                    bad `shouldBe` []
                 it "a hidden or absent-known hit always carries its cabal line" $ do
                     vs <- mapM runCat discoverables
                     let bad =

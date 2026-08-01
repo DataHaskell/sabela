@@ -24,6 +24,7 @@ import Sabela.Model (
     Cell (..),
     CellError (..),
     CellType (..),
+    KernelPhase (..),
     Notebook (..),
     NotebookEvent (..),
     OutputItem (..),
@@ -45,6 +46,7 @@ import System.FilePath ((</>))
 import qualified System.IO
 import qualified System.Process
 
+import Sabela.Handlers.Lifecycle.Startup (reportKernelFailureAt)
 import Sabela.Handlers.Shared
 import Sabela.Reactivity (cellStale)
 
@@ -115,8 +117,9 @@ pipInstall app venvDir deps = do
     case result of
         Right () -> pure True
         Left e -> do
-            broadcast app (EvInstallLog ("pip install failed: " <> T.pack (show e)))
-            broadcast app (EvSessionStatus SReset)
+            let msg = "pip install failed: " <> T.pack (show e)
+            broadcast app (EvInstallLog msg)
+            reportKernelFailureAt app KpBuildFailed SReset msg []
             pure False
 
 runAndLog :: App -> FilePath -> [String] -> IO ()
@@ -162,7 +165,12 @@ handleSessionFailure app e = do
     let msg = T.pack (show e)
     debugLog app $ "[handler] Python session failed: " <> msg
     broadcast app (EvInstallLog ("Python session failed: " <> msg))
-    broadcast app (EvSessionStatus SReset)
+    reportKernelFailureAt
+        app
+        KpBuildFailed
+        SReset
+        ("Python session failed: " <> msg)
+        []
     pure (Nothing, False)
 
 killPythonSession :: App -> IO ()

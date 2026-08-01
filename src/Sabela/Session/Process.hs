@@ -22,8 +22,9 @@ module Sabela.Session.Process (
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent.STM (newTVarIO)
 import Control.Exception (SomeException, try)
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
@@ -68,8 +69,10 @@ import Sabela.Session.Query (
     queryType,
  )
 import Sabela.Session.Reader (errLoop)
+import Sabela.Session.Workspace (clearBuildDirty, markBuildDirty)
 import qualified Sabela.SessionTypes as ST
 import System.Environment (lookupEnv)
+import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (Handle, hClose, hFlush, hPutStrLn)
 import System.Process (CreateProcess, proc, waitForProcess)
@@ -85,6 +88,7 @@ newSessionStreaming = newSessionGen firstSessionGen
 newSessionGen :: Int -> SessionConfig -> (Text -> IO ()) -> IO Session
 newSessionGen gen cfg onStartupLine = do
     spec <- ghciProcessSpec cfg
+    markBuildDirty (scProjectDir cfg)
     withSpawnedSession spec $ \ps -> do
         sess <- buildSessionStateGen gen cfg ps onStartupLine
         initializeGhci sess onStartupLine
@@ -184,22 +188,22 @@ buildSessionStateGen genTag cfg ps onStderrLine = do
     errBuf <- newIORef []
     counter <- newIORef 0
     cbRef <- newIORef onStderrLine
-    busy <- newIORef False
     nonce <- mkSessionNonce
     lastInt <- newIORef Nothing
     gen <- newIORef genTag
     baseline <- newIORef []
+    owner <- newTVarIO Nothing
     _ <- forkIO $ errLoop (psStderr ps) errBuf cbRef
     pure
         Session
             { sessProcSess = ps
             , sessLock = lock
             , sessQueryLock = queryLock
+            , sessLockOwner = owner
             , sessErrBuf = errBuf
             , sessCounter = counter
             , sessConfig = cfg
             , sessErrCallback = cbRef
-            , sessBusy = busy
             , sessNonce = nonce
             , sessLastInterruptTime = lastInt
             , sessionGen = gen
@@ -253,10 +257,16 @@ resetSession sess = do
     closeSession sess
     newSessionGen (prevGen + 1) (sessConfig sess) (\_ -> pure ())
 
+{- | Only a kernel that answered @:quit@ and exited /successfully/ leaves
+artefacts worth keeping. Promptness is not enough: a SIGKILLed process is reaped
+just as fast, and would clear the very marker its death is meant to set.
+-}
 closeSession :: Session -> IO ()
 closeSession sess = do
     _ <- timeout quitWriteGraceUs (sendQuit (sessStdin sess))
-    _ <- timeout quitGraceUs (waitForProcess (sessProc sess))
+    exited <- timeout quitGraceUs (waitForProcess (sessProc sess))
+    when (exited == Just ExitSuccess) $
+        clearBuildDirty (scProjectDir (sessConfig sess))
     destroySession (sessProcSess sess)
 
 quitGraceUs, quitWriteGraceUs :: Int

@@ -25,122 +25,20 @@ import Siza.Agent.EmitLedger (
     emptyEmitLedger,
     loadBearingKeys,
  )
+import Siza.Agent.Messages (verifyMsgWith)
 import Siza.Agent.Tools (renderOutcome)
 import Test.DiscoverFixtures (hitsOf, textField)
-
-longDiagnostic :: Text
-longDiagnostic =
-    T.intercalate
-        "\n"
-        ( "<interactive>:238:1: error: [GHC-88464]"
-            : replicate 6 "    Variable not in scope: sineWaveSvg :: String"
-        )
-
-longAutofix :: Text
-longAutofix =
-    "Declared build-depends: text for this trial (the module was in a hidden \
-    \package). Commit this CURRENT source, which carries the dependency line:\n"
-        <> T.intercalate "\n" (replicate 5 "import qualified Data.Text as T")
-
-longSig :: Text
-longSig =
-    T.intercalate " -> " (replicate 8 "Maybe (Either Text Double)")
-        <> " -> [(Text, Double)] -> Plot"
-
-hitJ :: Text -> Text -> Text -> Value
-hitJ name kind ty =
-    object
-        [ "name" .= name
-        , "module" .= ("Cumulus.Plot" :: Text)
-        , "package" .= ("cumulus" :: Text)
-        , "version" .= ("0.3.1" :: Text)
-        , "install" .= ("hidden" :: Text)
-        , "matchKind" .= kind
-        , "origin" .= ("hoogle" :: Text)
-        , "type" .= ty
-        , "cabal" .= ("-- cabal: build-depends: cumulus" :: Text)
-        ]
-
-foundE :: Text -> Text -> Value
-foundE kind q =
-    object
-        [ "query" .= q
-        , "state" .= ("found" :: Text)
-        , "hits" .= [hitJ "bars" kind longSig]
-        , "shown" .= (1 :: Int)
-        , "omitted" .= (0 :: Int)
-        , "total" .= (1 :: Int)
-        ]
-
-missE :: Text -> Value
-missE q =
-    object
-        [ "query" .= q
-        , "state" .= ("not_found" :: Text)
-        , "next" .= next
-        ]
-  where
-    next =
-        "No match held anywhere consulted. "
-            <> T.unwords (replicate 8 "Narrow with module= or package= or act on held facts.")
-
-cardE :: Text -> Value
-cardE q =
-    object
-        [ "query" .= q
-        , "state" .= ("found" :: Text)
-        , "card"
-            .= object
-                [ "module" .= ("Cumulus.Plot" :: Text)
-                , "status" .= ("installed-not-loaded" :: Text)
-                , "exports" .= ["bars :: " <> longSig, "cols :: " <> longSig]
-                ]
-        ]
-
-constructE :: Text -> Value
-constructE q =
-    object
-        [ "query" .= q
-        , "state" .= ("found" :: Text)
-        , "hits"
-            .= [ Object
-                    ( km (hitJ "defaultPlot" "type" longSig)
-                        <> KM.fromList
-                            [
-                                ( "use"
-                                , String
-                                    ( "produces Plot, the argument bars needs. "
-                                        <> T.unwords (replicate 6 "Apply it before rendering the chart output.")
-                                    )
-                                )
-                            ]
-                    )
-               ]
-        ]
-  where
-    km (Object o) = o
-    km _ = KM.empty
-
-dupE :: Text -> Value
-dupE q =
-    object
-        [ "query" .= q
-        , "state" .= ("duplicate" :: Text)
-        , "ref" .= ("call 3" :: Text)
-        , "summary"
-            .= T.unwords
-                (replicate 10 "same ranked answer; your query change did not change it.")
-        ]
-
-classes :: [(String, Text -> Value)]
-classes =
-    [ ("found-exact", foundE "exact")
-    , ("found-weak", foundE "substring")
-    , ("miss", missE)
-    , ("card", cardE)
-    , ("construct", constructE)
-    , ("duplicate", dupE)
-    ]
+import Test.EmitLedgerFixtures (
+    classes,
+    encodeT,
+    foundE,
+    hitJ,
+    longAutofix,
+    longDiagnostic,
+    longSig,
+    occursIn,
+    runSeq,
+ )
 
 render :: Value -> Text
 render = renderOutcome . Right . ToolOk
@@ -166,28 +64,14 @@ strings (Array a) = concatMap strings (toList a)
 strings (Object o) = concatMap strings (KM.elems o)
 strings _ = []
 
-esc :: Text -> Text
-esc t = T.dropEnd 1 (T.drop 1 (TE.decodeUtf8 (LBS.toStrict (encode t))))
-
-occursIn :: Text -> Text -> Bool
-occursIn v emission = v `T.isInfixOf` emission || esc v `T.isInfixOf` emission
-
-runSeq :: [Text] -> [Text]
-runSeq = go 1 emptyEmitLedger
-  where
-    go _ _ [] = []
-    go turn led (c : cs) =
-        let (c', led') = dedupText turn c led
-         in c' : go (turn + 1) led' cs
+{- | A verdict as the harness actually emits it, so this pins the block the
+loop puts on the wire rather than a spelling nothing produces.
+-}
+verdictMsg :: Value
+verdictMsg = verifyMsgWith 0 [] Nothing
 
 verifyBody :: Text
-verifyBody =
-    "The task is not done: the deliverable's check still fails. You have \
-    \written no cell yet - the deliverable must be DEFINED in a cell. Write \
-    \it now with insert_cell. Do not stop until the check passes."
-
-encodeT :: Value -> Text
-encodeT = TE.decodeUtf8 . LBS.toStrict . encode
+verifyBody = textField "content" verdictMsg
 
 wholeReplacement :: Text -> Bool
 wholeReplacement oc =
@@ -253,15 +137,8 @@ protectSpec = describe "load-bearing fields are elision-exempt (R8-T1)" $ do
         assertProtected [rendered, rendered, rendered]
 
     it "elided-verify: a repeated verify verdict is never a back-reference" $ do
-        let verdict =
-                encodeT
-                    ( object
-                        [ "role" .= ("tool" :: Text)
-                        , "tool_name" .= ("verify" :: Text)
-                        , "content" .= verifyBody
-                        ]
-                    )
-            outs = runSeq [verdict, verdict, verdict, verdict, verdict, verdict]
+        let verdict = encodeT verdictMsg
+            outs = runSeq (replicate 6 verdict)
         forM_ (zip [1 :: Int ..] outs) $ \(i, o) ->
             unless (verifyBody `T.isInfixOf` o) $
                 expectationFailure

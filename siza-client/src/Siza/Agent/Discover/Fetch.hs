@@ -16,7 +16,7 @@ import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isUpper)
 import Data.List (sortOn)
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -24,7 +24,11 @@ import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.Discover.Classify (sessionAnswer)
-import Siza.Agent.Discover.Interpret (envFromCells, parseCells)
+import Siza.Agent.Discover.Interpret (
+    envFromCells,
+    parseCells,
+    signatureRequest,
+ )
 import Siza.Agent.Discover.Types (
     Interpreted (..),
     NotebookEnv,
@@ -42,7 +46,7 @@ queryVariants :: Text -> [Text]
 queryVariants q =
     t : [bare | Just bare <- [unqualify t], bare /= t] <> valueTokens
   where
-    t = T.strip q
+    t = fromMaybe (T.strip q) (signatureRequest q)
     unqualify s
         | T.any (== '.') s
         , not (" " `T.isInfixOf` s)
@@ -121,6 +125,10 @@ fetchOk call tn args = do
         Right (ToolOk v) -> Just v
         _ -> Nothing
 
+{- | Card a candidate package we hold no card for, by probing one of its
+modules. The caller's terms ride along, so the card is ranked against the need
+that raised it rather than against nothing.
+-}
 probeHidden ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     Interpreted ->
@@ -134,8 +142,13 @@ probeHidden call interp answers
     sessionDown =
         any (\a -> saSource a == "session" && not (saOk a)) answers
     probeOne m = do
-        r <- fetchOk call FindFunction (object ["query" .= m])
+        r <-
+            fetchOk
+                call
+                FindFunction
+                (object ["module" .= m, "query" .= probeTerms m])
         pure [sessionAnswer interp r | isJust r]
+    probeTerms m = if T.null (iName interp) then m else iName interp
     probeTargets =
         nubOrd
             [ m

@@ -36,8 +36,8 @@ import Sabela.State (App (..))
 import Sabela.State.EventBus (broadcast)
 import Sabela.State.NotebookStore (modifyNotebook)
 import Sabela.State.SessionManager (setHaskellSession)
+import Test.CellFixture (mkCell)
 import Test.Hspec
-import Test.TopoSpec.Helpers (mkCell)
 
 fakeBackend :: Bool -> IO ST.SessionBackend
 fakeBackend busy = do
@@ -94,8 +94,7 @@ compileErrorRn app err =
         , rnRunCell = runBroadcast
         , rnRunCellForced = runBroadcast
         , rnRunAll = pure ()
-        , rnReset = pure ()
-        , rnRestartKernel = pure ()
+        , rnRestart = \_ -> pure ()
         , rnWidgetCell = \_ -> pure ()
         }
   where

@@ -14,7 +14,10 @@ import Sabela.AI.Capabilities.ToolName (
  )
 import Sabela.AI.PeekData (
     ColType (..),
+    DelimitedView (..),
+    PeekColumn (..),
     PeekResult (..),
+    PeekVerdict (..),
     peekData,
     peekResultJSON,
  )
@@ -27,38 +30,51 @@ csv =
     \bob,25,8.0,false\n\
     \carol,41,7.25,true\n"
 
+-- | The delimited reading, or a failure naming the verdict that came back.
+viewOf :: PeekResult -> DelimitedView
+viewOf r = case peekVerdict r of
+    Delimited v -> v
+    NotDelimited reason -> error ("expected a delimited verdict, got: " <> show reason)
+
 spec :: Spec
 spec = do
     describe "peekData delimiter + header + types" $ do
-        let r = peekData 2 csv
+        let r = viewOf (peekData 2 csv)
 
         it "infers the comma delimiter" $
-            peekDelimiter r `shouldBe` ","
+            dvDelimiter r `shouldBe` ","
 
         it "detects the header row" $ do
-            peekHasHeader r `shouldBe` True
-            peekHeader r `shouldBe` ["name", "age", "score", "active"]
+            dvHasHeader r `shouldBe` True
+            map pcName (dvColumns r)
+                `shouldBe` map Just ["name", "age", "score", "active"]
 
         it "returns at most N data rows (not the header)" $ do
-            length (peekRows r) `shouldBe` 2
-            peekRows r
+            length (dvRows r) `shouldBe` 2
+            dvRows r
                 `shouldBe` [ ["alice", "30", "9.5", "true"]
                            , ["bob", "25", "8.0", "false"]
                            ]
 
         it "guesses per-column types" $
-            peekColTypes r `shouldBe` [ColText, ColInt, ColDouble, ColBool]
+            map pcType (dvColumns r) `shouldBe` [ColText, ColInt, ColDouble, ColBool]
 
         it "infers a tab delimiter" $
-            peekDelimiter (peekData 5 "a\tb\n1\t2\n") `shouldBe` "\t"
+            dvDelimiter (viewOf (peekData 5 "a\tb\n1\t2\n")) `shouldBe` "\t"
 
         it "infers a semicolon delimiter" $
-            peekDelimiter (peekData 5 "a;b\n1;2\n") `shouldBe` ";"
+            dvDelimiter (viewOf (peekData 5 "a;b\n1;2\n")) `shouldBe` ";"
 
-        it "treats an all-numeric first row as headerless" $ do
-            let h = peekData 5 "1,2,3\n4,5,6\n"
-            peekHasHeader h `shouldBe` False
-            peekColTypes h `shouldBe` [ColInt, ColInt, ColInt]
+        it "treats an all-numeric first row as headerless and names no column" $ do
+            let h = viewOf (peekData 5 "1,2,3\n4,5,6\n")
+            dvHasHeader h `shouldBe` False
+            map pcName (dvColumns h) `shouldBe` [Nothing, Nothing, Nothing]
+            map pcType (dvColumns h) `shouldBe` [ColInt, ColInt, ColInt]
+
+        it "refuses to read prose as a table" $
+            case peekVerdict (peekData 5 "hello there\nthis is prose\n") of
+                NotDelimited _ -> pure ()
+                Delimited v -> expectationFailure ("read prose as " <> show v)
 
     describe "peek_data JSON shape" $ do
         let v = peekResultJSON (peekData 2 csv)
@@ -66,20 +82,33 @@ spec = do
                 Object o -> KM.lookup (Key.fromText k) o
                 _ -> Nothing
 
-        it "exposes delimiter, header, columns, and rows" $ do
+        it "exposes the verdict, delimiter, header, columns, and rows" $ do
+            getKey "verdict" `shouldBe` Just (String "delimited")
             getKey "delimiter" `shouldBe` Just (String ",")
             getKey "hasHeader" `shouldBe` Just (Bool True)
 
-        it "tags each column with name and type" $
+        it "tags each column with its index, its name and its type" $
             getKey "columns"
                 `shouldBe` Just
                     ( toJSON
-                        [ object ["name" .= ("name" :: Text), "type" .= ("Text" :: Text)]
-                        , object ["name" .= ("age" :: Text), "type" .= ("Int" :: Text)]
-                        , object ["name" .= ("score" :: Text), "type" .= ("Double" :: Text)]
-                        , object ["name" .= ("active" :: Text), "type" .= ("Bool" :: Text)]
+                        [ column 0 "name" "Text"
+                        , column 1 "age" "Int"
+                        , column 2 "score" "Double"
+                        , column 3 "active" "Bool"
                         ]
                     )
+
+        it "leaves the name null when the file has no header" $
+            case peekResultJSON (peekData 2 "1,2\n3,4\n") of
+                Object o ->
+                    KM.lookup "columns" o
+                        `shouldBe` Just
+                            ( toJSON
+                                [ object ["index" .= (0 :: Int), "name" .= Null, "type" .= ("Int" :: Text)]
+                                , object ["index" .= (1 :: Int), "name" .= Null, "type" .= ("Int" :: Text)]
+                                ]
+                            )
+                v -> expectationFailure ("not an object: " <> show v)
 
     describe "ToolName round-trip for peek_data" $ do
         it "parses the wire name" $
@@ -89,6 +118,9 @@ spec = do
             mapM_
                 (\t -> parseToolName (toolWireName t) `shouldBe` Just t)
                 allToolNames
+
+column :: Int -> Text -> Text -> Value
+column i n ty = object ["index" .= i, "name" .= n, "type" .= ty]
 
 allToolNames :: [ToolName]
 allToolNames =

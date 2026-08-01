@@ -12,10 +12,11 @@ module Sabela.AI.HoogleClient (
 import Control.Exception (SomeException, try)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Types as A
-import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Lazy as BL
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
@@ -30,13 +31,17 @@ data HoogleHit = HoogleHit
     }
     deriving (Eq, Show)
 
+{- | Hoogle emits UTF-8; encoding it as Latin-1 corrupts any result set
+containing a single non-ASCII character and silently yields no hits at all.
+-}
 parseHoogleBlob :: Text -> [HoogleHit]
 parseHoogleBlob blob =
-    case A.decode (BL.pack (T.unpack blob)) of
+    case A.decode (utf8 blob) of
         Just vs -> mapMaybe hitFromValue vs
-        Nothing -> mapMaybe (decodeLine . T.unpack) (T.lines blob)
+        Nothing -> mapMaybe decodeLine (T.lines blob)
   where
-    decodeLine l = A.decode (BL.pack l) >>= hitFromValue
+    decodeLine l = A.decode (utf8 l) >>= hitFromValue
+    utf8 = BL.fromStrict . TE.encodeUtf8
 
 hitFromValue :: A.Value -> Maybe HoogleHit
 hitFromValue = A.parseMaybe $ \v -> A.withObject "hit" parse v

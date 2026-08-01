@@ -144,17 +144,111 @@ validateCall schemas call = case lookupSchema (tcName call) schemas of
                 _ -> Nothing
          in Left
                 (failure GarbledToolName ("unknown tool name '" <> tcName call <> "'") suggestion)
-    Just schema
-        | not (argsFit schema (tcArgs call)) ->
-            Left
-                ( failure
-                    InvalidToolArguments
-                    ("arguments do not match schema for " <> tcName call)
-                    (Just (tcName call))
-                )
-        | Just diagnostic <- unsafeSource (tcArgs call) ->
-            Left (failure UnsafeCellSource diagnostic (Just (tcName call)))
-        | otherwise -> Right call
+    Just schema ->
+        let args = coerceArgs schema (tcArgs call)
+         in case argsFault schema args of
+                Just why ->
+                    Left
+                        ( failure
+                            InvalidToolArguments
+                            ( "arguments do not match schema for "
+                                <> tcName call
+                                <> ": "
+                                <> why
+                            )
+                            (Just (tcName call))
+                        )
+                Nothing
+                    | Just diagnostic <- unsafeSource args ->
+                        Left (failure UnsafeCellSource diagnostic (Just (tcName call)))
+                    | otherwise -> Right call{tcArgs = args}
+
+{- | Why these arguments do not fit, named precisely enough to repair. The
+caller re-sends a tool call; "does not match schema" alone tells it nothing
+about which argument to change, so it re-sends the same shape.
+-}
+argsFault :: Schema -> Value -> Maybe Text
+argsFault schema (Object args) = case unknown ++ missing ++ mistyped of
+    (why : _) -> Just why
+    [] -> Nothing
+  where
+    unknown =
+        [ "unknown argument '"
+            <> K.toText k
+            <> "'; this tool takes "
+            <> offered
+        | k <- KM.keys args
+        , not (KM.member k (schemaProps schema))
+        ]
+    missing =
+        [ "missing required argument '" <> r <> "'"
+        | r <- schemaRequired schema
+        , not (KM.member (K.fromText r) args)
+        ]
+    mistyped =
+        [ "argument '"
+            <> K.toText k
+            <> "' should be "
+            <> declaredType spec
+            <> ", got "
+            <> actualType v
+        | (k, v) <- KM.toList args
+        , Just spec <- [KM.lookup k (schemaProps schema)]
+        , not (valueHasType spec v)
+        ]
+    offered =
+        T.intercalate ", " (map K.toText (KM.keys (schemaProps schema)))
+argsFault _ _ = Just "arguments must be a JSON object"
+
+declaredType :: Value -> Text
+declaredType (Object spec) = case KM.lookup "type" spec of
+    Just (String t) -> "a " <> t
+    _ -> "another type"
+declaredType _ = "another type"
+
+actualType :: Value -> Text
+actualType v = case v of
+    String _ -> "a string"
+    Number _ -> "a number"
+    Bool _ -> "a boolean"
+    Object _ -> "an object"
+    Array _ -> "an array"
+    Null -> "null"
+
+{- | Coerce arguments whose intent is unambiguous. A quoted @"5"@ where an
+integer is declared is not a different request, it is the same request spelled
+badly; rejecting it costs the whole turn. Anything genuinely ambiguous still
+fails, with the offending argument named.
+-}
+coerceArgs :: Schema -> Value -> Value
+coerceArgs schema (Object args) = Object (KM.mapWithKey fix args)
+  where
+    fix k v = case KM.lookup k (schemaProps schema) of
+        Just spec
+            | not (valueHasType spec v)
+            , Just v' <- coerceTo spec v ->
+                v'
+        _ -> v
+coerceArgs _ v = v
+
+coerceTo :: Value -> Value -> Maybe Value
+coerceTo (Object spec) (String s) = case KM.lookup "type" spec of
+    Just (String "integer") -> Number . fromInteger <$> readInteger s
+    Just (String "number") -> Number . fromInteger <$> readInteger s
+    Just (String "boolean") -> readBool s
+    _ -> Nothing
+coerceTo _ _ = Nothing
+
+readInteger :: Text -> Maybe Integer
+readInteger t = case reads (T.unpack (T.strip t)) of
+    [(n, "")] -> Just n
+    _ -> Nothing
+
+readBool :: Text -> Maybe Value
+readBool t = case T.toLower (T.strip t) of
+    "true" -> Just (Bool True)
+    "false" -> Just (Bool False)
+    _ -> Nothing
 
 matchingSchemas :: [Schema] -> Value -> [Schema]
 matchingSchemas schemas args = [schema | schema <- schemas, argsFit schema args]

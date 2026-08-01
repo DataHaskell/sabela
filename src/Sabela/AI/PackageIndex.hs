@@ -6,6 +6,9 @@ module Sabela.AI.PackageIndex (
     parsePackageDump,
     modulesOfPackage,
     packagesExposingModule,
+    newestExposing,
+    newestNamed,
+    versionParts,
     modulesMatching,
     packagesMatchingSynopsis,
     storePackageDb,
@@ -13,10 +16,10 @@ module Sabela.AI.PackageIndex (
 ) where
 
 import Control.Exception (SomeException, try)
-import Data.Char (isAlphaNum, isSpace, isUpper)
-import Data.List (isPrefixOf, nub, sortOn)
+import Data.Char (isAlphaNum, isDigit, isSpace, isUpper)
+import Data.List (isPrefixOf, maximumBy, nub, sortOn)
 import Data.Maybe (listToMaybe)
-import Data.Ord (Down (..))
+import Data.Ord (Down (..), comparing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Version (showVersion)
@@ -93,6 +96,28 @@ modulesOfPackage idx name =
 
 packagesExposingModule :: [PackageEntry] -> Text -> [PackageEntry]
 packagesExposingModule idx m = [p | p <- idx, m `elem` peModules p]
+
+{- | The entry a compiler would link for a module: the store registers every
+version it has ever built, and taking the first the dump lists reports whichever
+sorted first, which is not the one @-package p@ resolves to.
+-}
+newestExposing :: [PackageEntry] -> Text -> Maybe PackageEntry
+newestExposing idx m = case packagesExposingModule idx m of
+    [] -> Nothing
+    ps@(p : _) -> newestNamed (peName p) ps
+
+-- | The newest installed entry for a package.
+newestNamed :: Text -> [PackageEntry] -> Maybe PackageEntry
+newestNamed name pkgs = case [p | p <- pkgs, peName p == name] of
+    [] -> Nothing
+    ps -> Just (maximumBy (comparing (versionParts . peVersion)) ps)
+
+versionParts :: Text -> [Int]
+versionParts = map numeric . T.splitOn "."
+  where
+    numeric t
+        | not (T.null t) && T.all isDigit t = read (T.unpack t)
+        | otherwise = 0
 
 packagesMatchingSynopsis :: [PackageEntry] -> Text -> [PackageEntry]
 packagesMatchingSynopsis idx q

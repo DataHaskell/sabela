@@ -3,7 +3,12 @@
 module Test.DepsMatchSpec (spec) where
 
 import qualified Data.Set as S
-import Sabela.Deps (ProjectSig (..), depsMatch, emptyProjectSig, projectSig)
+import Sabela.Deps (
+    ProjectSig (..),
+    emptyProjectSig,
+    envSig,
+    projectSig,
+ )
 import ScriptHs.Parser (CabalMeta (..), SourceRepoPin (..))
 import Test.Hspec (Spec, describe, it, shouldBe, shouldNotBe)
 
@@ -30,66 +35,29 @@ pinAt =
 
 spec :: Spec
 spec = do
-    describe "depsMatch" $ do
-        it "matches when needed deps are installed and sigs agree" $
-            depsMatch
-                emptyMeta{metaDeps = ["text"]}
-                (S.fromList ["text"])
-                S.empty
-                S.empty
-                emptyProjectSig
-                emptyProjectSig
-                `shouldBe` True
-
-        it "keeps subset semantics: a dropped dep does not force a rebuild" $
-            depsMatch
-                emptyMeta{metaDeps = ["text"]}
-                (S.fromList ["text", "containers"])
-                S.empty
-                S.empty
-                emptyProjectSig
-                emptyProjectSig
-                `shouldBe` True
-
-        it "rejects when a local package dir is added" $
-            depsMatch
-                emptyMeta
-                S.empty
-                S.empty
-                S.empty
-                (projectSig ["/code/dataframe"] emptyMeta)
-                emptyProjectSig
-                `shouldBe` False
-
-        it "rejects when a local package dir is removed" $
-            depsMatch
-                emptyMeta
-                S.empty
-                S.empty
-                S.empty
-                emptyProjectSig
-                (projectSig ["/code/dataframe"] emptyMeta)
-                `shouldBe` False
-
-        it "rejects when a git pin changes ref" $
-            depsMatch
-                emptyMeta
-                S.empty
-                S.empty
-                S.empty
-                (projectSig [] emptyMeta{metaSourceRepos = [pinAt]})
-                (projectSig [] emptyMeta{metaSourceRepos = [pinAt{srpRef = "def456"}]})
-                `shouldBe` False
-
-        it "rejects when ghc-options change" $
-            depsMatch
-                emptyMeta
-                S.empty
-                S.empty
-                S.empty
-                (projectSig [] emptyMeta{metaGhcOptions = ["-fno-full-laziness"]})
-                emptyProjectSig
-                `shouldBe` False
+    describe "envSig (what a kernel was built from)" $ do
+        let sigOf globals = envSig (S.fromList globals)
+            withDeps ds = emptyMeta{metaDeps = ds}
+        it "is equal for two notebooks needing the same environment" $
+            sigOf [] [] (withDeps ["text"]) `shouldBe` sigOf [] [] (withDeps ["text"])
+        it
+            "changes when a dependency is REMOVED, which a subset test cannot see"
+            $ sigOf [] [] (withDeps ["text"])
+                `shouldNotBe` sigOf [] [] (withDeps ["text", "containers"])
+        it "changes when a dependency is added" $
+            sigOf [] [] (withDeps ["text"])
+                `shouldNotBe` sigOf [] [] (withDeps ["text", "aeson"])
+        it "excludes globally-provided deps, which no kernel installs" $
+            sigOf ["text"] [] (withDeps ["text"]) `shouldBe` sigOf ["text"] [] emptyMeta
+        it "distinguishes extensions" $
+            sigOf [] [] emptyMeta{metaExts = ["GADTs"]}
+                `shouldNotBe` sigOf [] [] emptyMeta
+        it "distinguishes the local package overlay" $
+            sigOf [] ["../sabela-notebook"] emptyMeta
+                `shouldNotBe` sigOf [] [] emptyMeta
+        it "distinguishes a source-repository pin" $
+            sigOf [] [] emptyMeta{metaSourceRepos = [pinAt]}
+                `shouldNotBe` sigOf [] [] emptyMeta
 
     describe "projectSig" $ do
         it "is insensitive to local package dir order" $

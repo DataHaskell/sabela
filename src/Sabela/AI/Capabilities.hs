@@ -33,6 +33,7 @@ import Sabela.AI.Capabilities.Edit (
  )
 import Sabela.AI.Capabilities.Edit.Ack (writeGate)
 import Sabela.AI.Capabilities.Edit.CompileGate (compileGateCheck)
+import Sabela.AI.Capabilities.Files (execListFiles, execReadFile)
 import Sabela.AI.Capabilities.Kernel (
     execAwaitIdle,
     execExportNotebook,
@@ -170,6 +171,8 @@ executeTool app store rn cancelTok toolName rawInput =
         FindExampleCell -> execFindExampleCell input
         FindFunction -> execFindFunction app input
         SearchCapability -> execSearchCapability app input
+        ListFiles -> execListFiles app input
+        ReadFile -> execReadFile app input
 
 warmKernel :: App -> IO ()
 warmKernel app = do

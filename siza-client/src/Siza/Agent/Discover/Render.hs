@@ -25,6 +25,7 @@ dedupSources = foldl mergeIn []
     combine x a =
         x
             { saOk = saOk x || saOk a
+            , saAllOk = saAllOk x && saAllOk a
             , saNote = if T.null (saNote x) then saNote a else saNote x
             }
 
@@ -40,11 +41,21 @@ interpretedJson interp =
     resolvedText =
         iName interp <> maybe "" (" in " <>) (iScope interp)
 
+{- | How complete this source's answer is. A source consulted more than once
+is only `ok` when every consultation succeeded, so a note recording a failure
+can never sit beside an `ok`.
+-}
+sourceStatus :: SourceAnswer -> Text
+sourceStatus a
+    | not (saOk a) = "unavailable"
+    | saAllOk a = "ok"
+    | otherwise = "partial"
+
 consultedJson :: SourceAnswer -> Value
 consultedJson a =
     object $
         [ "source" .= saSource a
-        , "status" .= (if saOk a then "ok" else "unavailable" :: Text)
+        , "status" .= sourceStatus a
         ]
             <> ["note" .= saNote a | not (T.null (saNote a))]
 

@@ -43,7 +43,6 @@ import Sabela.AI.PathRepair (pathNearMissFix)
 import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (ambiguousOccurrence, couldNotFindModule, misnamedModule)
-import Sabela.Diagnose.Packages (table)
 import Sabela.Model (CellError (..))
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), getHaskellSession)
@@ -128,7 +127,7 @@ moduleResolveCandidates app res src = do
             installed <- ST.sbQueryComplete backend "import "
             store <- storeModuleNames
             k <- topKFromEnv
-            let pool = nub (map fst table ++ filter interesting (installed ++ store))
+            let pool = nub (filter interesting (installed ++ store))
             pure
                 [ src'
                 | cand <- closestModules k moduleFuzzyThreshold wrong pool

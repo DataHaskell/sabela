@@ -33,10 +33,28 @@ hitsOf card = saHits (sessionAnswer interp (Just (object ["matches" .= [card]]))
 recordFieldUseSpec :: Spec
 recordFieldUseSpec =
     describe "a record field's update syntax survives into the client's hit" $ do
-        it "carries the server's field syntax as the hit's use note" $ do
+        it "trails the import that reaches the name (A3)" $ do
+            let [h] =
+                    hitsOf
+                        ( matchWith
+                            [ ("import", String "import DataFrame (columnSeparator)")
+                            , ("field", String "ReadOptions { columnSeparator = ... }")
+                            ]
+                        )
+            dhUse h
+                `shouldBe` Just
+                    ( "import DataFrame (columnSeparator)"
+                        <> "; record update: ReadOptions { columnSeparator = ... }"
+                    )
+
+        it "never stands alone as the way to reach the name (A3)" $ do
             let [h] =
                     hitsOf (matchWith [("field", String "ReadOptions { columnSeparator = ... }")])
-            dhUse h `shouldBe` Just "ReadOptions { columnSeparator = ... }"
+            dhUse h `shouldBe` Nothing
+
+        it "carries the import the session computed" $ do
+            let [h] = hitsOf (matchWith [("import", String "import DataFrame (columnSeparator)")])
+            dhUse h `shouldBe` Just "import DataFrame (columnSeparator)"
 
         it "leaves an ordinary function's use note for the generic import fallback" $ do
             let [h] = hitsOf (matchWith [])

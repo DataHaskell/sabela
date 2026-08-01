@@ -17,12 +17,13 @@ import Data.Word (Word64)
 import System.Directory (
     doesDirectoryExist,
     doesFileExist,
-    findExecutable,
     listDirectory,
  )
 import System.FilePath ((</>))
 import System.Timeout (timeout)
 import Test.Hspec
+
+import Test.Live (requireLiveFor)
 
 import Sabela.Session.Materialize (
     CandidateSpec (..),
@@ -30,22 +31,10 @@ import Sabela.Session.Materialize (
     MaterializeSnapshot,
     captureMaterializeSnapshot,
  )
-import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.State (App (..))
 
 requireLiveIntegration :: Expectation
-requireLiveIntegration = do
-    cabal <- findExecutable "cabal"
-    case cabal of
-        Nothing -> pendingWith "cabal not found on PATH; skipping materialization integration"
-        Just _ -> pure ()
-    supportPresent <-
-        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if supportPresent
-        then pure ()
-        else
-            pendingWith
-                "sabela-notebook support source not on disk; skipping materialization integration"
+requireLiveIntegration = requireLiveFor "materialization integration"
 
 scratchDirectories :: FilePath -> IO [FilePath]
 scratchDirectories root =

@@ -20,6 +20,9 @@ module Sabela.Session.Materialize (
     partitionReplayCells,
     disposableRouteName,
     materializeStageText,
+    unrestrictedIOError,
+    evalCandidate,
+    emptyResult,
 ) where
 
 import Control.Exception (
@@ -62,6 +65,16 @@ import Sabela.Session.MaterializeSnapshot (
     captureMaterializeSnapshot,
     snapshotStillCurrent,
     withCurrentSnapshot,
+ )
+import Sabela.Session.MaterializeStage (
+    DisposableResult (..),
+    DisposableVerdict (..),
+    MaterializeFailure (..),
+    MaterializeStage (..),
+    SkippedCell (..),
+    failureFor,
+    materializeStageText,
+    stageFailure,
  )
 import Sabela.Session.Process (ghciBackend, newSession)
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
@@ -113,54 +126,6 @@ expressionCandidate source =
         , candidateDeliberate = False
         }
 
-data DisposableVerdict
-    = DisposableOk
-    | DisposableCompileError
-    | DisposableRuntimeError
-    | DisposableTimedOut
-    | DisposableUnavailable
-    deriving (Eq, Show)
-
-data MaterializeStage
-    = StagePlan
-    | StageSnapshot
-    | StageProject
-    | StageSession
-    | StageCompiled
-    | StagePrelude
-    | StageCellReplay
-    | StageSafety
-    | StageCandidateSetup
-    | StageCandidateTypecheck
-    | StageCandidateRun
-    deriving (Eq, Show)
-
-data MaterializeFailure = MaterializeFailure
-    { failureStage :: MaterializeStage
-    , failureCellId :: Maybe Int
-    , failureMessage :: Text
-    }
-    deriving (Eq, Show)
-
-data SkippedCell = SkippedCell
-    { skippedCellId :: Int
-    , skippedReason :: Text
-    }
-    deriving (Eq, Show)
-
-data DisposableResult = DisposableResult
-    { disposableRoute :: Text
-    , disposableVerdict :: DisposableVerdict
-    , disposableType :: Maybe Text
-    , disposableStdout :: Text
-    , disposableStderr :: Text
-    , disposableFailure :: Maybe MaterializeFailure
-    , disposableReplayedCells :: [Int]
-    , disposableSkippedCells :: [SkippedCell]
-    , disposableDependencies :: [Text]
-    }
-    deriving (Eq, Show)
-
 buildBudgetFor :: CandidateSpec -> TimeoutConfig -> Int
 buildBudgetFor spec tc
     | candidateDeliberate spec = tcBuildUs tc
@@ -168,20 +133,6 @@ buildBudgetFor spec tc
 
 disposableRouteName :: Text
 disposableRouteName = "disposable_scratch"
-
-materializeStageText :: MaterializeStage -> Text
-materializeStageText stage = case stage of
-    StagePlan -> "plan"
-    StageProject -> "project"
-    StageSession -> "session"
-    StageCompiled -> "compiled"
-    StagePrelude -> "prelude"
-    StageCellReplay -> "cell_replay"
-    StageSnapshot -> "snapshot"
-    StageSafety -> "safety"
-    StageCandidateSetup -> "candidate_setup"
-    StageCandidateTypecheck -> "candidate_typecheck"
-    StageCandidateRun -> "candidate_run"
 
 runDisposableTry :: App -> CandidateSpec -> IO DisposableResult
 runDisposableTry app spec = do
@@ -263,7 +214,7 @@ materializationPlanFailure plan
         Just (planFailure cid (diagnosticText errs))
     | otherwise = Nothing
   where
-    planFailure cid = MaterializeFailure StagePlan (Just cid)
+    planFailure cid = stageFailure StagePlan (Just cid)
 
 runInDisposableRoot ::
     App ->
@@ -361,7 +312,7 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
                             case replayed of
                                 Left (done, cid, stage, msg) ->
                                     pure
-                                        (failed base stage (Just cid) msg)
+                                        (failed base stage cid msg)
                                             { disposableReplayedCells = compiledIds <> done
                                             }
                                 Right (done, scratchBridge) -> do
@@ -422,8 +373,13 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
   where
     compiledIds = map cellId (epCompileCells plan)
 
+{- | Withdraws unchecked IO from the candidate's scope, and asks GHC to say
+when it resolved an ambiguous type by defaulting, so the gate can tell a cell
+that computes something from one that only type-checks.
+-}
 candidateSafetyPrelude :: CandidateSpec -> Text
-candidateSafetyPrelude _ = ":module -System.IO.Unsafe\n"
+candidateSafetyPrelude _ =
+    ":module -System.IO.Unsafe\n:set -Wtype-defaults\n"
 
 runCandidate ::
     ST.SessionBackend ->
@@ -447,6 +403,10 @@ runCandidate backend spec base = do
                         }
             Just expression -> evalCandidate backend expression base
 
+{- | Evaluate the candidate with the pure evaluator, which admits a value only
+after inferring a type that is not IO. One it declines as IO is reported with
+that type and left unrun: a fresh project is not a sandbox.
+-}
 evalCandidate ::
     ST.SessionBackend -> Text -> DisposableResult -> IO DisposableResult
 evalCandidate backend expression base = do
@@ -472,39 +432,19 @@ evalCandidate backend expression base = do
                 , disposableType = inferred
                 , disposableStdout = out
                 , disposableStderr = err
-                , disposableFailure =
-                    if T.null (T.strip err)
-                        then Nothing
-                        else Just (MaterializeFailure stage Nothing err)
+                , disposableFailure = failureFor verdict stage err
                 }
     case ST.pureEvalVerdict result of
         ST.PureEvalSucceeded -> pure (finish DisposableOk StageCandidateRun)
+        ST.PureEvalUnshowable -> pure (finish DisposableOk StageCandidateRun)
         ST.PureEvalRejected
-            | unrestrictedIOError err -> runIOCandidate backend expression inferred base
+            | unrestrictedIOError err -> pure (finish DisposableOk StageCandidateTypecheck)
             | otherwise -> pure (finish DisposableCompileError StageCandidateTypecheck)
         ST.PureEvalRuntimeError -> pure (finish DisposableRuntimeError StageCandidateRun)
         ST.PureEvalTimedOut -> pure (finish DisposableTimedOut StageCandidateRun)
         ST.PureEvalStale -> pure (finish DisposableUnavailable StageCandidateTypecheck)
         ST.PureEvalInvariantFailed -> pure (finish DisposableUnavailable StageCandidateRun)
         ST.PureEvalUnavailable -> pure (finish DisposableUnavailable StageCandidateRun)
-
-runIOCandidate ::
-    ST.SessionBackend ->
-    Text ->
-    Maybe Text ->
-    DisposableResult ->
-    IO DisposableResult
-runIOCandidate backend expression inferred base = do
-    outcome <- runChecked backend expression
-    pure $ case outcome of
-        Left message -> failed base StageCandidateRun Nothing message
-        Right (out, err) ->
-            base
-                { disposableVerdict = DisposableOk
-                , disposableType = inferred
-                , disposableStdout = out
-                , disposableStderr = err
-                }
 
 candidateTimeoutUs :: Int
 candidateTimeoutUs = 30 * 1000000
@@ -542,7 +482,7 @@ replayCells ::
     [Cell] ->
     IO
         ( Either
-            ([Int], Int, MaterializeStage, Text)
+            ([Int], Maybe Int, MaterializeStage, Text)
             ([Int], M.Map Text Text)
         )
 replayCells backend context = go True [] (rcBridgeValues context)
@@ -555,14 +495,14 @@ replayCells backend context = go True [] (rcBridgeValues context)
                 else runChecked backend displayPrelude
         case preludeResult of
             Left msg ->
-                pure (Left (reverse done, cellId cell, StagePrelude, msg))
+                pure (Left (reverse done, Nothing, StagePrelude, msg))
             Right _ -> do
                 result <- runChecked backend (renderCell context bridge cell)
                 case result of
                     Left msg ->
                         pure
                             ( Left
-                                (reverse done, cellId cell, StageCellReplay, msg)
+                                (reverse done, Just (cellId cell), StageCellReplay, msg)
                             )
                     Right (out, _) ->
                         go
@@ -676,7 +616,7 @@ failed base stage cid message =
     base
         { disposableVerdict = verdictForFailure message
         , disposableStderr = message
-        , disposableFailure = Just (MaterializeFailure stage cid message)
+        , disposableFailure = Just (stageFailure stage cid message)
         }
 
 verdictForFailure :: Text -> DisposableVerdict

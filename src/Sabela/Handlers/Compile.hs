@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Sabela.Handlers.Compile (
+    moduleReloadPending,
     CompileOutcome (..),
     runCompilePhase,
     compiledDependents,
@@ -9,7 +10,6 @@ module Sabela.Handlers.Compile (
 
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, unless, void)
-import Data.IORef (readIORef, writeIORef)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -33,7 +33,13 @@ import Sabela.Model (
     OutputItem (..),
  )
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), clearCompiledModules, withBuilding)
+import Sabela.State (
+    App (..),
+    forgetLoadedModules,
+    loadedModules,
+    setLoadedModules,
+    withBuilding,
+ )
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.SessionManager (getHaskellSession)
 import qualified Sabela.Topo as Topo
@@ -56,16 +62,32 @@ runCompilePhase app gen cplan affectedCells = do
         Just backend -> do
             forM_ affectedCells $ \c ->
                 broadcast app (EvCellCompiling (cellId c))
-            loaded <- readIORef (appCompiledModules app)
-            let changed = M.differenceWith keepChanged (cpModules cplan) loaded
-                orphans = M.keysSet loaded `S.difference` M.keysSet (cpModules cplan)
+            loaded <- loadedModules app (ST.sbSessionId backend)
+            let (changed, orphans) = moduleDiff loaded cplan
             if M.null changed && S.null orphans
                 then do
                     broadcastCompiled app gen affectedCells Nothing
                     pure CompileNoChange
                 else compileChanged app gen backend cplan affectedCells changed orphans
+
+{- | What a @:load@ would change: modules whose source moved, plus orphans the
+kernel still holds. Shared with the planner, which needs the same answer
+/before/ running to know the interpreted namespace is about to be wiped.
+-}
+moduleDiff ::
+    M.Map Text Text -> CompilePlan -> (M.Map Text Text, S.Set Text)
+moduleDiff loaded cplan =
+    ( M.differenceWith keepChanged (cpModules cplan) loaded
+    , M.keysSet loaded `S.difference` M.keysSet (cpModules cplan)
+    )
   where
     keepChanged new old = if new == old then Nothing else Just new
+
+-- | Will the next compile @:load@, and so wipe every interpreted binding?
+moduleReloadPending :: M.Map Text Text -> CompilePlan -> Bool
+moduleReloadPending loaded cplan =
+    let (changed, orphans) = moduleDiff loaded cplan
+     in not (M.null changed) || not (S.null orphans)
 
 compileChanged ::
     App ->
@@ -97,7 +119,7 @@ compileChanged app gen backend cplan affectedCells changed orphans = withBuildin
     case result of
         Left (e :: SomeException) -> do
             handleKernelCrash app backend ("Kernel crashed: " <> T.pack (show e))
-            clearCompiledModules app
+            forgetLoadedModules app
             pure CompileFailed
         Right (rawOut, rawErr) -> do
             let (perCell, loose)
@@ -107,11 +129,11 @@ compileChanged app gen backend cplan affectedCells changed orphans = withBuildin
             if failed
                 then do
                     broadcastCompileErrors app gen affectedCells perCell loose
-                    clearCompiledModules app
+                    forgetLoadedModules app
                     pure CompileFailed
                 else do
                     importModules backend (M.keys (cpModules cplan))
-                    writeIORef (appCompiledModules app) (cpModules cplan)
+                    setLoadedModules app (ST.sbSessionId backend) (cpModules cplan)
                     broadcastCompiled app gen affectedCells (Just (t1 - t0))
                     pure CompileReloaded
 

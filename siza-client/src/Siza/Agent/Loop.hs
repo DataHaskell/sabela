@@ -20,37 +20,33 @@ module Siza.Agent.Loop (
     sampleK,
     writeSource,
     qualifiedBaseNames,
+    episodeStack,
 ) where
 
 import Control.Monad (unless, void, when)
 import Data.Aeson (Value (..), object, (.=))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.Grammar (discoverGrammarBlock)
-import Sabela.AI.PromptCore (sabelaBuiltins)
+import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome (..))
 
 import Sabela.AI.Salvage (salvageCell)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
-import Siza.Agent.Deliverable (missingDeliverables)
 import Siza.Agent.Discover (
     GrammarMode (..),
-    declaresDepsCall,
     discoverModules,
     proactiveDiscover,
     runDiscoverOutcomes,
     seamDiscover,
  )
-import Siza.Agent.Discover.History (SearchLedger)
 import Siza.Agent.Discover.HistoryGuard (
     closeSearchLedgerRanked,
-    guardDiscover,
-    newSearchLedger,
     seedSearchLedger,
     setSearchPressure,
  )
@@ -61,11 +57,11 @@ import Siza.Agent.EmitLedger (
     newEmitLedger,
  )
 import Siza.Agent.Exemplars (retrieveForPrompt, saveVerified)
-import Siza.Agent.Futility (guardDispatch, newFutilityGuard)
-import Siza.Agent.Loop.Route (blockingCell, discloseRoute)
+import Siza.Agent.Loop.Prompt (mcpInstructions, systemPrompt)
 import Siza.Agent.Loop.Support (
     callActs,
     groundingMsgs,
+    kernelFailureStep,
     maxChatRetries,
     maxStuckVerifies,
     qualifiedBaseNames,
@@ -75,6 +71,7 @@ import Siza.Agent.Loop.Support (
     stuckFinal,
     writeSource,
  )
+import Siza.Agent.Loop.Verdict (unconfirmedDiagMsg, verdictMsg)
 import Siza.Agent.Loop.WrapUp (
     budgetView,
     missRungFloor,
@@ -87,27 +84,31 @@ import Siza.Agent.Messages (
     reenterAlarmMsg,
     streakMsg,
     toolMsg,
-    unconfirmedMsgWith,
-    verifyMsgWith,
  )
 import Siza.Agent.Owned (
     OwnedCell (..),
     StopDecision (..),
     bestFailing,
     hasArtifact,
+    landedArtifact,
     noProgressStep,
     ownedCellOutcome,
     recordOwned,
     redSignature,
     stopDecision,
  )
-import Siza.Agent.RenderContract (repairDisplayContract)
 import Siza.Agent.Repair (repairRedCells)
-import Siza.Agent.Repair.Blocking (repairBlockingCell)
 import Siza.Agent.Sample (SampleResult (..), SampleVerify (..), sampleVerifyOne)
 import Siza.Agent.Scaffold (runScaffoldStage)
-import Siza.Agent.ToolRoute (normalizeToolCall, recoverTurn)
-import Siza.Agent.Tools (offeredArgKeys, renderOutcome, toolSurfacePrompt)
+import Siza.Agent.Stack (
+    Dispatch,
+    StackSession (..),
+    newStackSession,
+    stackDispatch,
+ )
+import Siza.Agent.Stack.Call (CallResult (..), notesMessage, runToolCall)
+import Siza.Agent.ToolRoute (recoverTurn)
+import Siza.Agent.Tools (offeredArgKeys, renderOutcome)
 import Siza.Agent.Transcript (renderMessage)
 
 data AgentRun = AgentRun
@@ -119,49 +120,20 @@ data AgentRun = AgentRun
     }
     deriving (Show)
 
-systemPrompt :: Text
-systemPrompt = introBlock <> toolSurfacePrompt <> examplesBlock <> sabelaBuiltins
-
-mcpInstructions :: Text
-mcpInstructions = introBlock <> examplesBlock <> sabelaBuiltins
-
-introBlock :: Text
-introBlock =
-    T.unlines
-        [ "Pair on a live Sabela reactive Haskell notebook through tools."
-        , "Editing or running a cell re-runs every cell downstream of it."
-        , "insert_cell and replace_cell_source only commit code that compiles;"
-            <> " a rejection carries the compiler's diagnostic so you can fix it and retry."
-        , ""
-        ]
-
-examplesBlock :: Text
-examplesBlock =
-    T.unlines
-        [ "Examples:"
-        , ""
-        , "* \"what is already here?\" -> list_cells, then read_cell on the one you care about"
-        , "* \"which cell defines the counter?\" -> discover {query: \"counter\"}"
-        , "* \"is there a priority queue?\" -> discover {query: \"priority queue\"}"
-        , "* \"what is in Data.Map?\" -> discover {module: \"Data.Map\"}"
-        , "* \"how do I merge two maps?\""
-            <> " -> discover {query: \"Map k v -> Map k v -> Map k v\"}"
-        , "* \"how do I thread state?\" -> discover {query: \"StateT\"}"
-        , "* \"what arguments does mapAccumL take?\" -> check_type {expr: \"mapAccumL\"}"
-        , "* \"will this compile?\" -> try {code: \"...\"}, then insert_cell once it runs"
-        , "* \"the kernel says busy\" -> await_idle"
-        , ""
-        ]
-
 stopTagFor :: CheckResult -> Text
 stopTagFor CheckPassed = "done"
 stopTagFor _ = "done_unverified"
+
+-- | An assistant turn that called nothing and said nothing is not a summary.
+silentTurn :: Turn -> Bool
+silentTurn t = null (turnCalls t) && T.null (T.strip (turnContent t))
 
 data Driver = Driver
     { drvChat :: [Value] -> IO (Either Text Turn)
     , drvDispatch :: ToolCall -> IO (Either Text ToolOutcome)
     , drvNow :: IO Double
-    , drvVerify :: IO (CheckResult, Maybe Text)
+    , drvVerify :: Map CellId OwnedCell -> IO (CheckResult, Maybe Text)
+    -- ^ verification is keyed to what this episode owns, not to the notebook
     }
 
 data EpisodeBudget = EpisodeBudget
@@ -200,31 +172,35 @@ runEpisodeSeeded ::
     Int ->
     IO AgentRun
 runEpisodeSeeded seed emit mode budget driver0 prompt maxTurns = do
-    futility <- newFutilityGuard
-    ledger <- newSearchLedger
+    sess <- newStackSession mode False prompt
     emits <- newEmitLedger
     let driver =
             driver0
                 { drvChat =
                     fmap (fmap (recoverTurn offeredArgKeys)) . drvChat driver0
-                , drvDispatch =
-                    guardDiscover ledger (guardDispatch futility (drvDispatch driver0))
-                        . normalizeToolCall
+                , drvDispatch = episodeStack sess (drvDispatch driver0)
                 }
-    episodeCore ledger emits seed emit mode budget driver prompt maxTurns
+    episodeCore sess emits seed emit budget driver prompt maxTurns
+
+{- | The stack the chat loop wraps every tool call in. Named so the parity
+spec can drive the same layers the MCP server drives.
+-}
+episodeStack :: StackSession -> Dispatch -> Dispatch
+episodeStack = stackDispatch
 
 episodeCore ::
-    IORef SearchLedger ->
+    StackSession ->
     IORef EmitLedger ->
     [Value] ->
     (Text -> IO ()) ->
-    GrammarMode ->
     EpisodeBudget ->
     Driver ->
     Text ->
     Int ->
     IO AgentRun
-episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
+episodeCore sess emits seed emit budget driver prompt maxTurns = do
+    let ledger = ssLedger sess
+        mode = ssGrammar sess
     printed <- newIORef (0 :: Int)
     delivered <- newIORef False
     signalled <- newIORef False
@@ -232,6 +208,7 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
     chatRetries <- newIORef (0 :: Int)
     stuck <- newIORef (0 :: Int)
     reenterStuck <- newIORef (0 :: Int)
+    kernelDown <- newIORef (0 :: Int)
     seenRedSigs <- newIORef Set.empty
     streaks <- newIORef Map.empty
     wrapped <- newIORef False
@@ -346,19 +323,35 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                             [toolMsg salvaged (renderOutcome outcome)]
                                     writeIORef stuck 0
                                     go start' (turn + 1) (nCalls + 1) repairs owned' (msgs ++ out)
+                            Stop | silentTurn t -> do
+                                finish
+                                    owned
+                                    (turn + 1)
+                                    nCalls
+                                    ""
+                                    "no_reply"
+                                    (msgs ++ [turnRaw t])
                             Stop -> do
-                                (result, mEv) <- drvVerify driver
+                                (result, mEv) <- drvVerify driver owned
                                 case result of
-                                    r
-                                        | r `elem` [CheckPassed, CheckNotApplicable]
-                                        , hasArtifact owned -> do
+                                    CheckPassed
+                                        | hasArtifact owned -> do
                                             saveEx owned
                                             finish
                                                 owned
                                                 (turn + 1)
                                                 nCalls
                                                 (turnContent t)
-                                                (stopTagFor r)
+                                                (stopTagFor CheckPassed)
+                                                (msgs ++ [turnRaw t])
+                                    CheckNotApplicable
+                                        | hasArtifact owned ->
+                                            finish
+                                                owned
+                                                (turn + 1)
+                                                nCalls
+                                                (turnContent t)
+                                                (stopTagFor CheckNotApplicable)
                                                 (msgs ++ [turnRaw t])
                                     _ -> do
                                         s <- readIORef stuck
@@ -366,10 +359,12 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                             then finish owned (turn + 1) nCalls stuckFinal "stuck" (msgs ++ [turnRaw t])
                                             else do
                                                 writeIORef stuck (s + 1)
-                                                let vmsg = case result of
-                                                        CheckUncheckable -> unconfirmedDiagMsg mEv owned
-                                                        _ -> diagVerifyMsg mEv owned
-                                                out <- emitTurn emits turn (turnRaw t) [vmsg]
+                                                out <-
+                                                    emitTurn
+                                                        emits
+                                                        turn
+                                                        (turnRaw t)
+                                                        [verdictMsg prompt result mEv owned]
                                                 go
                                                     start'
                                                     (turn + 1)
@@ -388,7 +383,7 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                     still = [c | (c, _, _) <- stillPairs]
                                     msg =
                                         if null still
-                                            then unconfirmedDiagMsg Nothing owned'
+                                            then unconfirmedDiagMsg prompt Nothing owned'
                                             else reenterAlarmMsg stillPairs
                                     sig = redSignature still owned'
                                 out <- emitTurn emits turn (turnRaw t) (msg : redisc)
@@ -420,7 +415,8 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                         go start' (turn + 1) nCalls (repairs + 1) owned' msgs'
                         else do
                             results <- mapM (dispatchCall msgs) (turnCalls t)
-                            let dispatched = [c | (c, Right _) <- results]
+                            let steps = [(crCall r, crOutcome r) | r <- results]
+                                landedNow = any landedArtifact steps
                             done0 <- readIORef delivered
                             discovered <-
                                 if done0
@@ -429,35 +425,46 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                                         runDiscoverOutcomes
                                             mode
                                             (drvDispatch driver)
-                                            [(c, o) | (c, Right (Right o)) <- results]
-                            when (any deliverableLanded results) $
-                                writeIORef delivered True
-                            signalMsgs <- doneSignalProbe signalled done0
+                                            [(c, o) | (c, Right o) <- steps]
+                            when landedNow $ writeIORef delivered True
+                            let owned' = foldr recordOwned owned steps
+                            signalMsgs <- doneSignalProbe signalled landedNow owned'
                             unless (null signalMsgs) $
                                 writeIORef signalDone True
                             let nudge = []
-                            let owned' =
-                                    foldr recordOwned owned [(c, o) | (c, Right o) <- results]
-                                toolMsgs =
-                                    [ toolMsg c (either id renderOutcome o)
-                                    | (c, o) <- results
+                            let toolMsgs =
+                                    [ toolMsg c (renderOutcome o)
+                                    | (c, o) <- steps
                                     ]
+                                noteMsgs = maybe [] pure (notesMessage results)
                             hints <- streakHints streaks owned'
                             out <-
                                 emitTurn emits turn (turnRaw t) $
                                     toolMsgs
+                                        ++ noteMsgs
                                         ++ discovered
                                         ++ map streakMsg hints
                                         ++ signalMsgs
                                         ++ nudge
                             writeIORef stuck 0
-                            go
-                                start'
-                                (turn + 1)
-                                (nCalls + length dispatched)
-                                repairs
-                                owned'
-                                (msgs ++ out)
+                            down <- kernelFailureStep kernelDown (map snd steps)
+                            if down
+                                then
+                                    finish
+                                        owned'
+                                        (turn + 1)
+                                        (nCalls + length steps)
+                                        (bestFailing owned')
+                                        "kernel_error"
+                                        (msgs ++ out)
+                                else
+                                    go
+                                        start'
+                                        (turn + 1)
+                                        (nCalls + length steps)
+                                        repairs
+                                        owned'
+                                        (msgs ++ out)
     go start 0 0 0 owned0 msgs0
   where
     repairableGiveUpReasons :: [Text]
@@ -478,29 +485,24 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
         , userMsg
         ]
     userMsg = object ["role" .= ("user" :: Text), "content" .= prompt]
-    diagVerifyMsg mCe owned =
-        verifyMsgWith
-            (Map.size owned)
-            (missingDeliverables prompt (map ocSource (Map.elems owned)))
-            mCe
-    unconfirmedDiagMsg mEv owned =
-        unconfirmedMsgWith
-            (Map.size owned)
-            (missingDeliverables prompt (map ocSource (Map.elems owned)))
-            mEv
-    doneSignalProbe signalled done0
-        | not done0 = pure []
+    {- The signal is adjacent to the write it is about: it fires on the turn
+    whose own steps landed an artifact, so it can never read as a verdict on
+    the rejection that happened to follow. -}
+    doneSignalProbe signalled landedNow owned'
+        | not landedNow || not (hasArtifact owned') = pure []
         | otherwise = do
             already <- readIORef signalled
             if already
                 then pure []
                 else do
                     writeIORef signalled True
-                    (r, _) <- drvVerify driver
-                    pure $ case r of
-                        CheckPassed -> [doneSignalMsg]
-                        CheckNotApplicable -> [noCheckSignalMsg]
-                        _ -> []
+                    (r, mDetail) <- drvVerify driver owned'
+                    pure $ case (r, mDetail) of
+                        (CheckPassed, Just check) ->
+                            [doneSignalMsg (Map.keys owned') check]
+                        (CheckFailed, _) -> []
+                        (CheckPassed, Nothing) -> []
+                        _ -> [noCheckSignalMsg mDetail]
     retrieveEx = retrieveForPrompt prompt
     saveEx owned =
         saveVerified
@@ -510,28 +512,7 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
         k <- sampleK
         if k > 1 && callActs call && isJust (writeSource call)
             then rejectionDispatch msgs k call
-            else plainDispatch call
-    plainDispatch call = do
-        outcome <- drvDispatch driver call
-        case blockingCell outcome of
-            Just n -> do
-                healed <- repairBlockingCell (drvDispatch driver) n
-                case healed of
-                    Just (c, o) -> surfaceDisplay c o
-                    Nothing
-                        | tcName call == "insert_cell"
-                        , Just src <- writeSource call -> do
-                            let rc = replaceCall n src
-                            o2 <- drvDispatch driver rc
-                            surfaceDisplay rc (fmap (discloseRoute n) o2)
-                    _ -> pure (call, Right outcome)
-            _ -> surfaceDisplay call outcome
-
-    surfaceDisplay call outcome = do
-        repaired <- repairDisplayContract prompt (drvDispatch driver) call outcome
-        pure $ case repaired of
-            Just (c, o) -> (c, Right o)
-            Nothing -> (call, Right outcome)
+            else runToolCall sess (drvDispatch driver) call
 
     rejectionDispatch msgs k call = do
         o0 <- drvDispatch driver call
@@ -551,14 +532,14 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 case mWin of
                     Just win -> pure win
                     Nothing -> restoreOriginal cid call o0
-            _ -> pure (call, Right o0)
+            _ -> pure (CallResult call o0 [])
     rolloutReplace winRef cid src
         | T.null (T.strip src) = pure False
         | otherwise = do
             let rc = replaceCall cid src
             o <- drvDispatch driver rc
             let ok = maybe False snd (ownedCellOutcome rc o)
-            when ok (writeIORef winRef (Just (rc, Right o)))
+            when ok (writeIORef winRef (Just (CallResult rc o [])))
             pure ok
     restoreOriginal cid call o0 = do
         _ <-
@@ -566,7 +547,7 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 (pure ())
                 (void . drvDispatch driver . replaceCall cid)
                 (writeSource call)
-        pure (call, Right o0)
+        pure (CallResult call o0 [])
     reAskSource msgs = do
         r <- drvChat driver msgs
         pure $ case r of
@@ -578,16 +559,13 @@ episodeCore ledger emits seed emit mode budget driver prompt maxTurns = do
                 (drvDispatch driver)
                 [(c, ocDiagnostic oc) | c <- reds, Just oc <- [Map.lookup c owned]]
         pure (foldr recordOwned owned fixes)
-    deliverableLanded (c, Right o) =
-        maybe False snd (ownedCellOutcome c o) && not (declaresDepsCall c)
-    deliverableLanded _ = False
     rankedFacts owned =
-        closeSearchLedgerRanked prompt (map ocSource (Map.elems owned)) ledger
+        closeSearchLedgerRanked prompt (map ocSource (Map.elems owned)) (ssLedger sess)
     reDiscover dref owned' reds = do
         done <- readIORef dref
         if done
             then pure []
-            else seamDiscover mode (drvDispatch driver) (redCells owned' reds)
+            else seamDiscover (ssGrammar sess) (drvDispatch driver) (redCells owned' reds)
     redCells owned' reds =
         [ (ocSource oc, ocDiagnostic oc)
         | c <- reds

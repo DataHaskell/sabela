@@ -208,6 +208,9 @@ emitLedgerSpec = describe "cross-turn content ledger (R3.8/R3.9/R5.5)" $ do
                     `shouldSatisfy` occursIn "best = maximumBy (comparing sse) candidates"
             _ -> expectationFailure "expected two emissions"
 
+    it "a back-reference costs less than the block it replaces" $
+        backRefLimit `shouldSatisfy` (< blockFloor)
+
     it "a back-reference stays within backRefLimit chars" $ do
         let block = T.replicate 40 "abcdefgh "
         case runSeq [block, block] of

@@ -2,6 +2,8 @@
 
 module Siza.Agent.Check.Gate (
     CheckRefusal (..),
+    MutationOutcome (..),
+    checkRefusals,
     refusalNote,
     referenceGate,
     identifiersOf,
@@ -18,7 +20,9 @@ import qualified Data.Text as T
 data CheckRefusal
     = NoReference
     | Indiscriminate
-    deriving (Eq, Show)
+    | Ungrounded
+    | Unperturbable
+    deriving (Bounded, Enum, Eq, Show)
 
 refusalNote :: CheckRefusal -> Text
 refusalNote NoReference =
@@ -26,9 +30,27 @@ refusalNote NoReference =
     \deliverable"
 refusalNote Indiscriminate =
     "it still passes when the value is perturbed, so it cannot fail"
+refusalNote Ungrounded =
+    "this turn defined no binding the check could be about"
+refusalNote Unperturbable =
+    "no perturbation of the values it names exists, so a pass proves nothing"
 
+checkRefusals :: [CheckRefusal]
+checkRefusals = [minBound .. maxBound]
+
+-- | Whether a mutation of the checked value could falsify the check.
+data MutationOutcome
+    = Discriminating
+    | NotDiscriminating
+    | NoPerturbationAvailable
+    deriving (Eq, Show)
+
+{- | The check must be about a name this turn caused to exist. An empty
+reference set is the strongest reason to refuse, not a reason to admit.
+-}
 referenceGate :: [Text] -> Text -> Maybe CheckRefusal
 referenceGate owned check
+    | null owned = Just Ungrounded
     | mentionsAny owned check = Nothing
     | otherwise = Just NoReference
 

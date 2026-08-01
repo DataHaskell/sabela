@@ -43,11 +43,14 @@ foundEnv q hits =
         ]
 
 cardEnv :: Text -> Text -> Value
-cardEnv q pkg =
+cardEnv q pkg = cardEnvWith q pkg []
+
+cardEnvWith :: Text -> Text -> [Text] -> Value
+cardEnvWith q pkg exports =
     object
         [ "query" .= q
         , "state" .= ("found" :: Text)
-        , "card" .= object ["package" .= pkg]
+        , "card" .= object ["package" .= pkg, "exports" .= exports]
         , "total" .= (0 :: Int)
         ]
 
@@ -91,9 +94,21 @@ satisfactionGridSpec = describe "satisfaction holds iff goal-class evidence" $
                         , cardEnv "q" "rzk"
                         , False
                         )
-                    ,
-                        ( "provenance card"
+                    , -- Inverted 2026-07-30 (FR10). Coming from the goal's
+                      -- package is provenance, not satisfaction: 23 of 81
+                      -- live `satisfied` claims rested on this alone. The row
+                      -- below is the positive control, red before this change.
+
+                        ( "provenance card, nothing produces the goal"
                         , cardEnv "q" (rn "cumulus")
+                        , False
+                        )
+                    ,
+                        ( "provenance card whose export produces the goal"
+                        , cardEnvWith
+                            "q"
+                            (rn "cumulus")
+                            ["mkPlot :: Ctx -> " <> rn "Plot"]
                         , True
                         )
                     ,

@@ -2,124 +2,43 @@
 
 module Test.CompileGateSpec (spec) where
 
-import Control.Exception (bracket, bracket_)
-import Data.Aeson (Value (..), object, (.=))
-import qualified Data.Aeson.Key as Key
-import qualified Data.Aeson.KeyMap as KM
+import Data.Aeson (Value (..))
 import Data.Foldable (toList)
-import Data.IORef (readIORef)
 import qualified Data.Set as Set
-import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Unique (hashUnique)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
-import System.Directory (doesFileExist, findExecutable)
-import System.Environment (setEnv, unsetEnv)
-import System.FilePath ((</>))
-import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 
-import Sabela.AI.Capabilities (executeTool)
 import Sabela.AI.Capabilities.Edit.CompileGate (compileGateSpec)
-import qualified Sabela.AI.Store as AIStore
-import Sabela.AI.Types (toolOutcomeValue)
-import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
-import Sabela.Handlers (ReactiveNotebook, setupReactive)
-import Sabela.Model (Notebook (..))
-import Sabela.Server (newApp)
+import Sabela.Deps (EnvSig (..))
 import Sabela.Session.Materialize (
     CandidateSpec (..),
     buildBudgetFor,
     candidateSafetyPrelude,
     expressionCandidate,
  )
-import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.Session.Timeout (
     TimeoutConfig (..),
     defaultTimeoutConfig,
  )
-import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), readNotebook)
-import Sabela.State.DependencyTracker (getHaskellDeps)
-import Sabela.State.EventBus (EventBus (..))
-import Sabela.State.SessionManager (
-    forceResetAllSessions,
-    getHaskellSession,
+import Sabela.State (App (..))
+import Sabela.State.SessionManager (haskellEnvOf)
+import Test.GateFixture (
+    cellCount,
+    field,
+    generationOf,
+    insertSrc,
+    sessionIdentity,
+    textField,
+    withBuildTimeout,
+    withFixture,
  )
+import Test.Live (requireLiveIntegration)
 
-requireLiveIntegration :: IO ()
-requireLiveIntegration = do
-    cabal <- findExecutable "cabal"
-    case cabal of
-        Nothing -> pendingWith "cabal not found on PATH; skipping compile-gate integration"
-        Just _ -> pure ()
-    supportPresent <-
-        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if supportPresent
-        then pure ()
-        else pendingWith "sabela-notebook support source not on disk; skipping"
-
-field :: Text -> Value -> Maybe Value
-field k (Object o) = KM.lookup (Key.fromText k) o
-field _ _ = Nothing
-
-textField :: Text -> Value -> Maybe Text
-textField k v = case field k v of
-    Just (String s) -> Just s
-    _ -> Nothing
-
-withFixture ::
-    String -> ((App, AIStore.AIStore, ReactiveNotebook) -> IO a) -> IO a
-withFixture label action =
-    withSystemTempDirectory label $ \dir ->
-        bracket (newFixture dir) releaseFixture action
-
-releaseFixture :: (App, AIStore.AIStore, ReactiveNotebook) -> IO ()
-releaseFixture (app, _, _) = forceResetAllSessions (appSessions app)
-
-newFixture :: FilePath -> IO (App, AIStore.AIStore, ReactiveNotebook)
-newFixture dir = do
-    mgr <- newManager defaultManagerSettings
-    app <- newApp dir Set.empty (Just mgr) Nothing [buildTimeSupportDir]
-    rn <- setupReactive app
-    let cfg =
-            AnthropicConfig
-                { acApiKey = ""
-                , acModel = "placeholder"
-                , acBaseUrl = "https://api.anthropic.com"
-                }
-    store <- AIStore.newAIStore cfg mgr
-    pure (app, store, rn)
-
-callTool ::
-    App -> AIStore.AIStore -> ReactiveNotebook -> Text -> Value -> IO Value
-callTool app store rn name input = do
-    ct <- newCancelToken
-    toolOutcomeValue <$> executeTool app store rn ct name input
-
-insertSrc :: App -> AIStore.AIStore -> ReactiveNotebook -> Text -> IO Value
-insertSrc app store rn src =
-    callTool app store rn "insert_cell" (object ["source" .= src])
-
-cellCount :: App -> IO Int
-cellCount app = length . nbCells <$> readNotebook (appNotebook app)
-
-generationOf :: App -> IO Int
-generationOf app = readIORef (ebGeneration (appEvents app))
-
-sessionIdentity :: App -> IO (Maybe Int)
-sessionIdentity app =
-    fmap (hashUnique . ST.sbSessionId) <$> getHaskellSession (appSessions app)
-
-withBuildTimeout :: String -> IO a -> IO a
-withBuildTimeout secs =
-    bracket_
-        ( setEnv "SABELA_TRY_BUILD_TIMEOUT_SECONDS" secs
-            >> setEnv "SABELA_BUILD_TIMEOUT_SECONDS" secs
-        )
-        ( unsetEnv "SABELA_TRY_BUILD_TIMEOUT_SECONDS"
-            >> unsetEnv "SABELA_BUILD_TIMEOUT_SECONDS"
-        )
+{- | The dependencies the running kernel actually has, read from the environment
+recorded against it at spawn.
+-}
+liveDeps :: App -> IO (Set.Set T.Text)
+liveDeps app = maybe Set.empty (esDeps . snd) <$> haskellEnvOf (appSessions app)
 
 spec :: Spec
 spec = describe "G1 compile-gated notebook writes" $ do
@@ -208,7 +127,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
         $ do
             requireLiveIntegration
             withFixture "sabela-compilegate-dep-red" $ \(app, store, rn) -> do
-                depsBefore <- getHaskellDeps (appDeps app)
+                depsBefore <- liveDeps app
 
                 ack <-
                     insertSrc
@@ -222,7 +141,7 @@ spec = describe "G1 compile-gated notebook writes" $ do
                 textField "notCommitted" ack `shouldBe` Just "compile-gate"
                 textField "verdict" ack `shouldBe` Just "diagnostic"
 
-                depsAfter <- getHaskellDeps (appDeps app)
+                depsAfter <- liveDeps app
                 depsAfter `shouldBe` depsBefore
                 Set.member "containers" depsAfter `shouldBe` False
                 count <- cellCount app
@@ -243,7 +162,9 @@ spec = describe "G1 compile-gated notebook writes" $ do
                             rn
                             "-- cabal: build-depends: split\n1 + (1 :: Int)"
 
-                    textField "notCommitted" ack `shouldBe` Just "compile-gate"
+                    -- Was "compile-gate": a build-budget breach never reaches
+                    -- the candidate, so nothing compiled it to refuse it.
+                    textField "notCommitted" ack `shouldBe` Just "trial-blocked"
                     textField "verdict" ack `shouldBe` Just "no-verdict-infra"
                     countAfter <- cellCount app
                     countAfter `shouldBe` countBefore

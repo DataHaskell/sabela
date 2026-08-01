@@ -3,6 +3,7 @@
 module Sabela.AI.Capabilities.Try.Autofix (
     autofixNote,
     renameCandidateCap,
+    scopedCandidateCap,
     renameNote,
     hiddenPackageOf,
     notFoundModuleOf,
@@ -64,3 +65,10 @@ lookupField _ _ = Nothing
 
 renameCandidateCap :: Int
 renameCandidateCap = 3
+
+{- | Candidates drawn from the packages the cell declares. Higher than the
+global cap because a scoped pool needs no similarity floor: every candidate is
+already in a package the cell asked for, so the trial decides.
+-}
+scopedCandidateCap :: Int
+scopedCandidateCap = 5

@@ -8,15 +8,19 @@ module Sabela.AI.Capabilities.Notebook (
     cellDefines,
     cellListEntry,
     listCellSourceCap,
+    cellGoal,
+    goalPairs,
 ) where
 
 import Data.Aeson (Value, object, (.=))
-import Data.Maybe (isJust, mapMaybe)
+import Data.Aeson.Types (Pair)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Util (fieldBool, fieldInt, fieldText)
 import Sabela.AI.Doc (cellHash, defaultDocOpts, firstNonBlank, ndoFirstLineLen)
+import Sabela.AI.HoleRepair (goalFromError)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Api (errorJson)
 import Sabela.Model
@@ -24,6 +28,26 @@ import Sabela.Parse (cellNames)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
+
+{- | The name a cell's error says is missing, and the type the call site needs
+it to have. GHC prints both in the message for the not-in-scope classes, so
+this costs no compile.
+-}
+cellGoal :: T.Text -> Maybe (T.Text, T.Text)
+cellGoal err
+    | T.null (T.strip err) = Nothing
+    | otherwise = fmap unquoteName (goalFromError err)
+  where
+    unquoteName (n, t) = (T.dropAround (`elem` ("`'\8216\8217" :: String)) n, t)
+
+{- | States the goal, and the fits when a caller has them. A fact about the
+cell, with nothing addressed to the reader.
+-}
+goalPairs :: Maybe (T.Text, T.Text) -> [Value] -> [Pair]
+goalPairs Nothing _ = []
+goalPairs (Just (name, ty)) fits =
+    ["goal" .= (name <> " :: " <> ty)]
+        <> ["inScopeWithThatType" .= fits | not (null fits)]
 
 execListCells :: App -> Value -> IO ToolOutcome
 execListCells app input = do
@@ -87,6 +111,7 @@ execReadCell app input = do
                                 , "source" .= cellSource c
                                 , "error" .= cellError c
                                 ]
+                                    ++ goalPairs (cellGoal (fromMaybe "" (cellError c))) []
                                     ++ if full
                                         then ["outputs" .= cellOutputs c]
                                         else ["hasOutputs" .= not (null (cellOutputs c))]

@@ -148,8 +148,12 @@ argText k (Object o) = case KM.lookup (K.fromText k) o of
     _ -> ""
 argText _ _ = ""
 
+{- | Mirrors execFindFunction: a named module is browsed and carded when no
+export of it matches the query, and answers with matches when one does.
+-}
 simSession :: [SynPkg] -> Text -> Text -> Value
 simSession sessionPkgs q mScope
+    | not (T.null mScope), mScope /= q, null nameMatches = browseAnswer mScope
     | moduleShaped q = browseAnswer q
     | otherwise =
         object ["query" .= q, "matches" .= (nameMatches ++ synonymNoise)]

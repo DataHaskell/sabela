@@ -6,6 +6,7 @@ import Data.Aeson (Value, object, (.=))
 import qualified Data.Aeson.Key as Key
 import Data.Text (Text)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), mkTool)
+import Sabela.AI.ToolDoc (checkTypeImportsDoc)
 import Sabela.Anthropic.Types (ToolDef)
 
 queryTools :: [ToolDef]
@@ -16,8 +17,27 @@ queryTools =
         noArgs
     , mkTool
         CheckType
-        "Get the type of an expression, or the kind/definition of a type or class you ALREADY know, without running anything. Pass an expression (\"map fst\"), a value name, or a type/class name. When a value's type is a record, this ALSO returns that type's constructors and FIELD names — so to discover a config's fields for a record update (e.g. `cfg{maxTreeDepth=10}`), just check_type the value. To find a name you do not know, use find_function or find_by_type."
-        (oneArg "expr" "An expression, value name, or type/class name.")
+        "Look a NAME up in the local Haskell index, or type-check an EXPRESSION. Pass a bare or qualified name (\"nub\", \"Q.insert\", \"Maybe\", \"(<+>)\") and it answers from the index without needing a session — where the name is defined, its package, its signature, and separately what this notebook shows (which cell imports the module, how that cell ran). Pass an expression (\"map fst\") and the compiler answers. When a value's type is a record, this ALSO returns that type's constructors and FIELD names — so to discover a config's fields for a record update (e.g. `cfg{someField=10}`), just check_type the value. To find a name you cannot spell, use find_function or find_by_type."
+        ( object
+            [ "type" .= ("object" :: Text)
+            , "properties"
+                .= object
+                    [ "expr"
+                        .= object
+                            [ "type" .= ("string" :: Text)
+                            , "description"
+                                .= ("An expression, value name, or type/class name." :: Text)
+                            ]
+                    , "imports"
+                        .= object
+                            [ "type" .= ("array" :: Text)
+                            , "items" .= object ["type" .= ("string" :: Text)]
+                            , "description" .= checkTypeImportsDoc
+                            ]
+                    ]
+            , "required" .= (["expr"] :: [Text])
+            ]
+        )
     , mkTool
         FindByType
         "Find an installed function whose TYPE matches a goal type. Pass a type like \"[Int] -> Int\" (or a hole \"_ :: [Int] -> Int\"). Use when you know the type you need but not the name. Differs from find_function, which searches by name or keyword."
@@ -105,28 +125,6 @@ queryTools =
         ExportNotebook
         "Return every cell's id, position, type, language, and source in one call, so a full notebook sync is a single request rather than N read_cell round-trips."
         noArgs
-    , mkTool
-        PeekData
-        "Peek at a delimited data file (CSV/TSV) in the work directory before loading it: returns the inferred delimiter, whether row one is a header, the first N rows, and a guessed type (Int|Double|Bool|Text) per column. Use this to shape a DataFrame read instead of guessing the schema."
-        ( object
-            [ "type" .= ("object" :: Text)
-            , "properties"
-                .= object
-                    [ "path"
-                        .= object
-                            [ "type" .= ("string" :: Text)
-                            , "description"
-                                .= ("Path to the file, relative to the work directory." :: Text)
-                            ]
-                    , "n"
-                        .= object
-                            [ "type" .= ("integer" :: Text)
-                            , "description" .= ("Number of data rows to return (default 10)." :: Text)
-                            ]
-                    ]
-            , "required" .= (["path"] :: [Text])
-            ]
-        )
     , mkTool
         FindExampleCell
         "Search runnable example cells for a cell-shape idiom (e.g. \"read csv\", \"typed column\"); returns the title and full source to paste and adapt. Covers loading data and typed column access. To find which package or function does a task, use search_capability or find_function."

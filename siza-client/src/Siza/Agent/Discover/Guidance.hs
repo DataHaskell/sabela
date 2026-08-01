@@ -1,5 +1,6 @@
 module Siza.Agent.Discover.Guidance (
     actionNext,
+    actionNextCap,
     missNext,
     nearestNames,
     editDistance,
@@ -16,31 +17,42 @@ import Siza.Agent.Discover.Types (
     HackageInfo (..),
     InstallState (..),
     Interpreted (..),
+    MatchKind (..),
     NotebookEnv (..),
     Scope (..),
     SourceAnswer (..),
  )
 
+{- | An install step, offered only when the top hit is what the caller asked
+for. Read off a merely-similar top hit it advises installing a package for a
+name the notebook may already hold, which is advice against interest.
+-}
 actionNext :: [DHit] -> Maybe Text
 actionNext hits = case hits of
-    (h : _)
-        | dhInstall h == InstHidden
-        , Just c <- dhCabal h ->
-            Just
-                ( "installed but not loaded — load it by making a cell's first"
-                    <> " line: "
-                    <> c
-                    <> " (already built; no download or rebuild)"
-                )
-        | dhInstall h == InstAbsentKnown
-        , Just c <- dhCabal h ->
-            Just
-                ( "not installed; exists on Hackage — install it by making a "
-                    <> "cell's first line: "
-                    <> c
-                    <> " (the compiler then verifies it)"
-                )
+    (h : _) | derivable h -> fmap (fit h) (installStep h)
     _ -> Nothing
+  where
+    derivable h = dhKind h `elem` [MkExact, MkModule]
+    fit h step
+        | T.length full <= actionNextCap = full
+        | otherwise = step
+      where
+        full = step <> " (top hit `" <> dhName h <> "`, " <> why h <> ")"
+    why h
+        | dhKind h == MkExact = "an exact name match"
+        | otherwise = "the module asked for"
+    installStep h = case (dhInstall h, dhCabal h) of
+        (InstHidden, Just c) ->
+            Just ("installed, not loaded — make a cell's first line: " <> c)
+        (InstAbsentKnown, Just c) ->
+            Just ("not installed, on Hackage — make a cell's first line: " <> c)
+        _ -> Nothing
+
+{- | The characters a next step may spend. An install line longer than this on
+its own is emitted whole: truncating it would leave a line that does not build.
+-}
+actionNextCap :: Int
+actionNextCap = 160
 
 missNext ::
     NotebookEnv -> Interpreted -> Scope -> [SourceAnswer] -> HackageInfo -> Text

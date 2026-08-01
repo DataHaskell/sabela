@@ -20,9 +20,9 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Set as Set
 import Data.Text (Text)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
-import System.Directory (doesFileExist, findExecutable)
-import System.FilePath ((</>))
-import Test.Hspec (pendingWith)
+import Test.Hspec (Expectation)
+
+import Test.Live (requireLiveFor)
 
 import Sabela.AI.Capabilities (executeTool)
 import Sabela.AI.Capabilities.Edit.Cascade (executeWithRepair)
@@ -37,17 +37,8 @@ import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State (App (..), atomicEditNotebook, freshCellId, readNotebook)
 
-requireLiveIntegration :: IO ()
-requireLiveIntegration = do
-    cabal <- findExecutable "cabal"
-    case cabal of
-        Nothing -> pendingWith "cabal not found on PATH; skipping mitigation-gate integration"
-        Just _ -> pure ()
-    supportPresent <-
-        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if supportPresent
-        then pure ()
-        else pendingWith "sabela-notebook support source not on disk; skipping"
+requireLiveIntegration :: Expectation
+requireLiveIntegration = requireLiveFor "mitigation-gate integration"
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o

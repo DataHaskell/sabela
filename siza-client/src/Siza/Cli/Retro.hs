@@ -1,5 +1,5 @@
 module Siza.Cli.Retro (
-    RetroTarget,
+    RetroTarget (..),
     retroTargetParser,
     runRetro,
 ) where
@@ -7,35 +7,65 @@ module Siza.Cli.Retro (
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy.Char8 as LBS8
 import Data.Text (Text)
+import qualified Data.Text.IO as TIO
 import Options.Applicative
 import Siza.Provenance (sessionLogPath)
 import Siza.Retro (computeMetrics, decodeSession, metricsValue)
+import Siza.Retro.Metrics (metricsFromText)
+import Siza.Retro.Report (transcriptMetricsValue)
 import System.Directory (doesFileExist)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
-type RetroTarget = Either FilePath (Text, Text)
+{- | What to read the metrics from: a server-side session log, the notebook
+and session that names one, or a rendered episode from either surface.
+-}
+data RetroTarget
+    = FromLog FilePath
+    | FromSession Text Text
+    | FromTranscript FilePath
+    deriving (Show)
 
 retroTargetParser :: Parser RetroTarget
-retroTargetParser = byFile <|> byPair
+retroTargetParser = byTranscript <|> byFile <|> byPair
   where
+    byTranscript =
+        FromTranscript
+            <$> strOption
+                ( long "transcript"
+                    <> metavar "FILE"
+                    <> help "Path to a rendered episode markdown"
+                )
     byFile =
-        Left
+        FromLog
             <$> argument str (metavar "FILE" <> help "Path to a session .jsonl log")
     byPair =
-        fmap Right $
-            (,)
-                <$> strOption (long "notebook" <> metavar "NB" <> help "Notebook id")
-                <*> strOption (long "session" <> metavar "SID" <> help "Session id")
+        FromSession
+            <$> strOption (long "notebook" <> metavar "NB" <> help "Notebook id")
+            <*> strOption (long "session" <> metavar "SID" <> help "Session id")
 
 runRetro :: RetroTarget -> IO ()
-runRetro target = do
-    path <- either pure (uncurry sessionLogPath) target
+runRetro (FromTranscript path) = withExisting path transcriptReport
+runRetro (FromLog path) = withExisting path sessionReport
+runRetro (FromSession nb sid) = do
+    path <- sessionLogPath nb sid
+    withExisting path sessionReport
+
+transcriptReport :: FilePath -> IO ()
+transcriptReport path = do
+    body <- TIO.readFile path
+    LBS8.putStrLn (A.encode (transcriptMetricsValue (metricsFromText body)))
+
+sessionReport :: FilePath -> IO ()
+sessionReport path = do
+    raw <- LBS8.readFile path
+    LBS8.putStrLn (A.encode (metricsValue (computeMetrics (decodeSession raw))))
+
+withExisting :: FilePath -> (FilePath -> IO ()) -> IO ()
+withExisting path act = do
     ok <- doesFileExist path
-    if not ok
-        then do
-            hPutStrLn stderr ("siza: retro: no such session log: " <> path)
-            exitFailure
+    if ok
+        then act path
         else do
-            raw <- LBS8.readFile path
-            LBS8.putStrLn (A.encode (metricsValue (computeMetrics (decodeSession raw))))
+            hPutStrLn stderr ("siza: retro: no such file: " <> path)
+            exitFailure

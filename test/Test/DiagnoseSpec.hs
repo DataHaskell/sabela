@@ -1,55 +1,42 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{- | Reading structured facts out of a GHC diagnostic, and naming the package
+that exposes a module. What the classifier then advises is in
+"Test.DiagnoseAdviceSpec".
+-}
 module Test.DiagnoseSpec (diagnoseSpec) where
 
-import Data.Aeson (Value (..), toJSON)
-import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Capabilities.Edit.Repair.Resolvers (ambiguousCandidates)
-import Sabela.AI.CellResult (CellOutcome (..), CellResult (..))
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (
-    Guidance (..),
     ambiguousOccurrence,
     ambiguousOccurrences,
-    cellResultWithExtraGuidance,
-    cellResultWithGuidance,
     couldNotFindModule,
     couldNotFindModules,
-    diagnose,
-    guidanceForCell,
-    guidancePairs,
     misnamedModule,
     neededExtension,
     notInScopeName,
     packageNeedsFlag,
  )
 import Sabela.Diagnose.Packages (
-    packageForModule,
+    findModulePackage,
     packageNameIndex,
     resolvePackageToken,
-    table,
  )
-import Sabela.Model (CellError (..), bareCellError)
+import Sabela.Model (bareCellError)
 import Test.Hspec
-
-cats :: [Guidance] -> [Text]
-cats = map gCategory
-
-msgs :: [Guidance] -> Text
-msgs = T.intercalate " | " . map gMessage
 
 diagnoseSpec :: Spec
 diagnoseSpec = describe "Sabela.Diagnose" $ do
-    describe "packageForModule" $ do
-        it "maps Granite modules to granite" $
-            packageForModule "Granite.Svg" `shouldBe` Just "granite"
-        it "maps DataFrame modules to the umbrella dataframe" $ do
-            packageForModule "DataFrame.Display.Web.Plot" `shouldBe` Just "dataframe"
-            packageForModule "DataFrame" `shouldBe` Just "dataframe"
-        it "returns Nothing for an unknown / base module" $
-            packageForModule "Data.List" `shouldBe` Nothing
+    describe "findModulePackage (the installed package db, not a table)" $ do
+        it "names the package exposing an installed module" $
+            findModulePackage "Data.Text" `shouldReturn` Just "text"
+        it "answers for a package no curated table ever listed" $
+            findModulePackage "Bluefin.State" `shouldReturn` Just "bluefin"
+        it "returns Nothing for a module nothing installed exposes" $
+            findModulePackage "Totally.Not.A.Module" `shouldReturn` Nothing
 
     describe "neededExtension (auto-fix detector)" $ do
         it "reads the extension from GHC's bare 'intended to use' hint" $
@@ -222,111 +209,3 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
         it "falls through cleanly for a token that resembles nothing" $ do
             resolvePackageToken "frobnicator" `shouldBe` Nothing
             resolvePackageToken "numpy" `shouldBe` Nothing
-        it "keeps its keys consistent with the curated module table" $
-            map snd table `shouldSatisfy` all (`elem` packageNameIndex)
-
-    describe "missing module (the plotting failure)" $ do
-        it "foregrounds the dep from GHC's hidden-package wall, version stripped" $ do
-            let raw =
-                    "<no location info>: error: [GHC-87110]\n\
-                    \    Could not load module \8216Granite.Svg\8217.\n\
-                    \    It is a member of the hidden package \8216granite-0.7.3.0\8217.\n\
-                    \    Perhaps you need to add \8216granite\8217 to the build-depends in your .cabal file.\n\
-                    \    It is a member of the hidden package \8216granite-0.6.0.0\8217."
-                g = diagnose raw
-            cats g `shouldBe` ["missing-dependency"]
-            msgs g `shouldSatisfy` T.isInfixOf "build-depends: granite"
-            msgs g `shouldSatisfy` T.isInfixOf "-- cabal:"
-            msgs g `shouldNotSatisfy` T.isInfixOf "granite-0"
-        it "resolves a truly-not-found module through the table" $ do
-            let g = diagnose "Could not find module \8216DataFrame.Display.Web.Plot\8217"
-            cats g `shouldBe` ["missing-dependency"]
-            msgs g `shouldSatisfy` T.isInfixOf "build-depends: dataframe"
-        it "still teaches the mechanism for an unknown module" $ do
-            let g = diagnose "Could not find module \8216Foo.Bar\8217"
-            cats g `shouldBe` ["missing-dependency"]
-            msgs g `shouldSatisfy` T.isInfixOf "build-depends"
-
-    describe "did-you-mean passthrough" $
-        it "surfaces GHC's own suggestion" $ do
-            let g =
-                    diagnose "Variable not in scope: lenght\n    Perhaps you meant \8216length\8217"
-            cats g `shouldBe` ["did-you-mean"]
-            msgs g `shouldSatisfy` T.isInfixOf "length"
-
-    describe "other classes" $ do
-        it "flags a top-level let parse error" $
-            cats (diagnose "<interactive>:1:5: error: parse error on input \8216let\8217")
-                `shouldBe` ["top-level-let"]
-        it "advises an annotation on an ambiguous type" $
-            cats
-                ( diagnose
-                    "Ambiguous type variable \8216a0\8217 arising from a use of \8216show\8217"
-                )
-                `shouldBe` ["ambiguous-type"]
-        it "surfaces a type mismatch line" $ do
-            let g =
-                    diagnose
-                        "Couldn't match expected type \8216Int\8217 with actual type \8216[Char]\8217"
-            cats g `shouldBe` ["type-mismatch"]
-            msgs g `shouldSatisfy` T.isInfixOf "Int"
-
-    describe "unshowable result (the live_gemma plotting failure)" $ do
-        it "names the wrap for the package-qualified Show-at-print failure" $ do
-            let g =
-                    diagnose
-                        "No instance for `Show\n\
-                        \  sabela-notebook-0.2.0.0:Sabela.Notebook.Picture.Internal.Picture'\n\
-                        \  arising from a use of `print'"
-            cats g `shouldBe` ["unshowable-result"]
-            msgs g `shouldSatisfy` T.isInfixOf "displayPicture ("
-            msgs g `shouldSatisfy` T.isInfixOf "Sabela.Notebook"
-        it "points an unknown type at the goal-type discover query" $ do
-            let g = diagnose "No instance for `Show Wind' arising from a use of `print'"
-            cats g `shouldBe` ["unshowable-result"]
-            msgs g `shouldSatisfy` T.isInfixOf "Wind -> IO ()"
-        it "stays silent for a Show failure away from the interactive print" $
-            diagnose "No instance for `Show Foo'" `shouldBe` []
-        it "stays silent for a Fractional no-instance failure" $
-            cats
-                ( diagnose
-                    "No instance for \8216Fractional Int\8217 arising from a use of \8216/\8217"
-                )
-                `shouldNotContain` ["unshowable-result"]
-
-    describe "clean output" $
-        it "produces no guidance for a benign or empty message" $ do
-            diagnose "" `shouldBe` []
-            diagnose "Just a normal line of output" `shouldBe` []
-
-    describe "guidanceForCell + guidancePairs" $ do
-        it "diagnoses a Rejected outcome's compile errors" $ do
-            let cr =
-                    CellResult
-                        ( Rejected
-                            [bareCellError (Just 2) (Just 1) "Could not find module \8216Granite.Svg\8217"]
-                        )
-                        []
-                        []
-            cats (guidanceForCell cr) `shouldBe` ["missing-dependency"]
-        it "diagnoses a Raised runtime message" $ do
-            let cr = CellResult (Raised "Ambiguous type variable \8216a0\8217") [] []
-            cats (guidanceForCell cr) `shouldBe` ["ambiguous-type"]
-        it "yields no guidance and no wire pair for a clean success" $ do
-            let cr = CellResult Succeeded [] []
-            guidanceForCell cr `shouldBe` []
-            guidancePairs (guidanceForCell cr) `shouldBe` []
-        it "emits a guidance pair only when there is guidance" $ do
-            let g = diagnose "Could not find module \8216Granite.Svg\8217"
-            length (guidancePairs g) `shouldBe` 1
-
-    describe "cellResultWithExtraGuidance" $ do
-        it "matches cellResultWithGuidance when there is no extra guidance" $ do
-            let cr = CellResult (Raised "Ambiguous type variable \8216a0\8217") [] []
-            cellResultWithExtraGuidance [] cr `shouldBe` cellResultWithGuidance cr
-        it "appends extra guidance alongside the diagnosed guidance" $ do
-            let cr = CellResult Succeeded [] []
-                extra = Guidance "file-not-found" "no similar file was found"
-            case cellResultWithExtraGuidance [extra] cr of
-                Object o -> KM.lookup "guidance" o `shouldBe` Just (toJSON [extra])
-                _ -> expectationFailure "expected an object"

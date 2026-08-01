@@ -10,7 +10,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.CompileGate (compileGateSpec)
-import Sabela.AI.HoleFits (holeFitsJson)
+import Sabela.AI.FitRule (holeFitsJson)
 import Sabela.AI.HoleProbe (holeProbeFacts, holeProbeJson)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)

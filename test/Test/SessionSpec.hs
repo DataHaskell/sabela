@@ -76,7 +76,6 @@ dummySession q errRef ctrRef cfg = do
     cbRef <- newIORef (\_ -> pure ())
     klock <- newMVar ()
     uid <- newUnique
-    busy <- newIORef False
     lastInt <- newIORef Nothing
     gen <- newIORef 1
     let ps =
@@ -100,7 +99,6 @@ dummySession q errRef ctrRef cfg = do
             , sessCounter = ctrRef
             , sessConfig = cfg
             , sessErrCallback = cbRef
-            , sessBusy = busy
             , sessNonce = 4242
             , sessLastInterruptTime = lastInt
             , sessionGen = gen

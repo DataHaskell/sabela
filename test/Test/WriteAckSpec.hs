@@ -2,142 +2,31 @@
 
 module Test.WriteAckSpec (spec) where
 
-import Control.Concurrent (
-    forkIO,
-    newEmptyMVar,
-    putMVar,
-    readMVar,
-    threadDelay,
- )
+import Control.Concurrent (newEmptyMVar, putMVar, threadDelay)
 import Control.Concurrent.MVar (MVar)
-import Control.Exception (bracket_)
-import Control.Monad (void)
 import Data.Aeson (Value (..), object, (.=))
-import qualified Data.Aeson.Key as Key
-import qualified Data.Aeson.KeyMap as KM
 import Data.Maybe (fromMaybe, isJust)
-import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Unique (newUnique)
 import GHC.Clock (getMonotonicTimeNSec)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
-import System.Environment (setEnv, unsetEnv)
 import System.Timeout (timeout)
 
-import Sabela.AI.Capabilities (executeTool)
 import qualified Sabela.AI.Store as AIStore
-import Sabela.AI.Types (
-    ToolOutcome,
-    toolOutcomeIsError,
-    toolOutcomeValue,
- )
-import Sabela.Anthropic.Types (AnthropicConfig (..), newCancelToken)
-import Sabela.Handlers (ReactiveNotebook (..))
-import Sabela.Model (Notebook (..), NotebookEvent (..))
-import Sabela.Server (newApp)
-import Sabela.Session.Project (buildTimeSupportDir)
-import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), broadcast, readNotebook)
-import Sabela.State.SessionManager (setHaskellSession)
+import Sabela.AI.Types (toolOutcomeIsError, toolOutcomeValue)
+import Sabela.Handlers (ReactiveNotebook)
+import Sabela.State (App)
 import Test.Hspec
-
-withAckEnv :: IO a -> IO a
-withAckEnv =
-    bracket_
-        ( setEnv "SABELA_WRITE_ACK_SECS" "1"
-            >> setEnv "SABELA_REPAIR_BUDGET_SECS" "0"
-        )
-        ( unsetEnv "SABELA_WRITE_ACK_SECS"
-            >> unsetEnv "SABELA_REPAIR_BUDGET_SECS"
-        )
-
-inertBackend :: IO ST.SessionBackend
-inertBackend = do
-    uid <- newUnique
-    let backend =
-            ST.SessionBackend
-                { ST.sbSessionId = uid
-                , ST.sbJsonDiagnostics = False
-                , ST.sbRunBlock = \_ -> pure ("", "")
-                , ST.sbRunBlockStreaming = \_ _ -> pure ("", "")
-                , ST.sbClose = pure ()
-                , ST.sbReset = pure backend
-                , ST.sbInterrupt = pure ()
-                , ST.sbBusy = pure False
-                , ST.sbSessionGen = pure 0
-                , ST.sbRequestStale = \_ -> pure False
-                , ST.sbQueryComplete = \_ -> pure []
-                , ST.sbQueryType = \_ -> pure "it :: ()"
-                , ST.sbQueryInfo = \_ -> pure ""
-                , ST.sbQueryKind = \_ -> pure ""
-                , ST.sbQueryBrowse = \_ -> pure ""
-                , ST.sbQueryBindings = pure ""
-                , ST.sbQueryDoc = \_ -> pure ""
-                , ST.sbQueryHoleFits = \_ -> pure ""
-                , ST.sbEvalPureLive = \req -> pure (ST.pureEvalUnavailableResult req "fake backend")
-                }
-    pure backend
-
-mkFixture :: IO (App, AIStore.AIStore)
-mkFixture = do
-    mgr <- newManager defaultManagerSettings
-    app <- newApp "." Set.empty (Just mgr) Nothing [buildTimeSupportDir]
-    backend <- inertBackend
-    setHaskellSession (appSessions app) (Just backend)
-    let cfg =
-            AnthropicConfig
-                { acApiKey = ""
-                , acModel = "placeholder"
-                , acBaseUrl = "https://api.anthropic.com"
-                }
-    store <- AIStore.newAIStore cfg mgr
-    pure (app, store)
-
-slowRn :: App -> MVar () -> ReactiveNotebook
-slowRn app barrier =
-    (fastRn app)
-        { rnRunCellForced = \cid -> void . forkIO $ do
-            readMVar barrier
-            broadcast (appEvents app) (EvCellResult cid [] Nothing [] [])
-        }
-
-fastRn :: App -> ReactiveNotebook
-fastRn app =
-    ReactiveNotebook
-        { rnCellEdit = \_ _ -> pure ()
-        , rnRunCell = \_ -> pure ()
-        , rnRunCellForced = \cid -> void . forkIO $ do
-            threadDelay 100000
-            broadcast (appEvents app) (EvCellResult cid [] Nothing [] [])
-        , rnRunAll = pure ()
-        , rnReset = pure ()
-        , rnRestartKernel = pure ()
-        , rnWidgetCell = \_ -> pure ()
-        }
-
-field :: Text -> Value -> Maybe Value
-field k (Object o) = KM.lookup (Key.fromText k) o
-field _ _ = Nothing
-
-textField :: Text -> Value -> Maybe Text
-textField k v = case field k v of
-    Just (String s) -> Just s
-    _ -> Nothing
-
-callTool ::
-    App -> AIStore.AIStore -> ReactiveNotebook -> Text -> Value -> IO ToolOutcome
-callTool app store rn name input = do
-    ct <- newCancelToken
-    executeTool app store rn ct name input
-
-insertSrc :: App -> AIStore.AIStore -> ReactiveNotebook -> Text -> IO Value
-insertSrc app store rn src =
-    toolOutcomeValue
-        <$> callTool app store rn "insert_cell" (object ["source" .= src])
-
-cellCount :: App -> IO Int
-cellCount app = length . nbCells <$> readNotebook (appNotebook app)
+import Test.WriteAckFixture (
+    callTool,
+    cellCount,
+    fastRn,
+    field,
+    insertSrc,
+    mkFixture,
+    slowRn,
+    textField,
+    withAckEnv,
+ )
 
 ackExecuting :: IO (App, AIStore.AIStore, ReactiveNotebook, MVar (), Value)
 ackExecuting = do
@@ -149,7 +38,15 @@ ackExecuting = do
         Nothing -> do
             expectationFailure "insert did not ack within 30s"
             error "unreachable"
-        Just v -> pure (app, store, rn, barrier, v)
+        Just v -> do
+            case textField "status" v of
+                Just "executing" -> pure ()
+                _ ->
+                    expectationFailure $
+                        "fixture precondition: the barrier is still held, so the\
+                        \ ack must be 'executing'; got "
+                            <> show v
+            pure (app, store, rn, barrier, v)
 
 spec :: Spec
 spec = around_ withAckEnv $ describe "write-ack (R6.1/R6.2/R6.4)" $ do

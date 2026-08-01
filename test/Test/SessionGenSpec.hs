@@ -48,7 +48,6 @@ dummySession g = do
     cbRef <- newIORef (\_ -> pure ())
     killLock <- newMVar ()
     uid <- newUnique
-    busy <- newIORef False
     lastIntRef <- newIORef Nothing
     gen <- newIORef g
     let ps =
@@ -72,7 +71,6 @@ dummySession g = do
             , sessCounter = ctrRef
             , sessConfig = defaultCfg
             , sessErrCallback = cbRef
-            , sessBusy = busy
             , sessNonce = 12_345
             , sessLastInterruptTime = lastIntRef
             , sessionGen = gen
@@ -109,11 +107,19 @@ field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
 
+{- | @restarts@ is how many kernels the server installed, which @ksGen@ reports.
+Deliberately not the kernel's own generation: that is 1 for every fresh process,
+so it never distinguished one restart from the next.
+-}
 statusWith :: Bool -> Int -> IO Value
-statusWith busy g = do
+statusWith busy restarts = do
     app <- newApp "." Set.empty Nothing Nothing []
-    backend <- fakeBackend busy g
-    setHaskellSession (appSessions app) (Just backend)
+    mapM_
+        ( \_ -> do
+            backend <- fakeBackend busy firstSessionGen
+            setHaskellSession (appSessions app) (Just backend)
+        )
+        [1 .. max 1 restarts]
     toolOutcomeValue <$> execKernelStatus app
 
 spec :: Spec

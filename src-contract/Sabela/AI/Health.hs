@@ -10,9 +10,12 @@ module Sabela.AI.Health (
     improvesHealth,
     improvesHealthFor,
     healthMsgsFor,
+    maskKey,
     normalizeMsg,
     scopeSubject,
     skipScopeDescriptors,
+    harnessNames,
+    namesHarnessBinder,
 ) where
 
 import Data.Maybe (listToMaybe, maybeToList)
@@ -39,6 +42,24 @@ data Health = Health
 
 normalizeMsg :: Text -> Text
 normalizeMsg = T.unwords . T.words
+
+{- | Binders the harness invents in the code it submits on the model's behalf:
+the gate and try wrappers, and the plumbing of the display prelude injected
+into every session. The first is the @_sabela@ prefix they are all named with;
+the other two predate it.
+-}
+harnessNames :: [Text]
+harnessNames =
+    [ "_sabela"
+    , "ghciStepIO"
+    , "SABELA_PURE_"
+    ]
+
+{- | Whether a name, or any text containing one, refers to a binder the
+harness invented rather than one the model wrote.
+-}
+namesHarnessBinder :: Text -> Bool
+namesHarnessBinder t = any (`T.isInfixOf` t) harnessNames
 
 diagKey :: CellError -> DiagnosticKey
 diagKey ce = DiagnosticKey (ceLine ce) (ceCol ce) (stableMsg (ceMessage ce))
@@ -89,16 +110,36 @@ isClean h = healthCompileOk h && Set.null (healthDiagnostics h)
 improvesHealth :: Health -> Health -> Bool
 improvesHealth = improvesHealthFor Set.empty
 
+{- | A masking error stops GHC before it scope-checks the body, so clearing
+one is progress however many errors it uncovers — they were always there,
+just unreachable. Every other class is judged by set inclusion.
+-}
 improvesHealthFor :: Set Text -> Health -> Health -> Bool
-improvesHealthFor defined old new =
-    isClean new
-        || (scopeNew `Set.isSubsetOf` scopeOld && scopeNew /= scopeOld)
-        || (scopeNew == scopeOld && dnew `Set.isSubsetOf` dold && dnew /= dold)
+improvesHealthFor defined old new
+    | brokeParsing = False
+    | otherwise =
+        isClean new
+            || cleared maskOld maskNew
+            || cleared scopeOld scopeNew
+            || (scopeNew == scopeOld && dnew `Set.isSubsetOf` dold && dnew /= dold)
   where
+    brokeParsing = anyParseError dnew && not (anyParseError dold)
+    cleared before after = after `Set.isSubsetOf` before && after /= before
     dold = healthMsgsFor defined old
     dnew = healthMsgsFor defined new
     scopeOld = Set.filter scopeKey dold
     scopeNew = Set.filter scopeKey dnew
+    maskOld = Set.filter maskKey dold
+    maskNew = Set.filter maskKey dnew
+
+{- | A cell that no longer parses reports none of its other errors, so by set
+inclusion it looks repaired. It is the one regression every other rule would
+read as progress, which is why it is judged before them.
+-}
+anyParseError :: Set Text -> Bool
+anyParseError = any isParseError . Set.toList
+  where
+    isParseError m = "parse error" `T.isInfixOf` T.toLower m
 
 healthMsgsFor :: Set Text -> Health -> Set Text
 healthMsgsFor defined =
@@ -107,11 +148,16 @@ healthMsgsFor defined =
     knockOn m = maybe False (`Set.member` defined) (scopeSubject m)
 
 scopeKey :: Text -> Bool
-scopeKey m =
+scopeKey m = maskKey m || "not in scope" `T.isInfixOf` T.toLower m
+
+{- | A diagnostic that fails an import, and so masks every error in the body
+behind it.
+-}
+maskKey :: Text -> Bool
+maskKey m =
     any
         (`T.isInfixOf` T.toLower m)
-        [ "not in scope"
-        , "could not find module"
+        [ "could not find module"
         , "could not load module"
         , "hidden package"
         ]

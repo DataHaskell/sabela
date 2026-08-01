@@ -128,7 +128,7 @@ spec = describe "G2 self_heal propose-verify-disclose" $ do
             postSrc `shouldBe` Just holeSrc
 
     it
-        "C4 path-near-miss still commits a genuine fix and discloses it under the gated cascade"
+        "C4 path-near-miss is corrected before the cell commits, and disclosed"
         $ do
             requireLiveIntegration
             withSystemTempDirectory "sabela-repairgate-path" $ \dir -> do
@@ -139,37 +139,12 @@ spec = describe "G2 self_heal propose-verify-disclose" $ do
                     insertSrc app store rn "readFile \"/examples/data/housing.csv\" >>= putStrLn"
 
                 field "error" ack `shouldBe` Nothing
-                let mCid = field "cellId" ack
-                Just (Number _) <- pure mCid
+                cid <- case field "cellId" ack of
+                    Just (Number n) -> pure (round n :: Int)
+                    _ -> expectationFailure "no cellId" >> error "unreachable"
 
-                execution <- case textField "status" ack of
-                    Just "completed" -> pure (field "execution" ack)
-                    _ -> settledExecutionFor app store rn 8 mCid
-
-                case execution >>= field "self_heal" of
-                    Just note -> do
-                        textField "note" note `shouldSatisfy` (/= Nothing)
-                        case field "source" note of
-                            Just (String s) ->
-                                s `shouldSatisfy` T.isInfixOf "./examples/data/housing.csv"
-                            _ -> expectationFailure "self_heal note carries no source"
-                    Nothing -> expectationFailure "expected a self_heal disclosure for the path fix"
-
-settledExecutionFor ::
-    App ->
-    AIStore.AIStore ->
-    ReactiveNotebook ->
-    Int ->
-    Maybe Value ->
-    IO (Maybe Value)
-settledExecutionFor _ _ _ 0 _ = pure Nothing
-settledExecutionFor app store rn n mCid = do
-    v <- callTool app store rn "await_idle" (object [])
-    case field "writes" v of
-        Just (Array ws)
-            | Just w <- findMaybe (matches mCid) (foldr (:) [] ws) ->
-                pure (field "execution" w)
-        _ -> settledExecutionFor app store rn (n - 1) mCid
-  where
-    matches cid w = field "cellId" w == cid
-    findMaybe p = foldr (\x acc -> if p x then Just x else acc) Nothing
+                committed <- cellSourceOf app cid
+                committed
+                    `shouldSatisfy` maybe False (T.isInfixOf "./examples/data/housing.csv")
+                textField "note" ack
+                    `shouldSatisfy` maybe False (T.isInfixOf "examples/data/housing.csv")

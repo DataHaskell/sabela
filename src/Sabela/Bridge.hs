@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.Bridge (
+    bridgeIdentifier,
     bridgePreamble,
     widgetPreamble,
     pythonBridgePreamble,
@@ -13,12 +14,18 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Word (Word8)
 
+{- | The identifier a bridge value is bound to. The one place the prefix is
+written, so a consumer lookup cannot drift from what the preamble actually binds.
+-}
+bridgeIdentifier :: Text -> Text
+bridgeIdentifier name = "_bridge_" <> name
+
 bridgePreamble :: M.Map Text Text -> Text
 bridgePreamble store
     | M.null store = ""
     | otherwise =
         T.unlines
-            [ "let _bridge_" <> name <> " = " <> T.pack (show (T.unpack val))
+            [ "let " <> bridgeIdentifier name <> " = " <> T.pack (show (T.unpack val))
             | (name, val) <- M.toList store
             ]
 
@@ -39,12 +46,13 @@ pythonBridgePreamble store
 pythonBinding :: Text -> Text -> Text
 pythonBinding name val
     | T.any (== '\n') val =
-        "import base64; _bridge_"
-            <> name
+        "import base64; "
+            <> bridgeIdentifier name
             <> " = base64.b64decode("
             <> T.pack (show (encodeBase64 val))
             <> ").decode('utf-8')"
-    | otherwise = "_bridge_" <> name <> " = " <> T.pack (show (T.unpack val))
+    | otherwise =
+        bridgeIdentifier name <> " = " <> T.pack (show (T.unpack val))
 
 encodeBase64 :: Text -> String
 encodeBase64 t =

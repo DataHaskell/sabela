@@ -6,8 +6,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Sabela.Model (Cell (..))
 import Sabela.Topo
+import Test.CellFixture (mkCell)
 import Test.Hspec
-import Test.TopoSpec.Helpers (mkCell)
 
 spec :: Spec
 spec = do

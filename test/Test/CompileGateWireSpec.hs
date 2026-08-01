@@ -5,11 +5,12 @@ module Test.CompileGateWireSpec (spec) where
 import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
+import Data.Foldable (toList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Sabela.AI.Capabilities.Edit.CompileGate (rejectionJson)
+import Sabela.AI.Capabilities.Edit.CompileGate (rejectionJson, submittedOnly)
 import Sabela.Session.Materialize (
     DisposableResult (..),
     DisposableVerdict (..),
@@ -17,6 +18,15 @@ import Sabela.Session.Materialize (
     MaterializeStage (..),
     disposableRouteName,
  )
+
+reject ::
+    Maybe Text ->
+    Maybe Int ->
+    Text ->
+    [Text] ->
+    DisposableResult ->
+    Value
+reject exposedBy mReplaces src = rejectionJson exposedBy mReplaces (submittedOnly src)
 
 field :: Text -> Value -> Maybe Value
 field key (Object obj) = KM.lookup (Key.fromText key) obj
@@ -71,7 +81,8 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                         { disposableFailure =
                             Just (MaterializeFailure StageCandidateTypecheck Nothing phantomDiag)
                         }
-                v = rejectionJson Nothing animateSrc [] DisposableCompileError result
+                v =
+                    reject Nothing Nothing animateSrc [] result
             case textField "diagnostic" v of
                 Nothing -> expectationFailure "no diagnostic"
                 Just d -> do
@@ -87,7 +98,8 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                         { disposableFailure =
                             Just (MaterializeFailure StageCandidateTypecheck Nothing onlyPhantom)
                         }
-                v = rejectionJson Nothing animateSrc [] DisposableCompileError result
+                v =
+                    reject Nothing Nothing animateSrc [] result
             textField "diagnostic" v `shouldBe` Just onlyPhantom
 
         it "notes names the replaced cell's previous source defined" $ do
@@ -100,11 +112,11 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                             Just (MaterializeFailure StageCandidateTypecheck Nothing xvDiag)
                         }
                 v =
-                    rejectionJson
+                    reject
+                        Nothing
                         (Just 3)
                         "animate 5 (\\t -> plot (zip xValues xValues))"
                         ["xValues", "numPoints"]
-                        DisposableCompileError
                         result
             case textField "note" v of
                 Nothing -> expectationFailure "expected a replaced-definitions note"
@@ -122,10 +134,36 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                         { disposableFailure =
                             Just (MaterializeFailure StageCandidateSetup Nothing hidden)
                         }
-                v = rejectionJson Nothing "import Data.Text" [] DisposableCompileError result
+                v =
+                    reject Nothing Nothing "import Data.Text" [] result
             case field "guidance" v of
                 Just (Array gs) -> length gs `shouldSatisfy` (>= 1)
                 _ -> expectationFailure "expected a guidance array"
+
+        it "does not tell a cell to declare a package it already declares" $ do
+            let missing =
+                    "<no location info>: error: [GHC-35235]\n\
+                    \    Could not find module \8216Control.Algebra.State\8217."
+                src =
+                    "-- cabal: build-depends: bluefin\n\
+                    \import Control.Algebra.State\n"
+                result =
+                    baseResult
+                        { disposableFailure =
+                            Just (MaterializeFailure StageCandidateSetup Nothing missing)
+                        }
+                v =
+                    reject Nothing Nothing src [] result
+                messages = case field "guidance" v of
+                    Just (Array gs) ->
+                        [ m
+                        | Object g <- toList gs
+                        , Just (String m) <- [KM.lookup "message" g]
+                        ]
+                    _ -> []
+            messages `shouldSatisfy` (not . null)
+            messages `shouldSatisfy` (not . any (T.isInfixOf "FIRST line"))
+            messages `shouldSatisfy` any (T.isInfixOf "bluefin")
     it
         "compile error on an insert: no cellId, verdict/stage/diagnostic/source present"
         $ do
@@ -134,7 +172,8 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                         { disposableFailure =
                             Just (MaterializeFailure StageCandidateSetup Nothing "parse error on input")
                         }
-                v = rejectionJson Nothing "broken = " [] DisposableCompileError result
+                v =
+                    reject Nothing Nothing "broken = " [] result
             textField "notCommitted" v `shouldBe` Just "compile-gate"
             field "cellId" v `shouldBe` Nothing
             textField "verdict" v `shouldBe` Just "diagnostic"
@@ -155,7 +194,8 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                                 "Variable not in scope: foo"
                             )
                     }
-            v = rejectionJson (Just 3) "foo" [] DisposableCompileError result
+            v =
+                reject Nothing (Just 3) "foo" [] result
         field "cellId" v `shouldBe` Just (Number 3)
         textField "stage" v `shouldBe` Just "candidate_typecheck"
 
@@ -167,11 +207,11 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                             (MaterializeFailure StageCandidateTypecheck Nothing holeDiagnostic)
                     }
             v =
-                rejectionJson
+                reject
+                    Nothing
                     Nothing
                     "line (_ :: Point) (_ :: Point)"
                     []
-                    DisposableCompileError
                     result
         textField "diagnostic" v `shouldBe` Just holeDiagnostic
         case field "holeFits" v of
@@ -188,11 +228,11 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                                 (MaterializeFailure StageCandidateTypecheck Nothing holeDiagnostic)
                         }
                 v =
-                    rejectionJson
+                    reject
+                        Nothing
                         Nothing
                         "line (_ :: Point) (_ :: Point)"
                         []
-                        DisposableCompileError
                         result
             case field "holeProbe" v >>= field "facts" of
                 Just (Array facts) -> length facts `shouldBe` 1
@@ -210,7 +250,8 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
                             Just
                                 (MaterializeFailure StageSession Nothing "trial exceeded its time budget")
                         }
-                v = rejectionJson Nothing "x = 1" [] DisposableTimedOut result
+                v =
+                    reject Nothing Nothing "x = 1" [] result
             textField "verdict" v `shouldBe` Just "no-verdict-infra"
             case textField "error" v of
                 Just msg -> msg `shouldSatisfy` (/= "")
@@ -218,7 +259,8 @@ spec = describe "compile-gate rejection envelope wire pins" $ do
 
     it "an infra failure never claims the candidate was verified or committed" $ do
         let result = baseResult{disposableVerdict = DisposableUnavailable}
-            v = rejectionJson Nothing "x = 1" [] DisposableUnavailable result
+            v =
+                reject Nothing Nothing "x = 1" [] result
         textField "verdict" v `shouldBe` Just "no-verdict-infra"
         textField "diagnostic" v
             `shouldBe` Just

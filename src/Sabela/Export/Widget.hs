@@ -11,7 +11,7 @@ module Sabela.Export.Widget (
 import Control.Monad ((>=>))
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -59,16 +59,24 @@ tryFreeze vals line = do
     let indent = T.takeWhile (== ' ') line
     pure (indent <> wbBinder wb <> " = " <> frozen)
 
+{- | Drop the render call wrapping a widget expression, so the export can freeze
+the widget itself. @display@ is the pre-rename spelling, kept so notebooks
+written before the rename still export.
+-}
 stripDisplay :: Text -> Text
-stripDisplay t0 =
-    let t = T.strip t0
-     in case T.stripPrefix "display" t of
-            Just r ->
-                let r' = T.stripStart r
-                 in case T.stripPrefix "$" r' of
-                        Just r2 -> T.stripStart r2
-                        Nothing -> stripOuterParens r'
-            Nothing -> t
+stripDisplay t0 = case firstJust (map (`T.stripPrefix` t) renderCalls) of
+    Just r ->
+        let r' = T.stripStart r
+         in case T.stripPrefix "$" r' of
+                Just r2 -> T.stripStart r2
+                Nothing -> stripOuterParens r'
+    Nothing -> t
+  where
+    t = T.strip t0
+    renderCalls = ["mkWidget", "display"]
+    firstJust xs = case Data.Maybe.catMaybes xs of
+        (v : _) -> Just v
+        [] -> Nothing
 
 stripOuterParens :: Text -> Text
 stripOuterParens t =

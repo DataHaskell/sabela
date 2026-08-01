@@ -15,6 +15,10 @@ module Sabela.Model (
     cellLangOf,
     NotebookEvent (..),
     SessionStatus (..),
+    statusTag,
+    statusMessage,
+    KernelPhase (..),
+    kernelPhaseTag,
     CellError (..),
     bareCellError,
 ) where
@@ -33,6 +37,13 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Sabela.Ids (EditId (..), ToolCallId (..), TurnId (..))
+import Sabela.Model.Status (
+    KernelPhase (..),
+    SessionStatus (..),
+    kernelPhaseTag,
+    statusMessage,
+    statusTag,
+ )
 import Sabela.SessionTypes (CellLang (..))
 import ScriptHs.Markdown (MimeType (..))
 
@@ -121,26 +132,10 @@ data NotebookEvent
     | EvChatCancelled TurnId
     | EvChatError (Maybe TurnId) Text
     | EvNotebookChanged Notebook
+    | EvNotebookState Int [Int]
+    | EvKernelError KernelPhase Text [Int]
     | EvChatUsageUpdate TurnId Value
     deriving (Show)
-
-data SessionStatus
-    = SReset
-    | SCrashed
-    | SUpdateDeps [Text]
-    | SDepsUpToDate
-    | SStarting
-    | SReady
-    deriving (Eq)
-
-instance Show SessionStatus where
-    show :: SessionStatus -> String
-    show SReady = "ready"
-    show SReset = "reset"
-    show SCrashed = "crashed"
-    show (SUpdateDeps deps) = T.unpack ("installing: " <> T.intercalate ", " deps)
-    show SStarting = "starting session"
-    show SDepsUpToDate = "dependencies up to date"
 
 instance ToJSON NotebookEvent where
     toJSON (EvCellUpdating cid) =
@@ -169,7 +164,21 @@ instance ToJSON NotebookEvent where
     toJSON EvExecutionDone =
         object ["type" .= ("executionDone" :: Text)]
     toJSON (EvSessionStatus msg) =
-        object ["type" .= ("sessionStatus" :: Text), "message" .= show msg]
+        object
+            [ "type" .= ("sessionStatus" :: Text)
+            , "state" .= statusTag msg
+            , "message" .= statusMessage msg
+            , "deps" .= case msg of
+                SUpdateDeps deps -> deps
+                _ -> []
+            ]
+    toJSON (EvKernelError phase message cellIds) =
+        object
+            [ "type" .= ("kernelError" :: Text)
+            , "phase" .= kernelPhaseTag phase
+            , "message" .= message
+            , "cellIds" .= cellIds
+            ]
     toJSON (EvInstallLog line) =
         object ["type" .= ("installLog" :: Text), "line" .= line]
     toJSON (EvChatTextDelta tid text) =
@@ -216,6 +225,12 @@ instance ToJSON NotebookEvent where
         object
             [ "type" .= ("notebookChanged" :: Text)
             , "notebook" .= nb
+            ]
+    toJSON (EvNotebookState epoch staleIds) =
+        object
+            [ "type" .= ("notebookState" :: Text)
+            , "epoch" .= epoch
+            , "staleIds" .= staleIds
             ]
     toJSON (EvChatUsageUpdate tid payload) =
         object

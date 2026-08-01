@@ -15,8 +15,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.PromptCore (drawingBuiltins)
-import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
+import Siza.Agent.Discover.HitJson (baseHit, textAt, textAt')
 import Siza.Agent.Discover.Interpret (stripVersion)
+import Siza.Agent.Discover.SessionAnswer (sessionAnswer)
 import Siza.Agent.Discover.Types (
     DHit (..),
     InstallState (..),
@@ -28,7 +29,6 @@ import Siza.Agent.Discover.Types (
     okAnswer,
     unavailableAnswer,
  )
-import Siza.Agent.Discover.UnitName (scrubCardUnits)
 
 candidatePackages :: Interpreted -> [SourceAnswer] -> [Text]
 candidatePackages interp answers =
@@ -97,95 +97,6 @@ importedNote env m i =
     aliasPart = case [a | (a, m') <- neAliases env, m' == m] of
         (a : _) -> " as " <> a
         [] -> ""
-
-sessionAnswer :: Interpreted -> Maybe Value -> SourceAnswer
-sessionAnswer _ Nothing =
-    unavailableAnswer
-        "session"
-        "session unavailable (no live kernel or transport error)"
-sessionAnswer interp (Just v@(Object o))
-    | Just (Array ms) <- KM.lookup "matches" o =
-        okAnswer "session" (map (matchHit interp) (toList ms))
-    | Just (String st) <- KM.lookup "status" o = cardAnswer interp st v
-    | otherwise = okAnswer "session" []
-sessionAnswer _ (Just _) = okAnswer "session" []
-
-cardAnswer :: Interpreted -> Text -> Value -> SourceAnswer
-cardAnswer interp st v0 = case (st, scrubCardUnits v0) of
-    ("ok", v@(Object _)) ->
-        (okAnswer "session" (exportHits interp v)){saCard = Just v}
-    (s, v@(Object o))
-        | s == diagClassText ClassHiddenPackage ->
-            (okAnswer "session" (hiddenHit o)){saCard = Just v}
-    ("not-found", Object o) ->
-        (okAnswer "session" (suggestHits o))
-            { saNote = "module not found; did-you-mean listed"
-            }
-    (_, Object o) ->
-        (okAnswer "session" []){saNote = textAt "message" o}
-    _ -> okAnswer "session" []
-  where
-    hiddenHit o =
-        [ (baseHit pkg (textAt "module" o) pkg)
-            { dhInstall = InstHidden
-            , dhOrigin = "session"
-            , dhCabal = Just (textAt "cabal" o)
-            , dhKind =
-                if pkg == iName interp then MkExact else MkModule
-            }
-        | let pkg = textAt "package" o
-        , not (T.null pkg)
-        ]
-    suggestHits o =
-        [ (baseHit m m (textAt "package" o))
-            { dhOrigin = "session"
-            , dhKind = MkSynonym
-            , dhCabal =
-                let cabal = textAt "cabal" o
-                 in if T.null cabal then Nothing else Just cabal
-            }
-        | Just (Array ss) <- [KM.lookup "suggestions" o]
-        , String m <- toList ss
-        ]
-
-exportHits :: Interpreted -> Value -> [DHit]
-exportHits interp (Object o) =
-    [ (baseHit n modName "")
-        { dhType = ty
-        , dhInstall = InstInstalled
-        , dhOrigin = "session"
-        , dhKind = if n == iName interp then MkExact else MkModule
-        }
-    | Just (Array es) <- [KM.lookup "exports" o]
-    , String line <- toList es
-    , let (n, ty) = splitSig line
-    , not (T.null n)
-    ]
-  where
-    modName = textAt "module" o
-exportHits _ _ = []
-
-matchHit :: Interpreted -> Value -> DHit
-matchHit interp m =
-    (baseHit n (textAt' "module" m) "")
-        { dhType = textAt' "type" m
-        , dhInstall = InstInstalled
-        , dhOrigin = "session"
-        , dhKind = kind
-        , dhUse = maybeTextAt "field" m
-        }
-  where
-    n = textAt' "name" m
-    via = textAt' "via" m
-    q = iName interp
-    kind
-        | via == "synonym" = MkSynonym
-        | via == "type" = MkType
-        | via == "module" = MkModule
-        | n == q = MkExact
-        | q `T.isPrefixOf` n = MkPrefix
-        | q `T.isInfixOf` n = MkSubstring
-        | otherwise = MkSemantic
 
 capabilityAnswer :: Interpreted -> Maybe Value -> SourceAnswer
 capabilityAnswer _ Nothing =
@@ -261,31 +172,6 @@ kindFor interp n
     | otherwise = MkSemantic
   where
     q = iName interp
-
-baseHit :: Text -> Text -> Text -> DHit
-baseHit n m p =
-    DHit n "" m p "" InstAbsentUnknown MkSemantic "" Nothing Nothing
-
-splitSig :: Text -> (Text, Text)
-splitSig line = case T.breakOn "::" line of
-    (n, rest)
-        | T.null rest -> (T.strip n, "")
-        | otherwise -> (T.strip n, T.strip (T.drop 2 rest))
-
-textAt :: K.Key -> KM.KeyMap Value -> Text
-textAt k o = case KM.lookup k o of
-    Just (String s) -> s
-    _ -> ""
-
-textAt' :: K.Key -> Value -> Text
-textAt' k (Object o) = textAt k o
-textAt' _ _ = ""
-
-maybeTextAt :: K.Key -> Value -> Maybe Text
-maybeTextAt k (Object o) = case KM.lookup k o of
-    Just (String s) -> Just s
-    _ -> Nothing
-maybeTextAt _ _ = Nothing
 
 notebookAnswer :: Interpreted -> Maybe Value -> SourceAnswer
 notebookAnswer _ Nothing = okAnswer "notebook" []

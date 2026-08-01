@@ -94,8 +94,7 @@ inertRn =
         , rnRunCell = \_ -> pure ()
         , rnRunCellForced = \_ -> pure ()
         , rnRunAll = pure ()
-        , rnReset = pure ()
-        , rnRestartKernel = pure ()
+        , rnRestart = \_ -> pure ()
         , rnWidgetCell = \_ -> pure ()
         }
 

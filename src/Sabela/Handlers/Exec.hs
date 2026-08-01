@@ -7,6 +7,7 @@ module Sabela.Handlers.Exec (
     execCellWith,
     isReplCrash,
     buildGhciScript,
+    cellBody,
     storeBridgeExports,
     parseCellResult,
     classifyError,
@@ -22,7 +23,7 @@ import qualified Data.Text as T
 
 import Sabela.Api (RunResult (..))
 import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
-import Sabela.Errors (parseErrors)
+import Sabela.Errors (dropWarningBlocks, parseErrors, scrubHarnessFrames)
 import Sabela.Errors.Json (annotateDefSites, parseJsonInteractive)
 import Sabela.Handlers.Lifecycle (handleKernelCrash, loadSabelaPrelude)
 import Sabela.Handlers.Shared
@@ -43,8 +44,8 @@ import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
 import Sabela.State.WidgetStore (getWidgetValues)
 import ScriptHs.Compiled (linePragmaTag)
-import ScriptHs.Parser (ScriptFile (..), parseScriptNumbered)
-import ScriptHs.Render (toGhciScript, toGhciScriptTagged)
+import ScriptHs.Parser (parseScriptNumbered)
+import ScriptHs.Render (toGhciScriptTagged)
 
 runAndBroadcast :: App -> Int -> Cell -> IO ()
 runAndBroadcast app gen cell = do
@@ -73,7 +74,7 @@ execCell app cell = do
 execCellWith :: App -> Cell -> ST.SessionBackend -> IO (RunResult, [CellError])
 execCellWith app cell backend = do
     let jsonOn = ST.sbJsonDiagnostics backend
-    ghci <- buildGhciScript jsonOn app cell
+    ghci <- buildGhciScript app cell
     debugLog app $
         T.pack $
             "[handler] Cell " ++ show (cellId cell) ++ ":\n" ++ T.unpack ghci
@@ -101,16 +102,22 @@ execCellWith app cell backend = do
 isReplCrash :: Text -> Bool
 isReplCrash err = "repl failed" `T.isInfixOf` err
 
-buildGhciScript :: Bool -> App -> Cell -> IO Text
-buildGhciScript jsonOn app cell = do
+buildGhciScript :: App -> Cell -> IO Text
+buildGhciScript app cell = do
     cellWidgets <- getWidgetValues (appWidgets app) (cellId cell)
     bridgeVals <- getBridgeValues (appBridge app)
     let preamble = widgetPreamble (cellId cell) cellWidgets <> bridgePreamble bridgeVals
-        (sf, numbered) = parseScriptNumbered (cellSource cell)
-        body
-            | jsonOn = toGhciScriptTagged (linePragmaTag (cellId cell)) numbered
-            | otherwise = toGhciScript (scriptLines sf)
-    pure (preamble <> body)
+    pure (preamble <> cellBody (cellId cell) (cellSource cell))
+
+{- | The cell's own text as GHCi sees it, under this cell's LINE-pragma tag.
+GHCi numbers @\<interactive\>@ across the whole session, so without the tag a
+reported position is not a line of the cell — with it, a plain-text diagnostic
+comes back as @sabela-cell-N:line:col@ whether or not JSON diagnostics are on.
+-}
+cellBody :: Int -> Text -> Text
+cellBody cid src = toGhciScriptTagged (linePragmaTag cid) numbered
+  where
+    (_, numbered) = parseScriptNumbered src
 
 storeBridgeExports :: App -> Text -> IO ()
 storeBridgeExports app rawOut = do
@@ -133,8 +140,9 @@ parseCellResult jsonOn cid rawOut rawErr = do
                     pseudoRaw = T.unlines (map (locateError cid) errs) <> residual
                  in (RunResult cid outputs (classifyError errs pseudoRaw) warns, errs)
             else
-                let errs = parseErrors rawErr
-                 in (RunResult cid outputs (classifyError errs rawErr) [], errs)
+                let scrubbed = scrubHarnessFrames rawErr
+                    errs = parseErrors scrubbed
+                 in (RunResult cid outputs (classifyError errs scrubbed) [], errs)
 
 annotateSuggestions ::
     App -> (RunResult, [CellError]) -> IO (RunResult, [CellError])
@@ -174,5 +182,9 @@ classifyError errs rawErr
     | otherwise = Just cleaned
   where
     cleaned =
-        T.strip . T.unlines . filter (not . isLinkerNoise) . T.lines $ rawErr
+        dropWarningBlocks
+            . T.unlines
+            . filter (not . isLinkerNoise)
+            . T.lines
+            $ rawErr
     isLinkerNoise l = "ld: warning:" `T.isPrefixOf` T.strip l

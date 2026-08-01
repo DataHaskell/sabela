@@ -92,7 +92,7 @@ driverWith chat verdict =
         { drvChat = chat
         , drvDispatch = const (pure (Right (ToolOk (object []))))
         , drvNow = pure 0
-        , drvVerify = pure verdict
+        , drvVerify = const (pure verdict)
         }
 
 scriptChat :: (Int -> Turn) -> IO ([Value] -> IO (Either Text Turn))

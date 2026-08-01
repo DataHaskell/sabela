@@ -30,6 +30,13 @@ spec = describe "product systemPrompt (unified)" $ do
     it "names no phantom ghci_query tool" $
         ("ghci_query" `T.isInfixOf` systemPrompt) `shouldBe` False
 
+    -- A promised marker no code path emits is a lie the model acts on: it
+    -- reads the diagnostic looking for a hint that is never there. No
+    -- `[sabela ...]` marker is emitted anywhere, so the prompt promises none;
+    -- reintroducing one must fail here until an emitter grounds it.
+    it "promises no diagnostic marker the harness does not emit" $
+        sabelaMarkers systemPrompt `shouldBe` []
+
     it "advertises one try interface and no legacy evaluation modes" $ do
         ("try" `T.isInfixOf` systemPrompt) `shouldBe` True
         ("scratchpad" `T.isInfixOf` systemPrompt) `shouldBe` False
@@ -53,6 +60,16 @@ spec = describe "product systemPrompt (unified)" $ do
         it "lists exactly the catalogue's wire names, in order" $
             surfaceNames (toolSurfaceBlock chatToolSpecs)
                 `shouldBe` map (toolWireName . toolName) chatToolSpecs
+
+{- | Bracketed harness markers the text tells the reader to look for, as in
+@[sabela hint]@.
+-}
+sabelaMarkers :: Text -> [Text]
+sabelaMarkers t =
+    [ T.takeWhile (/= ']') seg
+    | seg <- drop 1 (T.splitOn "[sabela" t)
+    , "]" `T.isInfixOf` seg
+    ]
 
 surfaceNames :: Text -> [Text]
 surfaceNames block =

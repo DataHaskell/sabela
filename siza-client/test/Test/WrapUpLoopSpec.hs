@@ -27,6 +27,11 @@ import Test.WrapUpSpec (searchAdvicePhrases)
 assistant :: Text -> Value
 assistant t = object ["role" .= ("assistant" :: Text), "content" .= t]
 
+-- | A turn that ends the model's work by saying so, with no tool calls.
+summaryStopTurn :: Turn
+summaryStopTurn = Turn (assistant "no further progress") "no further progress" []
+
+-- | A turn that says nothing at all: not a summary, and not a completion.
 emptyStopTurn :: Turn
 emptyStopTurn = Turn (assistant "") "" []
 
@@ -56,7 +61,7 @@ driverWith chat dispatch verdict =
         { drvChat = chat
         , drvDispatch = dispatch
         , drvNow = pure 0
-        , drvVerify = pure verdict
+        , drvVerify = const (pure verdict)
         }
 
 runShaped :: Driver -> EpisodeBudget -> Int -> IO AgentRun
@@ -133,7 +138,7 @@ loopStopGridSpec = describe "the real loop: no stop reason yields an empty final
         arToolCalls run `shouldBe` 1
     it "repair_budget: wrap-up fires once and the final is non-empty" $ do
         calls <- newIORef (0 :: Int)
-        let chat = scriptChat calls (const emptyStopTurn)
+        let chat = scriptChat calls (const summaryStopTurn)
             driver = driverWith chat okDispatch (CheckFailed, Just "expected 3, got 1")
         run <-
             runShaped
@@ -164,13 +169,13 @@ loopStopGridSpec = describe "the real loop: no stop reason yields an empty final
         arStopped run `shouldBe` "deadline"
         T.strip (arFinal run) `shouldSatisfy` (not . T.null)
         markerCount run `shouldBe` 1
-    it "done with an empty model summary still yields a non-empty final" $ do
+    it "an empty model summary is no_reply, and the final is still non-empty" $ do
         calls <- newIORef (0 :: Int)
         let chat = scriptChat calls $ \n ->
                 if n == 1 then writeTurn "total = 6" else emptyStopTurn
             driver = driverWith chat okDispatch (CheckPassed, Nothing)
         run <- runShaped driver defBudget 20
-        arStopped run `shouldBe` "done"
+        arStopped run `shouldBe` "no_reply"
         T.strip (arFinal run) `shouldSatisfy` (not . T.null)
     it "stuck: the final stays non-empty" $ do
         calls <- newIORef (0 :: Int)

@@ -42,7 +42,9 @@ type JsonAPI =
         :<|> "api" :> "run-all" :> Post '[JSON] RunAllResult
         :<|> "api" :> "reset" :> Post '[JSON] Notebook
         :<|> "api" :> "restart-kernel" :> Post '[JSON] NoContent
+        :<|> "api" :> "restart-run-all" :> Post '[JSON] NoContent
         :<|> "api" :> "interrupt" :> Post '[JSON] NoContent
+        :<|> "api" :> "kernel" :> Get '[JSON] Value
         :<|> "api" :> "clear" :> Capture "id" Int :> Post '[JSON] NoContent
         :<|> "api"
             :> "files"

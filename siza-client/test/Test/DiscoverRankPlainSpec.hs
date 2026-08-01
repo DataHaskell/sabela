@@ -21,6 +21,7 @@ import Siza.Agent.Discover.Types (
     okAnswer,
     seededBuiltins,
  )
+import Test.DiscoverContextBandSpec (contextBandSpec, sigWith)
 import Test.DiscoverFixtures (
     SynPkg (..),
     catalogueExports,
@@ -51,18 +52,6 @@ importedBandPkgs =
         ]
     , SynPkg "brill" "3.0.0" False [("Brill.Main", [("strum", "Int -> Strum")])]
     ]
-
-sigWith :: Int -> Int -> Text
-sigWith c t = constraints <> "Text -> Expr a" <> tyArgs
-  where
-    constraints
-        | c <= 0 = ""
-        | otherwise =
-            "("
-                <> T.intercalate ", " ["C" <> tShow i <> " a" | i <- [1 .. c]]
-                <> ") => "
-    tyArgs = T.concat [" @S" <> tShow i | i <- [1 .. t]]
-    tShow = T.pack . show
 
 plainPairs :: [((Int, Int), (Int, Int))]
 plainPairs =
@@ -153,6 +142,8 @@ discoverRankPlainSpec = describe "ranking generality (R7-T2)" $ do
             vb <- runCatArgsIn (subsPkgs namesB) "colx" (object [])
             substitute (zip (tripleList namesA) (tripleList namesB)) (jsonText va)
                 `shouldBe` jsonText vb
+
+    contextBandSpec
 
 importedFirstViolation :: Text -> IO [Text]
 importedFirstViolation n = do

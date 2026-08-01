@@ -9,19 +9,21 @@ module Sabela.AI.Capabilities.BrowseCard (
 import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
 import Data.Char (isDigit)
-import Data.List (nub, sortOn)
+import Data.List (nub)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.AI.Capability (
-    Capability (..),
-    defaultSynonyms,
-    relevanceScore,
-    unqualify,
- )
+import qualified Data.Set as Set
+import Sabela.AI.Capability (coalesce, declMembers)
 import Sabela.AI.Grammar.Synth (sanitizeTypeText)
+import Sabela.AI.LeakShape (lexicalEntity)
 import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
+import Sabela.AI.Search.Export (
+    ExportRow (..),
+    rankExportsBy,
+ )
+import Sabela.AI.Search.Need (parseNeed)
 import Sabela.Errors.Json (parseJsonInteractive)
 import Sabela.Model (CellError (..))
 
@@ -58,48 +60,59 @@ browseCardFor mQuery modName raw
             ]
     suggests = mapMaybe suggestionOf msgLines
 
+{- | One @:browse@ declaration is one export, so GHCi's indented continuation
+lines are coalesced back before anything counts or ranks them. A row whose head
+is not a lexical entity is disclosed as @unparsed@, never emitted as a name.
+-}
 listingCard :: Maybe Text -> Text -> Text -> Value
 listingCard mQuery modName raw =
     object $
         [ "module" .= modName
         , "status" .= ("ok" :: Text)
-        , "exports" .= take cap (rankExports mQuery ls)
-        , "total" .= length ls
+        , "exports" .= take cap (rankExports mQuery modName entries)
+        , "total" .= length entries
         ]
-            <> ["more" .= (length ls - cap) | length ls > cap]
+            <> ["more" .= (length entries - cap) | length entries > cap]
+            <> ["unparsed" .= unparsed | unparsed > 0]
   where
     cap = 24
     ls =
-        filter (not . T.null) (map (T.strip . sanitizeTypeText) (T.lines raw))
+        concatMap
+            (filter (not . T.null) . declRows . T.strip . sanitizeTypeText)
+            (coalesce (T.lines raw))
+    entries = filter (lexicalEntity . erName . rowOf) ls
+    unparsed = length ls - length entries
 
-rankExports :: Maybe Text -> [Text] -> [Text]
-rankExports mQuery ls = map snd (sortOn key (zip [0 :: Int ..] ls))
-  where
-    key (i, l) = (negate (relevance l), band l, i)
-    relevance l = case mQuery of
-        Just q | not (T.null (T.strip q)) -> relevanceScore defaultSynonyms q (asCap l)
-        _ -> 0
-    asCap l
-        | isTypeLevel l = case T.words l of
-            (_ : n : _) ->
-                Capability "" (unqualify n) (T.unwords (drop 2 (T.words l))) Nothing
-            _ -> Capability "" "" l Nothing
-        | (n, rest) <- T.breakOn " :: " l
-        , not (T.null rest) =
-            Capability "" (unqualify (T.strip n)) (T.drop 4 rest) Nothing
-        | otherwise = Capability "" "" l Nothing
-    band l
-        | "_" `T.isPrefixOf` l = 2 :: Int
-        | isTypeLevel l = 1
-        | " :: " `T.isInfixOf` l = 0
-        | otherwise = 1
+{- | A declaration is an export and so is every member it declares: coalescing
+without this decomposition folds a class's methods and a record's selectors
+into their parent's row, where no export names them.
+-}
+declRows :: Text -> [Text]
+declRows ent = ent : [n <> " :: " <> ty | (n, ty) <- declMembers ent]
 
-isTypeLevel :: Text -> Bool
-isTypeLevel l =
-    any (`T.isPrefixOf` l) declKeywords
-        || any (`T.isPrefixOf` l) ["=", "|", ","]
-        || T.any (`elem` ("{}" :: String)) l
-        || "," `T.isSuffixOf` l
+{- | Order the raw @:browse@ lines by what the caller asked for. Every budget
+downstream takes the head of this list, so the order is the answer.
+-}
+rankExports :: Maybe Text -> Text -> [Text] -> [Text]
+rankExports mQuery modName =
+    rankExportsBy (parseNeed Set.empty (fromMaybe "" mQuery)) modName rowOf
+
+{- | A declaration keyword names its entity in the second word; anything else
+is named by what stands left of its signature. The order matters: a signature
+whose type mentions braces (@forall {k}@) is still a signature.
+-}
+rowOf :: Text -> ExportRow
+rowOf l
+    | declHeaded l = case T.words l of
+        (_ : n : rest) -> ExportRow n (T.unwords rest) ""
+        _ -> ExportRow l "" ""
+    | (n, rest) <- T.breakOn " :: " l
+    , not (T.null rest) =
+        ExportRow (T.strip n) (T.drop 4 rest) ""
+    | otherwise = ExportRow l "" ""
+
+declHeaded :: Text -> Bool
+declHeaded l = any (`T.isPrefixOf` l) (declKeywords ++ ["=", "|", ","])
   where
     declKeywords =
         [ "type "

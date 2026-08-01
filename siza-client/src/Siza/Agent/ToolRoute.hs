@@ -4,6 +4,8 @@ module Siza.Agent.ToolRoute (
     Route (..),
     installSteer,
     isDiscoverName,
+    isRecallName,
+    isVerifyName,
     maxNameDrift,
     nameCandidates,
     normalizeToolCall,
@@ -27,9 +29,12 @@ import Sabela.AI.Capabilities.ToolName (ToolName, resolveToolCall, toolWireName)
 import Sabela.AI.HoleRepair (editDistance)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..), rawWithCalls)
 import Siza.Agent.Discover.Request (discoverQuery)
+import Siza.Agent.Recall (recallToolName)
 
 data Route
     = RouteDiscover Text Value
+    | RouteRecall Value
+    | RouteVerify Text Value
     | RouteTool ToolName Value
     | RouteBadArgs Text
     | RouteUnknown Text
@@ -182,9 +187,26 @@ routeCall (ToolCall name rawArgs) = case unwrapArgs rawArgs of
     Right args
         | isDiscoverName name ->
             RouteDiscover (fromMaybe "" (discoverQuery name args)) args
+        | isRecallName name -> RouteRecall args
+        | isVerifyName name -> RouteVerify (argText "check" args) args
         | otherwise -> case resolveToolCall name args of
             Just (tn, a) -> RouteTool tn a
             Nothing -> RouteUnknown name
+
+isVerifyName :: Text -> Bool
+isVerifyName = (== "verify")
+
+{- | Reading an elided result back is answered here, not in one entry point's
+own wrapper, so both surfaces answer the tool their text names.
+-}
+isRecallName :: Text -> Bool
+isRecallName = (== recallToolName)
+
+argText :: Text -> Value -> Text
+argText k (Object o) = case KM.lookup (K.fromText k) o of
+    Just (String s) -> s
+    _ -> ""
+argText _ _ = ""
 
 badWrapperHint :: Text -> Text -> Text
 badWrapperHint name wrapper =

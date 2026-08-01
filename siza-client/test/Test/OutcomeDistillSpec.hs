@@ -64,6 +64,12 @@ intOf :: Maybe Value -> Int
 intOf (Just (Number n)) = round n
 intOf _ = -1
 
+{- | The keys every distilled output carries, whatever its mime; the
+mime-directed view adds exactly one more.
+-}
+coreKeys :: [Text]
+coreKeys = ["chars", "oiMime", "oiOutput"]
+
 keySet :: Value -> [Text]
 keySet (Object o) = sort (map K.toText (KM.keys o))
 keySet _ = []
@@ -91,8 +97,10 @@ outcomeDistillSpec = describe "R10-T5 execution-output distillation" $ do
             shown + omitted' `shouldBe` intOf (field "outputCount" distilled)
 
         it "every surviving output decodes on ONE declared schema" $
-            forM_ items $ \i ->
-                keySet i `shouldBe` ["chars", "oiMime", "oiOutput"]
+            forM_ items $ \i -> do
+                filter (`elem` coreKeys) (keySet i) `shouldBe` coreKeys
+                filter (`notElem` coreKeys) (keySet i)
+                    `shouldSatisfy` (`elem` [["jsonKeys"], ["lines"]])
 
         it "every head is escape-stripped and within the head budget" $
             forM_ items $ \i -> do

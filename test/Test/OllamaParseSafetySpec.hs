@@ -22,6 +22,7 @@ import Sabela.LLM.Ollama.Client (
 
 spec :: Spec
 spec = describe "Ollama tool-call parse safety" $ do
+    argumentFaultSpec
     it "bounds parse-error reprompting at two retries" $
         ollamaParseRetries `shouldBe` 2
     it "leaves every clean generated call unchanged" $
@@ -129,6 +130,8 @@ tool name props required =
         ]
   where
     argType "cell_id" = "integer" :: T.Text
+    argType "limit" = "integer"
+    argType "full" = "boolean"
     argType _ = "string"
 
 chatCall :: T.Text -> Value -> Value
@@ -159,3 +162,52 @@ channelText channel payload =
                 , "thinking" .= if channel == "thinking" then payload else ""
                 ]
         ]
+
+{- | A rejected tool call costs the whole turn, so the rejection has to say
+which argument to change. Reproduced from siza-chat-20260730-170317: discover
+was rejected with "arguments do not match schema" and the model, told nothing
+more, re-sent the same shape until the turn died at 0 tool calls.
+-}
+argumentFaultSpec :: Spec
+argumentFaultSpec = describe "invalid arguments name the offending argument" $ do
+    let call name args = parseTurnWithTools schemas (encode (chatCall name args))
+        reasonOf name args = case call name args of
+            Left e -> pfDiagnostic e
+            Right _ -> "unexpectedly accepted"
+
+    it "names an argument the tool does not take, and lists the ones it does" $ do
+        let why =
+                reasonOf
+                    "discover"
+                    (object ["query" .= ("map" :: T.Text), "scope" .= ("x" :: T.Text)])
+        why `shouldSatisfy` T.isInfixOf "scope"
+        why `shouldSatisfy` T.isInfixOf "query"
+
+    it "names a missing required argument" $ do
+        let why = reasonOf "discover" (object ["limit" .= (5 :: Int)])
+        why `shouldSatisfy` T.isInfixOf "query"
+        why `shouldSatisfy` T.isInfixOf "required"
+
+    it "names a mistyped argument with expected and actual types" $ do
+        let why = reasonOf "list_cells" (object ["full" .= ("yes" :: T.Text)])
+        why `shouldSatisfy` T.isInfixOf "full"
+        why `shouldSatisfy` T.isInfixOf "boolean"
+
+    it "coerces a quoted integer rather than losing the turn" $
+        case call
+            "discover"
+            (object ["query" .= ("map" :: T.Text), "limit" .= ("5" :: T.Text)]) of
+            Right t ->
+                turnCalls t
+                    `shouldBe` [ ToolCall
+                                    "discover"
+                                    (object ["query" .= ("map" :: T.Text), "limit" .= (5 :: Int)])
+                               ]
+            Left e -> expectationFailure (T.unpack (pfDiagnostic e))
+
+    it "coerces a quoted boolean" $
+        case call "list_cells" (object ["full" .= ("true" :: T.Text)]) of
+            Right t ->
+                turnCalls t
+                    `shouldBe` [ToolCall "list_cells" (object ["full" .= True])]
+            Left e -> expectationFailure (T.unpack (pfDiagnostic e))

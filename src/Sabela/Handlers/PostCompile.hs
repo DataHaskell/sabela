@@ -14,13 +14,10 @@ import Sabela.Handlers.Shared
 import Sabela.Model (Cell (..))
 import Sabela.Reactivity (
     ExecutionPlan (..),
-    escalatedCellsToRun,
     haskellCodeCells,
-    markAllInterpretedDirty,
  )
 import Sabela.State (App (..))
-import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
-import Sabela.State.SessionManager (getHaskellSession)
+import Sabela.State.NotebookStore (readNotebook)
 
 runPostCompile ::
     App -> Int -> ExecutionPlan -> CompileOutcome -> [Cell] -> IO ()
@@ -28,16 +25,8 @@ runPostCompile app gen plan outcome planned =
     case outcome of
         CompileNoChange -> runCellList app gen planned
         CompileNoSession -> runBlockedPartition app gen plan planned
-        CompileReloaded -> escalateAfterWipe app >>= runCellList app gen
-        CompileFailed -> escalateAfterWipe app >>= runBlockedPartition app gen plan
-
-escalateAfterWipe :: App -> IO [Cell]
-escalateAfterWipe app = do
-    modifyNotebook (appNotebook app) markAllInterpretedDirty
-    mSess <- getHaskellSession (appSessions app)
-    case mSess of
-        Nothing -> pure []
-        Just _ -> escalatedCellsToRun <$> readNotebook (appNotebook app)
+        CompileReloaded -> runCellList app gen planned
+        CompileFailed -> runBlockedPartition app gen plan planned
 
 runBlockedPartition :: App -> Int -> ExecutionPlan -> [Cell] -> IO ()
 runBlockedPartition app gen plan cells = do

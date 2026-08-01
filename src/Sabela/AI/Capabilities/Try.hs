@@ -2,34 +2,46 @@
 
 module Sabela.AI.Capabilities.Try (
     execTry,
+    execTryWith,
     trialPlanErrorText,
 ) where
 
 import Data.Aeson (Value (..), object, (.=))
-import qualified Data.Aeson.Key as Key
-import qualified Data.Aeson.KeyMap as KM
-import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.ModuleCard (resolveInstalledModules)
+import Sabela.AI.Capabilities.Query (execCheckType)
 import Sabela.AI.Capabilities.Try.Autofix (
     autofixNote,
     hiddenPackageOf,
     notFoundModuleOf,
     renameCandidateCap,
     renameNote,
+    scopedCandidateCap,
+ )
+import Sabela.AI.Capabilities.Try.Candidate (
+    ContainedRun,
+    candidateSpec,
+    localiseTrial,
+ )
+import Sabela.AI.Capabilities.Try.Commit (
+    discloseCandidate,
+    routedEnvelope,
+    withField,
+    withPairs,
  )
 import Sabela.AI.Capabilities.Try.HoleProbe (runHoleProbe)
 import Sabela.AI.Capabilities.Try.Payload (
     disposablePayload,
+    executionPairs,
     inputErrorPayload,
     invariantPayload,
     planErrorPayload,
-    purePayload,
     trialPlanErrorText,
-    unrestrictedIOPayload,
  )
+import Sabela.AI.Capabilities.Try.Route (LiveDecision (..), liveDecision)
+import Sabela.AI.Capabilities.Try.Scope (scopedModuleCandidates)
 import Sabela.AI.Capabilities.Try.Snapshot (AppSnapshot (..), snapshotApp)
 import Sabela.AI.Capabilities.TryPlan
 import Sabela.AI.Capabilities.Util (fieldText, parseCellLang)
@@ -43,16 +55,22 @@ import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Deps (collectMetadata)
 import Sabela.Handlers.Lifecycle (sessionMetaMatches)
 import Sabela.Handlers.Plan (executeFullRestart)
-import Sabela.Model (Cell (..))
-import Sabela.Reactivity (haskellCodeCells)
+import Sabela.Reactivity (cellSettled, haskellCodeCells)
 import Sabela.Session.Materialize
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
 
+{- | The trial the tool surface offers. Its contained backend is the disposable
+materialisation; 'execTryWith' takes another so the route a trial takes can be
+observed without one.
+-}
 execTry :: App -> Value -> IO ToolOutcome
-execTry app input
+execTry app = execTryWith (runDisposableTry app) app
+
+execTryWith :: ContainedRun -> App -> Value -> IO ToolOutcome
+execTryWith contained app input
     | T.null rawCode =
         pure (errOutcome (inputErrorPayload "code required"))
     | Nothing <- language =
@@ -75,9 +93,10 @@ execTry app input
                 ]
     | otherwise =
         attachNormalizeNote normalizeNotes <$> case planTrial code of
+            Left (TrialMetaQuery q) -> routeMetaQuery app q
             Left planErr -> pure (errOutcome (planErrorPayload planErr))
             Right _ | containsTypedHole code -> runHoleProbe app code
-            Right plan -> runTrialWithDepAutofix app code plan
+            Right plan -> runTrialWithDepAutofix contained app code plan
   where
     codeField = fieldText "code" input
     expressionField = fieldText "expression" input
@@ -93,24 +112,35 @@ attachNormalizeNote :: [Text] -> ToolOutcome -> ToolOutcome
 attachNormalizeNote [] out = out
 attachNormalizeNote notes out = withField "normalized" (String (T.unwords notes)) out
 
-withField :: Text -> Value -> ToolOutcome -> ToolOutcome
-withField k v (ToolOk (Object o)) = ToolOk (Object (KM.insert (Key.fromText k) v o))
-withField k v (ToolErr (Object o)) = ToolErr (Object (KM.insert (Key.fromText k) v o))
-withField _ _ out = out
+{- | A meta-command that only reads the type environment is a question, so the
+tool that owns types answers it against the candidate's own imports. The answer
+keeps try's envelope, so a routed call is still readable as a trial.
+-}
+routeMetaQuery :: App -> MetaQuery -> IO ToolOutcome
+routeMetaQuery app q =
+    routedEnvelope (mqCommand q) "check_type"
+        <$> execCheckType
+            app
+            (object ["expr" .= mqSubject q, "imports" .= mqImports q])
 
-runTrialWithDepAutofix :: App -> Text -> TrialPlan -> IO ToolOutcome
-runTrialWithDepAutofix app code plan = do
-    outcome <- runHaskellTrial app plan
+runTrialWithDepAutofix ::
+    ContainedRun -> App -> Text -> TrialPlan -> IO ToolOutcome
+runTrialWithDepAutofix contained app code plan = do
+    outcome <- runHaskellTrial contained app plan
     case hiddenPackageOf outcome of
         Just pkg
             | repairedCode <- addBuildDepend pkg code
             , Right repaired <- planTrial repairedCode ->
                 withField "autofix" (String (autofixNote pkg repairedCode))
-                    <$> runHaskellTrial app repaired
+                    <$> runHaskellTrial contained app repaired
         _ -> case notFoundModuleOf outcome of
             Nothing -> pure outcome
             Just wrong -> do
-                cands <- resolveInstalledModules renameCandidateCap wrong
+                scoped <- scopedModuleCandidates scopedCandidateCap code wrong
+                cands <-
+                    if null scoped
+                        then resolveInstalledModules renameCandidateCap wrong
+                        else pure scoped
                 tryRenames outcome wrong cands
   where
     tryRenames failed _ [] = pure failed
@@ -119,7 +149,7 @@ runTrialWithDepAutofix app code plan = do
         | repairedCode <-
             addBuildDepend (peName pkg) (renameModule wrong right code)
         , Right repaired <- planTrial repairedCode = do
-            retried <- runHaskellTrial app repaired
+            retried <- runHaskellTrial contained app repaired
             case retried of
                 ToolOk _ ->
                     pure
@@ -131,31 +161,38 @@ runTrialWithDepAutofix app code plan = do
                 ToolErr _ -> tryRenames failed wrong rest
         | otherwise = tryRenames failed wrong rest
 
-runHaskellTrial :: App -> TrialPlan -> IO ToolOutcome
-runHaskellTrial app plan
-    | candidateNeedsDisposable plan = runDisposable app plan
+runHaskellTrial :: ContainedRun -> App -> TrialPlan -> IO ToolOutcome
+runHaskellTrial contained app plan =
+    discloseCandidate app plan =<< routeHaskellTrial contained app plan
+
+routeHaskellTrial :: ContainedRun -> App -> TrialPlan -> IO ToolOutcome
+routeHaskellTrial contained app plan
+    | candidateNeedsDisposable plan = runDisposable contained app plan
     | Just expression <- trialExpression plan = do
         ready <- liveFastPathReady app
         mBackend <- getHaskellSession (appSessions app)
         case (ready, mBackend) of
-            (False, _) -> runDisposable app plan
-            (True, Nothing) -> runDisposable app plan
+            (False, _) -> runDisposable contained app plan
+            (True, Nothing) -> runDisposable contained app plan
             (_, Just backend) -> do
                 busy <- ST.sbBusy backend
                 if busy
-                    then runDisposable app plan
-                    else runPureLive app backend expression
-    | otherwise = runDisposable app plan
+                    then runDisposable contained app plan
+                    else do
+                        decision <- runPureLive app backend expression
+                        case decision of
+                            LiveAnswer out -> pure out
+                            LiveEscalateContained -> runDisposable contained app plan
+    | otherwise = runDisposable contained app plan
 
 liveFastPathReady :: App -> IO Bool
 liveFastPathReady app = do
     notebook <- readNotebook (appNotebook app)
     metadataMatches <- sessionMetaMatches app (collectMetadata notebook)
     let cells = haskellCodeCells notebook
-        settled cell = not (cellDirty cell) && isNothing (cellError cell)
-    pure (metadataMatches && all settled cells)
+    pure (metadataMatches && all cellSettled cells)
 
-runPureLive :: App -> ST.SessionBackend -> Text -> IO ToolOutcome
+runPureLive :: App -> ST.SessionBackend -> Text -> IO LiveDecision
 runPureLive app backend expression = do
     before <- snapshotApp app
     expectedGeneration <- ST.sbSessionGen backend
@@ -177,22 +214,7 @@ runPureLive app backend expression = do
                 && ST.pureEvalBindingsUnchanged result
                 && ST.pureEvalItUnchanged result
     recoverDestroyedKernel app result before
-    case ST.pureEvalVerdict result of
-        ST.PureEvalSucceeded
-            | invariant -> pure (okOutcome (purePayload result))
-            | otherwise ->
-                pure (errOutcome (invariantPayload "live state changed during try"))
-        ST.PureEvalRejected
-            | invariant && isUnrestrictedIO result ->
-                pure (errOutcome (unrestrictedIOPayload result))
-            | invariant -> pure (errOutcome (purePayload result))
-            | otherwise ->
-                pure (errOutcome (invariantPayload "live state changed while checking try"))
-        ST.PureEvalTimedOut -> pure (errOutcome (purePayload result))
-        ST.PureEvalRuntimeError -> pure (errOutcome (purePayload result))
-        ST.PureEvalStale -> pure (errOutcome (purePayload result))
-        ST.PureEvalInvariantFailed -> pure (errOutcome (purePayload result))
-        ST.PureEvalUnavailable -> pure (errOutcome (purePayload result))
+    pure (liveDecision invariant result)
 
 recoverDestroyedKernel :: App -> ST.PureEvalResult -> AppSnapshot -> IO ()
 recoverDestroyedKernel app result before =
@@ -200,58 +222,24 @@ recoverDestroyedKernel app result before =
         ST.PureEvalKernelDestroyed -> executeFullRestart app (snapshotEventGeneration before)
         _ -> pure ()
 
-isUnrestrictedIO :: ST.PureEvalResult -> Bool
-isUnrestrictedIO result =
-    let lower = T.toLower (ST.pureEvalError result)
-     in "scratch candidate is io" `T.isInfixOf` lower
-            || "sabela_unrestricted_io" `T.isInfixOf` lower
-
-runDisposable :: App -> TrialPlan -> IO ToolOutcome
-runDisposable app plan = do
+runDisposable :: ContainedRun -> App -> TrialPlan -> IO ToolOutcome
+runDisposable contained app plan = do
     before <- snapshotApp app
-    result <- runDisposableTry app (candidateSpec plan)
+    result <- contained spec
     after <- snapshotApp app
     if before /= after
         then
             pure
                 (errOutcome (invariantPayload "notebook state changed during disposable try"))
-        else pure $
-            case disposableVerdict result of
-                DisposableOk -> okOutcome (disposablePayload result)
-                _ -> errOutcome (disposablePayload result)
-
-candidateSpec :: TrialPlan -> CandidateSpec
-candidateSpec plan =
-    case trialExpression plan of
-        Just expression
-            | T.any (`elem` ['\n', '\r']) expression ->
-                CandidateSpec
-                    { candidateMetadataSource = trialSource plan
-                    , candidateSetup =
-                        trialSetup plan
-                            <> "\n"
-                            <> hiddenExpressionBinding expression
-                    , candidateExpression = Just "_sabelaTryCandidate"
-                    , candidateReplacesCellId = Nothing
-                    , candidateDeliberate = False
-                    }
-        expression ->
-            CandidateSpec
-                { candidateMetadataSource = trialSource plan
-                , candidateSetup = trialSetup plan
-                , candidateExpression = expression
-                , candidateReplacesCellId = Nothing
-                , candidateDeliberate = False
-                }
-
-hiddenExpressionBinding :: Text -> Text
-hiddenExpressionBinding expression =
-    T.unlines
-        [ ":{"
-        , "_sabelaTryCandidate ="
-        , T.unlines ["    " <> line | line <- T.lines expression]
-        , ":}"
-        ]
+        else case disposableVerdict result of
+            DisposableOk -> pure (disclosed result (okOutcome (disposablePayload result)))
+            _ -> do
+                pairs <- localiseTrial contained plan result
+                pure (withPairs pairs (disclosed result (rejected result)))
+  where
+    spec = candidateSpec plan
+    disclosed result = withPairs (executionPairs spec result)
+    rejected = errOutcome . disposablePayload
 
 liveTimeoutUs :: Int
 liveTimeoutUs = 30 * 1000000

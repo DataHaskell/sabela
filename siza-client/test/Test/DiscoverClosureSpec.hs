@@ -46,6 +46,7 @@ import Test.CatalogueSim (SimWorld (..), simWorldCall)
 import Test.DiscoverFixtures (
     SynPkg (..),
     hitText,
+    hitsOf,
     stateOf,
     synHoogle,
     textField,
@@ -185,12 +186,14 @@ closeCarriesHeldHitSpec = describe "a close never asserts absence over held evid
             (led1, _) = script emptyLedger [(key, foundWith "bars" barsHit)]
             led = ledgerClose led1
         Just out <- pure (ledgerShortcut led key)
-        let s = textField "summary" out
-        s `shouldSatisfy` T.isInfixOf "bars"
-        s `shouldSatisfy` T.isInfixOf "Cumulus.Plot"
-        s `shouldSatisfy` T.isInfixOf "cumulus"
-        s `shouldSatisfy` T.isInfixOf "installed-not-loaded"
-        s `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: cumulus"
+        textField "summary" out `shouldSatisfy` T.isInfixOf "bars"
+        case hitsOf out of
+            [] -> expectationFailure "the close carried no held hit"
+            (h : _) -> do
+                hitText "module" h `shouldBe` "Cumulus.Plot"
+                hitText "package" h `shouldBe` "cumulus"
+                hitText "install" h `shouldBe` "installed-not-loaded"
+                hitText "cabal" h `shouldBe` "-- cabal: build-depends: cumulus"
     it "rung-3 give-up advice hands over held evidence for the entity" $ do
         let (_, outs) =
                 script

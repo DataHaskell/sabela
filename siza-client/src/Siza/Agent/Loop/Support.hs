@@ -5,6 +5,7 @@ module Siza.Agent.Loop.Support (
     nudgeFloor,
     maxChatRetries,
     maxStuckVerifies,
+    kernelFailureStep,
     stuckFinal,
     callActs,
     sampleK,
@@ -20,6 +21,7 @@ module Siza.Agent.Loop.Support (
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAlphaNum, isLower)
+import Data.Either (isRight)
 import Data.IORef (IORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -31,8 +33,8 @@ import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Owned (OwnedCell (..))
+import Siza.Agent.Render (renderOutcome)
 import Siza.Agent.Streak (bumpStreak, streakContrast)
-import Siza.Agent.Tools (renderOutcome)
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
 
@@ -47,6 +49,21 @@ maxChatRetries = 2
 
 maxStuckVerifies :: Int
 maxStuckVerifies = 3
+
+maxKernelFailures :: Int
+maxKernelFailures = 3
+
+{- | Count consecutive turns in which every tool call failed in transport, and
+report when that has run on long enough to be the kernel rather than the call.
+A kernel that answers nothing is its own stop class, not a spent turn budget.
+-}
+kernelFailureStep :: IORef Int -> [Either Text a] -> IO Bool
+kernelFailureStep ref outcomes
+    | null outcomes || any isRight outcomes = writeIORef ref 0 >> pure False
+    | otherwise = do
+        n <- (+ 1) <$> readIORef ref
+        writeIORef ref n
+        pure (n >= maxKernelFailures)
 
 stuckFinal :: Text
 stuckFinal =

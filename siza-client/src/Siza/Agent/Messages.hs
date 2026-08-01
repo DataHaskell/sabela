@@ -17,7 +17,6 @@ module Siza.Agent.Messages (
     VerifyFailure (..),
     verifyFailureOf,
     verifyHeadline,
-    verifyMsg,
     verifyMsgWith,
 ) where
 
@@ -51,9 +50,8 @@ reenterMessage :: [(CellId, Text)] -> Text
 reenterMessage reds =
     "Not done yet: cell(s) "
         <> T.pack (intercalate ", " (map (show . fst) reds))
-        <> " that you wrote still have errors. Read each cell's error, fix it with \
-           \replace_cell_source, and do not stop until every cell you wrote runs \
-           \without error."
+        <> " that you wrote still have errors. replace_cell_source edits a \
+           \committed cell."
         <> T.concat ["\n" <> diagQuoteLine d | (_, d) <- reds]
         <> T.concat ["\n" <> c | Just c <- map (contrastLine . snd) reds]
 
@@ -96,7 +94,7 @@ verifyMsgWith ownedCount missing counterexample =
 
 verifyMessage' :: Int -> [Text] -> Maybe Text -> Text
 verifyMessage' ownedCount missing counterexample =
-    verifyHeadline cls <> " " <> diagnosis <> " Do not stop until the check passes."
+    verifyHeadline cls <> " " <> diagnosis
   where
     cls = verifyFailureOf ownedCount missing
     diagnosis = case cls of
@@ -126,13 +124,15 @@ verifyFailureOf ownedCount missing
     | not (null missing) = DeliverableUndefined missing
     | otherwise = CheckFailed
 
+{- | Headlines for the channel a FAILED check is reported on. None of them may
+say whether the check ran: the routing already settled that, and two of these
+used to deny it on a channel only a run check reaches.
+-}
 verifyHeadline :: VerifyFailure -> Text
 verifyHeadline NoDeliverable =
-    "The task is not done: no deliverable cell exists yet (the check has not \
-    \run — this is not a check failure)."
+    "The task is not done: no deliverable cell exists yet."
 verifyHeadline (DeliverableUndefined _) =
-    "The task is not done: the deliverable is not defined in any cell (the \
-    \check has not run — this is not a check failure)."
+    "The task is not done: the deliverable is not defined in any cell."
 verifyHeadline CheckFailed =
     "The task is not done: the deliverable's check still fails."
 
@@ -147,7 +147,6 @@ unconfirmedMessage ownedCount missing guidance =
     "The deliverable is not yet confirmed — the covering check reached no \
     \verdict. "
         <> diagnosis
-        <> " Then finish with a one-line summary."
   where
     diagnosis
         | ownedCount == 0 =
@@ -157,40 +156,50 @@ unconfirmedMessage ownedCount missing guidance =
             T.intercalate ", " (map tick missing)
                 <> " is not defined in any cell. Define it with insert_cell or \
                    \replace_cell_source."
-        | Just g <- guidance = g
+        | Just g <- guidance = "The reason: " <> g <> "."
         | otherwise =
             "Make the deliverable's value observable (print it or bind it in \
             \a cell), so the check can reach a verdict."
     tick n = "`" <> n <> "`"
 
-doneSignal :: Text
-doneSignal =
-    "Deliverable confirmed: the covering check passes against the live \
-    \notebook. Reply with a one-line summary and stop."
+{- | The evidence an ok verdict rests on: the check that ran, and the cells
+this turn committed. The check ran against the whole live notebook, so the
+cells are named as what was written, not as what the check read.
+-}
+doneSignal :: [CellId] -> Text -> Text
+doneSignal cids check =
+    "The covering check `"
+        <> check
+        <> "` ran against the live notebook and passed."
+        <> cellPhrase cids
 
-doneSignalMsg :: Value
-doneSignalMsg = verifyChannel VerdictOk doneSignal
+cellPhrase :: [CellId] -> Text
+cellPhrase [] = ""
+cellPhrase cids =
+    " Cell(s) "
+        <> T.pack (intercalate ", " (map show cids))
+        <> " were committed this episode."
 
-noCheckSignal :: Text
-noCheckSignal =
-    "Cells ran clean and the deliverable is committed; no machine check \
-    \applies, so none was run. Reply with a one-line summary and stop."
+doneSignalMsg :: [CellId] -> Text -> Value
+doneSignalMsg cids check = verifyChannel VerdictOk (doneSignal cids check)
 
-noCheckSignalMsg :: Value
-noCheckSignalMsg = verifyChannel VerdictOk noCheckSignal
+-- | No verdict was reached, and why. Never rendered as a confirmation.
+noCheckSignal :: Maybe Text -> Text
+noCheckSignal mWhy =
+    "No covering check reached a verdict this turn, so nothing was verified"
+        <> maybe "" (" — " <>) mWhy
+        <> "."
 
-verifyMsg :: Value
-verifyMsg =
-    verifyChannel
-        VerdictDiagnostic
-        "Your cells run, but the task's deliverable does not pass its check \
-        \yet. Keep working until the requested binding or plot is correct, \
-        \then stop."
+noCheckSignalMsg :: Maybe Text -> Value
+noCheckSignalMsg mWhy = verifyChannel VerdictCouldNotRun (noCheckSignal mWhy)
 
+{- | Verdicts the harness computed itself. They are stamped with the gate that
+produced them, never with the name of a tool the model did not call.
+-}
 verifyChannel :: VerdictClass -> Text -> Value
 verifyChannel verdict body =
     object
         [ "role" .= ("tool" :: Text)
-        , "tool_name" .= ("verify" :: Text)
+        , "tool_name" .= ("health_gate" :: Text)
         , "content" .= (verdictMarker verdict <> " " <> body)
         ]

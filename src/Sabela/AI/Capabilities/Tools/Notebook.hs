@@ -5,6 +5,7 @@ module Sabela.AI.Capabilities.Tools.Notebook (notebookTools) where
 import Data.Aeson (object, (.=))
 import Data.Text (Text)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), mkTool)
+import Sabela.AI.ToolDoc (tryDescription)
 import Sabela.Anthropic.Types (ToolDef)
 
 notebookTools :: [ToolDef]
@@ -196,7 +197,7 @@ notebookTools =
         )
     , mkTool
         Try
-        "Try candidate code without touching the notebook: it sees live bindings (a cell's `df`, etc.) and may declare a candidate-only `-- cabal:` dependency to test with. Always safe to call — nothing is added, changed, or removed. Returns the value or output on success, or a diagnostic saying why it could not run."
+        tryDescription
         ( object
             [ "type" .= ("object" :: Text)
             , "properties"

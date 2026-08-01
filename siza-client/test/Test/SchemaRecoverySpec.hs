@@ -36,6 +36,8 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
                             a `shouldBe` args
                         RouteDiscover _ _ ->
                             (bad, name) `shouldBe` (bad, "discover")
+                        RouteVerify _ a ->
+                            (bad, a) `shouldBe` (bad, args)
                         RouteBadArgs hint ->
                             hint
                                 `shouldSatisfy` T.isInfixOf "could not parse tool call"

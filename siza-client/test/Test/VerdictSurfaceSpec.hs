@@ -18,7 +18,6 @@ import Siza.Agent.Messages (
     verifyFailureOf,
     verifyHeadline,
     verifyMessage',
-    verifyMsg,
     verifyMsgWith,
  )
 
@@ -41,11 +40,22 @@ verdictSurfaceSpec = describe "verify-channel verdict totality (section 5.3)" $ 
         it "only a written, defined deliverable can fail its check" $
             verifyFailureOf 2 [] `shouldBe` CheckFailed
 
+        -- Was: this also asserted the message contains "not a check failure".
+        -- That clause reads "the check has not run", which the routing
+        -- contradicts — only a check that RAN and failed reaches this channel.
+        -- The precondition-vs-logic distinction is kept; the false claim is not.
         it "the no-cell message never claims the check failed" $ do
             let msg = verifyMessage' 0 [] Nothing
             msg `shouldSatisfy` T.isInfixOf "no deliverable cell exists"
-            msg `shouldSatisfy` T.isInfixOf "not a check failure"
             msg `shouldNotSatisfy` T.isInfixOf "the deliverable's check still fails"
+
+        it "no headline on the failed-check channel denies that the check ran" $
+            [ h
+            | c <- [NoDeliverable, DeliverableUndefined ["x"], CheckFailed]
+            , let h = verifyHeadline c
+            , any (`T.isInfixOf` h) ["has not run", "not a check failure"]
+            ]
+                `shouldBe` []
 
         it "a genuine check failure still says so plainly" $
             verifyMessage' 2 [] Nothing
@@ -59,7 +69,8 @@ verdictSurfaceSpec = describe "verify-channel verdict totality (section 5.3)" $ 
             length (nub hs) `shouldBe` 3
 
     it "the done signal decodes as ok" $
-        parseVerdict (content doneSignalMsg) `shouldBe` Just VerdictOk
+        parseVerdict (content (doneSignalMsg [1] "total == 42"))
+            `shouldBe` Just VerdictOk
     it "every diagnostic re-prompt decodes as diagnostic, over the grid" $
         sequence_
             [ parseVerdict (content (verifyMsgWith owned missing ce))
@@ -76,13 +87,10 @@ verdictSurfaceSpec = describe "verify-channel verdict totality (section 5.3)" $ 
             , missing <- [[], ["evalExpr"]]
             , g <- [Nothing, Just "print the best expression"]
             ]
-    it "the generic keep-working re-prompt decodes as diagnostic" $
-        parseVerdict (content verifyMsg) `shouldBe` Just VerdictDiagnostic
     it "no verify-channel producer is undecodable (silence unrepresentable)" $
         mapM_
             (\v -> parseVerdict (content v) `shouldSatisfy` (/= Nothing))
-            [ doneSignalMsg
-            , verifyMsg
+            [ doneSignalMsg [1] "total == 42"
             , verifyMsgWith 0 [] Nothing
             , unconfirmedMsgWith 0 [] Nothing
             ]

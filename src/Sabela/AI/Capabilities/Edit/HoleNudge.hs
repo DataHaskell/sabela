@@ -17,8 +17,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.Repair.Mitigate (substituteNameInCode)
+import Sabela.AI.FitRule (holeFitsJson)
 import Sabela.AI.Health (scopeSubject)
-import Sabela.AI.HoleFits (holeFitsJson)
 import Sabela.AI.HoleRepair (holeTypeFromDiagnostic)
 import Sabela.Parse (cellNames)
 

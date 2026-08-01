@@ -118,8 +118,8 @@ displaySelect name opts val =
                 , "</select>"
                 ]
 
-display :: Behavior a -> IO a
-display b = bRender b >> bSample b
+mkWidget :: Behavior a -> IO a
+mkWidget b = bRender b >> bSample b
 
 sample :: Behavior a -> IO a
 sample = bSample

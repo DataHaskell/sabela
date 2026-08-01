@@ -15,6 +15,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.Cascade.Commit (verifyAndRevert)
 import Sabela.AI.Capabilities.Edit.CompileGate.Render (renderForDiagnostics)
+import Sabela.AI.Capabilities.Edit.GateFrontier (disposableExecution)
 import Sabela.AI.Capabilities.Edit.Repair.Mitigate (
     Discharge (..),
     MitigationRow (..),
@@ -27,13 +28,10 @@ import Sabela.AI.SelfHeal (sourceDelta)
 import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Anthropic.Types (CancelToken)
-import Sabela.Errors (parseErrors)
 import Sabela.Handlers (ReactiveNotebook)
 import Sabela.Model (Cell (..), CellError (..), CellType (..), lookupCell)
 import Sabela.Session.Materialize (
     CandidateSpec (..),
-    DisposableResult (..),
-    DisposableVerdict (..),
     runDisposableTry,
  )
 import Sabela.SessionTypes (CellLang (..))
@@ -64,12 +62,7 @@ probeResult app cid lang ty candidate
                     , candidateReplacesCellId = Just cid
                     , candidateDeliberate = True
                     }
-        pure $ case disposableVerdict result of
-            DisposableOk -> Right (ExecutionResult [] Nothing [] [])
-            _ ->
-                let errs = parseErrors (disposableStderr result)
-                    holistic = if null errs then Just (disposableStderr result) else Nothing
-                 in Right (ExecutionResult [] holistic errs [])
+        pure (disposableExecution result)
 
 foldRow ::
     App ->

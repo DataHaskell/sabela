@@ -162,6 +162,22 @@ settledWritesField store = do
           ]
         )
 
+{- | Adds a note to whatever the write came back as. Notes accumulate and
+apply to a refusal too: a disclosure the caller loses is a disclosure that
+never happened, and a rejected write is the one that most needs it.
+-}
 withNote :: Text -> ToolOutcome -> ToolOutcome
-withNote n (ToolOk (Object o)) = ToolOk (Object (KM.insert "note" (String n) o))
-withNote _ out = out
+withNote n out = case out of
+    ToolOk v -> ToolOk (annotate v)
+    ToolErr v -> ToolErr (annotate v)
+  where
+    annotate (Object o) =
+        Object (KM.insert "note" (String (joined (existing o))) o)
+    annotate v = v
+    existing o = case KM.lookup "note" o of
+        Just (String s) -> s
+        _ -> ""
+    joined earlier
+        | T.null earlier = n
+        | n `T.isInfixOf` earlier = earlier
+        | otherwise = earlier <> " " <> n

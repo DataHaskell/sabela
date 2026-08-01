@@ -7,7 +7,7 @@ import Test.Hspec
 
 import Sabela.AI.Orchestrator.Loop (downstreamDependents)
 import Sabela.Model (Cell)
-import Test.TopoSpec.Helpers (mkCell)
+import Test.CellFixture (mkCell)
 
 cells :: [Cell]
 cells =

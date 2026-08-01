@@ -10,7 +10,6 @@ import Sabela.AI.ValueEcho (
     definedListing,
     echoCharBound,
     echoListing,
-    elidedOverSize,
     elidedUnevaluated,
     holeLines,
     listingCharBudget,
@@ -40,8 +39,8 @@ spec = describe "value echo (§9.2 evidence-backed claims)" $ do
             nullaryPureType "IO ()" `shouldBe` False
             nullaryPureType "IO" `shouldBe` False
 
-    describe "echo at the bound, elide beyond it with the reason (generated)" $
-        it "echoes values ≤ the bound verbatim, elides over-bound with the size reason" $
+    describe "echo at the bound, MEASURE beyond it (generated)" $
+        it "echoes values ≤ the bound verbatim, and states the size of the rest" $
             mapM_
                 ( \(name, len) -> do
                     let listing = name <> " :: Int = _"
@@ -53,7 +52,7 @@ spec = describe "value echo (§9.2 evidence-backed claims)" $ do
                                            , name <> " :: Int = " <> valueOf len <> "\n"
                                            )
                         else do
-                            ((name, len), elidedOverSize `T.isInfixOf` out)
+                            ((name, len), sizeStated len out)
                                 `shouldBe` ((name, len), True)
                             out `shouldSatisfy` (not . T.isInfixOf (valueOf len))
                 )
@@ -122,6 +121,12 @@ listingShapes =
     , [("g", "IO ()", True), ("h", "Integer", True)]
     , []
     ]
+
+{- | An over-bound echo must report the value's real size rather than a
+fixed elision string.
+-}
+sizeStated :: Int -> Text -> Bool
+sizeStated len out = (T.pack (show len) <> " chars") `T.isInfixOf` out
 
 bindingLine :: (Text, Text, Bool) -> Text
 bindingLine (n, ty, hole) =

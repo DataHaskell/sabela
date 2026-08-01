@@ -43,6 +43,7 @@ instance FromJSON PureEvalRequest
 
 data PureEvalVerdict
     = PureEvalSucceeded
+    | PureEvalUnshowable
     | PureEvalRejected
     | PureEvalRuntimeError
     | PureEvalTimedOut

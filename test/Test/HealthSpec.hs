@@ -127,6 +127,57 @@ spec = describe "Sabela.AI.Health" $ do
                 (healthOfResult (result Nothing [nsB, latent2]))
                 `shouldBe` False
 
+    describe "a masking error hides the body, so clearing one licenses a reveal" $ do
+        let noModule = cellErr "Could not find module \8216DataFrame\8217."
+            nsQualified = cellErr "Not in scope: \8216DataFrame.readParquet\8217"
+            nsTakeRows = cellErr "Variable not in scope: takeRows"
+            hidden = cellErr "It is a member of the hidden package \8216text-2.1.2\8217."
+            typeErr =
+                cellErr
+                    "Couldn't match expected type \8216Bool\8217 with actual type \8216IO Bool\8217"
+        it "accepts declaring the dependency, though the body's errors surface" $
+            improvesHealth
+                (healthOfResult (result Nothing [noModule, nsQualified]))
+                (healthOfResult (result Nothing [nsTakeRows, typeErr]))
+                `shouldBe` True
+        it "accepts unhiding a package on the same terms" $
+            improvesHealth
+                (healthOfResult (result Nothing [hidden]))
+                (healthOfResult (result Nothing [nsTakeRows]))
+                `shouldBe` True
+        it "rejects a candidate that leaves the mask in place" $
+            improvesHealth
+                (healthOfResult (result Nothing [noModule]))
+                (healthOfResult (result Nothing [noModule, nsTakeRows]))
+                `shouldBe` False
+        it "rejects trading one missing module for another" $
+            improvesHealth
+                (healthOfResult (result Nothing [noModule]))
+                ( healthOfResult
+                    (result Nothing [cellErr "Could not find module \8216Granite\8217."])
+                )
+                `shouldBe` False
+        it "licenses nothing when no mask was cleared" $
+            improvesHealth
+                (healthOfResult (result Nothing [cellErr "Variable not in scope: a"]))
+                (healthOfResult (result Nothing [cellErr "Variable not in scope: b"]))
+                `shouldBe` False
+
+    describe "diagnostics compare by message, not by the line they landed on" $ do
+        let at l m = CellError (Just l) (Just 1) m Nothing
+            same l =
+                at
+                    l
+                    ( "<interactive>:"
+                        <> (if l == 382 then "382" else "383")
+                        <> ":23: error: [GHC-88464]\n    Variable not in scope: takeRows"
+                    )
+        it "a fix that shifts every line is not mistaken for a fix that healed" $
+            improvesHealth
+                (healthOfResult (result Nothing [same 382]))
+                (healthOfResult (result Nothing [same 383]))
+                `shouldBe` False
+
     describe "scopeSubject — every GHC not-in-scope form yields its subject" $ do
         it "extracts the plain variable form" $
             scopeSubject "Variable not in scope: frobnicate :: Int"

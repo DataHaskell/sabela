@@ -20,7 +20,6 @@ module Sabela.Session.Query (
     groupEntries,
 ) where
 
-import Control.Concurrent (withMVar)
 import Control.Exception (SomeException, finally, mask, try)
 import Data.Char (isAlphaNum, isSpace, toLower)
 import Data.IORef (readIORef, writeIORef)
@@ -29,6 +28,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Word (Word64)
 import GHC.Clock (getMonotonicTimeNSec)
+import Sabela.Errors (scrubHarnessFrames)
 import Sabela.Output (
     pureAdmittedMarker,
     pureErrorMarker,
@@ -48,6 +48,7 @@ import Sabela.Session (
     runBlockStreamingUnlockedWithTimeout,
     sendRaw,
     sessLines,
+    withQueryLocks,
  )
 import Sabela.Session.Drain (drainResultText, drainUntilMarker)
 import Sabela.Session.Proc (destroySession)
@@ -145,12 +146,31 @@ classifyTypecheckInput source
         , "-- cabal:"
         ]
     lower = T.map toLower . T.stripStart
-    isBinding line =
-        let lhs = T.takeWhile (/= '=') line
-         in "=" `T.isInfixOf` line
-                && not (T.null (T.strip lhs))
-                && T.all validLhs lhs
+    isBinding line = case definitionLhs line of
+        Just lhs -> not (T.null (T.strip lhs)) && T.all validLhs lhs
+        Nothing -> False
     validLhs c = isAlphaNum c || isSpace c || c `elem` ("_'(),[]" :: String)
+
+{- | The left-hand side up to a definition's @=@, or nothing when the line
+defines nothing. A comparison is not a definition: @print (1 == 1)@ has no
+left-hand side, and reading one there wraps an expression in @let { … }@.
+-}
+definitionLhs :: Text -> Maybe Text
+definitionLhs = go ""
+  where
+    go acc t = case T.uncons t of
+        Nothing -> Nothing
+        Just ('=', rest)
+            | continuesOperator rest || endsOperator acc ->
+                go (T.snoc acc '=') rest
+            | otherwise -> Just acc
+        Just (c, rest) -> go (T.snoc acc c) rest
+    continuesOperator rest = case T.uncons rest of
+        Just (c, _) -> c `elem` ("=><" :: String)
+        Nothing -> False
+    endsOperator acc = case T.unsnoc acc of
+        Just (_, c) -> c `elem` ("=/<>!" :: String)
+        Nothing -> False
 
 meaningfulLines :: Text -> [Text]
 meaningfulLines = filter (not . T.null) . map T.strip . T.lines
@@ -221,22 +241,21 @@ evalPureLive sess req
     | T.any (`elem` ['\n', '\r']) expr =
         pure (rejected "pure live evaluation accepts one protocol line")
     | otherwise =
-        withMVar (sessLock sess) $ \_ ->
-            withMVar (sessQueryLock sess) $ \_ ->
-                mask $ \restore -> do
-                    savedErr <- readIORef (sessErrBuf sess)
-                    attempted <-
-                        try (restore (lockedEval sess req))
-                            `finally` writeIORef (sessErrBuf sess) savedErr
-                    case attempted of
-                        Left e -> do
-                            destroySession (sessProcSess sess)
-                            pure $
-                                (baseResult PureEvalUnavailable (pureEvalExpectedGeneration req))
-                                    { pureEvalError = T.pack (show (e :: SomeException))
-                                    , pureEvalRecovery = PureEvalKernelDestroyed
-                                    }
-                        Right result -> pure result
+        withQueryLocks sess $
+            mask $ \restore -> do
+                savedErr <- readIORef (sessErrBuf sess)
+                attempted <-
+                    try (restore (lockedEval sess req))
+                        `finally` writeIORef (sessErrBuf sess) savedErr
+                case attempted of
+                    Left e -> do
+                        destroySession (sessProcSess sess)
+                        pure $
+                            (baseResult PureEvalUnavailable (pureEvalExpectedGeneration req))
+                                { pureEvalError = T.pack (show (e :: SomeException))
+                                , pureEvalRecovery = PureEvalKernelDestroyed
+                                }
+                    Right result -> pure result
   where
     expr = T.strip (pureEvalExpression req)
     rejected msg =
@@ -332,7 +351,7 @@ lockedEval sess req = do
                 | Just valueOut <- framed pureValueMarker runOut =
                     (PureEvalSucceeded, PureEvalNoRecovery, valueOut, runErr)
                 | otherwise =
-                    (PureEvalRejected, PureEvalNoRecovery, "", diagnostic runOut runErr)
+                    (PureEvalUnshowable, PureEvalNoRecovery, "", "")
         finishFingerprint
             deadline
             live
@@ -459,7 +478,9 @@ commandTimedOut :: Text -> Bool
 commandTimedOut = T.isInfixOf "Execution timed out after"
 
 diagnostic :: Text -> Text -> Text
-diagnostic out err = T.strip (T.unlines (filter (not . T.null . T.strip) [err, out]))
+diagnostic out err =
+    scrubHarnessFrames
+        (T.strip (T.unlines (filter (not . T.null . T.strip) [err, out])))
 
 admissionCommand :: Text -> Text
 admissionCommand expr =
@@ -557,7 +578,7 @@ groupEntries = map (T.intercalate "\n") . collect . T.lines
     continues x = not (T.null x) && isSpace (T.head x)
 
 runQueryCommand :: Session -> QueryCommand -> IO Text
-runQueryCommand sess cmd = withMVar (sessQueryLock sess) $ \_ -> do
+runQueryCommand sess cmd = withQueryLocks sess $ do
     resetErrorBuffer sess
     mk <- getMarker sess
     sendRaw sess $ T.unpack $ toText cmd

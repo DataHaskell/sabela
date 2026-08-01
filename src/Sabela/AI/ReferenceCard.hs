@@ -20,7 +20,7 @@ apiReferenceCard =
         , "displayImage    :: String -> String -> IO ()  -- mime, base64"
         , ""
         , "data Input a  -- an interactive control; Functor, Applicative"
-        , "display      :: Input a -> IO a  -- render the control, return its value"
+        , "mkWidget     :: Input a -> IO a  -- render the control, return its value"
         , "currentValue :: Input a -> IO a  -- read without re-rendering"
         , "constInput   :: a -> Input a     -- a fixed value, no control"
         , "slider    :: (Show a, Read a, Integral a) => String -> a -> a -> a -> Input a"

@@ -185,7 +185,7 @@ spec = do
                         withTimeout 20_000_000 $
                             runBlock
                                 sess
-                                "display (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0)]) >> return ()"
+                                "mkWidget (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0)]) >> return ()"
                     (optOut, _) <-
                         withTimeout 20_000_000 $
                             runBlock

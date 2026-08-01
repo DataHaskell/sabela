@@ -44,7 +44,6 @@ dummySession = do
     cbRef <- newIORef (\_ -> pure ())
     killLock <- newMVar ()
     uid <- newUnique
-    busy <- newIORef False
     lastIntRef <- newIORef Nothing
     gen <- newIORef 1
     let ps =
@@ -68,7 +67,6 @@ dummySession = do
             , sessCounter = ctrRef
             , sessConfig = defaultCfg
             , sessErrCallback = cbRef
-            , sessBusy = busy
             , sessNonce = 12_345
             , sessLastInterruptTime = lastIntRef
             , sessionGen = gen

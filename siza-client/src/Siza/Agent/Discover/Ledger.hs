@@ -13,11 +13,14 @@ module Siza.Agent.Discover.Ledger (
     ledgerPressure,
     ledgerProbe,
     ledgerRefute,
+    ledgerRelease,
     normaliseSource,
+    refutedBefore,
     ledgerResolve,
     ledgerSeed,
     ledgerWorldChanged,
     missClusters,
+    takeEscalation,
 ) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -29,24 +32,33 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Siza.Agent.Discover.Closure (worldNote)
+import Siza.Agent.Discover.Advice (clusterScope)
+import Siza.Agent.Discover.Closure (
+    entityOf,
+    heldHitsFor,
+    heldPayload,
+    worldNote,
+ )
 import Siza.Agent.Discover.Facts (foldFacts, installFactKey)
+import Siza.Agent.Discover.Types (StandingGoal)
 
 data SearchLedger = SearchLedger
     { slSeen :: Map Text (Int, Text)
     , slAnswers :: Map Text (Int, Text)
     , slAsserted :: Map Text (Int, Text)
     , slSeeded :: Set Text
-    , slRefuted :: Set Text
+    , slRefuted :: Map Text Text
     , slResolved :: Set Text
     , slMisses :: Map Text Int
     , slTried :: Set Text
     , slFacts :: [Text]
-    , slEvidence :: Map Text Value
+    , slEvidence :: Map Text [Value]
     , slConsulted :: Set Text
     , slWorldNote :: Maybe Text
     , slRungFloor :: Int
     , slGoalSat :: Map Text Int
+    , slGoalSpent :: Set Text
+    , slEscalate :: Maybe StandingGoal
     , slDeclaredPkgs :: Set Text
     , slClosed :: Bool
     , slCalls :: Int
@@ -58,7 +70,7 @@ emptyLedger :: SearchLedger
 emptyLedger =
     SearchLedger
         { slSeen = Map.empty
-        , slRefuted = Set.empty
+        , slRefuted = Map.empty
         , slAnswers = Map.empty
         , slAsserted = Map.empty
         , slSeeded = Set.empty
@@ -71,6 +83,8 @@ emptyLedger =
         , slWorldNote = Nothing
         , slRungFloor = 1
         , slGoalSat = Map.empty
+        , slGoalSpent = Set.empty
+        , slEscalate = Nothing
         , slDeclaredPkgs = Set.empty
         , slClosed = False
         , slCalls = 0
@@ -78,7 +92,7 @@ emptyLedger =
         , slHardClosed = False
         }
 
-heldEvidence :: SearchLedger -> Map Text Value
+heldEvidence :: SearchLedger -> Map Text [Value]
 heldEvidence = slEvidence
 
 heldFacts :: SearchLedger -> [Text]
@@ -101,9 +115,16 @@ ledgerResolve :: [Text] -> SearchLedger -> SearchLedger
 ledgerResolve ns led =
     led{slResolved = Set.union (Set.fromList (map T.toLower ns)) (slResolved led)}
 
-ledgerRefute :: Text -> SearchLedger -> SearchLedger
-ledgerRefute src led =
-    led{slRefuted = Set.insert (normaliseSource src) (slRefuted led)}
+{- | Record that this source, up to whitespace, was refused, and with which
+diagnostic: the write path reads it back so a resubmission says so.
+-}
+ledgerRefute :: Text -> Text -> SearchLedger -> SearchLedger
+ledgerRefute src diag led =
+    led{slRefuted = Map.insert (normaliseSource src) diag (slRefuted led)}
+
+-- | The diagnostic an equivalent source was refused with, if it was.
+refutedBefore :: SearchLedger -> Text -> Maybe Text
+refutedBefore led src = Map.lookup (normaliseSource src) (slRefuted led)
 
 normaliseSource :: Text -> Text
 normaliseSource = T.unwords . T.words
@@ -130,6 +151,8 @@ ledgerWorldChanged led =
         , slEvidence = Map.empty
         , slWorldNote = worldNoteWhenPriorAnswer
         , slGoalSat = Map.empty
+        , slGoalSpent = Set.empty
+        , slEscalate = Nothing
         , slRepeatRun = 0
         , slHardClosed = False
         }
@@ -145,19 +168,40 @@ ledgerDeclare pkgs led =
 discoverFresh :: SearchLedger -> SearchLedger
 discoverFresh led = led{slRepeatRun = 0}
 
+{- | Hand the pending type escalation to whoever can spend it, once. The
+ledger records the spend at the moment it is decided, so a caller that never
+runs the query cannot re-arm it by asking again.
+-}
+takeEscalation :: SearchLedger -> (SearchLedger, Maybe StandingGoal)
+takeEscalation led = (led{slEscalate = Nothing}, slEscalate led)
+
+{- | Give a goal cluster its query back. A query that never ran bought no
+answer, so holding the spend against the cluster would close it on nothing.
+-}
+ledgerRelease :: Text -> SearchLedger -> SearchLedger
+ledgerRelease key led = led{slGoalSpent = Set.delete key (slGoalSpent led)}
+
 discoverRepeat :: Text -> SearchLedger -> (SearchLedger, Maybe Value)
-discoverRepeat q led = (led', if hard then Just (actOnly q) else Nothing)
+discoverRepeat q led = (led', if hard then Just (actOnly held q n) else Nothing)
   where
     n = slRepeatRun led + 1
     hard = slHardClosed led || n >= 2
     led' = led{slRepeatRun = n, slHardClosed = hard}
+    held = heldHitsFor (slEvidence led) (entityOf q <> clusterScope q)
 
-actOnly :: Text -> Value
-actOnly q =
-    object
+{- | The repeat limit reports what it did — no backend was consulted — and
+returns the hits it is standing in for.
+-}
+actOnly :: [Value] -> Text -> Int -> Value
+actOnly held q n =
+    object $
         [ "query" .= q
         , "state" .= ("duplicate" :: Text)
         , "ref" .= ("discovery closed: repeat limit" :: Text)
         , "summary"
-            .= ("Discovery is closed: act on what is held, or state the blocker." :: Text)
+            .= ( "repeat "
+                    <> T.pack (show n)
+                    <> " of this question; no backend was consulted for this call"
+               )
         ]
+            <> heldPayload held

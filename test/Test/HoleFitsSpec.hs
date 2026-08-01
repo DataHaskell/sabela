@@ -5,7 +5,8 @@ module Test.HoleFitsSpec (spec) where
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.HoleFits (HoleFit (..), holeFitsJson, parseHoleFits)
+import Sabela.AI.FitRule (holeFitsJson)
+import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
 import Sabela.Diagnose (holeFitGoal)
 import Test.Hspec
 

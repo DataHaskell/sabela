@@ -12,11 +12,16 @@ import Test.Hspec
 
 import Siza.Agent.Discover.Advice (factsClause)
 import Siza.Agent.Discover.Request (
+    DiscoverMode (..),
+    DiscoverRequest (..),
     defaultLimit,
+    defaultRequest,
+    effectiveQuery,
     requestArgNames,
     requestKey,
     requestRequired,
  )
+import Siza.Agent.Discover.Types (Scope (..))
 import Siza.Agent.Tools (catalogueWith)
 import Test.DiscoverFixtures (
     field,
@@ -48,6 +53,7 @@ args kvs = object [(K.fromText k, v) | (k, v) <- kvs]
 
 discoverRequestSpec :: Spec
 discoverRequestSpec = describe "discover request schema (R1.7/R2.7/R2.8)" $ do
+    bareScopeSpec
     describe "one schema: offered catalogue entry == validated surface" $ do
         it "offers exactly the schema's argument names" $ do
             let names = case discoverSchema of
@@ -180,9 +186,16 @@ discoverRequestSpec = describe "discover request schema (R1.7/R2.7/R2.8)" $ do
         it "blank everything is still rejected as malformed" $ do
             v <- runCatArgs "" (args [])
             stateOf v `shouldBe` "bad_request"
-        it "blank query in SEARCH mode is still rejected, scope or not" $ do
+        -- Inverted 2026-07-30 (FR13). This asserted that naming a scope with
+        -- no query is malformed in search mode. Measured on live_bluefin: once
+        -- the model holds a module list it calls {module: X} in 13 of 15
+        -- trials, and rejecting that spends the turn the list just bought.
+        -- The two rejections either side of this are the negative controls.
+        it "blank query in SEARCH mode answers the scoped card, not bad_request" $ do
+            installNamesFile
             v <- runCatArgs "" (args [("module", String "Zephyr.Core")])
-            stateOf v `shouldBe` "bad_request"
+            stateOf v `shouldNotBe` "bad_request"
+            hitsOf v `shouldSatisfy` (not . null)
         it "inventory without a scope still requires a query" $ do
             v <- runCatArgs "" (args [("mode", String "inventory")])
             stateOf v `shouldBe` "bad_request"
@@ -228,3 +241,30 @@ discoverRequestSpec = describe "discover request schema (R1.7/R2.7/R2.8)" $ do
 textList :: Value -> [Text]
 textList (Array a) = [t | String t <- foldr (:) [] a]
 textList _ = []
+
+{- | A bare scope is a question, in every mode. The model reaches for
+@{module: X}@ once it has a module list; refusing it as malformed spends the
+turn it just earned.
+-}
+bareScopeSpec :: Spec
+bareScopeSpec = describe "a bare scope is a question (FR13)" $ do
+    let req q m p mode =
+            (defaultRequest q){drScope = Scope m p, drMode = mode}
+    it "a module scope with no query asks for that module" $
+        effectiveQuery (req "" (Just "Bluefin.State") Nothing ModeSearch)
+            `shouldBe` "Bluefin.State"
+    it "a package scope with no query asks for that package" $
+        effectiveQuery (req "" Nothing (Just "bluefin") ModeSearch)
+            `shouldBe` "bluefin"
+    it "holds in search mode, not only in inventory" $
+        forM_ [ModeSearch, ModeInventory, ModeConstruct] $ \mode ->
+            effectiveQuery (req "" (Just "Bluefin.State") Nothing mode)
+                `shouldBe` "Bluefin.State"
+    it "prefers the module when both axes are named" $
+        effectiveQuery (req "" (Just "Bluefin.State") (Just "bluefin") ModeSearch)
+            `shouldBe` "Bluefin.State"
+    it "leaves an explicit query alone" $
+        effectiveQuery (req "runState" (Just "Bluefin.State") Nothing ModeSearch)
+            `shouldBe` "runState"
+    it "stays blank with neither a query nor a scope" $
+        effectiveQuery (req "  " Nothing Nothing ModeSearch) `shouldBe` ""

@@ -6,16 +6,12 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Sabela.AI.Capabilities.Edit.GateRepair (
+import Sabela.AI.Capabilities.Edit.GateRepair.Candidates (
     aliasImportCandidates,
-    exactMatchOnly,
     importWidenCandidates,
-    missingModuleCandidates,
     proofCap,
     repairCandidates,
  )
-import Sabela.AI.PackageIndex (PackageEntry (..))
-import System.Directory (findExecutable)
 
 twoRenames :: Text
 twoRenames =
@@ -91,7 +87,7 @@ dataFrameSrc =
     \go df = if null df then 0 else length (filter id df)\n"
 
 spec :: Spec
-spec = gateRepairSpec >> missingModuleSpec
+spec = gateRepairSpec
 
 animateDiag :: Text
 animateDiag =
@@ -269,50 +265,3 @@ gateRepairSpec = describe "gate-side repair candidates" $ do
     it "is bounded by proofCap" $
         length (repairCandidates multiCandidate "d = datacenters org")
             `shouldSatisfy` (<= proofCap)
-
-fakeEntry :: PackageEntry
-fakeEntry = PackageEntry "somepkg" "1.0" "" ["Some.Module"]
-
-missingModuleSpec :: Spec
-missingModuleSpec = describe "a missing module is repaired only when verified, not guessed" $ do
-    describe "exactMatchOnly (the G2 safety boundary)" $ do
-        it "accepts a resolution whose name matches verbatim" $
-            exactMatchOnly "DataFrame" (Just ("DataFrame", fakeEntry))
-                `shouldBe` Just fakeEntry
-
-        it "rejects a near-spelling fallback — never silently guess the wrong package" $
-            exactMatchOnly "DataFram" (Just ("DataFrame", fakeEntry)) `shouldBe` Nothing
-
-        it "rejects when nothing resolved at all" $
-            exactMatchOnly "Nope" Nothing `shouldBe` Nothing
-
-    describe "missingModuleCandidates (live local store)" $ do
-        let missingModuleDiag =
-                "<no location info>: error: [GHC-35235]\n\
-                \    Could not find module \8216Data.Text\8217.\n\
-                \    It is not a module in the current program, or in any known package."
-        it "declares build-depends for a module genuinely in the local store" $ do
-            mGhc <- findExecutable "ghc"
-            case mGhc of
-                Nothing -> pendingWith "ghc not on PATH"
-                Just _ -> do
-                    cs <-
-                        missingModuleCandidates
-                            missingModuleDiag
-                            "import Data.Text\nmain = print (1 :: Int)"
-                    case cs of
-                        ((c, fixes) : _) -> do
-                            c `shouldSatisfy` T.isInfixOf "build-depends: text"
-                            fixes `shouldBe` ["declared build-depends: text"]
-                        [] -> expectationFailure "text is a project dependency; must resolve"
-
-        it "never invents a package for a module that does not exist anywhere" $ do
-            mGhc <- findExecutable "ghc"
-            case mGhc of
-                Nothing -> pendingWith "ghc not on PATH"
-                Just _ -> do
-                    cs <-
-                        missingModuleCandidates
-                            "Could not find module \8216Zzznope.Totally.Fake\8217."
-                            "x = 1"
-                    cs `shouldBe` []

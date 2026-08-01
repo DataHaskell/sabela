@@ -86,7 +86,11 @@ subcommands =
     , ("tool", toolParser, "Invoke an AI tool: siza tool <name> [json].")
     , ("check", checkParser, "Pre-flight parse + scan: siza check [-|FILE].")
     , ("annotate", annotateParser, "Infer unsigned binds: siza annotate CELL_ID.")
-    , ("retro", Retro <$> retroTargetParser, "Provenance metrics: siza retro [FILE].")
+    ,
+        ( "retro"
+        , Retro <$> retroTargetParser
+        , "Episode metrics: siza retro [FILE|--transcript FILE]."
+        )
     ,
         ( "await-idle"
         , Await <$> awaitBudgetParser

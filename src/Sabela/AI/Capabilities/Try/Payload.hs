@@ -1,169 +1,138 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Werror=incomplete-patterns #-}
 
 module Sabela.AI.Capabilities.Try.Payload (
     purePayload,
-    unrestrictedIOPayload,
+    unshowablePayload,
+    pureOutcomeText,
+    pureVerdictClass,
     disposablePayload,
+    executionPairs,
     planErrorPayload,
     invariantPayload,
     inputErrorPayload,
     skippedCellHint,
     trialPlanErrorText,
+    trialRefusalClauses,
+    refusalClauseFor,
 ) where
 
 import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
 import Data.Text (Text)
-import qualified Data.Text as T
 
-import Sabela.AI.Capabilities.TryPlan (TrialPlanError (..))
+import Sabela.AI.Capabilities.Try.Payload.Disposable (
+    disposablePayload,
+    skippedCellHint,
+ )
+import Sabela.AI.Capabilities.Try.Tier (
+    disposableEvaluated,
+    liveEvaluated,
+    tierPairs,
+ )
+import Sabela.AI.Capabilities.TryPlan (MetaQuery (..), TrialPlanError (..))
+import Sabela.AI.FitRule (holeFitsJson)
+import Sabela.AI.ToolDoc (
+    refusalEmpty,
+    refusalExpressionNotFinal,
+    refusalMetaCommand,
+    refusalMetaQuery,
+    refusalMultipleExpressions,
+    refusalUnsafeSyntax,
+ )
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Session.Materialize (
+    CandidateSpec (..),
     DisposableResult (..),
-    DisposableVerdict (..),
-    MaterializeFailure (..),
-    MaterializeStage (..),
-    SkippedCell (..),
-    materializeStageText,
+    unrestrictedIOError,
  )
 import qualified Sabela.SessionTypes as ST
 
+{- | Whether the trial evaluated anything, and the tier that fact settles. Only
+a run whose record answers the question reports it, so nothing here is stated
+about a run that never reached the candidate.
+-}
+executionPairs :: CandidateSpec -> DisposableResult -> [Pair]
+executionPairs spec result = case disposableEvaluated spec result of
+    Nothing -> []
+    evaluated -> tierPairs evaluated <> note
+  where
+    note
+        | Nothing <- candidateExpression spec = ["executionNote" .= compiledOnlyNote]
+        | unrestrictedIOError (disposableStderr result) =
+            ["executionNote" .= ioNotRunNote]
+        | otherwise = []
+
+compiledOnlyNote :: Text
+compiledOnlyNote =
+    "No expression was submitted for evaluation, and any statement in the \
+    \candidate was compiled as a binding rather than performed, so none of the \
+    \candidate ran. insert_cell and execute_cell are the tools that run code."
+
+ioNotRunNote :: Text
+ioNotRunNote =
+    "The session inferred an IO type for the candidate expression and did not \
+    \evaluate it; the type is what this trial establishes. insert_cell and \
+    \execute_cell are the tools that run code."
+
+{- | A bare @_@ is not a typed hole to the router, so its candidate runs on the
+live session and GHC's fits arrive inside stderr. Surfacing them costs nothing:
+the diagnostic already carries them.
+-}
+pureHoleFitPairs :: ST.PureEvalResult -> [Pair]
+pureHoleFitPairs result = case holeFitsJson pureFitCap (ST.pureEvalError result) of
+    [] -> []
+    fits -> ["holeFits" .= fits]
+
+pureFitCap :: Int
+pureFitCap = 8
+
 purePayload :: ST.PureEvalResult -> Value
 purePayload result =
-    object
-        [ "route" .= ("pure_live" :: Text)
-        , "verdict" .= verdictTag (pureVerdictClass (ST.pureEvalVerdict result))
-        , "outcome" .= pureOutcomeText (ST.pureEvalVerdict result)
-        , "type" .= ST.pureEvalInferredType result
-        , "stdout" .= ST.pureEvalOutput result
-        , "stderr" .= ST.pureEvalError result
-        , "purityAssurance" .= ("type_only" :: Text)
-        , "pollutionContract" .= ("semantic_read_only" :: Text)
-        , "generation" .= ST.pureEvalGeneration result
-        , "bindingsUnchanged" .= ST.pureEvalBindingsUnchanged result
-        , "itUnchanged" .= ST.pureEvalItUnchanged result
-        , "recovery" .= pureRecoveryText (ST.pureEvalRecovery result)
-        ]
+    object $
+        pureHoleFitPairs result
+            <> tierPairs (liveEvaluated result)
+            <> [ "route" .= ("pure_live" :: Text)
+               , "verdict" .= verdictTag (pureVerdictClass (ST.pureEvalVerdict result))
+               , "outcome" .= pureOutcomeText (ST.pureEvalVerdict result)
+               , "type" .= ST.pureEvalInferredType result
+               , "stdout" .= ST.pureEvalOutput result
+               , "stderr" .= ST.pureEvalError result
+               , "purityAssurance" .= ("type_only" :: Text)
+               , "pollutionContract" .= ("semantic_read_only" :: Text)
+               , "generation" .= ST.pureEvalGeneration result
+               , "bindingsUnchanged" .= ST.pureEvalBindingsUnchanged result
+               , "itUnchanged" .= ST.pureEvalItUnchanged result
+               , "recovery" .= pureRecoveryText (ST.pureEvalRecovery result)
+               ]
 
-unrestrictedIOPayload :: ST.PureEvalResult -> Value
-unrestrictedIOPayload result =
-    object
-        [ "route" .= ("unavailable" :: Text)
-        , "verdict" .= verdictTag VerdictCouldNotRun
-        , "outcome" .= ("unavailable" :: Text)
-        , "reason"
-            .= ( "The candidate has an unrestricted IO type and no qualified containment backend is available; no candidate code ran." ::
-                    Text
-               )
-        , "type" .= ST.pureEvalInferredType result
-        , "purityAssurance" .= ("type_only" :: Text)
-        , "generation" .= ST.pureEvalGeneration result
-        , "bindingsUnchanged" .= ST.pureEvalBindingsUnchanged result
-        , "itUnchanged" .= ST.pureEvalItUnchanged result
-        ]
-
-disposablePayload :: DisposableResult -> Value
-disposablePayload result =
-    case disposableFailure result >>= attributableCell of
-        Just cid -> replayBlockedPayload result cid
-        Nothing ->
-            object
-                ( [ "route" .= disposableRoute result
-                  , "verdict" .= verdictTag (disposableVerdictClass (disposableVerdict result))
-                  , "outcome" .= disposableOutcomeText (disposableVerdict result)
-                  , "type" .= disposableType result
-                  , "stdout" .= disposableStdout result
-                  , "stderr" .= disposableStderr result
-                  , "purityAssurance" .= ("type_only" :: Text)
-                  , "pollutionContract" .= ("disposable_session" :: Text)
-                  , "replayedCells" .= disposableReplayedCells result
-                  , "skippedCells" .= map skippedCellValue (disposableSkippedCells result)
-                  , "dependencies" .= disposableDependencies result
-                  ]
-                    <> failurePairs (disposableFailure result)
-                    <> silentSuccessPairs result
-                )
-
-skippedCellValue :: SkippedCell -> Value
-skippedCellValue skip =
-    object
-        [ "cellId" .= skippedCellId skip
-        , "reason" .= skippedReason skip
-        , "hint" .= skippedCellHint (skippedCellId skip)
-        ]
-
-skippedCellHint :: Int -> Text
-skippedCellHint cid =
-    "cell "
-        <> tShow cid
-        <> " was not replayed because of its own unresolved error (the reason \
-           \field), so nothing it imports or defines is in scope for your \
-           \candidate. Declare what you need in the candidate itself, or fix \
-           \that cell first. Its names being not in scope here is not a \
-           \verdict on your code."
-
-attributableCell :: MaterializeFailure -> Maybe Int
-attributableCell failure = case (failureStage failure, failureCellId failure) of
-    (StageCellReplay, Just cid) -> Just cid
-    (StagePrelude, Just cid) -> Just cid
-    _ -> Nothing
-
-replayBlockedPayload :: DisposableResult -> Int -> Value
-replayBlockedPayload result cid =
-    object
-        ( [ "route" .= disposableRoute result
-          , "verdict" .= verdictTag VerdictCouldNotRun
-          , "outcome" .= ("replay_blocked" :: Text)
-          , "attribution" .= attributionText cid
-          , "reason" .= attributionText cid
-          , "type" .= (Nothing :: Maybe Text)
-          , "stdout" .= ("" :: Text)
-          , "stderr" .= ("" :: Text)
-          , "purityAssurance" .= ("type_only" :: Text)
-          , "pollutionContract" .= ("disposable_session" :: Text)
-          , "candidateReached" .= False
-          , "replayedCells" .= disposableReplayedCells result
-          , "skippedCells" .= map skippedCellValue (disposableSkippedCells result)
-          , "dependencies" .= disposableDependencies result
-          ]
-            <> failurePairs (disposableFailure result)
-        )
-
-attributionText :: Int -> Text
-attributionText cid =
-    "Notebook cell "
-        <> tShow cid
-        <> " failed while rebuilding the trial context, so your candidate was \
-           \never reached. This is that cell's own error, not a verdict on your \
-           \code — see the failure field for its diagnostic. Fix or remove cell "
-        <> tShow cid
-        <> " (or skip it by making it compile), then retry."
-
-tShow :: Int -> Text
-tShow = T.pack . show
-
-silentSuccessPairs :: DisposableResult -> [Pair]
-silentSuccessPairs result
-    | disposableVerdict result == DisposableOk
-        && T.null (T.strip (disposableStdout result))
-        && T.null (T.strip (disposableStderr result)) =
-        [ "diagnostic"
-            .= ( "Candidate declarations compiled successfully; no expression was executed." ::
-                    Text
-               )
-        ]
-    | otherwise = []
-
-failurePairs :: Maybe MaterializeFailure -> [Pair]
-failurePairs Nothing = []
-failurePairs (Just failure) =
-    [ "failure"
-        .= object
-            [ "stage" .= materializeStageText (failureStage failure)
-            , "cellId" .= failureCellId failure
-            , "message" .= failureMessage failure
-            ]
-    ]
+{- | The candidate typechecked and the harness could not echo its value. That is
+the harness's limit, so it reports what it learned rather than a diagnostic.
+-}
+unshowablePayload :: ST.PureEvalResult -> Value
+unshowablePayload result =
+    object $
+        tierPairs (liveEvaluated result)
+            <> [ "route" .= ("pure_live" :: Text)
+               , "verdict" .= verdictTag VerdictOk
+               , "outcome" .= ("ok" :: Text)
+               , "type" .= inferred
+               , "valueShown" .= False
+               , "reason"
+                    .= ( "The candidate typechecks as "
+                            <> inferred
+                            <> "; its value is not shown because "
+                            <> inferred
+                            <> " has no Show instance. Nothing ran."
+                       )
+               , "purityAssurance" .= ("type_only" :: Text)
+               , "pollutionContract" .= ("semantic_read_only" :: Text)
+               , "generation" .= ST.pureEvalGeneration result
+               , "bindingsUnchanged" .= ST.pureEvalBindingsUnchanged result
+               , "itUnchanged" .= ST.pureEvalItUnchanged result
+               ]
+  where
+    inferred = ST.pureEvalInferredType result
 
 planErrorPayload :: TrialPlanError -> Value
 planErrorPayload planErr =
@@ -192,37 +161,99 @@ inputErrorPayload reason =
         , "reason" .= reason
         ]
 
+{- | The refusal the caller reads, stated in the published grammar's own words
+so a clause the surface advertises is the clause the tool returns.
+-}
 trialPlanErrorText :: TrialPlanError -> Text
 trialPlanErrorText planErr = case planErr of
-    TrialEmpty -> "code required"
+    TrialEmpty -> refusalEmpty
     TrialMultipleExpressions ->
         cellsAcceptTryDoesNot
-            "a trial previews exactly one result and cannot follow more than \
-            \one final expression; a committed cell may run as many statements \
-            \as it likes"
+            ( "a trial previews exactly one result and "
+                <> refusalMultipleExpressions
+                <> "; a committed cell may run as many statements as it likes"
+            )
     TrialExpressionNotFinal ->
         cellsAcceptTryDoesNot
-            "a trial's expression must come last so its value is unambiguous; \
-            \a committed cell has no such ordering restriction"
-    TrialEffectfulStatement stmt ->
-        cellsAcceptTryDoesNot
-            ("a trial cannot bind an effect it cannot safely undo: " <> stmt)
-    TrialMetaCommand cmd ->
-        "GHCi meta-commands are not admitted by try; no command ran: " <> cmd
+            ( refusalExpressionNotFinal
+                <> " so its value is unambiguous; a committed cell has no such \
+                   \ordering restriction"
+            )
+    TrialMetaCommand cmd -> metaCommandRefusal <> "; no command ran: " <> cmd
+    TrialMetaQuery q ->
+        mqCommand q <> " " <> refusalMetaQuery <> "; no command ran"
     TrialUnsafeSyntax reason ->
         cellsAcceptTryDoesNot
-            ( "a trial must stay safely discardable and cannot own a \
-              \compile-time or purity escape: "
+            ( "a trial must stay safely discardable and "
+                <> refusalUnsafeSyntax
+                <> ": "
                 <> reason
             )
 
+metaCommandRefusal :: Text
+metaCommandRefusal =
+    "GHCi "
+        <> refusalMetaCommand
+        <> " by try; check_type answers type and info questions and discover \
+           \answers module and search questions"
+
+{- | The classes of source try refuses. 'refusalClassOf' is a total case over
+'TrialPlanError' and this module builds incomplete patterns as errors, so a new
+constructor without a class here does not compile.
+-}
+data RefusalClass
+    = RCEmpty
+    | RCMultipleExpressions
+    | RCExpressionNotFinal
+    | RCMetaCommand
+    | RCMetaQuery
+    | RCUnsafeSyntax
+    deriving (Bounded, Enum, Eq, Show)
+
+refusalClassOf :: TrialPlanError -> RefusalClass
+refusalClassOf planErr = case planErr of
+    TrialEmpty -> RCEmpty
+    TrialMultipleExpressions -> RCMultipleExpressions
+    TrialExpressionNotFinal -> RCExpressionNotFinal
+    TrialMetaCommand _ -> RCMetaCommand
+    TrialMetaQuery _ -> RCMetaQuery
+    TrialUnsafeSyntax _ -> RCUnsafeSyntax
+
+{- | What try will not accept, as the surface that recommends it must state it.
+One clause per refusal class, so a class the surface does not mention cannot be
+added without this list changing.
+-}
+trialRefusalClauses :: [Text]
+trialRefusalClauses = map refusalClause [minBound .. maxBound]
+
+-- | The clause the published grammar carries for a refusal the planner returned.
+refusalClauseFor :: TrialPlanError -> Text
+refusalClauseFor = refusalClause . refusalClassOf
+
+-- | Each class under the clause the published grammar states for it.
+refusalClause :: RefusalClass -> Text
+refusalClause rc = case rc of
+    RCEmpty -> refusalEmpty
+    RCMultipleExpressions -> refusalMultipleExpressions
+    RCExpressionNotFinal -> refusalExpressionNotFinal
+    RCMetaCommand -> refusalMetaCommand
+    RCMetaQuery -> refusalMetaQuery
+    RCUnsafeSyntax -> refusalUnsafeSyntax
+
+{- | The parity clause every policy-only refusal carries. It names the tool this
+source is addressed to and says nothing about the verdict that tool will reach,
+which try did not run and cannot know.
+-}
 cellsAcceptTryDoesNot :: Text -> Text
 cellsAcceptTryDoesNot reason =
-    "cells accept this; try does not, because " <> reason <> "; no code ran"
+    "cells accept this; try does not, because "
+        <> reason
+        <> "; no code ran. insert_cell is the tool this source goes to."
 
 pureOutcomeText :: ST.PureEvalVerdict -> Text
 pureOutcomeText verdict = case verdict of
     ST.PureEvalSucceeded -> "ok"
+    ST.PureEvalUnshowable -> "ok"
     ST.PureEvalRejected -> "compile_error"
     ST.PureEvalRuntimeError -> "runtime_error"
     ST.PureEvalTimedOut -> "timed_out"
@@ -239,25 +270,10 @@ pureRecoveryText recovery = case recovery of
 pureVerdictClass :: ST.PureEvalVerdict -> VerdictClass
 pureVerdictClass verdict = case verdict of
     ST.PureEvalSucceeded -> VerdictOk
+    ST.PureEvalUnshowable -> VerdictOk
     ST.PureEvalRejected -> VerdictDiagnostic
     ST.PureEvalRuntimeError -> VerdictDiagnostic
     ST.PureEvalTimedOut -> VerdictDiagnostic
     ST.PureEvalStale -> VerdictCouldNotRun
     ST.PureEvalInvariantFailed -> VerdictCouldNotRun
     ST.PureEvalUnavailable -> VerdictCouldNotRun
-
-disposableOutcomeText :: DisposableVerdict -> Text
-disposableOutcomeText verdict = case verdict of
-    DisposableOk -> "ok"
-    DisposableCompileError -> "compile_error"
-    DisposableRuntimeError -> "runtime_error"
-    DisposableTimedOut -> "timed_out"
-    DisposableUnavailable -> "unavailable"
-
-disposableVerdictClass :: DisposableVerdict -> VerdictClass
-disposableVerdictClass verdict = case verdict of
-    DisposableOk -> VerdictOk
-    DisposableCompileError -> VerdictDiagnostic
-    DisposableRuntimeError -> VerdictDiagnostic
-    DisposableTimedOut -> VerdictDiagnostic
-    DisposableUnavailable -> VerdictCouldNotRun

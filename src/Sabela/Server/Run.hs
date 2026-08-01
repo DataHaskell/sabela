@@ -5,7 +5,9 @@ module Sabela.Server.Run (
     runAllH,
     resetH,
     restartKernelH,
+    restartRunAllH,
     interruptKernelH,
+    kernelStatusH,
     clearCellH,
     completeH,
     infoH,
@@ -20,7 +22,7 @@ import Control.Concurrent.STM (TChan, atomically, readTChan)
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (encode)
+import Data.Aeson (Value, encode)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as LBS
@@ -30,10 +32,12 @@ import Network.HTTP.Types (HeaderName, hContentType, status200)
 import Network.Wai (Application, responseStream)
 import Servant (Handler, NoContent (..))
 
+import Sabela.AI.Capabilities.Kernel (kernelStatusValue)
 import Sabela.Api
 import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output.Examples (builtinExamples)
+import Sabela.Reactivity (RestartMode (..), clearCellResult)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.EventBus (subscribeBroadcast)
@@ -67,19 +71,37 @@ sendEvent chan write flush = do
     write (Builder.byteString $ "data: " <> json <> "\n\n")
     flush
 
+{- | An explicit press of Run is an instruction, not a suggestion, so it forces.
+Staleness gating belongs to the reactive path ('rnCellEdit', 'rnRunAll'), which
+is what must stay idempotent; skipping here just makes the button do nothing.
+-}
 runCellH :: ReactiveNotebook -> Int -> Handler RunResult
 runCellH rn cid = liftIO $ do
-    rnRunCell rn cid
+    rnRunCellForced rn cid
     pure (RunResult cid [] Nothing [])
 
 runAllH :: ReactiveNotebook -> Handler RunAllResult
 runAllH rn = liftIO $ rnRunAll rn >> pure (RunAllResult [])
 
 resetH :: ReactiveNotebook -> App -> Handler Notebook
-resetH rn app = liftIO $ rnReset rn >> readNotebook (appNotebook app)
+resetH rn app =
+    liftIO $ rnRestart rn RestartClear >> readNotebook (appNotebook app)
 
+{- | Respawn and run nothing. The previous behaviour re-ran the whole notebook,
+so restarting because a cell hung immediately re-ran the hanging cell.
+-}
 restartKernelH :: ReactiveNotebook -> Handler NoContent
-restartKernelH rn = liftIO $ rnRestartKernel rn >> pure NoContent
+restartKernelH rn = liftIO $ rnRestart rn RestartOnly >> pure NoContent
+
+restartRunAllH :: ReactiveNotebook -> Handler NoContent
+restartRunAllH rn = liftIO $ rnRestart rn RestartRunAll >> pure NoContent
+
+{- | Level-triggered resync. @EventSource@ reconnects silently after a sleep, so
+a client needs one place to ask what is true now rather than reconstructing it
+from events it may have missed.
+-}
+kernelStatusH :: App -> Handler Value
+kernelStatusH = liftIO . kernelStatusValue
 
 interruptKernelH :: App -> Handler NoContent
 interruptKernelH app = liftIO $ do
@@ -97,11 +119,7 @@ clearCellH app cid = liftIO $ do
     pure NoContent
   where
     clr c
-        | cellId c == cid =
-            c
-                { cellOutputs = []
-                , cellError = Nothing
-                }
+        | cellId c == cid = clearCellResult c
         | otherwise = c
 
 completeH :: App -> CompleteRequest -> Handler CompleteResult
@@ -150,7 +168,7 @@ setCellLangH app cid lang = liftIO $ do
         Nothing -> pure (Cell cid CodeCell lang "" [] Nothing True)
   where
     upd c
-        | cellId c == cid = c{cellLang = lang, cellOutputs = [], cellError = Nothing}
+        | cellId c == cid = (clearCellResult c){cellLang = lang}
         | otherwise = c
 
 setWidgetH :: App -> ReactiveNotebook -> WidgetUpdate -> Handler NoContent

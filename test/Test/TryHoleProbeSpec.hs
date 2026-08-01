@@ -16,6 +16,8 @@ import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 
+import Test.Live (requireLiveFor)
+
 import Sabela.AI.Capabilities (executeTool)
 import qualified Sabela.AI.Store as AIStore
 import Sabela.AI.Types (toolOutcomeValue)
@@ -27,17 +29,8 @@ import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.State (App (..), forceResetAllSessions, readNotebook)
 import Sabela.State.EventBus (EventBus (..))
 
-requireLiveIntegration :: IO ()
-requireLiveIntegration = do
-    cabal <- findExecutable "cabal"
-    case cabal of
-        Nothing -> pendingWith "cabal not found on PATH; skipping try hole-probe integration"
-        Just _ -> pure ()
-    supportPresent <-
-        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if supportPresent
-        then pure ()
-        else pendingWith "sabela-notebook support source not on disk; skipping"
+requireLiveIntegration :: Expectation
+requireLiveIntegration = requireLiveFor "try hole-probe integration"
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o

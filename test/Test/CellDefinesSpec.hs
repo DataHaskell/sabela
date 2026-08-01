@@ -14,16 +14,17 @@ import Sabela.AI.Capabilities.Notebook (
  )
 import Sabela.Model (Cell (..), CellType (..))
 import Sabela.SessionTypes (CellLang (..))
+import qualified Test.CellFixture as F
 import Test.Hspec
 
 codeCell :: Text -> Cell
-codeCell src = Cell 1 CodeCell Haskell src [] Nothing False
+codeCell = F.mkCell 1
 
 proseCell :: Text -> Cell
-proseCell src = Cell 1 ProseCell Haskell src [] Nothing False
+proseCell = F.proseCell 1
 
 pyCell :: Text -> Cell
-pyCell src = Cell 1 CodeCell Python src [] Nothing False
+pyCell = F.pyCell 1
 
 spec :: Spec
 spec = describe "Sabela.AI.Capabilities.Notebook.cellDefines" $ do

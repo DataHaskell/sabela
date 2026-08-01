@@ -14,8 +14,8 @@ import Sabela.Reactivity (
     computeExecutionPlan,
     computeFullExecutionPlan,
  )
+import Test.CellFixture (mkCell)
 import Test.Hspec
-import Test.TopoSpec.Helpers (mkCell)
 
 nb :: [Cell] -> Notebook
 nb cells = Notebook{nbTitle = "test", nbCells = cells}

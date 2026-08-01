@@ -56,6 +56,10 @@ run181440CheckType =
     "D.sum :: (D.Columnable a, Num a) => D.Expr a -> D.DataFrame -> a\n\n"
         <> snd (head blobGrid)
 
+-- | Every token reported is text the harness actually observed.
+observedIn :: Text -> Text -> Bool
+observedIn blob out = all (`T.isInfixOf` blob) (T.words out)
+
 writableBindingLine :: Text -> Bool
 writableBindingLine l =
     let (name, rest) = T.breakOn " :: " l
@@ -98,12 +102,20 @@ verifierSurfaceSpec = describe "verifier surfaces are envelope citizens (R7-T3)"
                 (label, stringViols (String out)) `shouldBe` (label, [])
                 (label, answerVerdict out `elem` verdictVocabulary)
                     `shouldBe` (label, True)
-        it "a class with no writable content is ONE diagnostic line" $
+        -- Was: ONE "error:" line for every non-dump blob, which pinned the
+        -- C1-12a defect: "package-hash-atom" hides a type name behind its
+        -- leak, and deleting the line reported nothing where it saw something.
+        it "a class with no writable content is ONE line, leak-free, never invented" $
             forM_ [b | b@(l, _) <- blobGrid, l /= "raw-info-dump"] $
                 \(label, blob) -> do
                     let out = distillTypeAnswer blob
                     (label, T.count "\n" out) `shouldBe` (label, 0)
-                    (label, "error:" `T.isPrefixOf` out) `shouldBe` (label, True)
+                    (label, "dtfrm-cr" `T.isInfixOf` out) `shouldBe` (label, False)
+                    (label, "error:" `T.isPrefixOf` out || observedIn blob out)
+                        `shouldBe` (label, True)
+        it "a leaky atom is scrubbed to the name it hid, not deleted (C1-12a)" $
+            forM_ [b | (l, b) <- blobGrid, l == "package-hash-atom"] $ \blob ->
+                distillTypeAnswer blob `shouldBe` "DataFrame"
         it "a GHC JSON diagnostic keeps its message as the one line" $ do
             let out = distillTypeAnswer (snd (head blobGrid))
             out `shouldSatisfy` T.isInfixOf "Not in scope"

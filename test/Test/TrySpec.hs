@@ -21,6 +21,7 @@ import System.Timeout (timeout)
 import Test.Hspec
 
 import Sabela.AI.Capabilities.Try (execTry)
+import Sabela.AI.ToolDoc (tierEvaluatePure, tierTypecheckOnly)
 import Sabela.AI.Types (toolOutcomeIsError, toolOutcomeValue)
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
 import Sabela.Server (newApp)
@@ -130,10 +131,12 @@ spec = describe "unified try operation" $ do
                         textField "route" v `shouldBe` Just "disposable_scratch"
                         textField "outcome" v `shouldBe` Just "ok"
                         textField "stdout" v `shouldBe` Just "110"
+                        field "executed" v `shouldBe` Just (Bool True)
+                        textField "tier" v `shouldBe` Just tierEvaluatePure
                         intArrayField "replayedCells" v `shouldBe` [1]
                         skippedCellIds v `shouldBe` [4]
 
-    it "runs an IO candidate on the disposable route instead of refusing it" $ do
+    it "answers an IO candidate with its type instead of performing it" $ do
         cabal <- findExecutable "cabal"
         case cabal of
             Nothing -> pendingWith "cabal not found on PATH"
@@ -152,8 +155,11 @@ spec = describe "unified try operation" $ do
                     toolOutcomeIsError outcome `shouldBe` False
                     textField "route" v `shouldBe` Just "disposable_scratch"
                     textField "outcome" v `shouldBe` Just "ok"
+                    textField "type" v `shouldSatisfy` maybe False (T.isInfixOf "IO")
+                    field "executed" v `shouldBe` Just (Bool False)
+                    textField "tier" v `shouldBe` Just tierTypecheckOnly
                     textField "stdout" v
-                        `shouldSatisfy` maybe False (T.isInfixOf "sabela-io-ran")
+                        `shouldSatisfy` maybe True (not . T.isInfixOf "sabela-io-ran")
                     readNotebook (appNotebook app) `shouldReturn` before
 
     it "reports a display builtin as a runnable trial, not an unavailable one" $ do
@@ -214,8 +220,9 @@ spec = describe "unified try operation" $ do
                     textField "normalized" v
                         `shouldSatisfy` maybe False (T.isInfixOf "main")
                     textField "outcome" v `shouldBe` Just "ok"
-                    textField "stdout" v
-                        `shouldSatisfy` maybe False (T.isInfixOf "from-main")
+                    textField "type" v `shouldSatisfy` maybe False (T.isInfixOf "IO")
+                    field "executed" v `shouldBe` Just (Bool False)
+                    textField "tier" v `shouldBe` Just tierTypecheckOnly
 
 sineHiddenText :: Text
 sineHiddenText =

@@ -76,8 +76,8 @@ spec = describe "Sabela.AI.Unshowable — unshowable-at-print diagnostic class" 
         it "names displayPicture for Picture" $
             renderActionFor "Picture"
                 `shouldBe` Just ("displayPicture", Just "Sabela.Notebook")
-        it "names display for a widget Input" $
-            renderActionFor "Input" `shouldBe` Just ("display", Nothing)
+        it "names mkWidget for a widget Input" $
+            renderActionFor "Input" `shouldBe` Just ("mkWidget", Nothing)
         it "knows nothing about arbitrary types" $
             renderActionFor "Wind" `shouldBe` Nothing
 

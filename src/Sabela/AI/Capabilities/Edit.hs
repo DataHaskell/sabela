@@ -2,6 +2,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Sabela.AI.Capabilities.Edit (
+    InsertRoute (..),
+    insertRoute,
+    InsertAttempt (..),
+    nextInsertAttempt,
+    insertRetryFuel,
+    discloseSupersede,
     execReplaceCellSource,
     execProposeEdit,
     execInsertCell,
@@ -14,7 +20,7 @@ module Sabela.AI.Capabilities.Edit (
     executeCell,
 ) where
 
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -35,11 +41,18 @@ import Sabela.AI.Capabilities.Edit.Propose (
 import Sabela.AI.Capabilities.Edit.Replace (
     applyReplaceCellSource,
     execReplaceCellSource,
+    execSupersedeCell,
  )
 import Sabela.AI.Capabilities.Edit.Run (
     autoExecuteAfterMutation,
     execExecuteCell,
     executeCell,
+ )
+import Sabela.AI.Capabilities.Edit.Submission (
+    Submission,
+    compiledText,
+    insertSubmission,
+    submissionNotes,
  )
 import Sabela.AI.Capabilities.Edit.ValueGate (prewriteValueVeto)
 import Sabela.AI.Capabilities.Util (
@@ -48,7 +61,6 @@ import Sabela.AI.Capabilities.Util (
     parseCellLang,
     parseCellType,
  )
-import Sabela.AI.NormalizeGate (gatedNormalizeInsert)
 import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken)
@@ -63,6 +75,31 @@ import Sabela.Model
 import Sabela.Parse (validateCellShape)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
+
+{- | Where an insert goes, given the notebook's pending error and the source
+being written. Every route that can commit must pass a compile gate first.
+-}
+data InsertRoute
+    = RouteGateThenAppend
+    | RouteSupersede Int
+    | RouteRefuse Int
+    deriving (Eq, Show)
+
+insertRoute :: Maybe (Int, Text) -> Text -> InsertRoute
+insertRoute Nothing _ = RouteGateThenAppend
+insertRoute (Just (cid, redSrc)) src
+    | supersedesRedCell src redSrc = RouteSupersede cid
+    | otherwise = RouteRefuse cid
+
+{- | Says an append became an overwrite of @cid@, on whatever the replace came
+back as: a reroute the caller cannot see is a reroute it will repeat.
+-}
+discloseSupersede :: Int -> ToolOutcome -> ToolOutcome
+discloseSupersede cid = withNote (supersedeNote cid)
+
+-- | Every note the harness owes the caller, oldest first.
+withNotes :: [Text] -> ToolOutcome -> ToolOutcome
+withNotes ns out = foldl' (flip withNote) out ns
 
 execInsertCell ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Value -> IO ToolOutcome
@@ -88,7 +125,8 @@ execInsertCell app store rn cancelTok input = do
                     )
                 )
         (Just rawTp, Just rawLg) -> do
-            let (cellTp, src', notes) = gatedNormalizeInsert rawTp src
+            let (cellTp, sub) = insertSubmission rawTp src
+                src' = compiledText sub
                 lang = if cellTp /= rawTp then Haskell else rawLg
             mVeto <- prewriteValueVeto app lang cellTp src'
             case (mVeto, validateCellShape cellTp src') of
@@ -100,24 +138,67 @@ execInsertCell app store rn cancelTok input = do
                 _ -> do
                     nid <- freshCellId (appNotebook app)
                     let cell = Cell nid cellTp lang src' [] Nothing True
-                    peek <- readNotebook (appNotebook app)
-                    case pendingError peek of
-                        Just _ ->
-                            commitInsert app store rn cancelTok input cell src' notes
-                        Nothing -> do
-                            gate <- gatedCandidate app Nothing lang cellTp src'
-                            case gate of
-                                Left rejection -> pure (errOutcome rejection)
-                                Right (src'', repairNotes) ->
-                                    commitInsert
-                                        app
-                                        store
-                                        rn
-                                        cancelTok
-                                        input
-                                        cell{cellSource = src''}
-                                        src''
-                                        (notes <> repairNotes)
+                    routeInsert app store rn cancelTok input cell sub insertRetryFuel
+
+{- | Sends the write down the one route its notebook state allows. A red
+notebook never reaches the plain append, so no branch can land a cell that
+the compile gate has not proven.
+-}
+routeInsert ::
+    App ->
+    AIStore ->
+    ReactiveNotebook ->
+    CancelToken ->
+    Value ->
+    Cell ->
+    Submission ->
+    Int ->
+    IO ToolOutcome
+routeInsert app store rn cancelTok input cell sub fuel = do
+    peek <- readNotebook (appNotebook app)
+    let redWithSource = do
+            (cid, _) <- pendingError peek
+            c <- lookupCell cid peek
+            pure (cid, cellSource c)
+        src' = compiledText sub
+        notes = submissionNotes sub
+    case insertRoute redWithSource src' of
+        RouteSupersede cid -> supersede app store rn cancelTok cid sub
+        RouteRefuse cid ->
+            pure
+                ( errOutcome
+                    ( maybe
+                        (violationJson (VPendingError cid ""))
+                        (pendingErrorFor cid . cellSource)
+                        (lookupCell cid peek)
+                    )
+                )
+        RouteGateThenAppend -> do
+            gate <- gatedCandidate app Nothing (cellLang cell) (cellType cell) sub
+            case gate of
+                Left rejection -> pure (withNotes notes (errOutcome rejection))
+                Right (src'', repairNotes) ->
+                    commitInsert
+                        app
+                        store
+                        rn
+                        cancelTok
+                        input
+                        cell{cellSource = src''}
+                        sub
+                        repairNotes
+                        fuel
+
+supersede ::
+    App ->
+    AIStore ->
+    ReactiveNotebook ->
+    CancelToken ->
+    Int ->
+    Submission ->
+    IO ToolOutcome
+supersede app store rn cancelTok cid sub =
+    discloseSupersede cid <$> execSupersedeCell app store rn cancelTok cid sub
 
 commitInsert ::
     App ->
@@ -126,45 +207,26 @@ commitInsert ::
     CancelToken ->
     Value ->
     Cell ->
-    Text ->
+    Submission ->
     [Text] ->
+    Int ->
     IO ToolOutcome
-commitInsert app store rn cancelTok input cell src' notes = do
+commitInsert app store rn cancelTok input cell sub repairNotes fuel = do
     res <- atomicEditNotebook (appNotebook app) $ \nb ->
         case checkedAppend cell nb of
             Left v -> (nb, Left v)
             Right nb' -> (nb', Right ())
     case res of
-        Left (VPendingError cid msg) -> do
-            mRed <- lookupCell cid <$> readNotebook (appNotebook app)
-            case mRed of
-                Just red
-                    | supersedesRedCell src' (cellSource red) -> do
-                        out <-
-                            execReplaceCellSource
-                                app
-                                store
-                                rn
-                                cancelTok
-                                ( object
-                                    [ "cell_id" .= cid
-                                    , "new_source" .= src'
-                                    ]
-                                )
-                        pure (withNote (supersedeNote cid) out)
-                Just red ->
-                    pure
-                        (errOutcome (pendingErrorFor cid (cellSource red)))
-                Nothing ->
-                    pure
-                        (errOutcome (violationJson (VPendingError cid msg)))
-        Left v -> pure (errOutcome (violationJson v))
+        Left v -> case nextInsertAttempt fuel v of
+            RetryInsert fuel' ->
+                routeInsert app store rn cancelTok input cell sub fuel'
+            AbandonInsert v' -> pure (errOutcome (violationJson v'))
         Right () -> do
             broadcastNotebook app
             let runnable =
                     cellType cell == CodeCell
                         && cellLang cell == Haskell
-                        && not (T.null (T.strip src'))
+                        && not (T.null (T.strip (cellSource cell)))
             ackWriteAndRun
                 app
                 store
@@ -173,7 +235,21 @@ commitInsert app store rn cancelTok input cell src' notes = do
                 input
                 cell
                 runnable
-                notes
+                (submissionNotes sub <> repairNotes)
+
+{- | Whether a notebook that turned red between the route's read and the
+atomic append earns another pass. Bounded: the two can keep flipping, and a
+retry costs a full disposable build.
+-}
+data InsertAttempt = RetryInsert Int | AbandonInsert NotebookViolation
+
+nextInsertAttempt :: Int -> NotebookViolation -> InsertAttempt
+nextInsertAttempt fuel v = case v of
+    VPendingError _ _ | fuel > 0 -> RetryInsert (fuel - 1)
+    _ -> AbandonInsert v
+
+insertRetryFuel :: Int
+insertRetryFuel = 2
 
 execDeleteCell :: App -> Value -> IO ToolOutcome
 execDeleteCell app input = do

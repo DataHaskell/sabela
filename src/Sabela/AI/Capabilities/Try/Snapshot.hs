@@ -10,30 +10,25 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import Data.Unique (Unique)
 
-import Sabela.Deps (ProjectSig)
+import Sabela.Deps (EnvSig)
 import Sabela.Model (Notebook)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.BridgeStore (getBridgeValues)
 import Sabela.State.DependencyTracker (
-    getHaskellDeps,
-    getHaskellExts,
-    getHaskellProjectSig,
     getPythonDeps,
  )
 import Sabela.State.EventBus (EventBus (..))
 import Sabela.State.NotebookStore (readNotebook)
-import Sabela.State.SessionManager (getHaskellSession)
+import Sabela.State.SessionManager (getHaskellSession, haskellEnvOf)
 import Sabela.State.WidgetStore (WidgetStore (..))
 
 data AppSnapshot = AppSnapshot
     { snapshotNotebook :: Notebook
     , snapshotEventGeneration :: Int
-    , snapshotHaskellDeps :: S.Set Text
-    , snapshotHaskellExts :: S.Set Text
-    , snapshotProjectSig :: ProjectSig
+    , snapshotHaskellEnv :: Maybe (Unique, EnvSig)
     , snapshotPythonDeps :: S.Set Text
-    , snapshotCompiledModules :: M.Map Text Text
+    , snapshotCompiledModules :: Maybe (Unique, M.Map Text Text)
     , snapshotBridgeValues :: M.Map Text Text
     , snapshotWidgetValues :: M.Map Int (M.Map Text Text)
     , snapshotHaskellSession :: Maybe (Unique, Int)
@@ -44,9 +39,7 @@ snapshotApp :: App -> IO AppSnapshot
 snapshotApp app = do
     notebook <- readNotebook (appNotebook app)
     eventGeneration <- readIORef (ebGeneration (appEvents app))
-    haskellDeps <- getHaskellDeps (appDeps app)
-    haskellExts <- getHaskellExts (appDeps app)
-    projectSig <- getHaskellProjectSig (appDeps app)
+    haskellEnv <- haskellEnvOf (appSessions app)
     pythonDeps <- getPythonDeps (appDeps app)
     compiled <- readIORef (appCompiledModules app)
     bridge <- getBridgeValues (appBridge app)
@@ -61,9 +54,7 @@ snapshotApp app = do
         AppSnapshot
             { snapshotNotebook = notebook
             , snapshotEventGeneration = eventGeneration
-            , snapshotHaskellDeps = haskellDeps
-            , snapshotHaskellExts = haskellExts
-            , snapshotProjectSig = projectSig
+            , snapshotHaskellEnv = haskellEnv
             , snapshotPythonDeps = pythonDeps
             , snapshotCompiledModules = compiled
             , snapshotBridgeValues = bridge

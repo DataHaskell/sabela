@@ -67,12 +67,16 @@ rankKeyRecent recentPkgs importedPkgs env interp h =
     , dhName h
     )
   where
+    -- An unresolved package is not evidence of irrelevance: banding a
+    -- package-less session hit with packages nothing implicates handed the
+    -- tie to `plainness`, and the unconstrained namesake won it.
     importedBand
         | dhInstall h `elem` [InstBuiltin, InstNotebook] = 0
         | dhModule h `elem` (map snd (neAliases env) ++ neImports env) = 0
         | not (T.null (dhPackage h)), dhPackage h `elem` importedPkgs = 0
         | not (T.null (dhPackage h)), dhPackage h `elem` recentPkgs = 1
-        | otherwise = 2
+        | T.null (dhPackage h) = 2
+        | otherwise = 3
 
 plainness :: Text -> (Int, Int)
 plainness ty = (constraintCount ty, typeLevelArgCount ty)

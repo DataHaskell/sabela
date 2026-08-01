@@ -16,6 +16,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
+import Sabela.Errors (scrubHarnessFrames)
 import Sabela.Model (CellError (..))
 import ScriptHs.Compiled (parseLinePragmaTag)
 
@@ -97,7 +98,9 @@ instance FromJSON Diag where
 
 renderMessage :: [Text] -> [Text] -> Text
 renderMessage msgs hints =
-    T.intercalate "\n" (filter (not . T.null . T.strip) (msgs ++ hints))
+    T.intercalate "\n" (filter (not . T.null . T.strip) (scrubbed ++ hints))
+  where
+    scrubbed = map scrubHarnessFrames msgs
 
 annotateDefSites :: (Text -> Maybe Int) -> Text -> Text
 annotateDefSites resolve = T.intercalate "\n" . map annotateLine . T.lines

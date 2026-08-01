@@ -21,7 +21,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.CellResult (CellId)
 import Siza.Agent.Loop.Support (factsBlock, nudgeFloor, nudgeK)
-import Siza.Agent.Owned (OwnedCell (..), newestFailing)
+import Siza.Agent.Owned (OwnedCell (..), hasArtifact, newestFailing)
 
 data BudgetView = BudgetView
     { bvTurnsLeft :: Int
@@ -96,9 +96,17 @@ wrapUpFinal stopped owned candidate
     | not (T.null (T.strip candidate)) = candidate
     | otherwise = "Stopped (" <> stopped <> "): " <> stateLine owned
 
+{- | The terminal state as the unresolved point, not as a headcount: a cell
+count says nothing about whether the request was answered.
+-}
 stateLine :: Map CellId OwnedCell -> Text
 stateLine owned = case newestFailing owned of
     _ | Map.null owned -> "no cell was written before the episode ended."
+    Nothing
+        | not (hasArtifact owned) ->
+            tShow (Map.size owned)
+                <> " cell(s) written, none of them substantive \8212 no \
+                   \deliverable was committed."
     Nothing ->
         tShow (Map.size owned)
             <> " cell(s) written and healthy; the episode ended before a \

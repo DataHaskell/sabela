@@ -110,7 +110,7 @@ runWith disp = do
                 { drvChat = const (pure (Right doneTurn))
                 , drvDispatch = disp
                 , drvNow = pure 0
-                , drvVerify = pure (CheckPassed, Nothing)
+                , drvVerify = const (pure (CheckPassed, Nothing))
                 }
         emit t = modifyIORef' emitted (<> t)
         budget = defaultBudget{ebMaxRepairs = maxBound, ebDeadlineSecs = 1 / 0}

@@ -4,7 +4,8 @@ module Sabela.AI.ValueEcho (
     echoCharBound,
     echoTimeLimitMicros,
     listingCharBudget,
-    elidedOverSize,
+    synopsisSlack,
+    valueSynopsis,
     elidedUnevaluated,
     holeLines,
     nullaryPureType,
@@ -20,11 +21,20 @@ module Sabela.AI.ValueEcho (
 
 import Data.Char (isAlphaNum, isLower)
 import Data.List (partition)
+import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Grammar.Synth (sanitizeTypeText)
 import Sabela.AI.LeakShape (leakyLine)
+import Sabela.AI.Shape (
+    Grid (..),
+    elementCount,
+    ellipsed,
+    gridDelimiters,
+    gridHeader,
+    gridOf,
+ )
 
 echoCharBound :: Int
 echoCharBound = 80
@@ -35,11 +45,48 @@ echoTimeLimitMicros = 500000
 listingCharBudget :: Int
 listingCharBudget = 2500
 
-elidedOverSize :: Text
-elidedOverSize =
-    "<unevaluated: exceeds the "
-        <> tShow echoCharBound
-        <> "-char echo budget>"
+{- | How far past the echo bound a synopsis may run: the measurements are
+worth their bytes, but they are still bounded.
+-}
+synopsisSlack :: Int
+synopsisSlack = 140
+
+{- | What a value that will not fit IS, measured from its own rendering, so
+a Map, an encoded JSON value and a rendered table all take one path and no
+type name appears in the control flow.
+-}
+valueSynopsis :: Text -> Text
+valueSynopsis v = "<" <> T.intercalate "; " (measures <> shapeFacts <> [headFact]) <> ">"
+  where
+    ls = filter (not . T.null . T.strip) (T.lines v)
+    measures =
+        [tShow (T.length v) <> " chars"]
+            <> [tShow (length ls) <> " lines" | length ls > 1]
+    shapeFacts = case gridOf gridDelimiters ls of
+        Just g -> [tShow (gridWidth g) <> " columns"] <> headerFact g
+        Nothing -> [tShow n <> " elements" | Just n <- [elementCount v]]
+    headerFact g =
+        ["header: " <> hs | h <- maybeToList (gridHeader g), Just hs <- [headerCells h]]
+    headFact = "head: " <> ellipsed headBound (T.strip (T.takeWhile (/= '\n') v))
+
+-- | How much of the header row, and of the first line, a synopsis may quote.
+headerBound, headBound :: Int
+headerBound = 60
+headBound = 60
+
+{- | Whole header cells only, and a count of the ones left out: a cell cut in
+half would read as a column name the artefact does not have.
+-}
+headerCells :: [Text] -> Maybe Text
+headerCells h
+    | null kept = Nothing
+    | null dropped = Just (T.intercalate " | " kept)
+    | otherwise =
+        Just (T.intercalate " | " kept <> " …" <> tShow (length dropped) <> " more")
+  where
+    (kept, dropped) = splitAt fitting h
+    fitting =
+        length (takeWhile (<= headerBound) (scanl1 (+) (map ((+ 3) . T.length) h)))
 
 elidedUnevaluated :: Text
 elidedUnevaluated =
@@ -158,7 +205,7 @@ echoListing echo raw = boundListing (T.unlines (map line (T.lines raw)))
     shown n = case echo n of
         Nothing -> elidedUnevaluated
         Just v
-            | T.length v > echoCharBound -> elidedOverSize
+            | T.length v > echoCharBound -> valueSynopsis v
             | otherwise -> v
 
 boundListing :: Text -> Text

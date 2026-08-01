@@ -7,6 +7,7 @@ module Sabela.Handlers (
     initGlobalEnv,
     initPreinstalledPackages,
     installAndRestart,
+    clearAllOutputs,
     ReplSupport (..),
     buildTimeSupportDir,
     setupReplProject,
@@ -43,6 +44,7 @@ import Sabela.Handlers.Plan (
     dispatchByLang,
     executeAffected,
     executeFullRestart,
+    executeRestartOnly,
     executeRunAll,
     executeSingleCell,
     isSessionUpToDate,
@@ -57,14 +59,16 @@ import Sabela.Model (
     cellLangOf,
  )
 import Sabela.Reactivity (
+    RestartMode (..),
+    applyRestart,
     cellStale,
+    clearCellResult,
     haskellCodeCells,
-    markAllDirty,
     markDependentsDirty,
     runAllNeedsRun,
  )
 import Sabela.Session.Project (ReplSupport (..), buildTimeSupportDir)
-import Sabela.State (App (..), getAIStore)
+import Sabela.State (App (..), broadcastNotebookState, getAIStore)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import ScriptHs.Parser (CabalMeta (..))
 import System.Directory (doesFileExist)
@@ -87,8 +91,7 @@ data ReactiveNotebook = ReactiveNotebook
     , rnRunCell :: Int -> IO ()
     , rnRunCellForced :: Int -> IO ()
     , rnRunAll :: IO ()
-    , rnReset :: IO ()
-    , rnRestartKernel :: IO ()
+    , rnRestart :: RestartMode -> IO ()
     , rnWidgetCell :: Int -> IO ()
     }
 
@@ -100,8 +103,7 @@ setupReactive app =
             , rnRunCell = handleRunCell app
             , rnRunCellForced = handleRunCellForced app
             , rnRunAll = handleRunAll app
-            , rnReset = handleReset app
-            , rnRestartKernel = handleRestartKernel app
+            , rnRestart = handleRestart app
             , rnWidgetCell = handleWidgetCell app
             }
 
@@ -113,6 +115,7 @@ handleCellEdit app cid src = do
             Just c -> cellSource c /= src
             Nothing -> False
     modifyNotebook (appNotebook app) $ updateCellSource cid src
+    broadcastNotebookState app
     when changed $ do
         nb <- readNotebook (appNotebook app)
         gen <- bumpGeneration app
@@ -147,13 +150,13 @@ handleRunCellWith force app cid = do
     debugLog app $ "[handler] handleRunCell: cell " <> T.pack (show cid)
     nb <- readNotebook (appNotebook app)
     if not (cellRunnable force (find (\c -> cellId c == cid) (nbCells nb)))
-        then debugLog app "[handler] handleRunCell: cell unchanged; skipping"
+        then do
+            debugLog app "[handler] handleRunCell: cell unchanged; skipping"
+            broadcast app EvExecutionDone
         else do
             gen <- bumpGeneration app
             dispatchByLang app gen cid (cellLangOf cid nb) $
-                void $
-                    forkIO $
-                        executeSingleCell app gen cid
+                executeSingleCell app gen cid
 
 cellRunnable :: Bool -> Maybe Cell -> Bool
 cellRunnable _ Nothing = False
@@ -166,31 +169,29 @@ handleRunAll app = do
     building <- readIORef (appBuilding app)
     ready <- isSessionUpToDate app nb
     if not (runAllNeedsRun building ready (haskellCodeCells nb) nb)
-        then
+        then do
             debugLog
                 app
                 "[handler] handleRunAll: nothing to run (clean, or a build is in flight); skipping"
+            broadcast app EvExecutionDone
         else do
             gen <- bumpGeneration app
             void $ forkIO $ executeRunAll app gen
 
-handleReset :: App -> IO ()
-handleReset app = do
-    debugLog app "[handler] handleReset"
-    void $ bumpGeneration app
-    void $ forkIO $ killAllSessions app
-    cleanupAI app True
-    modifyNotebook (appNotebook app) clearAllOutputs
-    broadcast app (EvSessionStatus SReset)
-
-handleRestartKernel :: App -> IO ()
-handleRestartKernel app = do
-    debugLog app "[handler] handleRestartKernel"
+{- | All three restarts respawn the kernel. Only 'RestartRunAll' executes
+afterwards: restarting because a cell hangs must not immediately re-run it.
+-}
+handleRestart :: App -> RestartMode -> IO ()
+handleRestart app mode = do
+    debugLog app $ "[handler] handleRestart: " <> T.pack (show mode)
     gen <- bumpGeneration app
-    cleanupAI app False
-    modifyNotebook (appNotebook app) markAllDirty
+    cleanupAI app (mode == RestartClear)
+    modifyNotebook (appNotebook app) (applyRestart mode)
+    broadcastNotebookState app
     broadcast app (EvSessionStatus SReset)
-    void $ forkIO $ executeFullRestart app gen
+    void . forkIO $ case mode of
+        RestartRunAll -> executeFullRestart app gen
+        _ -> executeRestartOnly app gen
 
 cleanupAI :: App -> Bool -> IO ()
 cleanupAI app fullReset = do
@@ -207,7 +208,8 @@ cleanupAI app fullReset = do
                 AI.clearConversation store
                 AI.revertAllPendingEdits store
 
+{- | Reset kills every session, so afterwards no kernel holds anything and every
+code cell must come back invalidated rather than clean.
+-}
 clearAllOutputs :: Notebook -> Notebook
-clearAllOutputs nb = nb{nbCells = map clr (nbCells nb)}
-  where
-    clr c = c{cellOutputs = [], cellError = Nothing, cellDirty = False}
+clearAllOutputs nb = nb{nbCells = map clearCellResult (nbCells nb)}

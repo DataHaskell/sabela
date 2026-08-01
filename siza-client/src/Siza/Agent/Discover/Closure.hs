@@ -8,6 +8,8 @@ module Siza.Agent.Discover.Closure (
     entityOf,
     giveUpLine,
     heldHitLine,
+    heldHitsFor,
+    heldPayload,
     kindRank,
     protectedBy,
     recordEvidence,
@@ -18,6 +20,7 @@ module Siza.Agent.Discover.Closure (
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import Data.Aeson.Types (Pair)
 import Data.Foldable (toList)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
@@ -65,29 +68,50 @@ kindRank h = case topText "matchKind" h of
     "semantic" -> 6
     _ -> 7
 
-recordEvidence :: Text -> Value -> Map Text Value -> Map Text Value
-recordEvidence cluster v acc = case bestHit (hitsOf v) of
-    Nothing -> acc
-    Just h -> Map.insertWith keepStronger (T.toLower cluster) h acc
-  where
-    keepStronger new old = if kindRank new < kindRank old then new else old
-    bestHit hs = case sortOn kindRank hs of
-        (h : _) -> Just h
-        [] -> Nothing
+{- | Evidence is filed under the whole question — entity AND scope — and keeps
+that answer's own ranked order. The latest answer to a question wins, so a
+better-scoped call can dislodge a first exact hit.
+-}
+recordEvidence :: Text -> Value -> Map Text [Value] -> Map Text [Value]
+recordEvidence cluster v acc = case hitsOf v of
+    [] -> acc
+    hs -> Map.insert (T.toLower (T.strip cluster)) hs acc
 
-bestHeldFor :: Map Text Value -> Text -> Maybe Value
-bestHeldFor evidence entity = case Map.lookup e evidence of
-    Just h -> Just h
-    Nothing -> case sortOn kindRank (filter names (Map.elems evidence)) of
-        (h : _) -> Just h
-        [] -> Nothing
+-- | The entity half of a cluster key; the scope half is everything from @\@@.
+keyEntity :: Text -> Text
+keyEntity = T.takeWhile (/= '@')
+
+keyScope :: Text -> Text
+keyScope = T.dropWhile (/= '@')
+
+{- | Held hits for a question, never for a different one: a record answers
+only under the scope it was recorded with, so a module-scoped call is never
+answered from a module that scope excludes.
+-}
+heldHitsFor :: Map Text [Value] -> Text -> [Value]
+heldHitsFor evidence key = case Map.lookup k evidence of
+    Just hs -> hs
+    Nothing -> case sortOn rankOf sweep of
+        (hs : _) -> hs
+        [] -> []
   where
-    e = T.toLower (T.strip entity)
-    names h =
-        e
-            `elem` [ T.toLower (topText k h)
-                   | k <- ["name", "module", "package"]
-                   ]
+    k = T.toLower (T.strip key)
+    sweep =
+        [ hs
+        | (k', hs) <- Map.toAscList evidence
+        , keyScope k' == keyScope k
+        , any (names (keyEntity k)) hs
+        ]
+    rankOf hs = case hs of
+        (h : _) -> kindRank h
+        [] -> maxBound
+    names e h =
+        e `elem` [T.toLower (topText f h) | f <- ["name", "module", "package"]]
+
+bestHeldFor :: Map Text [Value] -> Text -> Maybe Value
+bestHeldFor evidence key = case heldHitsFor evidence key of
+    (h : _) -> Just h
+    [] -> Nothing
 
 heldHitLine :: Value -> Text
 heldHitLine h =
@@ -155,15 +179,23 @@ protectedBy seeded asserted c
             <> s
             <> ") and the catalogue has not changed since"
 
-blockedDenial :: Text -> Text -> Value
-blockedDenial qn why =
-    object
+{- | The hits a duplicate hands back, projected the way a fresh answer
+projects them. A repeat that returns less than the call it deduped is answered
+by mutating the query, which costs more than the dedup saved.
+-}
+heldPayload :: [Value] -> [Pair]
+heldPayload [] = []
+heldPayload hs = ["hits" .= hs, "shown" .= length hs]
+
+blockedDenial :: [Value] -> Text -> Text -> Value
+blockedDenial held qn why =
+    object $
         [ "query" .= qn
         , "state" .= ("duplicate" :: Text)
         , "ref" .= ("assertion ledger" :: Text)
-        , "summary"
-            .= ("'" <> qn <> "' is " <> why <> ". Trust the held fact and act on it.")
+        , "summary" .= ("'" <> qn <> "' is " <> why <> ".")
         ]
+            <> heldPayload held
 
 consultedOf :: Value -> [Text]
 consultedOf v = case v of

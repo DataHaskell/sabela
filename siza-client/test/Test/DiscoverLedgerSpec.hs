@@ -15,7 +15,11 @@ import Sabela.AI.PromptCore (builtinNames)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Discover.Dedup (ledgerShortcutStep)
-import Siza.Agent.Discover.Envelope (envelopeChars)
+import Siza.Agent.Discover.Envelope (
+    boundEnvelope,
+    envelopeCharBudget,
+    envelopeChars,
+ )
 import Siza.Agent.Discover.History (
     emptyLedger,
     ledgerRecord,
@@ -38,7 +42,7 @@ import Siza.Agent.Discover.Types (
     okAnswer,
     seededBuiltins,
  )
-import Test.DiscoverFixtures (stateOf, textField)
+import Test.DiscoverFixtures (hitText, hitsOf, stateOf, textField)
 
 discoverLedgerSpec :: Spec
 discoverLedgerSpec = describe "discover assertion ledger (R1.4, R3.8)" $ do
@@ -167,9 +171,12 @@ answerHashSpec = describe "answer-hash dedup: an unchanged answer is a one-line 
         stateOf out1 `shouldBe` "found"
         stateOf out2 `shouldBe` "duplicate"
         textField "ref" out2 `shouldSatisfy` (not . T.null)
-        envelopeChars out2 `shouldSatisfy` (< 500)
+        envelopeChars (boundEnvelope out2)
+            `shouldSatisfy` (<= envelopeCharBudget)
         textField "summary" out2
-            `shouldSatisfy` T.isInfixOf "did not change the answer"
+            `shouldSatisfy` T.isInfixOf "same ranked answer"
+        map (hitText "name") (hitsOf out2)
+            `shouldBe` map (hitText "name") (hitsOf out1)
     it "a different answer is never deduped" $ do
         let other =
                 discoverEnvelope
@@ -197,8 +204,8 @@ answerHashSpec = describe "answer-hash dedup: an unchanged answer is a one-line 
         Right (ToolOk stopped) <- ask "col scoped differently"
         readIORef calls `shouldReturn` 3
         stateOf stopped `shouldBe` "duplicate"
-        textField "summary" stopped `shouldSatisfy` T.isInfixOf "act"
-        textField "summary" stopped `shouldSatisfy` T.isInfixOf "blocker"
+        stopped `shouldSatisfy` hardStopped
+        hitsOf stopped `shouldSatisfy` (not . null)
     it "has teeth over generated exact, answer-identical, and new sequences" $ do
         forM_ (replicateM 4 [ExactRepeat, AnswerRepeat, FreshAnswer]) checkTeeth
     it
@@ -237,19 +244,27 @@ answerHashSpec = describe "answer-hash dedup: an unchanged answer is a one-line 
                 lastOut = ok (last outs)
             length (filter (== "found") states) `shouldBe` 1
             stateOf lastOut `shouldBe` "duplicate"
-            textField "summary" lastOut `shouldSatisfy` T.isInfixOf "act"
-            textField "summary" lastOut `shouldSatisfy` T.isInfixOf "blocker"
+            lastOut `shouldSatisfy` hardStopped
             dispatched <- readIORef calls
             dispatched `shouldSatisfy` (< 8)
 
+{- | The repeat limit is identified by the reference it carries, not by a
+phrase telling the caller what to do: C1-11 removed the advice.
+-}
+hardStopped :: Value -> Bool
+hardStopped v = textField "ref" v == "discovery closed: repeat limit"
+
 data RepeatKind = ExactRepeat | AnswerRepeat | FreshAnswer deriving (Eq)
 
+{- | The repeat limit shows on the call it short-circuits. A step that reached
+the limit inside 'ledgerRecord' already paid for its answer and returns it.
+-}
 checkTeeth :: [RepeatKind] -> Expectation
 checkTeeth kinds = go 0 False initial (zip [1 :: Int ..] kinds)
   where
     (initial, _) = ledgerRecord "base" (foundFor "base") emptyLedger
     go _ _ _ [] = pure ()
-    go repeats hard led ((i, kind) : rest) = do
+    go repeats closed led ((i, kind) : rest) = do
         let q = case kind of
                 ExactRepeat -> "base"
                 AnswerRepeat -> "base variant " <> T.pack (show i)
@@ -262,10 +277,9 @@ checkTeeth kinds = go 0 False initial (zip [1 :: Int ..] kinds)
                 Just v -> (shortcutLed, v)
                 Nothing -> ledgerRecord q payload shortcutLed
             repeats' = if kind == FreshAnswer then 0 else repeats + 1
-            hard' = hard || repeats' >= 2
-        if hard'
-            then textField "summary" out `shouldSatisfy` T.isInfixOf "act"
-            else
-                textField "summary" out
-                    `shouldSatisfy` (not . T.isInfixOf "Discovery is closed")
-        go repeats' hard' led' rest
+            closed' = closed || repeats' >= 2
+            hardNow = closed || (kind == ExactRepeat && repeats' >= 2)
+        if hardNow
+            then out `shouldSatisfy` hardStopped
+            else out `shouldSatisfy` (not . hardStopped)
+        go repeats' closed' led' rest

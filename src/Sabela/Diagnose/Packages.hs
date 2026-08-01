@@ -1,14 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.Diagnose.Packages (
-    packageForModule,
-    table,
     packageNameIndex,
     resolvePackageToken,
     findModulePackage,
 ) where
 
-import Data.List (find, maximumBy)
+import Data.List (maximumBy)
 import Data.Ord (comparing)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -16,43 +14,32 @@ import qualified Data.Text as T
 import System.Exit (ExitCode (ExitSuccess))
 import System.Process (readProcessWithExitCode)
 
+import Sabela.AI.PackageIndex (storePackageDb)
 import Sabela.AI.Similarity (trigramSimilarity)
-
-table :: [(Text, Text)]
-table =
-    [ ("DataFrame.Display", "dataframe")
-    , ("DataFrame", "dataframe")
-    , ("Granite", "granite")
-    , ("Data.Text", "text")
-    , ("Data.Vector", "vector")
-    , ("Data.Map", "containers")
-    , ("Data.Set", "containers")
-    , ("Data.Aeson", "aeson")
-    ]
-
-packageForModule :: Text -> Maybe Text
-packageForModule m = snd <$> find (matches . fst) table
-  where
-    matches p = p == m || (p <> ".") `T.isPrefixOf` m
 
 packageNameIndex :: [Text]
 packageNameIndex =
-    nubOrd $
-        map snd table
-            ++ [ "dataframe-core"
-               , "bytestring"
-               , "directory"
-               , "filepath"
-               , "process"
-               , "time"
-               , "random"
-               , "unordered-containers"
-               , "hashable"
-               , "scientific"
-               , "split"
-               , "mtl"
-               , "transformers"
-               ]
+    nubOrd
+        [ "dataframe"
+        , "granite"
+        , "text"
+        , "vector"
+        , "containers"
+        , "aeson"
+        , "dataframe-core"
+        , "bytestring"
+        , "directory"
+        , "filepath"
+        , "process"
+        , "time"
+        , "random"
+        , "unordered-containers"
+        , "hashable"
+        , "scientific"
+        , "split"
+        , "mtl"
+        , "transformers"
+        ]
 
 nubOrd :: (Ord a) => [a] -> [a]
 nubOrd = go Set.empty
@@ -75,14 +62,23 @@ resolvePackageToken tok
 fuzzyThreshold :: Double
 fuzzyThreshold = 0.2
 
+{- | The package exposing a module, from the installed package dbs.
+
+Must search the cabal store as well as the global db: everything a notebook
+declares with @-- cabal: build-depends:@ lands in the store, so a global-only
+lookup answers for base and nothing else.
+-}
 findModulePackage :: Text -> IO (Maybe Text)
-findModulePackage m = (>>= firstPackage) <$> tryFind
+findModulePackage m = do
+    mDb <- storePackageDb
+    (>>= firstPackage) <$> tryFind (dbArgs mDb)
   where
-    tryFind = do
+    dbArgs = maybe [] (\db -> ["--package-db=" ++ db])
+    tryFind extra = do
         r <-
             readProcessWithExitCode
                 "ghc-pkg"
-                ["--simple-output", "find-module", T.unpack m]
+                (extra ++ ["--simple-output", "find-module", T.unpack m])
                 ""
         case r of
             (ExitSuccess, out, _) -> pure (Just (T.pack out))

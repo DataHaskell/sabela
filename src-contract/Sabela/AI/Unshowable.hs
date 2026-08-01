@@ -54,7 +54,7 @@ renderVocabulary :: [(Text, Maybe Text)]
 renderVocabulary =
     [ ("displayPicture", Just "Sabela.Notebook")
     , ("animate 3", Just "Sabela.Notebook")
-    , ("display", Nothing)
+    , ("mkWidget", Nothing)
     ]
 
 -- | The canonical render action for a base type name, for messaging only.
@@ -63,7 +63,7 @@ renderActionFor ty =
     lookup
         ty
         [ ("Picture", ("displayPicture", Just "Sabela.Notebook"))
-        , ("Input", ("display", Nothing))
+        , ("Input", ("mkWidget", Nothing))
         ]
 
 wrapTrailingExpression :: Text -> Text -> Maybe Text
@@ -85,8 +85,9 @@ wrapTrailingExpression fn src = case reverse (T.lines src) of
             || " = " `T.isInfixOf` t
             || isBindStatement t
 
--- | A top-level @pat <- expr@ bind; an arrow inside a comprehension or any
--- bracketed context is not one.
+{- | A top-level @pat <- expr@ bind; an arrow inside a comprehension or any
+bracketed context is not one.
+-}
 isBindStatement :: Text -> Bool
 isBindStatement t = case T.breakOn " <- " t of
     (before, rest) ->

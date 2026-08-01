@@ -41,7 +41,7 @@ slowScaffoldDriver clock buildSecs = do
             { drvChat = chat
             , drvDispatch = dispatch
             , drvNow = readIORef clock
-            , drvVerify = pure (CheckNotApplicable, Nothing)
+            , drvVerify = const (pure (CheckNotApplicable, Nothing))
             }
 
 runWithBuild :: Double -> Double -> IO AgentRun

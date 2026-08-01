@@ -2,11 +2,15 @@
 
 module Test.DiscoverInvariantSpec (discoverInvariantSpec) where
 
-import Data.Aeson (Value (..))
+import Data.Aeson (Value (..), object, (.=))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck
 
+import Sabela.AI.LeakShape (lexicalEntity)
+import Siza.Agent.Discover.Classify (sessionAnswer)
 import Siza.Agent.Discover.Interpret (interpret, stripDecoration, stripVersion)
 import Siza.Agent.Discover.Merge (discoverEnvelope)
 import Siza.Agent.Discover.Types (
@@ -15,6 +19,7 @@ import Siza.Agent.Discover.Types (
     Interpreted (..),
     MatchKind (..),
     NotebookEnv (..),
+    SourceAnswer (..),
     mkHit,
     okAnswer,
     seededBuiltins,
@@ -105,8 +110,8 @@ discoverInvariantSpec =
                     bad <- concat <$> mapM reconcileViolation discoverables
                     bad `shouldBe` []
 
-            describe "R3.5 provenance: every hit carries the four facts" $
-                it "package, version, install and module present on every hit" $ do
+            describe "R3.5 provenance is computed, never a placeholder" $
+                it "install is from the vocabulary; no field says \"unknown\"" $ do
                     bad <- concat <$> mapM provenanceViolation discoverables
                     bad `shouldBe` []
 
@@ -157,6 +162,8 @@ discoverInvariantSpec =
                     b <- runCat "gust"
                     a `shouldBe` b
 
+            callableHitSpec
+
 findMiss :: Text -> IO [Text]
 findMiss n = do
     v <- runCat n
@@ -191,13 +198,99 @@ provenanceViolation q = do
             , "absent-unknown"
             ]
         bad h =
-            T.null (hitText "package" h)
-                || T.null (hitText "version" h)
-                || T.null (hitText "module" h)
-                || hitText "install" h `notElem` installVocab
+            hitText "install" h
+                `notElem` installVocab
+                || elem "unknown" (fieldValues h)
+                || any T.null (fieldValues h)
+                || null (provenanceOf h)
     pure [q | any bad (hitsOf v)]
+
+{- | C2-10a: provenance is stated when computed and omitted when not. The old
+form required `package`/`version`/`module` to be present, which the literal
+placeholder "unknown" satisfied without carrying a fact.
+-}
+fieldValues :: Value -> [Text]
+fieldValues h =
+    [t | k <- ["package", "version", "module"], Just (String t) <- [field k h]]
+
+{- | Omitting a field is only honest while something still says where the hit
+came from: a hit that names neither its module nor its package is unusable,
+and absence must not become the way to satisfy 'fieldValues'.
+-}
+provenanceOf :: Value -> [Text]
+provenanceOf h =
+    [ t
+    | k <- ["package", "module"]
+    , Just (String t) <- [field k h]
+    , not (T.null t)
+    ]
 
 intField :: Text -> Value -> Int
 intField k v = case field k v of
     Just (Number n) -> round n
     _ -> -1
+
+-- C2-5b: a card row only becomes a hit when it names a callable entity ----
+
+{- | Includes the rows a decomposed listing carries: a class and a record head
+alongside the members they declare, which the card emits as exports of their
+own.
+-}
+wellFormedRows :: [Text]
+wellFormedRows =
+    [ "insertWith :: (Ord k) => (a -> a -> a) -> k -> a -> Map k a -> Map k a"
+    , "splitOn :: Text -> Text -> [Text]"
+    , "(.:?) :: FromJSON a => Object -> Key -> Parser (Maybe a)"
+    , "data Value"
+    , "newtype Parser"
+    , "runReaderT :: ReaderT r m a -> r -> m a"
+    , "class Renderable a where renderOne :: a -> Int"
+    , "renderOne :: a -> Int"
+    , "data Speed = Speed {knots :: Int}"
+    , "knots :: Speed -> Int"
+    ]
+
+fragmentRows :: [Text]
+fragmentRows =
+    [ "a b),"
+    , "~ Bool) =>"
+    , "-> Expr b"
+    , "(Ord k,"
+    , "forall {k}."
+    , "= Constr {conrep :: ConstrRep,"
+    , "a b)"
+    ]
+
+cardOf :: [Text] -> Value
+cardOf rows =
+    object
+        [ "module" .= ("Syn.Frame" :: Text)
+        , "status" .= ("ok" :: Text)
+        , "exports" .= rows
+        , "total" .= length rows
+        ]
+
+hitsFromCard :: [Text] -> [DHit]
+hitsFromCard rows =
+    saHits (sessionAnswer (nameInterp "insertWith") (Just (cardOf rows)))
+
+callable :: Text -> Bool
+callable t = not (T.null t) && not (T.any (== ' ') t) && lexicalEntity t
+
+callableHitSpec :: Spec
+callableHitSpec =
+    describe "R3.8 a card row becomes a hit only when it is callable (C2-5b)" $ do
+        prop "no hit names a signature fragment" $
+            forAll (shuffle (wellFormedRows ++ fragmentRows)) $ \rows ->
+                conjoin
+                    [ counterexample (T.unpack ("not callable: " <> dhName h)) $
+                        property (callable (dhName h))
+                    | h <- hitsFromCard rows
+                    ]
+        prop "every well-formed row becomes exactly one hit" $
+            forAll (shuffle (wellFormedRows ++ fragmentRows)) $ \rows ->
+                length (hitsFromCard rows) === length wellFormedRows
+        it "a card of nothing but fragments yields no hits, and says so" $ do
+            let a = sessionAnswer (nameInterp "insertWith") (Just (cardOf fragmentRows))
+            saHits a `shouldBe` []
+            saNote a `shouldSatisfy` T.isInfixOf "7"

@@ -2,12 +2,8 @@
 
 module Sabela.Session where
 
-import Control.Concurrent (
-    MVar,
-    putMVar,
-    tryReadMVar,
-    withMVar,
- )
+import Control.Concurrent (MVar, withMVar)
+import Control.Concurrent.STM (TVar, atomically, readTVarIO, writeTVar)
 import Control.Exception (SomeException, bracket_, try)
 import Control.Monad (when)
 import Data.Char (isDigit)
@@ -18,7 +14,7 @@ import Data.IORef (
     readIORef,
     writeIORef,
  )
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
@@ -57,15 +53,21 @@ newtype Marker = Marker Text
 markerText :: Marker -> Text
 markerText (Marker t) = t
 
+{- | Who holds 'sessLock'. Queries take it too (they drain the same queue), so
+"the lock is held" no longer means "a cell is running" — see 'isBusy'.
+-}
+data LockOwner = OwnerRun | OwnerQuery
+    deriving (Eq, Show)
+
 data Session = Session
     { sessProcSess :: ProcSession
     , sessLock :: MVar ()
     , sessQueryLock :: MVar ()
+    , sessLockOwner :: TVar (Maybe LockOwner)
     , sessErrBuf :: IORef [Text]
     , sessCounter :: IORef Int
     , sessConfig :: SessionConfig
     , sessErrCallback :: IORef (Text -> IO ())
-    , sessBusy :: IORef Bool
     , sessNonce :: Int
     , sessLastInterruptTime :: IORef (Maybe UTCTime)
     , sessionGen :: IORef Int
@@ -145,8 +147,27 @@ runBlockStreaming sess =
 runBlockStreamingWithTimeout ::
     Int -> Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
 runBlockStreamingWithTimeout budgetUs sess block onLine =
-    withMVar (sessLock sess) $ \_ ->
+    withRunLock sess $
         runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine
+
+-- | Run a cell: the exclusive holder of the kernel.
+withRunLock :: Session -> IO a -> IO a
+withRunLock sess = withOwnedLock sess OwnerRun
+
+{- | Run an editor/agent query. A query writes to stdin and drains the same
+output queue as a cell, so it must hold the run lock as well, outermost —
+two concurrent drains steal each other's markers.
+-}
+withQueryLocks :: Session -> IO a -> IO a
+withQueryLocks sess act =
+    withOwnedLock sess OwnerQuery (withMVar (sessQueryLock sess) (const act))
+
+withOwnedLock :: Session -> LockOwner -> IO a -> IO a
+withOwnedLock sess owner act =
+    withMVar (sessLock sess) $ \_ ->
+        bracket_ (setOwner (Just owner)) (setOwner Nothing) act
+  where
+    setOwner = atomically . writeTVar (sessLockOwner sess)
 
 runBlockStreamingUnlockedWithTimeout ::
     Int -> Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
@@ -158,8 +179,7 @@ runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine = do
         timeout budgetUs $ do
             mapM_ (sendRaw sess . T.unpack) (T.lines block)
             placeMarker sess mk
-            bracket_ (setBusy sess True) (setBusy sess False) $
-                drainUntilMarker (sessLines sess) (markerText mk) onLine
+            drainUntilMarker (sessLines sess) (markerText mk) onLine
     finishRunWithTimeout budgetUs sess mResult
 
 finishRun :: Session -> Maybe DrainResult -> IO (Text, Text)
@@ -205,9 +225,13 @@ killAndRespawnWithTimeout budgetUs sess = do
 interruptSessionRaw :: Session -> IO ()
 interruptSessionRaw = interruptGroup . sessProcSess
 
+{- | Interrupt across the /whole/ run, not just the drain, so a signal arriving
+mid-write or during resync is no longer dropped. Stays conditional: it reaches
+the process group holding cabal and ghc, so an idle interrupt breaks the next.
+-}
 interruptIfBusy :: Session -> IO ()
 interruptIfBusy sess = do
-    busy <- readIORef (sessBusy sess)
+    busy <- isBusy sess
     when busy $ do
         interruptSessionRaw sess
         markInterrupt sess
@@ -222,11 +246,11 @@ isRequestStale sess reqTime = do
     mLast <- readIORef (sessLastInterruptTime sess)
     pure $ maybe False (reqTime <) mLast
 
-setBusy :: Session -> Bool -> IO ()
-setBusy sess = writeIORef (sessBusy sess)
-
+{- | Is a /cell/ running? Not merely "the run lock is held": an editor query
+holds it too, and a keystroke must not make the kernel read as executing.
+-}
 isBusy :: Session -> IO Bool
-isBusy sess = isNothing <$> tryReadMVar (sessLock sess)
+isBusy sess = (== Just OwnerRun) <$> readTVarIO (sessLockOwner sess)
 
 readSessionGen :: Session -> IO Int
 readSessionGen = readIORef . sessionGen

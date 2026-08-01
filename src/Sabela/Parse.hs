@@ -41,7 +41,7 @@ import Sabela.Parse.Ast (
     extractFromModule,
     topLevelDefsFromDecl,
  )
-import Sabela.Parse.Preprocess (noTopLevelIn, preprocess)
+import Sabela.Parse.Preprocess (hasTopLevelLet, preprocess)
 
 cellNames :: Text -> (Set Text, Set Text)
 cellNames src = let s = cellSymbols src in (csDefs s, csUses s)
@@ -101,12 +101,6 @@ proseCodeMessage =
     "This is a ProseCell (Markdown), but it contains Haskell definitions. Put\
     \ executable code in a CodeCell instead, or keep the prose free of\
     \ top-level bindings."
-
-hasTopLevelLet :: Text -> Bool
-hasTopLevelLet = any isStmtLet . T.lines
-  where
-    isStmtLet raw =
-        maybe False noTopLevelIn (T.stripPrefix "let " raw)
 
 fallbackPerChunk :: [Text] -> (Set Text, Set Text)
 fallbackPerChunk lns =

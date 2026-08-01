@@ -8,6 +8,7 @@ module Sabela.AI.Hints (
     extensionHints,
     expectedTypeOf,
     knownExtensions,
+    sameNameClass,
 ) where
 
 import Data.Char (isAlphaNum, isUpper)
@@ -21,6 +22,17 @@ data RenameCandidate = RenameCandidate
     , rcProvenance :: Text
     }
     deriving (Eq, Show)
+
+{- | Whether one name may textually replace another. A variable and a
+constructor are different syntactic classes, so swapping one for the other
+cannot parse where the original stood. Qualified names judge their last part.
+-}
+sameNameClass :: Text -> Text -> Bool
+sameNameClass wrong replacement =
+    startsUpper (unqualify wrong) == startsUpper (unqualify replacement)
+  where
+    unqualify = T.takeWhileEnd (/= '.')
+    startsUpper t = maybe False (isUpper . fst) (T.uncons t)
 
 data Hint
     = HintRename Text [RenameCandidate]

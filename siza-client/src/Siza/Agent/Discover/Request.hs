@@ -16,6 +16,7 @@ module Siza.Agent.Discover.Request (
     scopeFallbackQuery,
     scopeText,
     requestKey,
+    effectiveQuery,
 ) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -76,7 +77,7 @@ requestSchema =
         ( "limit"
         , "integer"
         , False
-        , "Result cap, 1..25 (default 8); honoured exactly, including 1."
+        , "Result cap, 1..25 (default 8). An upper bound: not-installed packages and internal modules are capped below it, so fewer may be shown."
         )
     ,
         ( "mode"
@@ -162,6 +163,15 @@ scopeFallbackQuery (Scope m p) = case (m, p) of
     (Just f, _) -> Just f
     (_, Just f) -> Just f
     _ -> Nothing
+
+{- | What a request actually asks. A bare @module=@ or @package=@ scope with no
+query asks for that node's card, in every mode: naming a scope is a question,
+not a malformed search.
+-}
+effectiveQuery :: DiscoverRequest -> Text
+effectiveQuery req = case T.strip (drQuery req) of
+    "" -> fromMaybe "" (scopeFallbackQuery (drScope req))
+    q -> q
 
 scopeText :: Scope -> Text
 scopeText (Scope m p) =

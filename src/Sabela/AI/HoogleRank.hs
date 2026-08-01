@@ -2,6 +2,7 @@
 
 module Sabela.AI.HoogleRank (
     ecosystemScore,
+    keepHit,
     rankHits,
     rankHitsInScope,
     nubOnKey,
@@ -14,7 +15,14 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.HoogleClient (HoogleHit (..))
-import Sabela.AI.ModuleResolve (isNoiseModule)
+import Sabela.AI.ModuleResolve (isNoiseModule, isOutOfScopePackage)
+
+{- | The one admissibility test every retrieval path shares. Compiler-toolchain
+rows are never an answer to a library question, however well they rank.
+-}
+keepHit :: HoogleHit -> Bool
+keepHit h =
+    not (isNoiseModule (hhModule h)) && not (isOutOfScopePackage (hhPackage h))
 
 ecosystemScore :: Text -> Int
 ecosystemScore pkg
@@ -66,7 +74,7 @@ rankHitsInScope :: Set Text -> [HoogleHit] -> [HoogleHit]
 rankHitsInScope inScope hits =
     map snd (nub' (sortOn rankKey (zip [0 :: Int ..] keep)))
   where
-    keep = filter (not . isNoiseModule . hhModule) hits
+    keep = filter keepHit hits
     rankKey (i, h) = (outOfScope h, ecosystemScore (hhPackage h), i)
     outOfScope h = if hhPackage h `Set.member` inScope then 0 else 1 :: Int
     nub' = nubOnKey (\(_, h) -> (hhName h, hhModule h, hhPackage h))

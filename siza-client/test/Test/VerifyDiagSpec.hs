@@ -49,8 +49,10 @@ verifyDiagSpec = describe "diagnostic verify re-prompt (intention)" $ do
             let msg = verifyMessage' 2 [] Nothing
             msg `shouldSatisfy` T.isInfixOf "check"
             msg `shouldSatisfy` (not . T.isInfixOf "not defined")
-        it "always forbids stopping" $
+        it "states the task is not done without ordering the model on" $ do
             verifyMessage' 1 [] Nothing `shouldSatisfy` T.isInfixOf "not done"
+            T.toLower (verifyMessage' 1 [] Nothing)
+                `shouldSatisfy` (not . T.isInfixOf "do not stop")
 
     describe "unconfirmedMessage — uncheckable is NOT a failure claim (R5-T5)" $ do
         it "never claims failure, over the whole diagnosis grid" $
@@ -64,6 +66,9 @@ verifyDiagSpec = describe "diagnostic verify re-prompt (intention)" $ do
                 , m <- [[], ["evalExpr"]]
                 , g <- [Nothing, Just "print the value and re-check"]
                 ]
+        it "issues no imperative tail" $
+            T.toLower (unconfirmedMessage 2 [] Nothing)
+                `shouldSatisfy` (not . T.isInfixOf "finish with")
         it "opens with not-yet-confirmed and carries the what-to-run guidance" $ do
             let msg = unconfirmedMessage 2 [] (Just "print the value and re-check")
             msg `shouldSatisfy` T.isInfixOf "not yet confirmed"
@@ -73,11 +78,22 @@ verifyDiagSpec = describe "diagnostic verify re-prompt (intention)" $ do
             unconfirmedMessage 2 ["evalExpr"] Nothing
                 `shouldSatisfy` T.isInfixOf "evalExpr"
 
-    describe "doneSignal — the deliverable-green stop line" $ do
-        it "says confirmed, asks for a one-line summary and a stop" $ do
-            doneSignal `shouldSatisfy` T.isInfixOf "confirmed"
-            doneSignal `shouldSatisfy` T.isInfixOf "stop"
+    describe "doneSignal — the deliverable-green line (C1-22)" $ do
+        it "reports the check that ran and the cells this turn committed" $ do
+            let msg = doneSignal [3, 7] "total == 42"
+            msg `shouldSatisfy` T.isInfixOf "`total == 42`"
+            msg `shouldSatisfy` T.isInfixOf "3, 7"
+            msg `shouldSatisfy` T.isInfixOf "passed"
+        it "claims the check ran against the notebook, not over those cells" $ do
+            let msg = T.toLower (doneSignal [3, 7] "total == 42")
+            msg `shouldSatisfy` T.isInfixOf "against the live notebook"
+            msg `shouldSatisfy` (not . T.isInfixOf "over cell")
+        it "orders the model to do nothing" $ do
+            let msg = T.toLower (doneSignal [1] "total == 42")
+            msg `shouldSatisfy` (not . T.isInfixOf "reply with")
+            msg `shouldSatisfy` (not . T.isInfixOf "and stop")
         it "is one line and never advises more searching" $ do
-            T.count "\n" doneSignal `shouldBe` 0
-            T.toLower doneSignal `shouldSatisfy` (not . T.isInfixOf "search")
-            T.toLower doneSignal `shouldSatisfy` (not . T.isInfixOf "discover")
+            let msg = doneSignal [1] "total == 42"
+            T.count "\n" msg `shouldBe` 0
+            T.toLower msg `shouldSatisfy` (not . T.isInfixOf "search")
+            T.toLower msg `shouldSatisfy` (not . T.isInfixOf "discover")

@@ -6,24 +6,13 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
+import Test.CellFixture (mkCell)
 import Test.Hspec
 
 import Sabela.Model (Cell (..), CellType (..))
 import Sabela.Reactivity (cycleErrorMsg)
 import Sabela.SessionTypes (CellLang (..))
 import qualified Sabela.Topo as Topo
-
-mkCell :: Int -> Text -> Cell
-mkCell cid src =
-    Cell
-        { cellId = cid
-        , cellType = CodeCell
-        , cellLang = Haskell
-        , cellSource = src
-        , cellOutputs = []
-        , cellError = Nothing
-        , cellDirty = False
-        }
 
 spec :: Spec
 spec = do

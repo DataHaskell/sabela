@@ -2,6 +2,7 @@
 
 module Sabela.AI.Capabilities.Edit.Replace (
     execReplaceCellSource,
+    execSupersedeCell,
     applyReplaceCellSource,
 ) where
 
@@ -10,12 +11,18 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.Ack (withNote)
-import Sabela.AI.Capabilities.Edit.Admit (conflictJson, restickCabal)
+import Sabela.AI.Capabilities.Edit.Admit (conflictJson)
 import Sabela.AI.Capabilities.Edit.GateRepair (gatedCandidate)
 import Sabela.AI.Capabilities.Edit.Run (autoExecuteAfterMutation)
+import Sabela.AI.Capabilities.Edit.Submission (
+    Submission,
+    compiledText,
+    replaceSubmission,
+    reroutedSubmission,
+    submissionNotes,
+ )
 import Sabela.AI.Capabilities.Util (field, fieldInt, fieldText)
 import Sabela.AI.Doc (cellHash)
-import Sabela.AI.NormalizeGate (gatedRewrite)
 import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
 import Sabela.Anthropic.Types (CancelToken)
@@ -57,6 +64,31 @@ execReplaceCellSource app store rn cancelTok input = do
                                 )
                     _ -> applyReplaceCellSource app store rn cancelTok c newSrc
 
+{- | An insert the router turned into an overwrite of @cid@. The caller's own
+bytes remain the submission, so a rejection still shows it its own text.
+-}
+execSupersedeCell ::
+    App ->
+    AIStore ->
+    ReactiveNotebook ->
+    CancelToken ->
+    Int ->
+    Submission ->
+    IO ToolOutcome
+execSupersedeCell app store rn cancelTok cid sub = do
+    nb <- readNotebook (appNotebook app)
+    case lookupCell cid nb of
+        Nothing ->
+            pure (errOutcome (errorJson ("Cell not found: " <> T.pack (show cid))))
+        Just c ->
+            applyReplaceSubmission
+                app
+                store
+                rn
+                cancelTok
+                c
+                (reroutedSubmission (cellLang c) (cellSource c) sub)
+
 applyReplaceCellSource ::
     App ->
     AIStore ->
@@ -66,27 +98,30 @@ applyReplaceCellSource ::
     Text ->
     IO ToolOutcome
 applyReplaceCellSource app store rn cancelTok oldCell newSrc0 =
-    case structuralReject oldCell newSrc of
+    applyReplaceSubmission
+        app
+        store
+        rn
+        cancelTok
+        oldCell
+        (replaceSubmission (cellLang oldCell) (cellSource oldCell) newSrc0)
+
+applyReplaceSubmission ::
+    App ->
+    AIStore ->
+    ReactiveNotebook ->
+    CancelToken ->
+    Cell ->
+    Submission ->
+    IO ToolOutcome
+applyReplaceSubmission app store rn cancelTok oldCell sub =
+    case structuralReject oldCell (compiledText sub) of
         Just msg -> pure (errOutcome (errorJson msg))
         Nothing -> do
-            out <- doReplace app store rn cancelTok oldCell newSrc
-            pure $ case disclosures of
+            out <- doReplace app store rn cancelTok oldCell sub
+            pure $ case submissionNotes sub of
                 [] -> out
                 ns -> withNote (T.unwords ns) out
-  where
-    sticked =
-        if cellLang oldCell == Haskell
-            then restickCabal (cellSource oldCell) newSrc0
-            else newSrc0
-    (newSrc, gateNotes) =
-        if cellLang oldCell == Haskell
-            then gatedRewrite sticked
-            else (sticked, [])
-    disclosures =
-        [ "Kept the -- cabal: line your replace omitted (its imports still need it)."
-        | sticked /= newSrc0
-        ]
-            <> gateNotes
 
 structuralReject :: Cell -> Text -> Maybe Text
 structuralReject c newSrc
@@ -99,12 +134,12 @@ doReplace ::
     ReactiveNotebook ->
     CancelToken ->
     Cell ->
-    Text ->
+    Submission ->
     IO ToolOutcome
-doReplace app store rn cancelTok oldCell newSrc = do
+doReplace app store rn cancelTok oldCell sub = do
     let cid = cellId oldCell
     gate <-
-        gatedCandidate app (Just cid) (cellLang oldCell) (cellType oldCell) newSrc
+        gatedCandidate app (Just cid) (cellLang oldCell) (cellType oldCell) sub
     case gate of
         Left rejection -> pure (errOutcome rejection)
         Right (newSrc', repairNotes) ->

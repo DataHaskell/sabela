@@ -14,7 +14,22 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
+import Siza.Agent.Discover.Affordance (
+    markClashes,
+    scopeUse,
+    withCardClashes,
+ )
+import Siza.Agent.Discover.CardAuthority (
+    cardAnswers,
+    cardInScope,
+    stampCardAnswers,
+ )
 import Siza.Agent.Discover.Guidance (actionNext, cabalLine, missNext)
+import Siza.Agent.Discover.Installed (
+    moduleState,
+    packageState,
+    sessionFacts,
+ )
 import Siza.Agent.Discover.Interpret (stripVersion)
 import Siza.Agent.Discover.Rank (
     demotedCount,
@@ -31,8 +46,10 @@ import Siza.Agent.Discover.Render (
 import Siza.Agent.Discover.Request (scopeDisclosure)
 import Siza.Agent.Discover.ScopeFilter (
     absentTailNote,
+    attributeFrom,
     attributedKeep,
     capAbsentKnown,
+    contestedNote,
     removedByScope,
     scopeRemovedNote,
  )
@@ -100,18 +117,20 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
         , "consulted"
             .= (map consultedJson (dedupSources answers) ++ [hackageJson hk])
         ]
-            <> ["card" .= c | Just c <- [scopedCard]]
+            <> ["card" .= c | Just c <- [shownCard]]
             <> ["next" .= n | Just n <- [next]]
             <> ["narrow" .= n | Just n <- [narrowNote]]
   where
-    scopedCard = case (scModule scope, card) of
-        (Just m, Just c) | cardModule c /= Just m -> Nothing
-        _ -> card
-    ranked = filter (attributedKeep rankedAll scope) rankedAll
+    scopedCard = case card of
+        Just c | not (cardInScope scope c) -> Nothing
+        _ -> withCardClashes env <$> card
+    cardIsEvidence = maybe False (cardAnswers interp) scopedCard
+    shownCard = stampCardAnswers cardIsEvidence <$> scopedCard
+    ranked = markClashes (filter (attributedKeep rankedAll scope) rankedAll)
     total = length ranked
     shownHits = capAbsentKnown (max 1 limit) ranked
     state :: Text
-    state = if null ranked && isNothing card then "not_found" else "found"
+    state = if null ranked && not cardIsEvidence then "not_found" else "found"
     next
         | state == "not_found" =
             Just (missNext env interp scope (dedupSources answers) hk)
@@ -125,10 +144,11 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
             Just $
                 tShow demoted
                     <> " internal-module hits demoted below the public API"
-                    <> " (counted in omitted; raise limit to see them)"
+                    <> " (counted in omitted; a higher limit does not reveal them)"
         | otherwise = Nothing
+    contestNote = contestedNote answers ranked
     narrowNote =
-        case catMaybes [scopeNote, removedNote, absentNote, demoteNote] of
+        case catMaybes [scopeNote, removedNote, absentNote, demoteNote, contestNote] of
             [] -> Nothing
             notes -> Just (T.intercalate "; " notes)
 
@@ -144,7 +164,13 @@ mergedHitsRecent recentPkgs env interp answers hk =
         . fuseAll
         $ map finalise allHits
   where
-    allHits = concatMap saHits answers ++ hackageOnlyHit
+    -- A hit whose module the answers attribute to one package is not
+    -- package-less: left blank, a session hit is invisible to every band,
+    -- filter and disclosure that reads a package.
+    allHits =
+        map
+            (attributeFrom pkgModules)
+            (concatMap saHits answers ++ hackageOnlyHit)
     importedPkgs =
         nub $
             [ p
@@ -171,22 +197,8 @@ mergedHitsRecent recentPkgs env interp answers hk =
                    , s == diagClassText ClassHiddenPackage
                    , Just (String p) <- [KM.lookup "package" o]
                    ]
-    sessionMods =
-        nub $
-            [dhModule h | a <- answers, saSource a == "session", h <- saHits a]
-                ++ [ m
-                   | a <- answers
-                   , Just (Object o) <- [saCard a]
-                   , Just (String "ok") <- [KM.lookup "status" o]
-                   , Just (String m) <- [KM.lookup "module" o]
-                   ]
-    sessionPkgs =
-        nub
-            [ p
-            | a <- answers
-            , (p, mods) <- saPkgModules a
-            , any (`elem` sessionMods) mods
-            ]
+    sessionEvidence = sessionFacts answers
+    pkgModules = concatMap saPkgModules answers
     pkgVersions =
         [ (dhPackage h, dhVersion h)
         | h <- allHits
@@ -211,10 +223,10 @@ mergedHitsRecent recentPkgs env interp answers hk =
                     , dhCabal = fillCabal h
                     }
         | dhOrigin h == "session" = promote h{dhInstall = InstInstalled}
-        | dhModule h `elem` sessionMods && not (T.null (dhModule h)) =
-            promote h{dhInstall = InstInstalled}
-        | dhPackage h `elem` sessionPkgs && not (T.null (dhPackage h)) =
-            promote h{dhInstall = InstInstalled}
+        | Just st <- moduleState pkgModules sessionEvidence h =
+            promote (stated st h)
+        | Just st <- packageState sessionEvidence pkgModules h =
+            promote (stated st h)
         | dhPackage h `elem` hiKnown hk =
             promote
                 h
@@ -228,6 +240,11 @@ mergedHitsRecent recentPkgs env interp answers hk =
                     , dhCabal = fillCabal h
                     }
         | otherwise = promote h
+    -- The state the session's evidence carried, no stronger: a module known
+    -- only through a hidden package is present, not loaded.
+    stated st h
+        | st == InstHidden = h{dhInstall = st, dhCabal = fillCabal h}
+        | otherwise = h{dhInstall = st}
     fillCabal h = case dhCabal h of
         Just c -> Just c
         Nothing
@@ -238,26 +255,23 @@ mergedHitsRecent recentPkgs env interp answers hk =
         | Just v <- lookup (dhPackage h) pkgVersions = h{dhVersion = v}
         | otherwise = h
     promote h
-        | dhKind h == MkExact
-        , dhModule h `elem` importTargets
-        , isNothing (dhUse h) =
-            h{dhUse = Just (importUse (dhModule h))}
+        | isNothing (dhUse h) = h{dhUse = scopeUse importTargets (neAliases env) h}
         | otherwise = h
     importTargets = map snd (neAliases env) ++ neImports env
-    importUse m = case [a | (a, m') <- neAliases env, m' == m] of
-        (a : _) -> "already imported as " <> a <> " (notebook import)"
-        [] -> "already imported by the notebook"
+    -- The catalogue knows the package exists and nothing else about it, so
+    -- module, version and type are left uncomputed rather than stood in for.
     hackageOnlyHit =
         [ DHit
             pkg
             ""
-            "(not installed)"
+            ""
             pkg
-            "unknown"
+            ""
             InstAbsentKnown
             MkExact
             "hackage"
             (Just (cabalLine pkg))
+            Nothing
             Nothing
         | iShape interp `elem` ["name", "package"]
         , let pkg = stripVersion (iName interp)
@@ -267,9 +281,3 @@ mergedHitsRecent recentPkgs env interp answers hk =
 
 tShow :: Int -> Text
 tShow = T.pack . show
-
-cardModule :: Value -> Maybe Text
-cardModule (Object o) = case KM.lookup "module" o of
-    Just (String m) | not (T.null m) -> Just m
-    _ -> Nothing
-cardModule _ = Nothing

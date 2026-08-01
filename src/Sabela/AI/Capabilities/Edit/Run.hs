@@ -5,6 +5,7 @@ module Sabela.AI.Capabilities.Edit.Run (
     autoExecuteAfterMutation,
     execExecuteCell,
     executeCell,
+    executeGuidance,
     missingCellError,
     parseRepairBudget,
     repairTierOrder,
@@ -13,7 +14,7 @@ module Sabela.AI.Capabilities.Edit.Run (
     abortTimedOut,
 ) where
 
-import Data.Aeson (Value (..), (.=))
+import Data.Aeson (Value (..), toJSON, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
@@ -32,9 +33,10 @@ import Sabela.AI.Capabilities.Edit.Exec (
     executeCell,
  )
 import Sabela.AI.Capabilities.Util (fieldInt)
-import Sabela.AI.CellResult (mergeToolOk, toCellResult)
+import Sabela.AI.CellResult (CellResult, mergeToolOk, toCellResult)
 import Sabela.AI.ErrorIndex (errorInfoForCell, errorInfoPairs, withErrorInfo)
 import Sabela.AI.Health (healthOfResult, isClean)
+import Sabela.AI.PathGate (pathFacts)
 import Sabela.AI.PathRepair (pathNotFoundGuidance)
 import Sabela.AI.SelfHeal (
     attachSelfHeal,
@@ -47,13 +49,23 @@ import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken)
 import Sabela.Api (errorJson)
 import Sabela.Diagnose (
-    cellResultWithExtraGuidance,
+    Guidance,
     guidanceForCell,
     guidancePairs,
+    withGuidance,
  )
 import Sabela.Handlers (ReactiveNotebook (..))
 import Sabela.Model
 import Sabela.State
+
+{- | The guidance an execute result carries, classified against the cell's own
+source read back from the notebook. Taking the cell id rather than a source is
+what stops a caller from advising on text the result did not come from.
+-}
+executeGuidance :: App -> Int -> CellResult -> [Guidance] -> IO [Guidance]
+executeGuidance app cid cr extra = do
+    src <- cellSrc app cid
+    pure (guidanceForCell src cr ++ extra)
 
 autoExecuteAfterMutation ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Int -> IO Value
@@ -64,12 +76,15 @@ autoExecuteAfterMutation app store rn cancelTok cid = do
     pathGuidance <- pathNotFoundGuidance (envWorkDir (appEnv app)) res0
     let res = triageResult post res0
     let cr = toCellResult res (resultOutputs res)
-    attachWriteEcho app (isClean (healthOfResult res)) post $
-        attachMitigations mitigations $
-            attachSelfHealSuggestions suggestions $
-                attachSelfHeal
-                    (selfHealNote pre post)
-                    (withErrorInfo cr (cellResultWithExtraGuidance (maybeToList pathGuidance) cr))
+    gs <- executeGuidance app cid cr (maybeToList pathGuidance)
+    facts <- pathFacts (envWorkDir (appEnv app)) post
+    attachWriteEcho app (isClean (healthOfResult res)) post
+        . attachArtefacts facts
+        $ attachMitigations mitigations
+        $ attachSelfHealSuggestions suggestions
+        $ attachSelfHeal
+            (selfHealNote pre post)
+            (withErrorInfo cr (withGuidance gs cr))
 
 execExecuteCell ::
     App -> AIStore -> ReactiveNotebook -> CancelToken -> Value -> IO ToolOutcome
@@ -92,11 +107,12 @@ execExecuteCell app store rn cancelTok input =
                             maybe [] (\n -> ["self_heal" .= n]) (selfHealNote pre post)
                                 <> ["self_heal_suggestions" .= suggestions | not (null suggestions)]
                                 <> maybe [] (\m -> ["mitigations" .= m]) mitigations
+                    gs <- executeGuidance app cid cr (maybeToList pathGuidance)
                     pure $
                         mergeToolOk
                             cr
                             ( ["cellId" .= cid]
-                                <> guidancePairs (guidanceForCell cr ++ maybeToList pathGuidance)
+                                <> guidancePairs gs
                                 <> errorInfoPairs (errorInfoForCell cr)
                                 <> heal
                             )
@@ -109,6 +125,15 @@ missingCellError cells cid
 attachMitigations :: Maybe Value -> Value -> Value
 attachMitigations (Just note) (Object o) = Object (KM.insert "mitigations" note o)
 attachMitigations _ v = v
+
+{- | The committed cell's own artefacts, described from the same reader
+read_file uses, so the shape of a file the cell names never costs a
+second round trip.
+-}
+attachArtefacts :: [Value] -> Value -> Value
+attachArtefacts facts (Object o)
+    | not (null facts) = Object (KM.insert "artefacts" (toJSON facts) o)
+attachArtefacts _ v = v
 
 resultOutputs :: Either Text ExecutionResult -> [OutputItem]
 resultOutputs (Left _) = []

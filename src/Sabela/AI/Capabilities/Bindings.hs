@@ -3,6 +3,7 @@
 module Sabela.AI.Capabilities.Bindings (
     attachWriteEcho,
     execListBindings,
+    notebookSource,
     valueEchoes,
 ) where
 
@@ -28,7 +29,7 @@ import Sabela.AI.ValueEcho (
     partitionLive,
  )
 import Sabela.AI.VerifierDistill (answerVerdict)
-import Sabela.Model (nbCells)
+import Sabela.Model (CellType (..), Notebook, cellSource, cellType, nbCells)
 import Sabela.Parse (cellNames)
 import Sabela.SessionTypes (SessionBackend (..))
 import Sabela.State (App (..))
@@ -39,11 +40,25 @@ execListBindings :: App -> Value -> IO ToolOutcome
 execListBindings app _ =
     withBackend app $ \backend -> do
         raw <- normalizeListing <$> sbQueryBindings backend
-        defined <- concatMap cellDefines . nbCells <$> readNotebook (appNotebook app)
-        let (live, _) = partitionLive defined raw
+        nb <- readNotebook (appNotebook app)
+        let defined = concatMap cellDefines (nbCells nb)
+            (live, _) = partitionLive defined raw
         echoes <- valueEchoes backend live
         let report = liveBindingsReport defined (\n -> join (lookup n echoes)) raw
-        pure (guidedOutcome ["verdict" .= answerVerdict report] report)
+        pure
+            ( guidedOutcome
+                (notebookSource nb)
+                ["verdict" .= answerVerdict report]
+                report
+            )
+
+{- | The notebook's code cells, joined: the only source this surface has, and
+what guidance about its bindings must not contradict. Prose is left out — a
+tutorial quoting a @build-depends:@ line declares nothing.
+-}
+notebookSource :: Notebook -> Text
+notebookSource nb =
+    T.unlines [cellSource c | c <- nbCells nb, cellType c == CodeCell]
 
 attachWriteEcho :: App -> Bool -> Text -> Value -> IO Value
 attachWriteEcho app ok src v

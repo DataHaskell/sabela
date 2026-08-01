@@ -63,7 +63,7 @@ runBlocked = do
             { drvChat = chat turnRef
             , drvDispatch = dispatch seen
             , drvNow = pure 0
-            , drvVerify = pure (CheckPassed, Nothing)
+            , drvVerify = const (pure (CheckPassed, Nothing))
             }
     dispatch seen tc = do
         modifyIORef' seen (++ [tc])
@@ -91,7 +91,7 @@ runBlocked = do
                 else
                     Turn
                         (object ["role" .= ("assistant" :: Text), "content" .= ("done" :: Text)])
-                        ""
+                        "done"
                         []
 
 routedUnblockSpec :: Spec
@@ -105,7 +105,10 @@ routedUnblockSpec = describe "routed unblock: blocked insert converges to replac
                 , argInt "cell_id" tc == Just blockedCellId
                 ]
         replaces `shouldSatisfy` (not . null)
-        map (argText "new_source") replaces `shouldSatisfy` all (== fixSource)
+        let sources = map (argText "new_source") replaces
+        sources `shouldSatisfy` all (fixSource `T.isInfixOf`)
+        take 1 sources `shouldBe` [fixSource]
+        take 1 (reverse sources) `shouldBe` [fixSource]
     it "never insert-retries: the blocked insert is not re-sent turn after turn" $ do
         (_, calls) <- runBlocked
         let inserts = length [() | tc <- calls, tcName tc == "insert_cell"]

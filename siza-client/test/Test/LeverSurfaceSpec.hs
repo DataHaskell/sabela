@@ -157,7 +157,7 @@ armGrid world mode = do
                 { drvChat = chat
                 , drvDispatch = dispatch
                 , drvNow = pure 0
-                , drvVerify = pure (CheckUncheckable, Nothing)
+                , drvVerify = const (pure (CheckUncheckable, Nothing))
                 }
     run <-
         runEpisodeSeeded

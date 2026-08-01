@@ -1,13 +1,21 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Sabela.Reactivity (
+    EnvState (..),
     ExecutionPlan (..),
+    computeExecutionPlanIn,
+    computeStaleExecutionPlanIn,
+    ModuleState (..),
+    computeRootedExecutionPlan,
+    bridgeConsumers,
+    changedBridgeValues,
     cellStale,
+    cellSettled,
+    clearCellResult,
     runAllNeedsRun,
     computeExecutionPlan,
     markDependentsDirty,
     markAllDirty,
-    markAllInterpretedDirty,
+    RestartMode (..),
+    applyRestart,
     computeFullExecutionPlan,
     computeStaleExecutionPlan,
     escalatedCellsToRun,
@@ -19,10 +27,11 @@ module Sabela.Reactivity (
 
 import Data.Containers.ListUtils (nubOrdOn)
 import qualified Data.Map.Strict as M
-import Data.Maybe (isJust)
+import Data.Maybe (isNothing)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
+import Sabela.Bridge (bridgeIdentifier)
 import Sabela.Compiled (
     CompilePlan (..),
     compiledRootExpansion,
@@ -30,11 +39,30 @@ import Sabela.Compiled (
     pruneIntraModuleDeps,
  )
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
+import Sabela.Reactivity.Errors (
+    cellPositionMap,
+    cycleErrorMsg,
+    redefinitionErrorMsg,
+ )
 import qualified Sabela.SessionTypes as ST
 import qualified Sabela.Topo as Topo
 
+{- | Whether the running kernel is still the one the notebook needs. The planner
+is pure, so this is decided in IO by @envStale@ and passed in.
+-}
+data EnvState = EnvFresh | EnvStale
+    deriving (Eq, Show)
+
+{- | Whether the next compile will @:load@, which wipes every interpreted
+binding in the kernel. Known before running rather than discovered after, so the
+cells it invalidates are roots of the same plan instead of a second pass.
+-}
+data ModuleState = ModulesLoaded | ModulesWiped
+    deriving (Eq, Show)
+
 data ExecutionPlan = ExecutionPlan
-    { epCellsToRun :: [Cell]
+    { epRunEnv :: Bool
+    , epCellsToRun :: [Cell]
     , epCompileCells :: [Cell]
     , epCompilePlan :: CompilePlan
     , epCycleIds :: S.Set Int
@@ -44,28 +72,84 @@ data ExecutionPlan = ExecutionPlan
     }
 
 computeExecutionPlan :: Int -> [Cell] -> Notebook -> ExecutionPlan
-computeExecutionPlan editedCid = computePlanCore (Just (S.singleton editedCid))
+computeExecutionPlan editedCid =
+    computePlanCore EnvFresh ModulesLoaded (Just (S.singleton editedCid))
+
+computeExecutionPlanIn ::
+    EnvState -> ModuleState -> Int -> [Cell] -> Notebook -> ExecutionPlan
+computeExecutionPlanIn env mods editedCid =
+    computePlanCore env mods (Just (S.singleton editedCid))
 
 computeFullExecutionPlan :: [Cell] -> Notebook -> ExecutionPlan
-computeFullExecutionPlan = computePlanCore Nothing
+computeFullExecutionPlan = computePlanCore EnvFresh ModulesLoaded Nothing
 
+-- | A plan rooted at an explicit set of cells, expanded by the usual reachability.
+computeRootedExecutionPlan ::
+    EnvState -> ModuleState -> S.Set Int -> [Cell] -> Notebook -> ExecutionPlan
+computeRootedExecutionPlan env mods roots = computePlanCore env mods (Just roots)
+
+{- | Does this cell need running? A failure is /settled/, not stale: re-running
+unchanged inputs only reproduces it, so an errored cell stops being an automatic
+execution root until its source changes. Contrast 'cellSettled'.
+-}
 cellStale :: Cell -> Bool
-cellStale c = cellDirty c || isJust (cellError c)
+cellStale = cellDirty
 
+{- | Does the kernel hold what this cell claims? True only for a cell that ran to
+completion without error, so unlike 'cellStale' a failure counts against it.
+-}
+cellSettled :: Cell -> Bool
+cellSettled c = not (cellDirty c) && isNothing (cellError c)
+
+{- | Drop whatever a cell was showing. A code cell with no result cannot be
+current, so it comes back invalidated; prose has nothing to run and stays clean.
+Shared by Clear, Reset and a language switch, which all discard a result.
+-}
+clearCellResult :: Cell -> Cell
+clearCellResult c =
+    c
+        { cellOutputs = []
+        , cellError = Nothing
+        , cellDirty = cellType c == CodeCell
+        }
+
+{- | A rebuild counts as work even when no cell is stale, so a notebook whose
+environment changed is never reported as having nothing to do.
+-}
 runAllNeedsRun :: Bool -> Bool -> [Cell] -> Notebook -> Bool
 runAllNeedsRun building ready allCode nb
     | building = False
-    | not ready = True
-    | otherwise = not (null (epCellsToRun (computeStaleExecutionPlan allCode nb)))
+    | otherwise = epRunEnv plan || not (null (epCellsToRun plan))
+  where
+    plan = computeStaleExecutionPlanIn (envStateOf ready) ModulesLoaded allCode nb
+
+envStateOf :: Bool -> EnvState
+envStateOf ready = if ready then EnvFresh else EnvStale
 
 computeStaleExecutionPlan :: [Cell] -> Notebook -> ExecutionPlan
-computeStaleExecutionPlan allCode =
+computeStaleExecutionPlan = computeStaleExecutionPlanIn EnvFresh ModulesLoaded
+
+computeStaleExecutionPlanIn ::
+    EnvState -> ModuleState -> [Cell] -> Notebook -> ExecutionPlan
+computeStaleExecutionPlanIn env mods allCode =
     computePlanCore
+        env
+        mods
         (Just (S.fromList (map cellId (filter cellStale allCode))))
         allCode
 
-computePlanCore :: Maybe (S.Set Int) -> [Cell] -> Notebook -> ExecutionPlan
-computePlanCore mRoots allCode nb =
+{- | Replacing the kernel invalidates every binding it held, so a stale
+environment makes every code cell a root. That is the whole of the reactive rule
+applied to the environment: nothing has to remember to mark cells afterwards.
+-}
+computePlanCore ::
+    EnvState ->
+    ModuleState ->
+    Maybe (S.Set Int) ->
+    [Cell] ->
+    Notebook ->
+    ExecutionPlan
+computePlanCore env mods mRoots allCode nb =
     let posMap = cellPositionMap nb
         cplan = planCompiledModules posMap allCode
         (defMap, redefMap) = Topo.buildDefMap allCode
@@ -75,9 +159,11 @@ computePlanCore mRoots allCode nb =
                 (Topo.buildDepGraph defMap allCode)
         revDeps = Topo.reverseDeps deps
         allIds = S.fromList (map cellId allCode)
-        affected = case mRoots of
-            Nothing -> allIds
-            Just roots ->
+        affected = case (env, mods, mRoots) of
+            (EnvStale, _, _) -> allIds
+            (_, ModulesWiped, _) -> allIds
+            (_, _, Nothing) -> allIds
+            (_, _, Just roots) ->
                 let affected0 = Topo.reachableFrom roots revDeps
                     roots' = roots `S.union` compiledRootExpansion cplan affected0
                  in Topo.reachableFrom roots' revDeps
@@ -102,7 +188,8 @@ computePlanCore mRoots allCode nb =
             , keep c
             ]
      in ExecutionPlan
-            { epCellsToRun = interp
+            { epRunEnv = env == EnvStale
+            , epCellsToRun = interp
             , epCompileCells = compiledCells
             , epCompilePlan = cplan
             , epCycleIds = Topo.trCycleIds topoResult
@@ -111,10 +198,57 @@ computePlanCore mRoots allCode nb =
             , epCellPositions = posMap
             }
 
+{- | Which exported values differ between two snapshots of the bridge store,
+counting additions and removals. Per value, so re-exporting one name does not
+invalidate consumers of the others.
+-}
+changedBridgeValues :: M.Map Text Text -> M.Map Text Text -> S.Set Text
+changedBridgeValues before after =
+    M.keysSet (M.differenceWith drop' before after)
+        `S.union` M.keysSet (M.difference after before)
+  where
+    drop' old new = if old == new then Nothing else Just old
+
+{- | Cells that use any of these bridge values. Uses come from the parser, so a
+mention inside a string or a comment is not a dependency — the same rule every
+other edge in the graph is built from.
+-}
+bridgeConsumers :: S.Set Text -> [Cell] -> S.Set Int
+bridgeConsumers changed cells
+    | S.null changed = S.empty
+    | otherwise =
+        S.fromList
+            [ cellId c
+            | c <- cells
+            , let (_, uses) = Topo.cellNames (cellSource c)
+            , not (S.disjoint uses wanted)
+            ]
+  where
+    wanted = S.map bridgeIdentifier changed
+
+{- | Invalidate everything a kernel could have held. Prose is excluded because
+it never runs: marking it produced a cell that reported itself out of date
+forever, since nothing ever cleared it.
+-}
 markAllDirty :: Notebook -> Notebook
 markAllDirty nb = nb{nbCells = map dirty (nbCells nb)}
   where
-    dirty c = c{cellDirty = True}
+    dirty c
+        | cellType c == CodeCell = c{cellDirty = True}
+        | otherwise = c
+
+{- | Which restart the user asked for. All three respawn the kernel; they differ
+in whether cells re-run afterwards and whether their outputs survive.
+-}
+data RestartMode = RestartOnly | RestartRunAll | RestartClear
+    deriving (Eq, Show)
+
+{- | Every mode invalidates each code cell, because the kernel comes back empty
+and nothing it held is still current. Only 'RestartClear' discards outputs.
+-}
+applyRestart :: RestartMode -> Notebook -> Notebook
+applyRestart RestartClear nb = nb{nbCells = map clearCellResult (nbCells nb)}
+applyRestart _ nb = markAllDirty nb
 
 markDependentsDirty :: Int -> Notebook -> Notebook
 markDependentsDirty cid nb =
@@ -128,21 +262,6 @@ markDependentsDirty cid nb =
             | otherwise = c
      in nb{nbCells = map upd (nbCells nb)}
 
-markAllInterpretedDirty :: Notebook -> Notebook
-markAllInterpretedDirty nb =
-    let code = haskellCodeCells nb
-        cplan = planCompiledModules (cellPositionMap nb) code
-        interpIds =
-            S.fromList
-                [ cellId c
-                | c <- code
-                , not (M.member (cellId c) (cpCellModule cplan))
-                ]
-        upd c
-            | S.member (cellId c) interpIds = c{cellDirty = True}
-            | otherwise = c
-     in nb{nbCells = map upd (nbCells nb)}
-
 escalatedCellsToRun :: Notebook -> [Cell]
 escalatedCellsToRun nb =
     epCellsToRun (computeFullExecutionPlan (haskellCodeCells nb) nb)
@@ -150,78 +269,3 @@ escalatedCellsToRun nb =
 haskellCodeCells :: Notebook -> [Cell]
 haskellCodeCells nb =
     filter (\c -> cellType c == CodeCell && cellLang c == ST.Haskell) (nbCells nb)
-
-cellPositionMap :: Notebook -> M.Map Int Int
-cellPositionMap nb =
-    M.fromList (zip (map cellId (nbCells nb)) [1 ..])
-
-redefinitionErrorMsg ::
-    M.Map Text Int ->
-    M.Map Int Int ->
-    Int ->
-    [Text] ->
-    Text
-redefinitionErrorMsg defMap posMap _cid names =
-    let msgs =
-            [ "'"
-                <> name
-                <> "' is already defined in cell "
-                <> T.pack (show (M.findWithDefault origCid origCid posMap))
-                <> " (which takes precedence)"
-            | name <- names
-            , Just origCid <- [M.lookup name defMap]
-            ]
-     in "Duplicate definition"
-            <> (if length names > 1 then "s" else "")
-            <> ": "
-            <> T.intercalate "; " msgs
-            <> ". Remove the duplicate to resolve this conflict."
-
-cycleErrorMsg ::
-    M.Map Int Int ->
-    S.Set Int ->
-    [Cell] ->
-    M.Map Text Int ->
-    Text
-cycleErrorMsg posMap cycleIds cells defMap =
-    let cids = S.toList cycleIds
-        positions =
-            map (\c -> T.pack (show (M.findWithDefault c c posMap))) cids
-        cycleList = T.intercalate ", " positions
-        vars = cycleVariables cycleIds cells defMap
-        varLine =
-            if null vars
-                then ""
-                else
-                    " Variables forming the cycle: {"
-                        <> T.intercalate ", " vars
-                        <> "}."
-     in "This cell is part of a circular dependency and cannot execute. "
-            <> "Cells in the cycle (by position): ["
-            <> cycleList
-            <> "]."
-            <> varLine
-            <> " To resolve: (1) rename one of those variables in the cell that"
-            <> " introduces the loop, (2) delete one of the mutually-referencing"
-            <> " cells, or (3) merge the definitions into a single cell."
-            <> " Tokens inside string literals / comments are NOT counted, so"
-            <> " this is a real reference loop in the code."
-
-cycleVariables :: S.Set Int -> [Cell] -> M.Map Text Int -> [Text]
-cycleVariables cycleIds cells defMap =
-    let cellById = M.fromList [(cellId c, c) | c <- cells]
-        cycleCells = [c | cid <- S.toList cycleIds, Just c <- [M.lookup cid cellById]]
-        nameCreatesCycleEdge name =
-            case M.lookup name defMap of
-                Nothing -> False
-                Just definerCid -> S.member definerCid cycleIds
-        namesForCell c =
-            let (_, uses) = Topo.cellNames (cellSource c)
-             in S.filter
-                    ( \n ->
-                        nameCreatesCycleEdge n
-                            && M.lookup n defMap /= Just (cellId c)
-                    )
-                    uses
-        allVars = S.unions (map namesForCell cycleCells)
-     in S.toAscList allVars

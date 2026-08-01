@@ -3,22 +3,27 @@
 module Test.IndexAnswerSpec (spec) where
 
 import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
+import Test.QuickCheck
 
+import Sabela.AI.AnswerSource (
+    AnswerSource (..),
+    compilerBacked,
+    sourceTag,
+    viaVocabulary,
+ )
 import Sabela.AI.Capabilities.Query.IndexAnswer (
     IndexAnswer (..),
     IndexHit (..),
+    PackageState (..),
     builtinAnswer,
     classifyIndexHit,
-    consultedSources,
     looksNotInScope,
     renderIndexAnswer,
-    viaLocalIndex,
-    viaSessionInfo,
-    viaSessionType,
-    viaVocabulary,
  )
+import Sabela.AI.PromptCore (builtinNames)
 
 picture :: IndexHit
 picture = IndexHit "Picture" "Sabela.Notebook" "sabela-notebook" ""
@@ -26,67 +31,135 @@ picture = IndexHit "Picture" "Sabela.Notebook" "sabela-notebook" ""
 hidden :: IndexHit
 hidden = IndexHit "pack" "Data.Text" "text" "String -> Text"
 
+consulted :: [Text]
+consulted = ["local index", "notebook source"]
+
+newtype Ident = Ident Text
+    deriving (Show)
+
+instance Arbitrary Ident where
+    arbitrary =
+        Ident . T.pack <$> resize 8 (listOf1 (elements (['a' .. 'z'] <> "0123456789")))
+
+newtype Modul = Modul Text
+    deriving (Show)
+
+instance Arbitrary Modul where
+    arbitrary = Modul . T.intercalate "." <$> resize 3 (listOf1 genUpperWord)
+      where
+        genUpperWord = do
+            c <- elements ['A' .. 'Z']
+            rest <- resize 6 (listOf (elements (['a' .. 'z'] <> "0123456789")))
+            pure (T.pack (c : rest))
+
+{- | Words that state what a compiler holds. A world clause may name where a
+name lives and what was consulted; it may never say what is in scope.
+-}
+sessionClaims :: [Text]
+sessionClaims =
+    ["in scope", "in this session", "session", "imported", "loaded", "available"]
+
+noSessionClaim :: Text -> Property
+noSessionClaim t =
+    conjoin
+        [ counterexample
+            (T.unpack (c <> " in: " <> t))
+            (property (not (c `T.isInfixOf` lt)))
+        | c <- sessionClaims
+        ]
+  where
+    lt = T.toLower t
+
 spec :: Spec
 spec = describe "check_type index answers (G10)" $ do
     describe "classification" $ do
-        it "unimported-type: an available package is a not-imported fact" $
-            classifyIndexHit (Set.fromList ["sabela-notebook"]) (Just picture)
-                `shouldBe` NotImported picture
+        it "an available package is a declared-package world fact" $
+            classifyIndexHit (Set.fromList ["sabela-notebook"]) consulted (Just picture)
+                `shouldBe` WorldHit picture Declared
 
-        it "an undeclared package is a not-installed fact" $
-            classifyIndexHit (Set.fromList ["base"]) (Just hidden)
-                `shouldBe` NotInstalled hidden
+        it "an undeclared package is an undeclared-package world fact" $
+            classifyIndexHit (Set.fromList ["base"]) consulted (Just hidden)
+                `shouldBe` WorldHit hidden Undeclared
 
-        it "no index hit is an unknown, naming what was consulted" $
-            classifyIndexHit (Set.fromList ["base"]) Nothing
-                `shouldBe` UnknownName consultedSources
+        it "no index hit is a miss naming what was actually consulted" $
+            classifyIndexHit (Set.fromList ["base"]) consulted Nothing
+                `shouldBe` WorldMiss consulted
 
     describe "rendering carries the actionable line (G10.4)" $ do
-        it "a not-imported answer hands over the import, not a description" $ do
-            let t = renderIndexAnswer (NotImported picture)
-            t `shouldSatisfy` T.isInfixOf "import Sabela.Notebook"
+        it "a declared package is stated as a package fact, not a session one" $ do
+            let t = renderIndexAnswer (WorldHit picture Declared)
+            t `shouldSatisfy` T.isInfixOf "Sabela.Notebook"
             t `shouldSatisfy` T.isInfixOf "sabela-notebook"
+            T.toLower t `shouldNotSatisfy` T.isInfixOf "in this session"
 
-        it "a not-installed answer hands over the cabal first line" $ do
-            let t = renderIndexAnswer (NotInstalled hidden)
+        it "an undeclared package hands over the cabal first line" $ do
+            let t = renderIndexAnswer (WorldHit hidden Undeclared)
             t `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: text"
 
-        it "an unknown answer says what was consulted, never invents a fix" $ do
-            let t = renderIndexAnswer (UnknownName consultedSources)
+        it "a miss says what was consulted, never invents a fix" $ do
+            let t = renderIndexAnswer (WorldMiss consulted)
             t `shouldSatisfy` T.isInfixOf "local index"
-            t `shouldSatisfy` T.isInfixOf "live session"
+            t `shouldSatisfy` T.isInfixOf "notebook source"
             t `shouldNotSatisfy` T.isInfixOf "-- cabal:"
             t `shouldNotSatisfy` T.isInfixOf "import "
 
         it "the three answers are never the same text (the live_test9 bug)" $ do
-            let a = renderIndexAnswer (NotImported picture)
-                b = renderIndexAnswer (NotInstalled hidden)
-                c = renderIndexAnswer (UnknownName consultedSources)
+            let a = renderIndexAnswer (WorldHit picture Declared)
+                b = renderIndexAnswer (WorldHit hidden Undeclared)
+                c = renderIndexAnswer (WorldMiss consulted)
             a `shouldNotBe` b
             b `shouldNotBe` c
             a `shouldNotBe` c
 
     describe "builtin tier answers before the Hackage index (live_gemma)" $ do
-        it "displayPicture resolves to Sabela.Notebook, never gloss-rendering" $
-            case builtinAnswer "displayPicture" of
+        it "a drawing builtin is placed in the module that defines it" $
+            case fmap renderIndexAnswer (builtinAnswer "displayPicture") of
                 Nothing -> expectationFailure "no builtin answer"
                 Just t -> do
-                    t `shouldSatisfy` T.isInfixOf "import Sabela.Notebook"
+                    t `shouldSatisfy` T.isInfixOf "Sabela.Notebook"
                     t `shouldNotSatisfy` T.isInfixOf "-- cabal:"
                     t `shouldNotSatisfy` T.isInfixOf "gloss"
-        it "a session-prelude builtin answers in-scope, no import" $
-            case builtinAnswer "displayHtml" of
-                Nothing -> expectationFailure "no builtin answer"
-                Just t -> t `shouldSatisfy` T.isInfixOf "no import needed"
+
+        it "an injected builtin claims no module to import" $
+            builtinAnswer "displayHtml" `shouldBe` Just (WorldBuiltin "displayHtml" Nothing)
+
         it "knows nothing about arbitrary names" $
             builtinAnswer "frobnicate" `shouldBe` Nothing
 
+    describe "a world clause never states a session fact" $ do
+        it "no rendered hit claims scope, for arbitrary hits" $
+            property $ \(Ident n) (Modul m) (Ident p) st ->
+                let a = WorldHit (IndexHit n m p "") (if st then Declared else Undeclared)
+                 in noSessionClaim (renderIndexAnswer a)
+
+        it "no answer for any builtin in the vocabulary claims scope" $
+            conjoin
+                ( counterexample "empty vocabulary" (property (not (null builtinNames)))
+                    : [ counterexample (T.unpack b) (noSessionClaim (renderIndexAnswer a))
+                      | b <- builtinNames
+                      , Just a <- [builtinAnswer b]
+                      ]
+                )
+
     describe "the via provenance vocabulary (G10.1)" $ do
-        it "names the answering source, one closed set" $ do
+        it "names every answering source, one closed set" $
             viaVocabulary
-                `shouldBe` ["session-type", "session-info", "local-index"]
-            viaSessionType `shouldNotBe` viaLocalIndex
-            viaSessionInfo `shouldNotBe` viaLocalIndex
+                `shouldBe` [ "session-type"
+                           , "session-info"
+                           , "local-index"
+                           , "notebook"
+                           , "builtin"
+                           ]
+
+        it "only a compiler-asked source is compiler-backed" $
+            map
+                compilerBacked
+                [SessionType, SessionInfo, LocalIndex, NotebookFacts, BuiltinVocab]
+                `shouldBe` [True, True, False, False, False]
+
+        it "the tags are distinct" $
+            length (map sourceTag [minBound .. maxBound :: AnswerSource])
+                `shouldBe` length viaVocabulary
 
     describe "looksNotInScope" $ do
         it "treats GHC's data-constructor phrasing as a miss, not an answer" $

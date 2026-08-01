@@ -2,10 +2,13 @@
 
 module Test.ScratchpadRenderSpec (spec) where
 
+import Data.Aeson (Value (..))
+import Data.Functor.Identity (runIdentity)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
+import Sabela.AI.Capabilities.Scratchpad (scratchpadPayload)
 import Sabela.AI.Capabilities.Util (parseCellLang)
 import Sabela.SessionTypes (CellLang (..))
 import qualified ScriptHs.Parser as Scripths
@@ -20,19 +23,23 @@ renderHaskellForGhci src =
     let sf = Scripths.scriptLines (Scripths.parseScript src)
      in Scripths.toGhciScript sf
 
-augmentGhciError :: Text -> Text
-augmentGhciError err
-    | T.null err = err
-    | mentionsLet err =
-        err
-            <> "\n[sabela hint] GHCi rejected a top-level `let` binding."
-    | otherwise = err
-  where
-    mentionsLet t =
-        ("parse error" `T.isInfixOf` t)
-            && ( "let" `T.isInfixOf` t
-                    || "=" `T.isInfixOf` t && "on input" `T.isInfixOf` t
-               )
+-- | The whole payload as one text, so a claim in any field is visible.
+payloadText :: Text -> Text -> Text
+payloadText code stderr =
+    T.pack (show (runIdentity (scratchpadPayload (pure . String) code "" stderr)))
+
+-- | GHC naming @let@ as the offending token.
+letParseError :: Text
+letParseError = "<interactive>:3:1: error: parse error on input `let'"
+
+{- | GHC's own suggested fix for a parse error on @=@. Its wording names @let@
+whatever the snippet wrote; it is what the removed hint fired on.
+-}
+equalsParseError :: Text
+equalsParseError =
+    "<interactive>:2:5: error: [GHC-58481]\n\
+    \    parse error on input \8216=\8217\n\
+    \    Perhaps you need a 'let' in a 'do' block?"
 
 spec :: Spec
 spec = do
@@ -66,21 +73,18 @@ spec = do
             let rendered = renderHaskellForGhci "$(someSplice df)"
             T.isInfixOf "someSplice df" rendered `shouldBe` True
 
-    describe "augmentGhciError" $ do
-        it "passes empty stderr through unchanged" $
-            augmentGhciError "" `shouldBe` ""
+    describe "what a scratchpad payload says about a parse error" $ do
+        it "reports a top-level `let` when the snippet writes one" $
+            payloadText "let x = 1\n" letParseError
+                `shouldSatisfy` T.isInfixOf "top-level"
 
-        it "adds a scripths hint on top-level `let` parse errors" $ do
-            let err = "<interactive>:3:1: error: parse error on input `let'"
-                out = augmentGhciError err
-            T.isInfixOf "scripths" (T.toLower out)
-                || T.isInfixOf "sabela hint" (T.toLower out)
-                `shouldBe` True
-            out `shouldSatisfy` T.isInfixOf err
+        it "says nothing about `let` when the snippet writes none" $
+            payloadText "main = do\n  x = 5\n  print x\n" equalsParseError
+                `shouldSatisfy` (not . T.isInfixOf "top-level")
 
-        it "does not annotate unrelated errors" $ do
-            let err = "Variable not in scope: undefinedName"
-            augmentGhciError err `shouldBe` err
+        it "says nothing about `let` for an unrelated error" $
+            payloadText "answer = undefinedName\n" "Variable not in scope: undefinedName"
+                `shouldSatisfy` (not . T.isInfixOf "top-level")
 
     describe "language field default (scratchpad / insert chokepoint)" $ do
         it "defaults an empty language field to Haskell" $

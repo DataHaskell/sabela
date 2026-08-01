@@ -50,11 +50,19 @@ fakeBackend busy gen = do
 coldApp :: IO App
 coldApp = newApp "." Set.empty Nothing Nothing []
 
+{- | @restarts@ is how many kernels this server has installed, which is what
+@ksGen@ now reports. It used to be the kernel's own generation, which is 1 for
+every freshly spawned process and so never distinguished one restart from another.
+-}
 liveApp :: Bool -> Int -> Bool -> Int -> IO App
-liveApp busy gen building ebGen = do
+liveApp busy restarts building ebGen = do
     app <- newApp "." Set.empty Nothing Nothing []
-    backend <- fakeBackend busy gen
-    setHaskellSession (appSessions app) (Just backend)
+    mapM_
+        ( \_ -> do
+            backend <- fakeBackend busy 1
+            setHaskellSession (appSessions app) (Just backend)
+        )
+        [1 .. max 1 restarts]
     setBuilding app building
     writeIORef (ebGeneration (appEvents app)) ebGen
     pure app
@@ -75,7 +83,7 @@ spec = describe "kernel_status typed state (execKernelStatus)" $ do
         app <- liveApp False 0 False 0
         v <- statusValue app
         statePath "state" v `shouldBe` Just (String "idle")
-        field "ksGen" v `shouldBe` Just (Number 0)
+        field "ksGen" v `shouldBe` Just (Number 1)
         mapM_
             (\k -> field k v `shouldBe` Nothing)
             ["kernel", "running", "compiling", "sessionGen"]
@@ -107,11 +115,16 @@ spec = describe "kernel_status typed state (execKernelStatus)" $ do
         statePath "state" v `shouldBe` Just (String "executing")
         statePath "building" v `shouldBe` Just (Bool True)
 
-    it "ksGen is present on every Alive state (== sessionGen)" $ do
+    it "ksGen counts the kernels this server has installed" $ do
         app <- liveApp True 7 False 0
         v <- statusValue app
         statePath "ksGen" v `shouldBe` Just (Number 7)
         field "ksGen" v `shouldBe` Just (Number 7)
+
+    it "ksGen moves between two restarts, which sessionGen never did" $ do
+        one <- statusValue =<< liveApp False 1 False 0
+        two <- statusValue =<< liveApp False 2 False 0
+        (field "ksGen" one == field "ksGen" two) `shouldBe` False
 
     it "ebGeneration is a distinct field, separate from ksGen" $ do
         app <- liveApp False 7 False 42

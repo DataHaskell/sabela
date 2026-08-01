@@ -45,6 +45,8 @@ data ToolName
     | FindExampleCell
     | FindFunction
     | SearchCapability
+    | ListFiles
+    | ReadFile
     | EvalLive
     deriving (Eq, Show)
 
@@ -76,6 +78,8 @@ parseToolName = \case
     "find_example_cell" -> Just FindExampleCell
     "find_function" -> Just FindFunction
     "search_capability" -> Just SearchCapability
+    "list_files" -> Just ListFiles
+    "read_file" -> Just ReadFile
     "eval_live" -> Just EvalLive
     _ -> Nothing
 
@@ -110,6 +114,8 @@ primaryArgKey = \case
     FindByType -> Just "goal"
     DescribeFunction -> Just "name"
     ApiReference -> Just "module"
+    ListFiles -> Just "path"
+    ReadFile -> Just "path"
     Try -> Just "code"
     EvalLive -> Just "expression"
     _ -> Nothing
@@ -142,6 +148,8 @@ toolWireName = \case
     FindExampleCell -> "find_example_cell"
     FindFunction -> "find_function"
     SearchCapability -> "search_capability"
+    ListFiles -> "list_files"
+    ReadFile -> "read_file"
     EvalLive -> "eval_live"
 
 mkTool :: ToolName -> Text -> Value -> ToolDef

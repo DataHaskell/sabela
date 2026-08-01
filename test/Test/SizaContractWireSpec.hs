@@ -77,12 +77,13 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "insert_cell"
                     , "delete_cell"
                     , "execute_cell"
+                    , "list_files"
+                    , "read_file"
                     , "try"
                     , "list_bindings"
                     , "check_type"
                     , "find_by_type"
                     , "describe_function"
-                    , "peek_data"
                     , "api_reference"
                     , "explore_result"
                     , "kernel_status"
@@ -133,8 +134,9 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                 `shouldBe` [["query"], ["query"]]
         it "explore_result requires handle_id and op" $
             requiredOf "explore_result" `shouldBe` ["handle_id", "op"]
-        it "peek_data requires path" $
-            requiredOf "peek_data" `shouldBe` ["path"]
+        it "offers one tool for what is in a file, not two (C1-14b)" $
+            [n | n <- toolNames, n `elem` ["read_file", "peek_data"]]
+                `shouldBe` ["read_file"]
         it "api_reference requires nothing" $
             requiredOf "api_reference" `shouldBe` []
         it "the no-arg kernel tools require nothing" $

@@ -6,17 +6,16 @@ module Sabela.AI.PathRepair (
     pathNotFoundGuidance,
 ) where
 
-import Control.Exception (IOException, try)
-import Data.Char (isAlphaNum)
-import Data.List (isPrefixOf, sortOn)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
-import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as T
-import System.Directory (doesDirectoryExist, listDirectory)
-import System.FilePath (takeFileName, (</>))
 
-import Sabela.AI.Similarity (trigramSimilarity)
+import Sabela.AI.PathResolve (
+    PathLookup (..),
+    isUrl,
+    lookupPath,
+    workDirFiles,
+ )
 import Sabela.AI.Types (ExecutionResult (..))
 import Sabela.Diagnose (Guidance (..))
 
@@ -39,35 +38,6 @@ pathLike = T.all (`notElem` ("(){}\"[]," :: String))
 
 ioLocationLike :: Text -> Bool
 ioLocationLike loc = not (T.null loc) && not (T.any (== ' ') loc)
-
-data PathLookup
-    = Unique FilePath
-    | Nearby [FilePath]
-    | NoneNearby
-
-fuzzyThreshold :: Double
-fuzzyThreshold = 0.3
-
-candidateCap :: Int
-candidateCap = 3
-
-lookupPath :: FilePath -> [FilePath] -> PathLookup
-lookupPath wrong files = case basenameMatches of
-    [one] -> Unique one
-    (_ : _ : _) -> Nearby basenameMatches
-    [] -> case fuzzyMatches of
-        [] -> NoneNearby
-        cs -> Nearby cs
-  where
-    basenameMatches = [f | f <- files, takeFileName f == takeFileName wrong]
-    fuzzyMatches =
-        take
-            candidateCap
-            [ f
-            | (f, s) <- sortOn (Down . snd) (map score files)
-            , s >= fuzzyThreshold
-            ]
-    score f = (f, trigramSimilarity (T.pack wrong) (T.pack f))
 
 pathNearMissFix ::
     FilePath -> Either Text ExecutionResult -> Text -> IO (Maybe Text)
@@ -93,13 +63,6 @@ pathNotFoundGuidance workDir res = case notFoundPath =<< runtimeErrorOf res of
                 Unique _ -> Nothing
                 Nearby cs -> Just (Guidance "file-not-found" (candidateMessage wrong cs))
                 NoneNearby -> Just (Guidance "file-not-found" (noneMessage wrong))
-
-isUrl :: FilePath -> Bool
-isUrl p = case break (== ':') p of
-    (scheme, ':' : '/' : '/' : _) ->
-        not (null scheme)
-            && all (\c -> isAlphaNum c || c `elem` ("+-." :: String)) scheme
-    _ -> False
 
 urlMessage :: FilePath -> Text
 urlMessage wrong =
@@ -129,25 +92,3 @@ noneMessage wrong =
 runtimeErrorOf :: Either Text ExecutionResult -> Maybe Text
 runtimeErrorOf (Left e) = Just e
 runtimeErrorOf (Right er) = erError er
-
-workDirFiles :: FilePath -> IO [FilePath]
-workDirFiles workDir = take fileCap <$> walk "" (0 :: Int)
-  where
-    walk rel depth
-        | depth > maxDepth = pure []
-        | otherwise = do
-            entries <- safeListDirectory (workDir </> rel)
-            fmap concat (mapM (visit rel depth) (filter keep entries))
-    visit rel depth name = do
-        let relPath = if null rel then name else rel </> name
-        isDir <- doesDirectoryExist (workDir </> relPath)
-        if isDir then walk relPath (depth + 1) else pure [relPath]
-    keep name = not ("." `isPrefixOf` name) && name `notElem` skipDirs
-    skipDirs = ["dist-newstyle", "node_modules", ".git", ".stack-work", "_build"]
-    maxDepth = 6
-    fileCap = 2000
-
-safeListDirectory :: FilePath -> IO [FilePath]
-safeListDirectory dir = do
-    r <- try (listDirectory dir) :: IO (Either IOException [FilePath])
-    pure (either (const []) id r)

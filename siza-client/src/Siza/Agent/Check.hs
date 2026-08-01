@@ -2,43 +2,52 @@
 
 module Siza.Agent.Check (
     CheckResult (..),
+    MarkerRun (..),
+    NoVerdict (..),
     caseScrutinee,
     probeExpr,
     ceMarkerSrc,
     checkVerdict3With,
     checkVerdictWith,
     classifyCheck,
+    classifyMarker,
+    classifyTryBool,
     counterexampleFor,
     conjuncts,
     counterexampleLine,
     eqLhs,
     degenerateCheck,
+    degenerateNote,
     extractTestExpr,
     feedbackContinuation,
     interpretConfirm,
+    markerOutput,
     markerSrc,
+    noVerdictNote,
+    noVerdicts,
     parseCeIndex,
     runMarkerWith,
 ) where
 
-import Data.Aeson (Value (..), object, (.=))
-import qualified Data.Aeson as A
+import Data.Aeson (Value (..))
+import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import qualified Data.ByteString.Lazy as BL
 import Data.Char (isAlphaNum, isLower)
-import Data.Foldable (toList)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Text.Encoding (encodeUtf8)
-import Sabela.AI.Capabilities.ToolName (ToolName (..))
+import Sabela.AI.Capabilities.ToolName (ToolName)
 import Sabela.AI.Types (ToolOutcome (ToolOk))
+import Siza.Agent.Check.Marker (
+    MarkerRun (..),
+    markerOutput,
+    markerSrc,
+    runMarkerWith,
+ )
 import Siza.Agent.CheckExtract (
     extractTestExpr,
     feedbackContinuation,
     interpretConfirm,
  )
-import Siza.Agent.Tools (renderOutcome, withInsertDefaults)
 import Text.Read (readMaybe)
 
 data CheckResult
@@ -48,24 +57,75 @@ data CheckResult
     | CheckNotApplicable
     deriving (Eq, Show)
 
+{- | Why a turn reached no verdict. A closed vocabulary, so "no check applies"
+can never be rendered without saying which of these was the case.
+-}
+data NoVerdict
+    = NoCellCommitted
+    | NoExecutableCell Int
+    | NoCheckProposed
+    | CheckDiscarded Text
+    | CheckReadsNothing Text
+    | CheckDidNotRun Text
+    deriving (Eq, Show)
+
+noVerdictNote :: NoVerdict -> Text
+noVerdictNote NoCellCommitted =
+    "no cell has been committed this episode, so there was nothing to check"
+noVerdictNote (NoExecutableCell n) =
+    "the "
+        <> T.pack (show n)
+        <> " cell(s) committed this episode hold only blank lines, comments or \
+           \pragmas, so there was nothing to check"
+noVerdictNote NoCheckProposed =
+    "no covering check was proposed for this deliverable"
+noVerdictNote (CheckDiscarded why) =
+    "the proposed check was discarded: " <> why
+noVerdictNote (CheckReadsNothing check) =
+    "the proposed check `" <> check <> "` reads no notebook binding"
+noVerdictNote (CheckDidNotRun check) =
+    "the covering check `" <> check <> "` did not run to a verdict"
+
+-- | Every reason, for a spec that must enumerate them.
+noVerdicts :: [NoVerdict]
+noVerdicts =
+    [ NoCellCommitted
+    , NoExecutableCell 2
+    , NoCheckProposed
+    , CheckDiscarded "it references nothing this task defined"
+    , CheckReadsNothing "True"
+    , CheckDidNotRun "x == 1"
+    ]
+
 classifyCheck :: Text -> CheckResult
 classifyCheck out
     | "GRADE_PASS" `T.isInfixOf` out = CheckPassed
     | "GRADE_FAIL" `T.isInfixOf` out = CheckFailed
     | otherwise = CheckUncheckable
 
-markerSrc :: Text -> Text
-markerSrc check =
-    "putStrLn (if (" <> check <> ") then \"GRADE_PASS\" else \"GRADE_FAIL\")"
+{- | A marker's verdict. Only a run that reached the kernel can carry one; a
+refused scratch cell is uncheckable however its rejection reads.
+-}
+classifyMarker :: MarkerRun -> CheckResult
+classifyMarker (MarkerRefused _) = CheckUncheckable
+classifyMarker (MarkerRan out) = classifyCheck out
 
-runMarkerWith ::
-    (ToolName -> Value -> IO (Either Text ToolOutcome)) -> Text -> IO (Bool, Text)
-runMarkerWith call src = do
-    _ <- call InsertCell (withInsertDefaults (object ["source" .= src]))
-    after <- maxId . listValue <$> call ListCells (object [])
-    out <- renderOutcome <$> call ExecuteCell (object ["cell_id" .= after])
-    _ <- call DeleteCell (object ["cell_id" .= after])
-    pure (T.isInfixOf "GRADE_PASS" out, out)
+{- | Classify a `try` of a bare Boolean expression. `try` refuses IO, so the
+vetting probe is the expression itself rather than a putStrLn marker.
+-}
+classifyTryBool :: Either Text ToolOutcome -> CheckResult
+classifyTryBool (Right (ToolOk v))
+    | fieldOfValue "type" v == "Bool" = case T.strip (fieldOfValue "stdout" v) of
+        "True" -> CheckPassed
+        "False" -> CheckFailed
+        _ -> CheckUncheckable
+classifyTryBool _ = CheckUncheckable
+
+fieldOfValue :: Text -> Value -> Text
+fieldOfValue k (Object o) = case KM.lookup (K.fromText k) o of
+    Just (String s) -> s
+    _ -> ""
+fieldOfValue _ _ = ""
 
 conjuncts :: Text -> [Text]
 conjuncts = map (T.strip . T.pack) . go 0 "" . T.unpack
@@ -120,9 +180,9 @@ probeExpr c = case eqLhs c of
 
 ceMarkerSrc :: [Text] -> Text
 ceMarkerSrc cs =
-    "putStrLn (head ([\"CE_\" ++ show i | (i, ok) <- zip [(0 :: Int) ..] ["
+    "putStrLn (concat (take 1 ([\"CE_\" ++ show i | (i, ok) <- zip [(0 :: Int) ..] ["
         <> T.intercalate ", " (map paren cs)
-        <> "], not ok] ++ [\"CE_NONE\"]))"
+        <> "], not ok] ++ [\"CE_NONE\"])))"
   where
     paren c = "(" <> c <> ")"
 
@@ -147,29 +207,29 @@ checkVerdict3With ::
     Text ->
     IO (CheckResult, Maybe Text)
 checkVerdict3With call check = do
-    (_, out) <- runMarkerWith call (markerSrc check)
-    case classifyCheck out of
-        CheckPassed -> pure (CheckPassed, Nothing)
+    run <- runMarkerWith call (markerSrc check)
+    case classifyMarker run of
+        CheckPassed -> pure (CheckPassed, Just check)
         CheckFailed -> (,) CheckFailed <$> counterexampleFor call check
-        CheckUncheckable ->
-            pure
-                ( CheckUncheckable
-                , Just
-                    ( "the covering check `"
-                        <> check
-                        <> "` could not run to a verdict against the current \
-                           \cells — define the deliverable it names, run the \
-                           \cell clean, then finish."
-                    )
-                )
+        _ -> pure (CheckUncheckable, Just (uncheckableNote check run))
+
+{- | Why the check reached no verdict, carrying the notebook's own words when
+the scratch cell was refused.
+-}
+uncheckableNote :: Text -> MarkerRun -> Text
+uncheckableNote check run = noVerdictNote (CheckDidNotRun check) <> because
+  where
+    because = case run of
+        MarkerRefused why -> "; the notebook refused its scratch cell: " <> why
+        MarkerRan _ -> "; it named no value the cells make observable"
 
 checkVerdictWith ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     Text ->
     IO (Bool, Maybe Text)
 checkVerdictWith call check = do
-    (ok, _) <- runMarkerWith call (markerSrc check)
-    if ok
+    run <- runMarkerWith call (markerSrc check)
+    if classifyMarker run == CheckPassed
         then pure (True, Nothing)
         else (,) False <$> counterexampleFor call check
 
@@ -179,15 +239,15 @@ counterexampleFor ::
     IO (Maybe Text)
 counterexampleFor call check = do
     let cs = conjuncts check
-    (_, ceOut) <- runMarkerWith call (ceMarkerSrc cs)
-    case parseCeIndex ceOut >>= (\i -> lookup i (zip [0 ..] cs)) of
+    ceRun <- runMarkerWith call (ceMarkerSrc cs)
+    case parseCeIndex (markerOutput ceRun) >>= (\i -> lookup i (zip [0 ..] cs)) of
         Nothing -> pure Nothing
         Just c -> do
             mActual <- case probeExpr c of
                 Nothing -> pure Nothing
                 Just lhs -> do
-                    (_, out) <- runMarkerWith call ("print (" <> lhs <> ")")
-                    pure (probedValue out)
+                    run <- runMarkerWith call ("print (" <> lhs <> ")")
+                    pure (probedValue (markerOutput run))
             pure (Just (counterexampleLine c mActual))
 
 probedValue :: Text -> Maybe Text
@@ -195,37 +255,13 @@ probedValue out
     | T.null t || "error" `T.isInfixOf` T.toLower t = Nothing
     | otherwise = Just (T.take 120 t)
   where
-    t = T.strip (fromMaybe stripped (oiOutputOf out))
-    stripped = T.strip (T.filter (/= '"') (T.replace "\\n" "\n" out))
+    t = T.strip (T.filter (/= '"') (T.replace "\\n" "\n" out))
 
-oiOutputOf :: Text -> Maybe Text
-oiOutputOf out = do
-    v <- A.decode (BL.fromStrict (encodeUtf8 out))
-    o <- asObject v
-    outputs <- KM.lookup "outputs" o
-    first <- case outputs of
-        Array a -> case toList a of
-            (x : _) -> Just x
-            [] -> Nothing
-        _ -> Nothing
-    fo <- asObject first
-    case KM.lookup "oiOutput" fo of
-        Just (String s) -> Just s
-        _ -> Nothing
-  where
-    asObject (Object o) = Just o
-    asObject _ = Nothing
-
-listValue :: Either Text ToolOutcome -> Value
-listValue (Right (ToolOk v)) = v
-listValue _ = object []
-
-maxId :: Value -> Int
-maxId (Array a) =
-    maximum
-        (0 : [round s | Object c <- toList a, Just (Number s) <- [KM.lookup "id" c]])
-maxId (Object o) = maybe 0 maxId (KM.lookup "cells" o)
-maxId _ = 0
+{- | What 'degenerateCheck' read, and what the caller then did. The check is
+never evaluated on this path, so nothing is claimed about its value.
+-}
+degenerateNote :: Text
+degenerateNote = "the check names no lowercase identifier, so it was not run"
 
 degenerateCheck :: Text -> Bool
 degenerateCheck t = null (identifiers t)

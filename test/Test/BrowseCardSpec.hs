@@ -97,9 +97,13 @@ cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
         it "ranks the verbs first when type declarations come first in :browse" $ do
             let raw =
                     T.unlines
+                        -- GHCi indents a wrapped declaration's continuation;
+                        -- the fixture used to write them at column 0, which
+                        -- no :browse ever emits.
                         [ "type Canvas :: *"
-                        , "= Canvas {canvasWidth :: Double,"
-                        , "canvasHeight :: Double}"
+                        , "data Canvas"
+                        , "  = Canvas Double"
+                        , "           Double"
                         , "type Picture :: *"
                         , "group :: [Picture] -> Picture"
                         ]
@@ -161,6 +165,13 @@ queryRankSpec = describe "the live card ranks for the query that asked" $ do
     it "a value query leads with its value" $
         head (exportsWith (Just "summarize"))
             `shouldBe` "summarize :: DataFrame -> DataFrame"
-    it "no query keeps the static band (values first, operators included)" $
-        head (exportsWith Nothing)
-            `shouldBe` "(DF..&&.) :: DF.Expr Bool -> DF.Expr Bool -> DF.Expr Bool"
+    -- The card is a truncation, so the first line matters: a named function
+    -- reads better than an operator section. Operators sit below values but
+    -- are still listed, which is the half of the old contract worth keeping.
+    it "no query ranks named values first and drops nothing" $
+        exportsWith Nothing
+            `shouldBe` [ "summarize :: DataFrame -> DataFrame"
+                       , "headerSpec :: ReadOptions -> HeaderSpec"
+                       , "data ReadOptions"
+                       , "(DF..&&.) :: DF.Expr Bool -> DF.Expr Bool -> DF.Expr Bool"
+                       ]

@@ -83,7 +83,7 @@ spec = describe "Sabela.Export" $ do
     describe "buildNotebookGraph — widget detection" $ do
         it "marks cells that instantiate a widget and their downstream" $ do
             let cells =
-                    [ mkCell 1 "n <- display (slider \"n\" (5 :: Int) 1 10)"
+                    [ mkCell 1 "n <- mkWidget (slider \"n\" (5 :: Int) 1 10)"
                     , mkCell 2 "let doubled = n * 2"
                     , mkCell 3 "let unrelated = 7"
                     ]
@@ -95,37 +95,37 @@ spec = describe "Sabela.Export" $ do
         it "freezes a slider to its current value, preserving the type annotation" $
             freezeWidgetSource
                 (M.fromList [("celsius", "37")])
-                "c <- display (slider \"celsius\" (20 :: Int) (-40) 120)"
+                "c <- mkWidget (slider \"celsius\" (20 :: Int) (-40) 120)"
                 `shouldBe` "c = (37 :: Int)"
 
         it "freezes a slider to its default when no value is stored" $
             freezeWidgetSource
                 M.empty
-                "c <- display (slider \"celsius\" (20 :: Int) (-40) 120)"
+                "c <- mkWidget (slider \"celsius\" (20 :: Int) (-40) 120)"
                 `shouldBe` "c = (20 :: Int)"
 
         it "freezes a checkbox to a Bool" $
             freezeWidgetSource
                 (M.fromList [("v", "true")])
-                "v <- display (checkbox \"v\" False)"
+                "v <- mkWidget (checkbox \"v\" False)"
                 `shouldBe` "v = True"
 
         it "freezes a dropdown to a quoted string" $
             freezeWidgetSource
                 (M.fromList [("shape", "Square")])
-                "shape <- display (dropdown \"shape\" [\"Circle\", \"Square\"] \"Circle\")"
+                "shape <- mkWidget (dropdown \"shape\" [\"Circle\", \"Square\"] \"Circle\")"
                 `shouldBe` "shape = \"Square\""
 
         it "freezes a textInput default when unset" $
             freezeWidgetSource
                 M.empty
-                "name <- display (textInput \"name\" \"World\")"
+                "name <- mkWidget (textInput \"name\" \"World\")"
                 `shouldBe` "name = \"World\""
 
         it "freezes a clicked button to Just ()" $
             freezeWidgetSource
                 (M.fromList [("go", "clicked")])
-                "clicked <- display (button \"Compute\" \"go\")"
+                "clicked <- mkWidget (button \"Compute\" \"go\")"
                 `shouldBe` "clicked = Just ()"
 
         it "leaves non-widget binds untouched" $
@@ -134,7 +134,7 @@ spec = describe "Sabela.Export" $ do
 
         it "leaves composed/unrecognized widget expressions untouched" $ do
             let line =
-                    "area <- display (liftA2 (*) (slider \"w\" (1 :: Int) 1 9) (slider \"h\" (1 :: Int) 1 9))"
+                    "area <- mkWidget (liftA2 (*) (slider \"w\" (1 :: Int) 1 9) (slider \"h\" (1 :: Int) 1 9))"
             freezeWidgetSource M.empty line `shouldBe` line
 
     describe "splitArgs" $ do

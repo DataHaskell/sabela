@@ -14,15 +14,25 @@ import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Discover.Envelope (envelopeCharBudget, envelopeChars)
 import Siza.Agent.Discover.History (ledgerWorldChanged)
 import Siza.Agent.Discover.HistoryGuard (guardDiscover, newSearchLedger)
+import Test.DiscoverFixtures (hitsOf)
 
+{- | The widest answer that still fits, found rather than hard-coded: a
+fixture pinned to one hit count stops testing the breach the moment the
+budget moves.
+-}
 nearBudgetEnvelope :: Value
-nearBudgetEnvelope =
+nearBudgetEnvelope = last (takeWhile fits (map envelopeOf [1 ..]))
+  where
+    fits v = envelopeChars v <= envelopeCharBudget
+
+envelopeOf :: Int -> Value
+envelopeOf k =
     object
         [ "query" .= ("maxBy" :: Text)
         , "state" .= ("found" :: Text)
-        , "shown" .= (23 :: Int)
+        , "shown" .= k
         , "omitted" .= (0 :: Int)
-        , "hits" .= [hit i | i <- [1 .. 23 :: Int]]
+        , "hits" .= [hit i | i <- [1 .. k]]
         ]
   where
     hit i =
@@ -36,10 +46,11 @@ nearBudgetEnvelope =
 discoverRecordBudgetSpec :: Spec
 discoverRecordBudgetSpec =
     describe "post-record envelope budget (R3.9, 2631b breach class)" $ do
-        it "the fixture sits under the budget before annotation" $
+        it "the fixture is the widest answer that still fits" $ do
             envelopeChars nearBudgetEnvelope
-                `shouldSatisfy` \n ->
-                    n <= envelopeCharBudget && n > envelopeCharBudget - 400
+                `shouldSatisfy` (<= envelopeCharBudget)
+            let wider = envelopeOf (1 + length (hitsOf nearBudgetEnvelope))
+            envelopeChars wider `shouldSatisfy` (> envelopeCharBudget)
         it "a pending world-change note never pushes the answer over budget" $ do
             ref <- newSearchLedger
             let inner _ = pure (Right (ToolOk nearBudgetEnvelope))

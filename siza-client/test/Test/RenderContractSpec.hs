@@ -1,153 +1,268 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{- | C1-15c: which rendering a silent cell gets is settled by the notebook,
+not by the caller's prose and not by the name of the value's type.
+-}
 module Test.RenderContractSpec (renderContractSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.IORef (modifyIORef', newIORef, readIORef)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
+import Test.QuickCheck
 
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.RenderContract (displayCandidate, repairDisplayContract)
+import Siza.Agent.RenderContract (
+    displayCandidates,
+    displayProbe,
+    repairDisplayContract,
+ )
 
 renderContractSpec :: Spec
-renderContractSpec = describe "R10-T3 inferred-type display contract" $ do
-    describe "pure applicability" $ do
-        it "wraps strict Text as SVG for a chart deliverable" $ do
-            let got = displayCandidate "show the chart" "Text" "bars xs plot"
-            got `shouldSatisfy` maybe False (T.isInfixOf "import qualified Data.Text as T")
-            got
-                `shouldSatisfy` maybe False (T.isInfixOf "displaySvg (T.unpack (bars xs plot))")
-        it "accepts a check_type reply carrying the expression before ::" $
-            displayCandidate "show the chart" "bars xs plot :: Text" "bars xs plot"
-                `shouldSatisfy` maybe False (T.isInfixOf "displaySvg")
-        it "wraps a multiline bare expression as one expression" $
-            displayCandidate "show the chart" "Text" "bars\n  xs\n  defPlot"
-                `shouldSatisfy` maybe False (T.isInfixOf "displaySvg (T.unpack (bars xs defPlot))")
-        it "wraps lazy Text with the matching unpacker" $
-            displayCandidate "display the plot" "Data.Text.Lazy.Text" "renderZephyr x"
-                `shouldSatisfy` maybe False (T.isInfixOf "TL.unpack")
-        it "appends a display of a top-level textual binding" $
-            displayCandidate "show this" "T.Text" "plotCumulus = renderCumulus input"
-                `shouldSatisfy` maybe False (T.isInfixOf "displaySvg (T.unpack (plotCumulus))")
-        it "wraps markdown-content Text with displayMarkdown" $
-            displayCandidate
-                "write a summary report"
-                "Text"
-                "summary = \"# Results\\n\\nAll checks passed.\""
-                `shouldSatisfy` maybe False (T.isInfixOf "displayMarkdown (T.unpack (summary))")
-        it "sniffs SVG and HTML content before the textual default" $ do
-            displayCandidate "show the result" "Text" "\"<svg><path/></svg>\""
-                `shouldSatisfy` maybe False (T.isInfixOf "displaySvg")
-            displayCandidate "show the result" "String" "\"<table><tr></tr></table>\""
-                `shouldSatisfy` maybe False (T.isInfixOf "displayHtml")
-        it "wraps a DataFrame value with its display bridge" $
-            displayCandidate "show me the table" "DataFrame" "housing"
-                `shouldSatisfy` maybe
-                    False
-                    (T.isInfixOf "DFDisplay.display DFDisplay.defaultDisplayOptions (housing)")
-        it "never fires for a non-markup inferred type" $
-            displayCandidate "show the chart" "Int" "answer = 42" `shouldBe` Nothing
-        it "never fires when the deliverable does not request display" $
-            displayCandidate "compute the value" "Text" "answer" `shouldBe` Nothing
-        it "never double-wraps an already displayed source" $
-            displayCandidate "show it" "Text" "displaySvg (T.unpack chart)"
-                `shouldBe` Nothing
+renderContractSpec = describe "R10-T3 display contract" $ do
+    shapeSpec
+    goalSpec
+    verdictSpec
 
-    it "keeps the wrapper only when replacement compiles and produces output" $ do
-        calls <- newIORef ([] :: [ToolCall])
-        let original = ToolCall "insert_cell" (object ["source" .= ("plotZephyr xs" :: Text)])
-            originalOut =
-                Right . ToolOk $
-                    object
-                        [ "cellId" .= (3 :: Int)
-                        , "execution" .= object ["ok" .= True, "outputs" .= ([] :: [Value])]
-                        ]
-            dispatch tc = do
-                modifyIORef' calls (++ [tc])
-                pure . Right $ case tcName tc of
-                    "check_type" -> ToolOk (object ["result" .= ("Text" :: Text)])
-                    "list_cells" -> ToolOk (cellsSnapshot False)
-                    "replace_cell_source" ->
-                        ToolOk
-                            ( object
-                                [ "cellId" .= (3 :: Int)
-                                , "execution"
-                                    .= object
-                                        [ "ok" .= True
-                                        , "outputs"
-                                            .= [ object ["oiMime" .= ("image/svg+xml" :: Text), "oiOutput" .= ("<svg/>" :: Text)]
-                                               ]
-                                        ]
-                                ]
-                            )
-                    _ -> ToolOk (object [])
-        repaired <- repairDisplayContract "show the chart" dispatch original originalOut
-        repaired `shouldSatisfy` maybe False (T.isInfixOf "displaySvg" . sourceOf . fst)
-        seen <- readIORef calls
-        map tcName seen
-            `shouldBe` ["check_type", "list_cells", "replace_cell_source", "list_cells"]
+shapeSpec :: Spec
+shapeSpec = describe "what is proposed" $ do
+    it "offers an unpacking for every textual representation" $ do
+        let cs = displayCandidates "show the chart" "bars xs plot"
+        cs `shouldSatisfy` any (T.isInfixOf "displaySvg (T.unpack (bars xs plot))")
+        cs `shouldSatisfy` any (T.isInfixOf "displaySvg (TL.unpack (bars xs plot))")
+        cs `shouldSatisfy` any (T.isInfixOf "displaySvg (bars xs plot)")
 
-    it "rejects a rendering candidate when acceptRepair sees a sibling regression" $ do
-        calls <- newIORef ([] :: [ToolCall])
-        snapshots <- newIORef (0 :: Int)
-        let original = ToolCall "insert_cell" (object ["source" .= ("renderNimbus xs" :: Text)])
-            originalOut = cleanOutcome 3 []
-            dispatch tc = do
-                modifyIORef' calls (++ [tc])
-                case tcName tc of
-                    "check_type" -> pure (Right (ToolOk (object ["result" .= ("Text" :: Text)])))
-                    "list_cells" -> do
-                        n <- readIORef snapshots
-                        modifyIORef' snapshots (+ 1)
-                        pure . Right . ToolOk $ cellsSnapshot (n > 0)
-                    "read_cell" -> pure (Right (ToolOk (object ["error" .= ("new sibling failure" :: Text)])))
-                    "replace_cell_source"
-                        | "displaySvg" `T.isInfixOf` sourceOf tc -> pure (cleanOutcome 3 [svgOutput])
-                        | otherwise -> pure originalOut
-                    _ -> pure (Right (ToolOk (object [])))
-        repaired <-
-            repairDisplayContract "render the visual" dispatch original originalOut
-        repaired `shouldBe` Nothing
-        seen <- readIORef calls
-        map tcName seen
-            `shouldBe` [ "check_type"
-                       , "list_cells"
-                       , "replace_cell_source"
-                       , "list_cells"
-                       , "read_cell"
-                       , "replace_cell_source"
-                       ]
+    it "brings each unpacking's import with it" $
+        [ c
+        | c <- displayCandidates "show it" "renderZephyr x"
+        , "TL.unpack" `T.isInfixOf` c
+        ]
+            `shouldSatisfy` all (T.isInfixOf "import qualified Data.Text.Lazy as TL")
 
-cleanOutcome :: Int -> [Value] -> Either Text ToolOutcome
-cleanOutcome cid outputs =
-    Right . ToolOk $
-        object
-            [ "cellId" .= cid
-            , "execution" .= object ["ok" .= True, "outputs" .= outputs]
-            ]
+    it "wraps a multiline bare expression as one expression" $
+        displayCandidates "show the chart" "bars\n  xs\n  defPlot"
+            `shouldSatisfy` any (T.isInfixOf "displaySvg (T.unpack (bars xs defPlot))")
+
+    it "appends a display of a top-level binding rather than replacing it" $
+        displayCandidates "show this" "plotCumulus = renderCumulus input"
+            `shouldSatisfy` any
+                (T.isInfixOf "plotCumulus = renderCumulus input\ndisplaySvg (plotCumulus)")
+
+    it "sniffs the medium out of the content before the prose" $ do
+        mediaIn (displayCandidates "compute it" "\"<svg><path/></svg>\"")
+            `shouldBe` ["displaySvg"]
+        mediaIn (displayCandidates "compute it" "\"<table><tr></tr></table>\"")
+            `shouldBe` ["displayHtml"]
+
+    it "never double-wraps a source that already renders" $ do
+        displayCandidates "show it" "displaySvg (T.unpack chart)" `shouldBe` []
+        displayCandidates
+            "show it"
+            "DFDisplay.display DFDisplay.defaultDisplayOptions (housing)"
+            `shouldBe` []
+
+    it "proposes more than one rendering, so the notebook has a choice" $
+        property $
+            forAll genSource $ \src ->
+                forAll genGoal $ \goal ->
+                    length (displayCandidates goal src) `shouldSatisfy` (>= 3)
+
+    it "proposes the same renderings for a value no table has ever seen" $
+        property $
+            forAll genIdent $ \name ->
+                length (displayCandidates "show it" name)
+                    === length (displayCandidates "show it" "housing")
+
+{- | PROPERTY 1. The goal string may pick the medium and nothing else: it can
+never decide whether a value is rendered, nor how it is unpacked.
+-}
+goalSpec :: Spec
+goalSpec = describe "goal-independence (C1-15c PROPERTY 1)" $ do
+    it "offers a rendering for the same sources whatever the goal says" $
+        property $
+            forAll genSource $ \src ->
+                forAll genGoal $ \g1 ->
+                    forAll genGoal $ \g2 ->
+                        null (displayCandidates g1 src)
+                            === null (displayCandidates g2 src)
+
+    it "changes only the display function when the goal changes" $
+        property $
+            forAll genSource $ \src ->
+                forAll genGoal $ \g1 ->
+                    forAll genGoal $ \g2 ->
+                        map anonymised (displayCandidates g1 src)
+                            === map anonymised (displayCandidates g2 src)
+
+{- | PROPERTY 2. The rendering that survives is the one the notebook accepted.
+Nothing about the value's type name enters the decision, so moving the
+notebook's verdict moves the outcome with it.
+-}
+verdictSpec :: Spec
+verdictSpec = describe "the notebook decides (C1-15c PROPERTY 2)" $ do
+    it "keeps whichever candidate the notebook shows output for" $
+        property $
+            forAll genSource $ \src ->
+                forAll genGoal $ \goal ->
+                    let cs = displayCandidates goal src
+                     in not (null cs) ==> ioProperty $ do
+                            kept <-
+                                mapM
+                                    (\k -> fst <$> runOffer (is (displayProbe (cs !! k))) (is (cs !! k)) goal src)
+                                    [0 .. length cs - 1]
+                            pure $
+                                counterexample (show (cs, kept)) $
+                                    kept == map Just cs
+
+    it "puts the cell back when a rendering it committed shows nothing" $
+        property $
+            forAll genSource $ \src ->
+                forAll genGoal $ \goal ->
+                    let cs = displayCandidates goal src
+                     in not (null cs) ==> ioProperty $ do
+                            (kept, seen) <- runOffer (const True) (const False) goal src
+                            pure $
+                                counterexample (show (map tcName seen)) $
+                                    isNothing kept
+                                        && lastReplacement seen == Just src
+
+    it "commits nothing at all when the kernel rejects every rendering" $
+        property $
+            forAll genSource $ \src ->
+                forAll genGoal $ \goal ->
+                    let cs = displayCandidates goal src
+                     in not (null cs) ==> ioProperty $ do
+                            (kept, seen) <- runOffer (const False) (const False) goal src
+                            pure $
+                                counterexample (show (map tcName seen)) $
+                                    isNothing kept
+                                        && isNothing (lastReplacement seen)
+                                        && length [c | c <- seen, tcName c == "try"]
+                                            == length cs
+
+    it "never asks the notebook about a value it will not offer to render" $ do
+        (kept, seen) <-
+            runOffer (const True) (const True) "show it" "displaySvg (T.unpack chart)"
+        kept `shouldBe` Nothing
+        map tcName seen `shouldBe` []
+
+is :: Text -> Text -> Bool
+is = (==)
+
+-- | The display functions a candidate list actually reaches for.
+mediaIn :: [Text] -> [Text]
+mediaIn cs = [d | d <- displayFunctions, any (T.isInfixOf d) cs]
+
+{- | A candidate with its display function blanked out, so two candidates can
+be compared for everything except the medium.
+-}
+anonymised :: Text -> Text
+anonymised c = foldr (`T.replace` "display") c displayFunctions
+
+displayFunctions :: [Text]
+displayFunctions = ["displayMarkdown", "displayHtml", "displaySvg"]
+
+-- | Goals with and without the display words the old prose gate looked for.
+genGoal :: Gen Text
+genGoal =
+    elements
+        [ "show the chart"
+        , "render the visual"
+        , "write a summary report"
+        , "compute the median by group"
+        , "tabulate the counts"
+        , "fit the model"
+        , ""
+        ]
+
+genSource :: Gen Text
+genSource = do
+    name <- genIdent
+    arg <- genIdent
+    elements
+        [ name <> " " <> arg
+        , name <> " = frobnicate " <> arg
+        , "import Quux.Internal\n" <> name <> " " <> arg
+        , "-- cabal: build-depends: zzfrob\n" <> name <> " " <> arg
+        ]
+
+genIdent :: Gen Text
+genIdent = elements ["housing", "grid", "wibble", "zephyrOf", "quuxTable", "m1"]
+
+{- | Drives one repair against a notebook that type-checks the renderings
+@fits@ accepts and shows output for the ones @shows_@ accepts.
+-}
+runOffer ::
+    (Text -> Bool) -> (Text -> Bool) -> Text -> Text -> IO (Maybe Text, [ToolCall])
+runOffer fits shows_ goal src = do
+    calls <- newIORef []
+    let original = ToolCall "insert_cell" (object ["source" .= src])
+    r <-
+        repairDisplayContract
+            goal
+            (dispatchOver calls fits shows_)
+            original
+            (cellOutcome [])
+    seen <- readIORef calls
+    pure (fmap (sourceOf . fst) r, seen)
+
+dispatchOver ::
+    IORef [ToolCall] ->
+    (Text -> Bool) ->
+    (Text -> Bool) ->
+    ToolCall ->
+    IO (Either Text ToolOutcome)
+dispatchOver calls fits shows_ tc = do
+    modifyIORef' calls (++ [tc])
+    pure $ case tcName tc of
+        "list_cells" -> Right (ToolOk cellsSnapshot)
+        "try"
+            | fits (argOf "code" tc) -> Right (ToolOk (object []))
+            | otherwise -> Right (ToolErr (object ["error" .= ("no" :: Text)]))
+        "replace_cell_source"
+            | shows_ (sourceOf tc) -> Right (ToolOk (cellValue [svgOutput]))
+            | otherwise -> Right (ToolOk (cellValue []))
+        _ -> Right (ToolOk (object []))
+
+cellOutcome :: [Value] -> Either Text ToolOutcome
+cellOutcome = Right . ToolOk . cellValue
+
+cellValue :: [Value] -> Value
+cellValue outputs =
+    object
+        [ "cellId" .= (3 :: Int)
+        , "execution" .= object ["ok" .= True, "outputs" .= outputs]
+        ]
 
 svgOutput :: Value
 svgOutput =
     object ["oiMime" .= ("image/svg+xml" :: Text), "oiOutput" .= ("<svg/>" :: Text)]
 
-cellsSnapshot :: Bool -> Value
-cellsSnapshot siblingRed =
+cellsSnapshot :: Value
+cellsSnapshot =
     object
         [ "cells"
             .= [ object ["id" .= (3 :: Int), "hasError" .= False, "defines" .= ([] :: [Text])]
-               , object
-                    ["id" .= (4 :: Int), "hasError" .= siblingRed, "defines" .= ([] :: [Text])]
                ]
         ]
 
+lastReplacement :: [ToolCall] -> Maybe Text
+lastReplacement seen =
+    case reverse [sourceOf c | c <- seen, tcName c == "replace_cell_source"] of
+        (s : _) -> Just s
+        [] -> Nothing
+
 sourceOf :: ToolCall -> Text
-sourceOf tc = case tcArgs tc of
-    Object o -> case KM.lookup (K.fromText "new_source") o of
+sourceOf = argOf "new_source"
+
+argOf :: Text -> ToolCall -> Text
+argOf k tc = case tcArgs tc of
+    Object o -> case KM.lookup (K.fromText k) o of
         Just (String s) -> s
         _ -> ""
     _ -> ""

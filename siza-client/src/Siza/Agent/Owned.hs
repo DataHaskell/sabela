@@ -2,8 +2,11 @@ module Siza.Agent.Owned (
     OwnedCell (..),
     StopDecision (..),
     hasArtifact,
+    noWriteReason,
+    landedArtifact,
     recordOwned,
     stopDecision,
+    substantive,
     ownedCellOutcome,
     bestFailing,
     latestDraft,
@@ -26,8 +29,9 @@ import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome (..))
 
 import Sabela.LLM.Ollama.Client (ToolCall (..))
+import Siza.Agent.Check (NoVerdict (..))
 import Siza.Agent.Discover (isOwningTool, toolCallSource)
-import Siza.Agent.Tools (renderOutcome)
+import Siza.Agent.Render (renderOutcome)
 
 data OwnedCell = OwnedCell
     { ocHealthy :: Bool
@@ -98,6 +102,24 @@ newestFailing owned =
 
 hasArtifact :: Map CellId OwnedCell -> Bool
 hasArtifact = any (substantive . ocSource) . Map.elems
+
+{- | Why this turn has nothing to check, or 'Nothing' when it has something.
+Read from the same map 'hasArtifact' reads, so the reason reported can never
+contradict the cells recorded.
+-}
+noWriteReason :: Map CellId OwnedCell -> Maybe NoVerdict
+noWriteReason owned
+    | hasArtifact owned = Nothing
+    | Map.null owned = Just NoCellCommitted
+    | otherwise = Just (NoExecutableCell (Map.size owned))
+
+{- | The one predicate for "a write that counts": committed, clean, and
+carrying more than comments and pragmas. Every "did this turn deliver
+anything" asks this, so no weaker notion can drift from 'hasArtifact'.
+-}
+landedArtifact :: (ToolCall, Either Text ToolOutcome) -> Bool
+landedArtifact (tc, out) =
+    maybe False snd (ownedCellOutcome tc out) && substantive (toolCallSource tc)
 
 substantive :: Text -> Bool
 substantive src =

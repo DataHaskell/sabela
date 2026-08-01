@@ -7,6 +7,7 @@ module Siza.Agent.Discover.Construct (
     producerKey,
 ) where
 
+import Control.Applicative ((<|>))
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isUpper)
@@ -16,6 +17,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
+import Sabela.AI.FitRule (informativeFits)
 import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.Discover.Classify (capabilityAnswer)
@@ -45,21 +47,35 @@ constructAnswers ::
     Interpreted ->
     IO [SourceAnswer]
 constructAnswers call interp = do
-    blob <- callResult (call FindByType (object ["goal" .= ("_ :: " <> goal)]))
+    sess <- sessionAnswerFor call goal
     cap <-
         callOk . call SearchCapability $
             object ["query" .= (":: " <> goal), "semantic" .= False]
-    pure [sessionProducers goal blob, capabilityAnswer interp cap]
+    pure [sess, capabilityAnswer interp cap]
   where
     goal = iName interp
 
+-- | What this session can already make of the goal, asked of the compiler.
+sessionAnswerFor ::
+    (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
+    Text ->
+    IO SourceAnswer
+sessionAnswerFor call goal =
+    sessionProducers goal
+        <$> callResult (call FindByType (object ["goal" .= ("_ :: " <> goal)]))
+
+{- | The fits that produce the goal and say something about it. A goal-free
+inhabitant type-checks against every goal, so naming one as a producer would
+hand back the question.
+-}
 sessionProducers :: Text -> Text -> SourceAnswer
 sessionProducers goal blob =
     okAnswer
         "session"
         [producerHit goal f | f <- fits, producesGoal goal (hfType f)]
   where
-    fits = [f | f <- parseHoleFits blob, not (hfRefined f)]
+    fits =
+        [f | f <- informativeFits (parseHoleFits blob), not (hfRefined f)]
 
 producerHit :: Text -> HoleFit -> DHit
 producerHit goal f =
@@ -72,6 +88,7 @@ producerHit goal f =
         InstInstalled
         (if producesExact goal (hfType f) then MkExact else MkType)
         "session"
+        Nothing
         Nothing
         Nothing
 
@@ -138,6 +155,21 @@ isConstructor n = maybe False (isUpper . fst) (T.uncons n)
 argCount :: Text -> Int
 argCount ty = length (T.splitOn "->" (T.unwords (T.words ty))) - 1
 
+{- | Where the need came from, which is what it may spend. A hit's own gap
+earns the full construct pass; a standing goal, which fires on every lost
+search it outlives, earns the session's fits alone.
+-}
+data Lead = FromHit | FromGoal
+
+producerAnswers ::
+    Lead ->
+    (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
+    Interpreted ->
+    IO [SourceAnswer]
+producerAnswers FromHit call interp = constructAnswers call interp
+producerAnswers FromGoal call interp =
+    pure <$> sessionAnswerFor call (iName interp)
+
 attachProducers ::
     Maybe StandingGoal ->
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
@@ -147,8 +179,8 @@ attachProducers ::
     IO [SourceAnswer]
 attachProducers mSG call env interp answers = case neededType of
     Nothing -> pure []
-    Just (consumer, ty) -> do
-        pAnswers <- constructAnswers call interp{iName = ty}
+    Just (lead, consumer, ty) -> do
+        pAnswers <- producerAnswers lead call interp{iName = ty}
         let keep =
                 take maxAttached
                     . nubOnName
@@ -160,15 +192,30 @@ attachProducers mSG call env interp answers = case neededType of
         pure [okAnswer "session" keep | not (null keep)]
   where
     hits = concatMap saHits answers
-    neededType =
+    neededType = ownNeed <|> standingNeed
+    ownNeed =
         listToMaybe
-            [ (dhName h, ty)
+            [ (FromHit, dhName h, ty)
             | h <- hits
             , dhKind h == MkExact
             , dhName h == iName interp
             , not (T.null (dhType h))
             , ty <- take 1 (unconstructedArgs (dhType h))
             ]
+    {- A lost search under a standing goal has one lead left: the goal itself.
+    Without this the producers are only ever fetched for a query that hit its
+    own consumer exactly, so the standing goal is computed and never acted on. -}
+    standingNeed =
+        listToMaybe
+            [ (FromGoal, sgConsumer sg, sgType sg)
+            | Just sg <- [mSG]
+            , not (T.null (sgType sg))
+            , sgType sg /= iName interp
+            , not exactHit
+            , not (surfaced (sgType sg))
+            ]
+    exactHit =
+        any (\h -> dhKind h == MkExact && dhName h == iName interp) hits
     unconstructedArgs sig =
         [t | t <- argTypesOf sig, nominalArgType t, not (surfaced t)]
     surfaced t = any (producesGoal t . dhType) hits
@@ -181,12 +228,17 @@ nubOnName = go []
         | dhName h `elem` seen = go seen hs
         | otherwise = h : go (dhName h : seen) hs
 
+{- | Why this hit is here, in terms of the need it answers. With no consumer to
+name — a goal read off a type alone — it names the goal instead of an empty
+backtick pair.
+-}
 tagProducer :: Text -> Text -> DHit -> DHit
-tagProducer consumer ty h =
-    h
-        { dhKind = MkType
-        , dhUse = Just ("produces " <> ty <> " — the argument `" <> consumer <> "` needs")
-        }
+tagProducer consumer ty h = h{dhKind = MkType, dhUse = Just use}
+  where
+    use
+        | T.null (T.strip consumer) = "produces " <> ty <> " — the goal that stands"
+        | otherwise =
+            "produces " <> ty <> " — the argument `" <> consumer <> "` needs"
 
 maxAttached :: Int
 maxAttached = 2

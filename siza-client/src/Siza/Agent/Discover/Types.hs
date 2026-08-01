@@ -73,12 +73,13 @@ data DHit = DHit
     , dhOrigin :: Text
     , dhCabal :: Maybe Text
     , dhUse :: Maybe Text
+    , dhClash :: Maybe Text
     }
     deriving (Eq, Show)
 
 mkHit :: Text -> Text -> Text -> DHit
 mkHit n m p =
-    DHit n "" m p "" InstAbsentUnknown MkExact "hoogle" Nothing Nothing
+    DHit n "" m p "" InstAbsentUnknown MkExact "hoogle" Nothing Nothing Nothing
 
 data NotebookEnv = NotebookEnv
     { neAliases :: [(Text, Text)]
@@ -97,6 +98,7 @@ seededBuiltins env =
 data SourceAnswer = SourceAnswer
     { saSource :: Text
     , saOk :: Bool
+    , saAllOk :: Bool
     , saNote :: Text
     , saHits :: [DHit]
     , saCard :: Maybe Value
@@ -105,10 +107,10 @@ data SourceAnswer = SourceAnswer
     deriving (Eq, Show)
 
 okAnswer :: Text -> [DHit] -> SourceAnswer
-okAnswer src hs = SourceAnswer src True "" hs Nothing []
+okAnswer src hs = SourceAnswer src True True "" hs Nothing []
 
 unavailableAnswer :: Text -> Text -> SourceAnswer
-unavailableAnswer src why = SourceAnswer src False why [] Nothing []
+unavailableAnswer src why = SourceAnswer src False False why [] Nothing []
 
 data Interpreted = Interpreted
     { iRaw :: Text
@@ -142,19 +144,24 @@ data HackageInfo = HackageInfo
     }
     deriving (Eq, Show)
 
+{- | A field the harness did not compute is absent, never the placeholder
+"unknown": a mandated placeholder spends the envelope budget that
+'Siza.Agent.Discover.Envelope.dropLastHit' then reclaims from a real hit.
+-}
 hitJson :: DHit -> Value
 hitJson h =
     object $
         [ "name" .= dhName h
-        , "module" .= orUnknown (dhModule h)
-        , "package" .= orUnknown (dhPackage h)
-        , "version" .= orUnknown (dhVersion h)
         , "install" .= installText (dhInstall h)
         , "matchKind" .= matchKindText (dhKind h)
         , "origin" .= dhOrigin h
         ]
-            <> ["type" .= dhType h | not (T.null (dhType h))]
+            <> computed "module" (dhModule h)
+            <> computed "package" (dhPackage h)
+            <> computed "version" (dhVersion h)
+            <> computed "type" (dhType h)
             <> ["cabal" .= c | Just c <- [dhCabal h]]
             <> ["use" .= u | Just u <- [dhUse h]]
+            <> ["ambiguousWith" .= c | Just c <- [dhClash h]]
   where
-    orUnknown t = if T.null t then "unknown" else t
+    computed k t = [k .= t | not (T.null t)]

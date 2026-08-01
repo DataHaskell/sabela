@@ -1,6 +1,7 @@
 module Siza.Agent.Discover.Interpret (
     interpret,
     constructGoal,
+    signatureRequest,
     stripDecoration,
     stripVersion,
     envFromCells,
@@ -26,6 +27,7 @@ interpret :: NotebookEnv -> Text -> Interpreted
 interpret env raw
     | Just ty <- constructGoal raw =
         Interpreted raw ty Nothing "construct" "a value of this type" []
+    | Just nm <- signatureRequest raw = asSignatureRequest raw (interpret env nm)
     | typeShaped =
         Interpreted raw stripped Nothing "type" "" []
     | prose =
@@ -39,6 +41,29 @@ interpret env raw
     typeShaped = "->" `T.isInfixOf` raw || "::" `T.isInfixOf` raw
     prose = length (T.words stripped) > 1
     terms = map T.toLower (T.words stripped)
+
+{- | A query whose @::@ has nothing to its right names a value and asks for its
+signature; it is not a search for a type. Returns the name that was asked for.
+-}
+signatureRequest :: Text -> Maybe Text
+signatureRequest raw
+    | not (T.null rest)
+    , T.null (T.strip (T.drop 2 rest))
+    , not (T.null name) =
+        Just name
+    | otherwise = Nothing
+  where
+    (lhs, rest) = T.breakOn "::" raw
+    name = T.strip lhs
+
+asSignatureRequest :: Text -> Interpreted -> Interpreted
+asSignatureRequest raw i =
+    i
+        { iRaw = raw
+        , iNote = T.intercalate "; " (filter (not . T.null) [iNote i, note])
+        }
+  where
+    note = "read as a request for the signature of '" <> iName i <> "'"
 
 constructGoal :: Text -> Maybe Text
 constructGoal raw = firstJust (map afterPhrase phrases)

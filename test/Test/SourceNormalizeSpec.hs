@@ -11,10 +11,10 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.HTTP.Client (defaultManagerSettings, newManager)
-import System.Directory (doesFileExist, findExecutable)
-import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
+
+import Test.Live (requireLiveFor)
 
 import Sabela.AI.Capabilities (executeTool)
 import Sabela.AI.Capabilities.Try (trialPlanErrorText)
@@ -145,9 +145,8 @@ pureSpec = describe "pure generator + gate behaviour" $ do
         it "names the cell/try gap for a policy-only rejection" $
             trialPlanErrorText TrialMultipleExpressions
                 `shouldSatisfy` T.isInfixOf "cells accept this; try does not"
-        it "an effectful statement also gets the parity clause" $
-            trialPlanErrorText (TrialEffectfulStatement "x <- readFile \"f\"")
-                `shouldSatisfy` T.isInfixOf "cells accept this; try does not"
+        it "an effectful statement is no longer a refusal at all" $
+            planTrial "x <- readFile \"f\"" `shouldSatisfy` isRight
         it "a GHCi meta-command stays a plain refusal (no cell can hold one either)" $
             trialPlanErrorText (TrialMetaCommand ":!ls")
                 `shouldSatisfy` (not . T.isInfixOf "cells accept this")
@@ -168,17 +167,8 @@ codeGrid =
     , ""
     ]
 
-requireLiveIntegration :: IO ()
-requireLiveIntegration = do
-    cabal <- findExecutable "cabal"
-    case cabal of
-        Nothing -> pendingWith "cabal not found on PATH; skipping G7 integration"
-        Just _ -> pure ()
-    supportPresent <-
-        doesFileExist (buildTimeSupportDir </> "sabela-notebook.cabal")
-    if supportPresent
-        then pure ()
-        else pendingWith "sabela-notebook support source not on disk"
+requireLiveIntegration :: Expectation
+requireLiveIntegration = requireLiveFor "G7 integration"
 
 newFixture :: FilePath -> IO (App, AIStore.AIStore, ReactiveNotebook)
 newFixture dir = do

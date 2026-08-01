@@ -82,7 +82,7 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
         <*> newDependencyTracker
         <*> newWidgetStore
         <*> newBridgeStore
-        <*> newIORef M.empty
+        <*> newIORef Nothing
         <*> pure aiVar
         <*> pure mHttpMgr
         <*> pure mAiToken

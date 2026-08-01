@@ -3,6 +3,8 @@
 module Sabela.AI.Capabilities.TryPlan (
     TrialPlan (..),
     TrialPlanError (..),
+    TrialTier (..),
+    MetaQuery (..),
     planTrial,
     candidateNeedsDisposable,
 ) where
@@ -24,11 +26,30 @@ import ScriptHs.Render (
     toPieces,
  )
 
+{- | Which of the two questions a candidate can be put to. A pure candidate can
+be answered by inspecting it in the live session; a contained one has an effect
+or a purity escape and may only run in a disposable session.
+-}
+data TrialTier = TierPure | TierContained
+    deriving (Bounded, Enum, Eq, Show)
+
+{- | A GHCi meta-command that only interrogates the type environment, with the
+imports the same candidate declared. It has no effect, so it is a question for
+the tool that answers types rather than a refusal.
+-}
+data MetaQuery = MetaQuery
+    { mqCommand :: Text
+    , mqSubject :: Text
+    , mqImports :: [Text]
+    }
+    deriving (Eq, Show)
+
 data TrialPlan = TrialPlan
     { trialMeta :: CabalMeta
     , trialSetup :: Text
     , trialExpression :: Maybe Text
     , trialSource :: Text
+    , trialTier :: TrialTier
     }
     deriving (Eq, Show)
 
@@ -36,8 +57,8 @@ data TrialPlanError
     = TrialEmpty
     | TrialMultipleExpressions
     | TrialExpressionNotFinal
-    | TrialEffectfulStatement Text
     | TrialMetaCommand Text
+    | TrialMetaQuery MetaQuery
     | TrialUnsafeSyntax Text
     deriving (Eq, Show)
 
@@ -46,7 +67,8 @@ planTrial raw
     | T.null (T.strip raw) = Left TrialEmpty
     | Just hazard <- firstHazard raw meta = Left (TrialUnsafeSyntax hazard)
     | otherwise = do
-        (setupLines, actions) <- foldPieces (toPieces (scriptLines parsed))
+        (setupLines, actions, boundEffect) <-
+            foldPieces importLines (toPieces (scriptLines parsed))
         expression <- case actions of
             [] -> Right Nothing
             [one] -> Right (Just one)
@@ -57,41 +79,70 @@ planTrial raw
                 , trialSetup = toGhciScript setupLines
                 , trialExpression = expression
                 , trialSource = raw
+                , trialTier =
+                    if boundEffect || hasPurityEscape raw
+                        then TierContained
+                        else TierPure
                 }
   where
     parsed = parseScript raw
     meta = scriptMeta parsed
+    importLines = [t | Import t <- scriptLines parsed]
 
+{- | A contained candidate never takes the live fast path: the live session is
+the notebook's own, and only the disposable one is discardable.
+-}
 candidateNeedsDisposable :: TrialPlan -> Bool
 candidateNeedsDisposable plan =
-    not (metaIsEmpty (trialMeta plan))
+    trialTier plan == TierContained
+        || not (metaIsEmpty (trialMeta plan))
         || not (T.null (T.strip (trialSetup plan)))
         || maybe True (T.any (`elem` ['\n', '\r'])) (trialExpression plan)
 
-foldPieces :: [Piece] -> Either TrialPlanError ([Line], [Text])
-foldPieces = go [] [] False
+foldPieces :: [Text] -> [Piece] -> Either TrialPlanError ([Line], [Text], Bool)
+foldPieces imports = go [] [] False False
   where
-    go setup actions _ [] = Right (reverse setup, reverse actions)
-    go setup actions seenAction (piece : rest) = case piece of
-        PBlank -> go (Blank : setup) actions seenAction rest
+    go setup actions _ effect [] = Right (reverse setup, reverse actions, effect)
+    go setup actions seenAction effect (piece : rest) = case piece of
+        PBlank -> go (Blank : setup) actions seenAction effect rest
         PPragma p
             | seenAction -> Left TrialExpressionNotFinal
-            | otherwise -> go (Pragma p : setup) actions False rest
+            | otherwise -> go (Pragma p : setup) actions False effect rest
         PImport i
             | seenAction -> Left TrialExpressionNotFinal
-            | otherwise -> go (Import i : setup) actions False rest
-        PUnit KComment ls -> go (reverse ls <> setup) actions seenAction rest
+            | otherwise -> go (Import i : setup) actions False effect rest
+        PUnit KComment ls -> go (reverse ls <> setup) actions seenAction effect rest
         PUnit KDeclaration ls
             | seenAction -> Left TrialExpressionNotFinal
-            | otherwise -> go (reverse ls <> setup) actions False rest
+            | otherwise -> go (reverse ls <> setup) actions False effect rest
         PUnit KAction ls ->
-            go setup (renderUnit ls : actions) True rest
-        PUnit KIOBind ls ->
-            Left (TrialEffectfulStatement (renderUnit ls))
+            go setup (renderUnit ls : actions) True effect rest
+        PUnit KIOBind ls
+            | seenAction -> Left TrialExpressionNotFinal
+            | otherwise -> go (reverse ls <> setup) actions False True rest
         PUnit KTHSplice ls ->
             Left (TrialUnsafeSyntax ("Template Haskell splice: " <> renderUnit ls))
-        PGhciCommand cmd -> Left (TrialMetaCommand cmd)
+        PGhciCommand cmd -> case metaQueryOf cmd of
+            Just (command, subject) ->
+                Left (TrialMetaQuery (MetaQuery command subject imports))
+            Nothing -> Left (TrialMetaCommand cmd)
     renderUnit = T.stripEnd . T.unlines . map lineText
+
+{- | A meta-command that only interrogates the type environment, split into the
+command (with its flags) and the subject it asks about. A command this does not
+recognise is treated as effectful: an unknown effect is an effect.
+-}
+metaQueryOf :: Text -> Maybe (Text, Text)
+metaQueryOf raw = case T.words (T.strip raw) of
+    (cmd : rest)
+        | T.toLower cmd `elem` pureQueryCommands ->
+            let (flags, subject) = span ("+" `T.isPrefixOf`) rest
+             in Just (T.unwords (cmd : flags), T.unwords subject)
+    _ -> Nothing
+
+pureQueryCommands :: [Text]
+pureQueryCommands =
+    [":type", ":t", ":kind", ":kind!", ":k", ":k!", ":info", ":i", ":doc"]
 
 firstHazard :: Text -> CabalMeta -> Maybe Text
 firstHazard raw meta
@@ -120,16 +171,30 @@ firstHazard raw meta
         Just "candidate contains a compile-time annotation"
     | "foreign" `T.isInfixOf` lowered =
         Just "candidate contains an FFI declaration"
-    | any (`T.isInfixOf` lowered) forbidden =
-        Just "candidate contains an unsafe compile-time or purity escape"
+    | any (`T.isInfixOf` lowered) harnessEscapes =
+        Just "candidate contains an unsafe compile-time escape"
     | otherwise = Nothing
   where
     lowered = T.toLower raw
     normalized = T.unwords (T.words lowered)
     compact = T.filter (`notElem` [' ', '\t', '\r', '\n']) lowered
-    forbidden =
-        [ "_sabela"
-        , "unsafeperformio"
+
+{- | Escapes that would let a candidate reach past the harness itself: the
+harness's own generated-name prefix, and compile flags. Containment cannot help
+with either, so they stay refused.
+-}
+harnessEscapes :: [Text]
+harnessEscapes = ["_sabela", "options_ghc"]
+
+{- | Escapes from the type system's purity guarantee. They say nothing about
+whether the code can be checked — only that the live session must not host it,
+because its assurance there is the candidate's type.
+-}
+hasPurityEscape :: Text -> Bool
+hasPurityEscape raw = any (`T.isInfixOf` T.toLower raw) escapes
+  where
+    escapes =
+        [ "unsafeperformio"
         , "unsafedupableperformio"
         , "unsafeinterleaveio"
         , "unsafecoerce"
@@ -138,7 +203,6 @@ firstHazard raw meta
         , "unsafe.coerce"
         , "runio"
         , "qrunio"
-        , "options_ghc"
         ]
 
 hasSpliceSyntax :: Text -> Bool

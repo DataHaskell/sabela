@@ -2,6 +2,7 @@
 
 module Test.WriteAckFixture (
     withAckEnv,
+    inertBackend,
     mkFixture,
     mkScriptedFixture,
     slowRn,
@@ -39,14 +40,25 @@ import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), broadcast, readNotebook)
 import Sabela.State.SessionManager (setHaskellSession)
 
+{- | Every insert here builds a real project through the compile gate. The
+production budget bounds a runaway dependency build; these projects are trivial,
+so under load it expires only spuriously, yielding 'no-verdict-infra'.
+-}
+ackBuildBudgetSecs :: String
+ackBuildBudgetSecs = "900"
+
 withAckEnv :: IO a -> IO a
 withAckEnv =
     bracket_
         ( setEnv "SABELA_WRITE_ACK_SECS" "1"
             >> setEnv "SABELA_REPAIR_BUDGET_SECS" "0"
+            >> setEnv "SABELA_TRY_BUILD_TIMEOUT_SECONDS" ackBuildBudgetSecs
+            >> setEnv "SABELA_BUILD_TIMEOUT_SECONDS" ackBuildBudgetSecs
         )
         ( unsetEnv "SABELA_WRITE_ACK_SECS"
             >> unsetEnv "SABELA_REPAIR_BUDGET_SECS"
+            >> unsetEnv "SABELA_TRY_BUILD_TIMEOUT_SECONDS"
+            >> unsetEnv "SABELA_BUILD_TIMEOUT_SECONDS"
         )
 
 inertBackend :: IO ST.SessionBackend
@@ -118,8 +130,7 @@ fastRn app =
             threadDelay 100000
             broadcast (appEvents app) (EvCellResult cid [] Nothing [] [])
         , rnRunAll = pure ()
-        , rnReset = pure ()
-        , rnRestartKernel = pure ()
+        , rnRestart = \_ -> pure ()
         , rnWidgetCell = \_ -> pure ()
         }
 

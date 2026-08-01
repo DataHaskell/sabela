@@ -1,20 +1,36 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{- | Summarises a sample of an artefact as a delimited table, but only when
+the sample is one. The verdict carries its evidence, and a column is named
+only from a header the file really has.
+-}
 module Sabela.AI.PeekData (
     PeekResult (..),
+    PeekVerdict (..),
+    DelimitedView (..),
+    PeekColumn (..),
     ColType (..),
     peekData,
     peekResultJSON,
     colTypeName,
 ) where
 
-import Data.Aeson (Value, object, toJSON, (.=))
-import Data.Char (isDigit)
-import Data.List (maximumBy)
-import Data.Ord (comparing)
+import Data.Aeson (Value (..), object, toJSON, (.=))
+import Data.Aeson.Types (Pair)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Read as TR
+
+import Sabela.AI.Shape (
+    Grid (..),
+    binaryish,
+    columnAt,
+    gridDelimiters,
+    gridHeader,
+    gridOf,
+    isDouble,
+    isInt,
+ )
 
 data ColType = ColInt | ColDouble | ColBool | ColText
     deriving (Eq, Show)
@@ -25,72 +41,84 @@ colTypeName ColDouble = "Double"
 colTypeName ColBool = "Bool"
 colTypeName ColText = "Text"
 
-data PeekResult = PeekResult
-    { peekDelimiter :: Text
-    , peekHasHeader :: Bool
-    , peekHeader :: [Text]
-    , peekColTypes :: [ColType]
-    , peekRows :: [[Text]]
+{- | A column of a delimited sample. @pcName@ is 'Nothing' when the file has
+no header row: the reader has an index for that column and nothing else.
+-}
+data PeekColumn = PeekColumn
+    { pcIndex :: Int
+    , pcName :: Maybe Text
+    , pcType :: ColType
     }
     deriving (Eq, Show)
 
-candidateDelims :: [Text]
-candidateDelims = [",", "\t", ";", "|"]
+data DelimitedView = DelimitedView
+    { dvDelimiter :: Text
+    , dvHasHeader :: Bool
+    , dvColumns :: [PeekColumn]
+    , dvRows :: [[Text]]
+    , dvRowCount :: Int
+    }
+    deriving (Eq, Show)
 
+data PeekVerdict = NotDelimited Text | Delimited DelimitedView
+    deriving (Eq, Show)
+
+data PeekResult = PeekResult
+    { peekVerdict :: PeekVerdict
+    , peekLineCount :: Int
+    }
+    deriving (Eq, Show)
+
+-- | Reads at most @n@ data rows out of the sample.
 peekData :: Int -> Text -> PeekResult
-peekData n raw =
-    PeekResult
-        { peekDelimiter = delim
-        , peekHasHeader = hasHeader
-        , peekHeader = header
-        , peekColTypes = colTypes
-        , peekRows = take (max 0 n) body
-        }
+peekData n raw = PeekResult (verdictOf n raw) (length nonEmpty)
   where
     nonEmpty = filter (not . T.null) (T.lines raw)
-    delim = inferDelimiter nonEmpty
-    rows = map (T.splitOn delim) nonEmpty
-    hasHeader = looksLikeHeader rows
-    (headerRow, bodyRows) = case rows of
-        (h : rest) | hasHeader -> (h, rest)
-        _ -> ([], rows)
-    width = case rows of
-        (r : _) -> length r
-        [] -> 0
-    header
-        | hasHeader = headerRow
-        | otherwise = [T.pack ("col" <> show i) | i <- [1 .. width]]
-    body = bodyRows
-    colTypes = [guessColType (columnAt i body) | i <- [0 .. width - 1]]
 
-columnAt :: Int -> [[Text]] -> [Text]
-columnAt i = concatMap (take 1 . drop i)
-
-inferDelimiter :: [Text] -> Text
-inferDelimiter [] = ","
-inferDelimiter ls = fst (maximumBy (comparing snd) scored)
+verdictOf :: Int -> Text -> PeekVerdict
+verdictOf n raw
+    | binaryish raw = NotDelimited notText
+    | length nonEmpty < 2 = NotDelimited tooFewLines
+    | otherwise =
+        maybe
+            (NotDelimited noConsistentDelimiter)
+            (viewOf n)
+            (gridOf gridDelimiters nonEmpty)
   where
-    scored = [(d, score d) | d <- reverse candidateDelims]
-    score d =
-        let counts = map (length . T.splitOn d) ls
-            modeCount = mode counts
-         in modeCount * length (filter (== modeCount) counts)
+    nonEmpty = filter (not . T.null) (T.lines raw)
 
-mode :: (Eq a) => [a] -> a
-mode [] = error "mode: empty list"
-mode xs = snd (maximumBy (comparing fst) [(length (filter (== x) xs), x) | x <- xs])
+notText :: Text
+notText = "the sample is not decodable text, so it was not read as a table"
 
-looksLikeHeader :: [[Text]] -> Bool
-looksLikeHeader (h : body@(_ : _)) =
-    or
-        [ not (isNumericCell hi) && all isNumericCell (columnAt i body)
-        | (i, hi) <- zip [0 ..] h
-        , not (null (columnAt i body))
+tooFewLines :: Text
+tooFewLines = "fewer than two non-empty lines, which is not enough to check a delimiter"
+
+noConsistentDelimiter :: Text
+noConsistentDelimiter =
+    "no candidate delimiter splits every line into the same number of at least \
+    \two fields"
+
+viewOf :: Int -> Grid -> PeekVerdict
+viewOf n g =
+    Delimited
+        DelimitedView
+            { dvDelimiter = gridDelim g
+            , dvHasHeader = hasHeader
+            , dvColumns = columns
+            , dvRows = take (max 0 n) body
+            , dvRowCount = length body
+            }
+  where
+    rows = gridRows g
+    header = gridHeader g
+    hasHeader = isJust header
+    (headerRow, body) = case header of
+        Just h -> (map Just h, drop 1 rows)
+        Nothing -> (replicate (gridWidth g) Nothing, rows)
+    columns =
+        [ PeekColumn i nm (guessColType (columnAt i body))
+        | (i, nm) <- zip [0 ..] headerRow
         ]
-looksLikeHeader _ = False
-
-isNumericCell :: Text -> Bool
-isNumericCell = (`elem` [ColInt, ColDouble]) . classifyCell
 
 guessColType :: [Text] -> ColType
 guessColType cells =
@@ -114,29 +142,29 @@ classifyCell raw
   where
     t = T.strip raw
 
-isInt :: Text -> Bool
-isInt t = case TR.signed TR.decimal t :: Either String (Integer, Text) of
-    Right (_, rest) -> T.null rest && not (T.null t) && T.all digitOrSign t
-    _ -> False
-  where
-    digitOrSign c = isDigit c || c == '-' || c == '+'
-
-isDouble :: Text -> Bool
-isDouble t = case TR.signed TR.double t of
-    Right (_, rest) -> T.null rest && not (T.null t)
-    _ -> False
-
 peekResultJSON :: PeekResult -> Value
-peekResultJSON r =
+peekResultJSON r = object (["lines" .= peekLineCount r] <> verdictPairs (peekVerdict r))
+
+verdictPairs :: PeekVerdict -> [Pair]
+verdictPairs (NotDelimited reason) =
+    ["verdict" .= ("not-delimited" :: Text), "reason" .= reason]
+verdictPairs (Delimited v) =
+    [ "verdict" .= ("delimited" :: Text)
+    , "delimiter" .= dvDelimiter v
+    , "hasHeader" .= dvHasHeader v
+    , "fieldsPerLine" .= length (dvColumns v)
+    , "columns" .= toJSON (map columnJSON (dvColumns v))
+    , "rows" .= dvRows v
+    , "rowCount" .= dvRowCount v
+    ]
+
+{- | A column carries the index it was read at always, and a name only when
+one was read from the file.
+-}
+columnJSON :: PeekColumn -> Value
+columnJSON c =
     object
-        [ "delimiter" .= peekDelimiter r
-        , "hasHeader" .= peekHasHeader r
-        , "columns" .= columns
-        , "rows" .= peekRows r
+        [ "index" .= pcIndex c
+        , "name" .= maybe Null String (pcName c)
+        , "type" .= colTypeName (pcType c)
         ]
-  where
-    columns =
-        toJSON
-            [ object ["name" .= name, "type" .= colTypeName ty]
-            | (name, ty) <- zip (peekHeader r) (peekColTypes r)
-            ]

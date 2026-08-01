@@ -17,8 +17,8 @@ module Siza.Agent.EmitLedger (
 import Data.Aeson (Value (..), decode, encode)
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
-import Data.Char (isDigit, isSpace)
-import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import Data.Char (isSpace)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (mapAccumL)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -28,18 +28,28 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
 import Sabela.AI.SelfHeal (sourceDelta)
+import Siza.Agent.Compact (actionableKeys, mustKeep)
+import Siza.Agent.Recall (freshId, recallHint, withRecallStore)
 
 data EmitLedger = EmitLedger
     { elSeen :: Map Text Int
     , elAnchor :: Map Text (Int, Text)
+    , elStore :: Map Int Text
     }
 
 blockFloor :: Int
 blockFloor = 160
 
+{- | A back-reference must stay well under 'blockFloor', or eliding a block
+costs more than keeping it. It also carries the index that reads it back.
+-}
 backRefLimit :: Int
-backRefLimit = 120
+backRefLimit = 140
 
+{- | Fields whose value is the answer, not a restatement of it. `summary`
+belongs here because it is the only content a duplicate envelope carries:
+elide it and the reference points at nothing.
+-}
 loadBearingKeys :: [Text]
 loadBearingKeys =
     [ "type"
@@ -50,14 +60,12 @@ loadBearingKeys =
     , "next"
     , "exports"
     , "candidate"
+    , "summary"
     ]
         ++ actionableKeys
 
-actionableKeys :: [Text]
-actionableKeys = ["diagnostic", "error", "stderr", "autofix"]
-
 emptyEmitLedger :: EmitLedger
-emptyEmitLedger = EmitLedger Map.empty Map.empty
+emptyEmitLedger = EmitLedger Map.empty Map.empty Map.empty
 
 newEmitLedger :: IO (IORef EmitLedger)
 newEmitLedger = newIORef emptyEmitLedger
@@ -66,18 +74,27 @@ anchorOf :: Text -> Text
 anchorOf = T.strip . T.takeWhile (/= '\n')
 
 recordBlock :: Int -> Text -> EmitLedger -> EmitLedger
-recordBlock turn block (EmitLedger seen anch) =
-    EmitLedger
-        (Map.insertWith (\_ old -> old) block turn seen)
-        (Map.insert (anchorOf block) (turn, block) anch)
+recordBlock turn block led =
+    led
+        { elSeen = Map.insertWith (\_ old -> old) block turn (elSeen led)
+        , elAnchor = Map.insert (anchorOf block) (turn, block) (elAnchor led)
+        }
 
-backRef :: Int -> Text -> Text
-backRef turn block =
-    "[as established turn "
-        <> T.pack (show turn)
-        <> " (unchanged): "
-        <> T.take 40 (anchorOf block)
-        <> "…]"
+{- | The marker that replaces a repeated block, and the ledger that can hand
+that block back: one step, so the index the marker names holds those bytes.
+-}
+backRef :: Int -> Text -> EmitLedger -> (Text, EmitLedger)
+backRef turn block led = (marker, led{elStore = Map.insert n block (elStore led)})
+  where
+    n = freshId (elStore led) block
+    marker =
+        "[as established turn "
+            <> T.pack (show turn)
+            <> " (unchanged): "
+            <> T.take 40 (anchorOf block)
+            <> "… — "
+            <> recallHint n
+            <> "]"
 
 deltaText :: Int -> Text -> Text -> Text
 deltaText turn old new =
@@ -91,7 +108,7 @@ deltaText turn old new =
 
 rewriteBlock :: Int -> Text -> EmitLedger -> (EmitLedger, Maybe Text)
 rewriteBlock turn block led = case Map.lookup block (elSeen led) of
-    Just t -> (led, Just (backRef t block))
+    Just t -> let (marker, led') = backRef t block led in (led', Just marker)
     Nothing -> case Map.lookup (anchorOf block) (elAnchor led) of
         Just (t, old)
             | d <- deltaText t old block
@@ -106,21 +123,10 @@ dedupText turn text led0 =
   where
     chunkPass led chunk
         | T.length chunk < blockFloor = (led, chunk)
-        | carriesActionable chunk || carriesVerdict chunk || reportsFailure chunk =
-            (recordBlock turn chunk led, chunk)
+        | mustKeep chunk = (recordBlock turn chunk led, chunk)
         | otherwise = case rewriteBlock turn chunk led of
             (led', Just replacement) -> (led', replacement)
             (led', Nothing) -> spanPass turn chunk led'
-
-carriesActionable :: Text -> Bool
-carriesActionable chunk = any nonEmptyValue actionableKeys
-  where
-    nonEmptyValue k =
-        ("\"" <> k <> "\":\"") `T.isInfixOf` chunk
-            && not (("\"" <> k <> "\":\"\"") `T.isInfixOf` chunk)
-
-carriesVerdict :: Text -> Bool
-carriesVerdict = T.isInfixOf "\"tool_name\":\"verify\""
 
 recordText :: Int -> Text -> EmitLedger -> EmitLedger
 recordText turn text led0 = foldl' chunkRecord led0 (T.splitOn "\n\n" text)
@@ -222,14 +228,23 @@ dedupInjected ref turn = mapM one
     one (Object o)
         | Just (String c) <- KM.lookup "content" o
         , contentRequest o = do
-            atomicModifyIORef' ref $ \led -> (recordText turn c led, ())
+            modifyLedger ref (\led -> ((), recordText turn c led))
             pure (Object o)
         | Just (String c) <- KM.lookup "content" o = do
-            c' <-
-                atomicModifyIORef' ref $ \led ->
-                    let (out, led') = dedupText turn c led in (led', out)
+            c' <- modifyLedger ref (dedupText turn c)
             pure (Object (KM.insert "content" (String c') o))
     one v = pure v
+
+{- | Run a ledger step against the live recall store, so what the step elides
+is retrievable by the index its marker names before that marker is emitted.
+-}
+modifyLedger :: IORef EmitLedger -> (EmitLedger -> (a, EmitLedger)) -> IO a
+modifyLedger ref step = do
+    led <- readIORef ref
+    (out, led') <- withRecallStore $ \store ->
+        let (a, l) = step led{elStore = store} in ((a, l), elStore l)
+    writeIORef ref led'
+    pure out
 
 contentRequest :: KM.KeyMap Value -> Bool
 contentRequest o = case KM.lookup "tool_name" o of
@@ -241,35 +256,6 @@ contentRequestTools = ["execute_cell", "read_cell", "read_cell_output"]
 
 emitTurn :: IORef EmitLedger -> Int -> Value -> [Value] -> IO [Value]
 emitTurn ref turn turnMsg injected = do
-    atomicModifyIORef' ref $ \led ->
-        (recordText turn (TE.decodeUtf8 (LBS.toStrict (encode turnMsg))) led, ())
+    modifyLedger ref $ \led ->
+        ((), recordText turn (TE.decodeUtf8 (LBS.toStrict (encode turnMsg))) led)
     (turnMsg :) <$> dedupInjected ref turn injected
-
-reportsFailure :: Text -> Bool
-reportsFailure = any (any failureLine . T.lines) . outputValues
-  where
-    failureLine l = unambiguous l || markedProse l
-    unambiguous l = any (`T.isInfixOf` l) ["*** Exception", "Not in scope:", "CallStack"]
-    markedProse l = any (prosePast l) failureMarkers
-    prosePast l m = case T.breakOn (m <> ":") (T.toLower l) of
-        (_, rest)
-            | T.null rest -> False
-            | otherwise -> isProse (T.drop (T.length m + 1) rest)
-    isProse rest = case T.uncons (T.stripStart rest) of
-        Just (c, _) -> not (isDigit c) && c /= '-'
-        Nothing -> False
-
-failureMarkers :: [Text]
-failureMarkers = ["error", "exception", "failure", "failed", "warning"]
-
-outputValues :: Text -> [Text]
-outputValues = go
-  where
-    key = "\"oiOutput\":\""
-    go t = case T.breakOn key t of
-        (_, rest)
-            | T.null rest -> []
-            | otherwise ->
-                let body = T.drop (T.length key) rest
-                    (v, after) = T.breakOn "\"" (T.replace "\\\"" "  " body)
-                 in v : (if T.null after then [] else go (T.drop 1 after))

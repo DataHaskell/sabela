@@ -1,16 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{- | A committed cell that produced nothing visible is offered a rendering.
+Every candidate is proposed for every value and the kernel settles it, so no
+branch here reads a type name or the caller's prose.
+-}
 module Siza.Agent.RenderContract (
-    displayCandidate,
+    displayCandidates,
+    displayProbe,
     repairDisplayContract,
 ) where
 
+import Control.Monad (void, when)
 import Data.Aeson (Value (..), object, (.=))
-import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
-import Data.Foldable (toList)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust, mapMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -23,17 +27,58 @@ import Siza.Agent.Loop.Support (replaceCall)
 import Siza.Agent.Owned (ownedCellOutcome)
 import Siza.Agent.Repair (Dispatch, snapshot)
 
-displayCandidate :: Text -> Text -> Text -> Maybe Text
-displayCandidate goal inferred src
-    | not (displayGoal goal) = Nothing
-    | alreadyDisplayed src = Nothing
-    | otherwise = do
-        expr <- sourceExpression src
-        (imp, wrap) <- wrapperFor (goal <> "\n" <> src) inferred
-        let body
-                | isDefinition src = T.stripEnd src <> "\n" <> wrap expr
-                | otherwise = replaceExpression src (wrap expr)
-        pure (addImport imp body)
+{- | Every rendering worth offering for this source, richest unpacking last,
+in the order they will be tried. The goal text chooses the medium and nothing
+else: whether a rendering is offered at all is a question about the source.
+-}
+displayCandidates :: Text -> Text -> [Text]
+displayCandidates goal src
+    | alreadyRendered src = []
+    | otherwise = case sourceExpression src of
+        Nothing -> []
+        Just expr -> map (candidate expr) (renderers (goal <> "\n" <> src))
+  where
+    candidate expr r = addImport (renderImport r) (body (renderWrap r expr))
+    body wrapped
+        | isDefinition src = T.stripEnd src <> "\n" <> wrapped
+        | otherwise = replaceExpression src wrapped
+
+{- | One way to make a value visible: the import it needs and how it wraps the
+expression.
+-}
+data Renderer = Renderer
+    { renderImport :: Maybe Text
+    , renderWrap :: Text -> Text
+    }
+
+{- | The renderings proposed for every value, cheapest first. A value the
+table has never seen is offered the same list as any other; the kernel is
+what rejects the ones that do not fit it.
+-}
+renderers :: Text -> [Renderer]
+renderers context =
+    [ Renderer Nothing (\e -> display <> " (" <> e <> ")")
+    , Renderer
+        (Just "import qualified Data.Text as T")
+        (\e -> display <> " (T.unpack (" <> e <> "))")
+    , Renderer
+        (Just "import qualified Data.Text.Lazy as TL")
+        (\e -> display <> " (TL.unpack (" <> e <> "))")
+    ]
+        ++ bridges
+  where
+    display = textDisplay context
+
+{- | Renderings that take the value whole rather than a String. They are
+proposed like any other candidate, so adding one teaches the double-wrap
+guard about it too.
+-}
+bridges :: [Renderer]
+bridges =
+    [ Renderer
+        (Just "import qualified DataFrame.Display as DFDisplay")
+        (\e -> "DFDisplay.display DFDisplay.defaultDisplayOptions (" <> e <> ")")
+    ]
 
 repairDisplayContract ::
     Text ->
@@ -42,96 +87,84 @@ repairDisplayContract ::
     Either Text ToolOutcome ->
     IO (Maybe (ToolCall, Either Text ToolOutcome))
 repairDisplayContract goal disp call out
-    | not (displayGoal goal) = pure Nothing
     | not (isOwningTool (tcName call)) = pure Nothing
     | Just (cid, True) <- ownedCellOutcome call out
     , noVisibleOutput out
     , let src = toolCallSource call
-    , Just expr <- sourceExpression src = do
-        ty <- inferType disp expr
-        case displayCandidate goal ty src of
-            Nothing -> pure Nothing
-            Just candidate -> do
-                before <- snapshot disp
-                let rc = replaceCall cid candidate
-                out' <- disp rc
-                after <- snapshot disp
-                let key = T.pack (show cid)
-                    defined =
-                        Set.fromList
-                            (concat [names | (cell, _, names) <- before, cell == key])
-                    accepted =
-                        acceptRepair
-                            defined
-                            [(cell, health) | (cell, health, _) <- before]
-                            [(cell, health) | (cell, health, _) <- after]
-                            key
-                if accepted && not (noVisibleOutput out')
-                    then pure (Just (rc, out'))
-                    else do
-                        _ <- disp (replaceCall cid src)
-                        pure Nothing
+    , candidates@(_ : _) <- displayCandidates goal src =
+        offer disp cid src candidates
     | otherwise = pure Nothing
 
-displayGoal :: Text -> Bool
-displayGoal =
-    anyWord
-        [ "show"
-        , "display"
-        , "render"
-        , "chart"
-        , "plot"
-        , "visual"
-        , "markdown"
-        , "summary"
-        , "report"
-        ]
+{- | Asks the kernel about each rendering in turn and commits the first that
+both type-checks and then shows something. A rendering the kernel rejects
+costs nothing; a commit that shows nothing is put back.
+-}
+offer ::
+    Dispatch ->
+    Int ->
+    Text ->
+    [Text] ->
+    IO (Maybe (ToolCall, Either Text ToolOutcome))
+offer disp cid src = go False
+  where
+    go committed [] = do
+        when committed (void (disp (replaceCall cid src)))
+        pure Nothing
+    go committed (c : cs) = do
+        fits <- typeChecks disp (displayProbe c)
+        if not fits
+            then go committed cs
+            else do
+                before <- snapshot disp
+                let rc = replaceCall cid c
+                out' <- disp rc
+                after <- snapshot disp
+                if kept before after && not (noVisibleOutput out')
+                    then pure (Just (rc, out'))
+                    else go True cs
+    key = T.pack (show cid)
+    kept before after =
+        acceptRepair
+            (Set.fromList (concat [ns | (cell, _, ns) <- before, cell == key]))
+            [(cell, health) | (cell, health, _) <- before]
+            [(cell, health) | (cell, health, _) <- after]
+            key
+
+{- | The candidate reduced to what the kernel needs to judge it: its imports
+and the rendering call. The definition above them is already committed, so
+the notebook's own bindings supply it.
+-}
+displayProbe :: Text -> Text
+displayProbe candidate = T.unlines (headers ++ take 1 (reverse body))
+  where
+    ls = [l | l <- T.lines candidate, not (T.null (T.strip l))]
+    (headers, body) = span (isHeaderLine . T.strip) ls
+
+-- | Whether the kernel accepts the rendering without it being committed.
+typeChecks :: Dispatch -> Text -> IO Bool
+typeChecks disp code = do
+    r <- disp (ToolCall "try" (object ["code" .= code]))
+    pure $ case r of
+        Right (ToolOk _) -> True
+        _ -> False
 
 anyWord :: [Text] -> Text -> Bool
 anyWord needles hay = any (`T.isInfixOf` T.toLower hay) needles
 
-alreadyDisplayed :: Text -> Bool
-alreadyDisplayed =
-    anyWord
-        [ "displaysvg"
-        , "displayhtml"
-        , "displaymarkdown"
-        , "dfdisplay.display"
-        , "dataframe.display.display"
-        ]
-
-wrapperFor :: Text -> Text -> Maybe (Maybe Text, Text -> Text)
-wrapperFor goal ty
-    | dataFrame =
-        Just
-            ( Just "import qualified DataFrame.Display as DFDisplay"
-            , \e -> "DFDisplay.display DFDisplay.defaultDisplayOptions (" <> e <> ")"
-            )
-    | lazyText =
-        Just (Just "import qualified Data.Text.Lazy as TL", applyText "TL.unpack")
-    | strictText =
-        Just (Just "import qualified Data.Text as T", applyText "T.unpack")
-    | stringType = Just (Nothing, applyString)
-    | htmlLike = Just (Nothing, \e -> "displayHtml (" <> e <> ")")
-    | svgLike = Just (Nothing, \e -> "displaySvg (" <> e <> ")")
-    | otherwise = Nothing
+{- | A source that already calls a renderer is left alone. The markers are
+read off the renderers themselves, so a renderer cannot be added without the
+guard learning it.
+-}
+alreadyRendered :: Text -> Bool
+alreadyRendered = anyWord markers
   where
-    norm = T.toLower (T.unwords (T.words (typeTail ty)))
-    strictText = norm `elem` ["text", "data.text.text", "t.text"]
-    lazyText = norm `elem` ["lazy.text", "data.text.lazy.text", "tl.text"]
-    stringType = norm `elem` ["string", "[char]"]
-    dataFrame = lastTypeName norm == "dataframe"
-    htmlLike = "html" `T.isInfixOf` norm
-    svgLike = "svg" `T.isInfixOf` norm
-    display = textDisplay goal
-    applyText unpack e = display <> " (" <> unpack <> " (" <> e <> "))"
-    applyString e = display <> " (" <> e <> ")"
-    lastTypeName = lastOrEmpty . T.splitOn "."
-    lastOrEmpty [] = ""
-    lastOrEmpty xs = last xs
-    typeTail t = case T.breakOnEnd "::" t of
-        (pre, post) | not (T.null pre) -> T.strip post
-        _ -> t
+    markers =
+        displayFunctions
+            ++ [T.toLower (T.takeWhile (/= '(') (renderWrap b "")) | b <- bridges]
+
+-- | The notebook's own ways of showing a String.
+displayFunctions :: [Text]
+displayFunctions = ["displaymarkdown", "displayhtml", "displaysvg"]
 
 textDisplay :: Text -> Text
 textDisplay context
@@ -150,7 +183,7 @@ textDisplay context
 
 sourceExpression :: Text -> Maybe Text
 sourceExpression src =
-    case reverse [name | l <- codeLines, Just name <- [definedName l]] of
+    case reverse (mapMaybe definedName codeLines) of
         (name : _) -> Just name
         []
             | null codeLines -> Nothing
@@ -161,10 +194,12 @@ sourceExpression src =
         | l <- T.lines src
         , let s = T.strip l
         , not (T.null s)
-        , not ("import " `T.isPrefixOf` s)
-        , not ("{-#" `T.isPrefixOf` s)
-        , not ("-- cabal:" `T.isPrefixOf` s)
+        , not (isHeaderLine s)
         ]
+
+-- | A line that sets a cell up rather than computes anything in it.
+isHeaderLine :: Text -> Bool
+isHeaderLine s = any (`T.isPrefixOf` s) ["import ", "{-#", "-- cabal:"]
 
 isDefinition :: Text -> Bool
 isDefinition = any (isJust . definedName) . T.lines
@@ -184,14 +219,7 @@ definedName line =
 replaceExpression :: Text -> Text -> Text
 replaceExpression src wrapped = T.unlines (headers ++ [wrapped])
   where
-    headers =
-        [ l
-        | l <- T.lines src
-        , let s = T.strip l
-        , "import " `T.isPrefixOf` s
-            || "{-#" `T.isPrefixOf` s
-            || "-- cabal:" `T.isPrefixOf` s
-        ]
+    headers = [l | l <- T.lines src, isHeaderLine (T.strip l)]
 
 addImport :: Maybe Text -> Text -> Text
 addImport Nothing src = src
@@ -203,29 +231,6 @@ addImport (Just imp) src
         | "-- cabal:" `T.isPrefixOf` T.stripStart l || "{-#" `T.isPrefixOf` T.stripStart l =
             l : insertAfterHeader ls
     insertAfterHeader ls = imp : ls
-
-inferType :: Dispatch -> Text -> IO Text
-inferType disp expr = do
-    r <- disp (ToolCall "check_type" (object ["expr" .= expr]))
-    pure $ case r of
-        Right (ToolOk v) -> firstText "result" v
-        _ -> ""
-
-firstText :: Text -> Value -> Text
-firstText key (Object o) =
-    case KM.lookup (K.fromText key) o of
-        Just (String s) -> s
-        _ -> firstNonEmpty [firstText key v | v <- KM.elems o]
-firstText key (Array a) = firstNonEmpty [firstText key v | v <- toList a]
-firstText _ _ = ""
-
-firstNonEmpty :: [Text] -> Text
-firstNonEmpty = fromMaybe "" . findNonEmpty
-  where
-    findNonEmpty [] = Nothing
-    findNonEmpty (x : xs)
-        | T.null x = findNonEmpty xs
-        | otherwise = Just x
 
 noVisibleOutput :: Either Text ToolOutcome -> Bool
 noVisibleOutput (Right (ToolOk v)) = not (hasOutputs v)

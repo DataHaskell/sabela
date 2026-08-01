@@ -41,7 +41,7 @@ import Sabela.Model (
     bareCellError,
  )
 import Sabela.SessionTypes (CellLang (..))
-import Sabela.State (App (..))
+import Sabela.State (App (..), broadcastNotebookState)
 import qualified Sabela.State.EventBus as EB
 import Sabela.State.NotebookStore (modifyNotebookIO)
 import Sabela.Topo (buildDefMap, cellNames)
@@ -53,10 +53,12 @@ broadcast :: App -> NotebookEvent -> IO ()
 broadcast = EB.broadcast . appEvents
 
 updateAndBroadcast :: App -> (Notebook -> Notebook) -> NotebookEvent -> IO ()
-updateAndBroadcast app f ev = modifyNotebookIO (appNotebook app) $ \nb -> do
-    let nb' = f nb
-    broadcast app ev
-    pure nb'
+updateAndBroadcast app f ev = do
+    modifyNotebookIO (appNotebook app) $ \nb -> do
+        let nb' = f nb
+        broadcast app ev
+        pure nb'
+    broadcastNotebookState app
 
 debugLog :: App -> Text -> IO ()
 debugLog app = EB.debugLog (appEnv app)

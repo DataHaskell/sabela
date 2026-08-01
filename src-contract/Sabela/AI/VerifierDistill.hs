@@ -16,7 +16,13 @@ import qualified Data.Text.Encoding as TE
 
 import Sabela.AI.Grammar.Synth (sanitizeTypeText)
 import Sabela.AI.Health (healthOfTypeQuery, isClean)
-import Sabela.AI.LeakShape (infoDumpLine, leakyLine)
+import Sabela.AI.LeakShape (
+    controlCharred,
+    embeddedSerialisation,
+    infoDumpLine,
+    leakyLine,
+    scrubLeakyText,
+ )
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 
 distillBudget :: Int
@@ -48,12 +54,17 @@ segments = filter (not . T.null . T.strip) . T.splitOn "\n\n"
 
 cleanSegment :: Text -> Text
 cleanSegment seg =
-    T.strip . sanitizeTypeText . T.intercalate "\n" $
-        [ l
-        | l <- T.lines seg
-        , not (leakyLine l)
-        , not ("-- Defined in" `T.isInfixOf` l)
-        ]
+    T.strip . T.intercalate "\n" $ [l | Just l <- map keepLine (T.lines seg)]
+
+{- | Scrub a line's build-provenance tokens instead of dropping the line: a
+dropped constraint line is a signature the harness reports but never saw. Only
+unrepairable text — serialised blobs, control chars — and provenance goes.
+-}
+keepLine :: Text -> Maybe Text
+keepLine l
+    | embeddedSerialisation l || controlCharred l = Nothing
+    | "-- Defined in" `T.isInfixOf` l = Nothing
+    | otherwise = Just (sanitizeTypeText (scrubLeakyText l))
 
 dumpShaped :: Text -> Bool
 dumpShaped seg = any (\l -> leakyLine l || infoDumpLine l) (T.lines seg)
@@ -65,8 +76,8 @@ diagnosticLine t = "error: " <> T.take 200 body
         (m : _) -> m
         [] -> firstCleanLine
     firstCleanLine =
-        case [sanitizeTypeText l | l <- T.lines t, not (leakyLine l)] of
-            (l : _) -> stripErr (T.strip l)
+        case [s | Just l <- map keepLine (T.lines t), let s = T.strip l, not (T.null s)] of
+            (l : _) -> stripErr l
             [] -> "unreadable diagnostic (leak-shaped output suppressed)"
     stripErr l = maybe l T.stripStart (T.stripPrefix "error:" l)
 

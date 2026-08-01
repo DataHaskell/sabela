@@ -5,8 +5,8 @@ module Test.ExecuteCellSpec (spec) where
 import Sabela.AI.Capabilities.Edit.Run (missingCellError)
 import Sabela.Handlers (cellRunnable)
 import Sabela.Model (Cell (..), CellType (..))
+import Test.CellFixture (mkCell)
 import Test.Hspec
-import Test.TopoSpec.Helpers (mkCell)
 
 dirty :: Cell -> Cell
 dirty c = c{cellDirty = True}
@@ -30,8 +30,16 @@ spec = do
         it "runs a dirty code cell either way" $ do
             cellRunnable False (Just (dirty (mkCell 0 "x = 1"))) `shouldBe` True
             cellRunnable True (Just (dirty (mkCell 0 "x = 1"))) `shouldBe` True
-        it "runs an errored code cell either way" $
-            cellRunnable False (Just (errored (mkCell 0 "x = 1"))) `shouldBe` True
+        it
+            "skips a settled failure on an unforced run: the UI Run button is\
+            \ forced, so this only stops automatic re-runs"
+            $ cellRunnable False (Just (errored (mkCell 0 "x = 1")))
+                `shouldBe` False
+        it "forces a settled failure to run, so retry is always available" $
+            cellRunnable True (Just (errored (mkCell 0 "x = 1"))) `shouldBe` True
+        it "runs an errored cell unforced once its source changes" $
+            cellRunnable False (Just (dirty (errored (mkCell 0 "x = 1"))))
+                `shouldBe` True
         it "runs a prose cell either way (non-code always runs)" $ do
             cellRunnable False (Just (prose (mkCell 0 "hi"))) `shouldBe` True
             cellRunnable True (Just (prose (mkCell 0 "hi"))) `shouldBe` True

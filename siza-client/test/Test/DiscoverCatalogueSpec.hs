@@ -122,7 +122,8 @@ graniteCall :: ToolName -> Value -> IO (Either Text ToolOutcome)
 graniteCall ListCells _ =
     pure (Right (ToolOk (object ["cells" .= ([] :: [Value])])))
 graniteCall FindFunction args
-    | argIs "query" "Graphics.Granite" args =
+    | argIs "query" "Graphics.Granite" args
+        || argIs "module" "Graphics.Granite" args =
         pure . Right . ToolOk $
             object
                 [ "module" .= ("Graphics.Granite" :: Text)

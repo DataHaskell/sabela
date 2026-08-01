@@ -28,7 +28,8 @@ sharedPromptCoreWith searchBlock =
         , "- Try, then commit: use the single `try` tool for speculative code before calling insert_cell or replace_cell."
         , "  It accepts imports and ordinary declarations, plus at most one final expression."
         , "  It can use live bindings and candidate-only dependencies."
-        , "  It refuses GHCi meta-commands, compile-time escapes, and unrestricted IO."
+        , "  It refuses GHCi meta-commands and compile-time escapes, and it"
+        , "  type-checks unrestricted IO without running it."
         , "  Notebook cells are the durable home for owned effects; commit only"
         , "  after a useful result."
         , "- Look signatures up, don't recall them: use the search tools in"
@@ -67,7 +68,7 @@ builtinNames =
     displayBuiltins
         ++ widgetBuiltins
         ++ drawingBuiltins
-        ++ ["display", "currentValue"]
+        ++ ["mkWidget", "currentValue"]
 
 drawingBuiltins :: [Text]
 drawingBuiltins =

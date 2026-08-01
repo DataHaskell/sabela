@@ -16,6 +16,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import System.Timeout (timeout)
 import Test.Hspec
 
+import Sabela.Deps (EnvSig (..))
 import Sabela.Model (Cell (..), Notebook (..))
 import Sabela.Reactivity (computeFullExecutionPlan, haskellCodeCells)
 import Sabela.Server (newApp)
@@ -24,11 +25,11 @@ import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.Session.TryCache (tryCacheRoot)
 import Sabela.State (App (..), Environment (..))
 import Sabela.State.BridgeStore (setBridgeValue)
-import Sabela.State.DependencyTracker (getHaskellDeps)
 import qualified Sabela.State.EventBus as EventBus
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
-import Sabela.State.SessionManager (getHaskellSession)
+import Sabela.State.SessionManager (getHaskellSession, haskellEnvOf)
 import Sabela.State.WidgetStore (setWidget)
+import Test.CellFixture (mkCell)
 import Test.Materialize.Helpers (
     hasCompleteMarker,
     listCacheBuckets,
@@ -39,7 +40,12 @@ import Test.Materialize.Helpers (
     requireSnapshot,
     scratchDirectories,
  )
-import Test.TopoSpec.Helpers (mkCell)
+
+{- | The dependencies the running kernel actually has, read from the environment
+recorded against it at spawn.
+-}
+liveDeps :: App -> IO (Set.Set T.Text)
+liveDeps app = maybe Set.empty (esDeps . snd) <$> haskellEnvOf (appSessions app)
 
 spec :: Spec
 spec = describe "disposable notebook materialization" $ do
@@ -175,7 +181,7 @@ spec = describe "disposable notebook materialization" $ do
                         }
             modifyNotebook (appNotebook app) (const notebook)
             notebookBefore <- readNotebook (appNotebook app)
-            depsBefore <- getHaskellDeps (appDeps app)
+            depsBefore <- liveDeps app
             liveBefore <- getHaskellSession (appSessions app)
             scratchDirsBefore <- scratchDirectories (envTmpDir (appEnv app))
 
@@ -195,7 +201,7 @@ spec = describe "disposable notebook materialization" $ do
             disposableDependencies result `shouldSatisfy` ("containers" `elem`)
 
             readNotebook (appNotebook app) `shouldReturn` notebookBefore
-            getHaskellDeps (appDeps app) `shouldReturn` depsBefore
+            liveDeps app `shouldReturn` depsBefore
             isNothing <$> getHaskellSession (appSessions app) `shouldReturn` True
             isNothing liveBefore `shouldBe` True
             scratchDirectories (envTmpDir (appEnv app)) `shouldReturn` scratchDirsBefore
