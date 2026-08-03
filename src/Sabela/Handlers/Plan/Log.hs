@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Debug rendering of a computed plan: what will run, what is skipped, and
--- the dependency names behind each decision.
+{- | Debug rendering of a computed plan: what will run, what is skipped, and
+the dependency names behind each decision.
+-}
 module Sabela.Handlers.Plan.Log (
     logExecutionPlan,
 ) where

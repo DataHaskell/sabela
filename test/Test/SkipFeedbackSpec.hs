@@ -4,12 +4,12 @@ module Test.SkipFeedbackSpec (spec) where
 
 import Control.Concurrent.STM (atomically, tryReadTChan)
 import qualified Data.Set as Set
+import Sabela.Deps (collectMetadata)
 import Sabela.Handlers (ReactiveNotebook (..), setupReactive)
+import Sabela.Handlers.Lifecycle (neededEnvSig)
 import Sabela.Model (NotebookEvent (..))
 import Sabela.State (App (..), newApp)
 import Sabela.State.EventBus (subscribeBroadcast)
-import Sabela.Deps (collectMetadata)
-import Sabela.Handlers.Lifecycle (neededEnvSig)
 import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (installHaskellSession)
 import Test.Hspec (Spec, describe, it, shouldBe)

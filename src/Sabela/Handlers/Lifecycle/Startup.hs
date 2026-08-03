@@ -81,8 +81,9 @@ reportKernelFailureAt app phase status message cellIds = do
     broadcast app (EvKernelError phase message cellIds)
     broadcast app (EvSessionStatus status)
 
--- | As 'reportKernelFailureAt', blaming whichever cells declared the packages
--- the message names.
+{- | As 'reportKernelFailureAt', blaming whichever cells declared the packages
+the message names.
+-}
 reportKernelFailure :: App -> KernelPhase -> SessionStatus -> Text -> IO ()
 reportKernelFailure app phase status message = do
     nb <- readNotebook (appNotebook app)

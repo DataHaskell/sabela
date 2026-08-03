@@ -196,6 +196,11 @@
 .cell.code.dirty {
   border-left: 2px solid var(--accent);
 }
+/* The cell whose dependencies a build failure named. */
+.cell.blamed {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red);
+}
 .cell.code .cell-gutter {
   display: flex;
   align-items: center;

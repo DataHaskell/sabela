@@ -25,6 +25,8 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Process (readProcessWithExitCode)
 
+import Siza.Agent.Discover.Types (exportRowName)
+
 data Oracle = Oracle
     { orExposed :: M.Map Text [Text]
     , orDbs :: [FilePath]
@@ -195,28 +197,21 @@ browseGroup oracle pkg mods = do
 marker :: Text -> Text
 marker m = "<<<BROWSED " <> m <> ">>>"
 
-{- | The names a @:browse@ listing declares: the head of each unindented
-declaration, plus every binder a @::@ attaches to anywhere — a record selector
-shows only inside its constructor's braces, on a continuation line.
+{- | The names a @:browse@ listing declares: the entity each unindented line
+names, read through the published row-shape law so witness and claim name the
+same thing, plus every binder a @::@ attaches to anywhere.
 -}
 names :: Text -> [Text]
 names chunk = filter (not . T.null) (heads ++ binders)
   where
     ls = T.lines chunk
-    heads = [declared l | l <- ls, not (T.null l), not (isSpace (T.head l))]
+    heads =
+        [exportRowName l | l <- ls, not (T.null l), not (isSpace (T.head l))]
     binders =
         [ unqualify (T.filter (`notElem` ("{},()" :: String)) w)
         | l <- ls
         , (w, "::") <- zip (T.words l) (drop 1 (T.words l))
         ]
-
-declared :: Text -> Text
-declared l = case T.words (T.replace "::" " :: " l) of
-    (w : _)
-        | w `elem` ["type", "data", "class", "newtype", "pattern"] ->
-            fromMaybe "" (headMay (drop 1 (T.words l)))
-        | otherwise -> unqualify (T.takeWhile (/= ',') w)
-    [] -> ""
 
 unqualify :: Text -> Text
 unqualify n

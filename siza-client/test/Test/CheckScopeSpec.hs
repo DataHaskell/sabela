@@ -32,8 +32,8 @@ import Siza.Agent.Check.Vet (
  )
 import Test.TruthGen (
     genCheckOver,
-    genIdent,
     genDisjointNames,
+    genIdent,
     genPerturbableType,
     genUnperturbableType,
  )
@@ -56,7 +56,8 @@ checkScopeSpec = describe "the covering check's scope (C1-1, C1-1b)" $ do
                     v <- vetVerdictAgainst (kernel (users <> tasks) check) scope check
                     pure (v `shouldSatisfy` isRight)
 
-    it "does not depend on which names the notebook listing happened to return first" $
+    it
+        "does not depend on which names the notebook listing happened to return first" $
         property $
             forAll (scopedNotebook 20 3) $ \(users, tasks) ->
                 forAll (genCheckOver users) $ \check -> ioProperty $ do
@@ -134,7 +135,8 @@ checkScopeSpec = describe "the covering check's scope (C1-1, C1-1b)" $ do
                         v <- vetVerdictAgainst (kernel [] check) emptyScope check
                         pure (v `shouldBe` Left (refusalNote Ungrounded))
 
-        it "reports a check that mentions nothing in scope as unreferenced, typed or not" $
+        it
+            "reports a check that mentions nothing in scope as unreferenced, typed or not" $
             property $
                 forAll (scopedNotebook 3 3) $ \(users, tasks) ->
                     forAll ((,) <$> genCheckOver users <*> genPerturbableType) $

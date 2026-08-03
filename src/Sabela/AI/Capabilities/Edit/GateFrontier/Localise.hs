@@ -110,7 +110,8 @@ unitName (l : _)
     | otherwise = T.take 40 (T.strip lead)
   where
     lead = lineText l
-    bound = maybe "" (const (T.strip (T.takeWhile (/= '<') lead))) (bindStatementBody lead)
+    bound =
+        maybe "" (const (T.strip (T.takeWhile (/= '<') lead))) (bindStatementBody lead)
     binder = binderOf lead
 
 binderOf :: Text -> Text

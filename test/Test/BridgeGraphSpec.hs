@@ -6,8 +6,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Sabela.Bridge (bridgeIdentifier)
 import Sabela.Reactivity (bridgeConsumers, changedBridgeValues)
-import Test.Hspec (Spec, describe, it, shouldBe)
 import Test.CellFixture (mkCell)
+import Test.Hspec (Spec, describe, it, shouldBe)
 
 spec :: Spec
 spec = do

@@ -28,15 +28,9 @@ import Siza.Agent.Discover.Types (
     DHit (..),
     InstallState (..),
     NotebookEnv (..),
+    exportRowName,
  )
 
-{- | Two surviving hits with one bare name and different modules collide at
-the use site. Every one of them is offered the qualified import — that is the
-action — and the first of each colliding name counts the others and names one,
-which is the whole decision the list of names used to cost per hit.
-A hit whose own module the harness did not compute is left alone: it is not
-known to differ from anything, and there is no qualified import to offer.
--}
 markClashes :: [DHit] -> [DHit]
 markClashes hs = snd (mapAccumL mark (Set.empty, 0) hs)
   where
@@ -98,9 +92,8 @@ withCardClashes env (Object c) = case clashes of
     inScope = neBindings env ++ neBuiltins env
     clashes = nub [n | n <- exportNames, n `elem` inScope]
     exportNames = case KM.lookup "exports" c of
-        Just (Array es) -> [baseName e | String e <- toList es]
+        Just (Array es) -> [exportRowName e | String e <- toList es]
         _ -> []
-    baseName = T.takeWhile (\ch -> ch /= ' ' && ch /= ':')
 withCardClashes _ v = v
 
 {- | The import that puts a hit in scope, or the statement that the notebook

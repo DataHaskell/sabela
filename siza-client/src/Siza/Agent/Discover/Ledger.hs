@@ -12,8 +12,10 @@ module Siza.Agent.Discover.Ledger (
     discoverRepeat,
     ledgerPressure,
     ledgerProbe,
+    ledgerArm,
     ledgerRefute,
     ledgerRelease,
+    ledgerUnspentGoal,
     normaliseSource,
     refutedBefore,
     ledgerResolve,
@@ -40,7 +42,8 @@ import Siza.Agent.Discover.Closure (
     worldNote,
  )
 import Siza.Agent.Discover.Facts (foldFacts, installFactKey)
-import Siza.Agent.Discover.Types (StandingGoal)
+import Siza.Agent.Discover.Goal (goalClusterKey, standingGoal)
+import Siza.Agent.Discover.Types (StandingGoal (..))
 
 data SearchLedger = SearchLedger
     { slSeen :: Map Text (Int, Text)
@@ -180,6 +183,27 @@ answer, so holding the spend against the cluster would close it on nothing.
 -}
 ledgerRelease :: Text -> SearchLedger -> SearchLedger
 ledgerRelease key led = led{slGoalSpent = Set.delete key (slGoalSpent led)}
+
+{- | The goal a rung may still spend a type query on: one the held facts leave
+standing, whose cluster has not been charged yet. One reader of the budget, so
+every rung spends on the same terms.
+-}
+ledgerUnspentGoal :: SearchLedger -> Maybe StandingGoal
+ledgerUnspentGoal led = case standingGoal (slFacts led) of
+    Just sg
+        | goalClusterKey (sgType sg) `Set.notMember` slGoalSpent led -> Just sg
+    _ -> Nothing
+
+{- | Charge the goal's cluster and hand the escalation to whoever spends it.
+The charge is recorded where the rung decided, so a second rung in the same
+call cannot arm the same cluster again.
+-}
+ledgerArm :: StandingGoal -> SearchLedger -> SearchLedger
+ledgerArm sg led =
+    led
+        { slGoalSpent = Set.insert (goalClusterKey (sgType sg)) (slGoalSpent led)
+        , slEscalate = Just sg
+        }
 
 discoverRepeat :: Text -> SearchLedger -> (SearchLedger, Maybe Value)
 discoverRepeat q led = (led', if hard then Just (actOnly held q n) else Nothing)

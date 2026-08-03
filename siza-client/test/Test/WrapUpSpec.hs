@@ -128,7 +128,7 @@ dueOnceSpec = describe "wrapUpDue and the fire-once seam" $ do
                     ["`bars` :: [(Text, Double)] -> Plot -> Text"]
                     freshView{bvTurnsLeft = 1}
             content = textField "content" msg
-        content `shouldSatisfy` T.isInfixOf wrapUpMarker
+        content `shouldSatisfy` T.isInfixOf (wrapUpMarker freshView{bvTurnsLeft = 1})
         content `shouldSatisfy` T.isInfixOf "turn budget"
         content `shouldSatisfy` T.isInfixOf "`bars` ::"
         content `shouldSatisfy` T.isInfixOf "Do not search further"

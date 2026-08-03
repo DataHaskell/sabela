@@ -8,7 +8,7 @@ module Siza.Agent.Discover.Merge (
 
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
-import Data.List (nub, sortOn)
+import Data.List (nub, partition, sortOn)
 import Data.Maybe (catMaybes, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -21,8 +21,8 @@ import Siza.Agent.Discover.Affordance (
  )
 import Siza.Agent.Discover.CardAuthority (
     cardAnswers,
+    cardField,
     cardInScope,
-    stampCardAnswers,
  )
 import Siza.Agent.Discover.Guidance (actionNext, cabalLine, missNext)
 import Siza.Agent.Discover.Installed (
@@ -124,8 +124,10 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
     scopedCard = case card of
         Just c | not (cardInScope scope c) -> Nothing
         _ -> withCardClashes env <$> card
-    cardIsEvidence = maybe False (cardAnswers interp) scopedCard
-    shownCard = stampCardAnswers cardIsEvidence <$> scopedCard
+    (answering, unanswering) =
+        partition (cardAnswers interp) (maybe [] pure scopedCard)
+    cardIsEvidence = not (null answering)
+    shownCard = listToMaybe answering
     ranked = markClashes (filter (attributedKeep rankedAll scope) rankedAll)
     total = length ranked
     shownHits = capAbsentKnown (max 1 limit) ranked
@@ -147,10 +149,22 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
                     <> " (counted in omitted; a higher limit does not reveal them)"
         | otherwise = Nothing
     contestNote = contestedNote answers ranked
-    narrowNote =
-        case catMaybes [scopeNote, removedNote, absentNote, demoteNote, contestNote] of
-            [] -> Nothing
-            notes -> Just (T.intercalate "; " notes)
+    otherNotes = [scopeNote, removedNote, absentNote, demoteNote, contestNote]
+    narrowNote = case catMaybes (cardOmittedNote unanswering : otherNotes) of
+        [] -> Nothing
+        notes -> Just (T.intercalate "; " notes)
+
+{- | A listing that does not answer the query is not carried. What went is
+stated as a count beside the card's own denial, so its absence never reads as
+"nothing was enumerated".
+-}
+cardOmittedNote :: [Value] -> Maybe Text
+cardOmittedNote [] = Nothing
+cardOmittedNote cs = Just (tShow (length cs) <> " card omitted" <> denial)
+  where
+    denial = case [d | c <- cs, Just d <- [cardField "matched" c]] of
+        (d : _) -> " (" <> d <> ")"
+        [] -> ""
 
 mergedHits ::
     NotebookEnv -> Interpreted -> [SourceAnswer] -> HackageInfo -> [DHit]

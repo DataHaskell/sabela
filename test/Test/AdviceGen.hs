@@ -89,9 +89,11 @@ genDiagnostic =
     oneof
         [ genLetParseError
         , genEqualsParseError
-        , (\m -> located ("Could not find module \8216" <> m <> "\8217")) <$> genModuleName
+        , (\m -> located ("Could not find module \8216" <> m <> "\8217"))
+            <$> genModuleName
         , genHiddenPackageError =<< genPackageName
-        , pure (located "Ambiguous type variable \8216a0\8217 arising from \8216show\8217")
+        , pure
+            (located "Ambiguous type variable \8216a0\8217 arising from \8216show\8217")
         , pure
             (located "Couldn't match expected type \8216Int\8217 with \8216[Char]\8217")
         , (\i -> located ("Variable not in scope: " <> i)) <$> genIdent

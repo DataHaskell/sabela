@@ -13,9 +13,9 @@ module Sabela.AI.Capabilities.ModuleCard.Card (
 
 import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
-import Data.Char (isAlpha)
+import Data.Char (isAlpha, isAlphaNum)
 import Data.List (group, nub, partition, sort)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -23,6 +23,7 @@ import qualified Data.Text as T
 import Sabela.AI.Capability (
     Capability (..),
     parseCapabilities,
+    synonymDecl,
     unqualify,
  )
 import Sabela.AI.PackageIndex (
@@ -120,9 +121,30 @@ exportPairs mQuery modName raw caps
             modName
             (\c -> ExportRow (capName c) (capType c) "")
             (rankExports modName raw caps)
-    shown = take exportCap ranked
+    kept = take exportCap ranked
+    shown = kept ++ mentionedSynonyms ranked kept
     omitted = length ranked - length shown
-    render c = capName c <> " :: " <> capType c
+    render c = fromMaybe (capName c <> " :: " <> capType c) (synonymDecl c)
+
+{- | The synonyms the shown exports name, which the width cap would otherwise
+drop: a signature naming a type whose expansion the card cut leaves the caller
+with a name and no way to build one.
+-}
+mentionedSynonyms :: [Capability] -> [Capability] -> [Capability]
+mentionedSynonyms ranked shown =
+    take
+        mentionCap
+        [ c
+        | c <- ranked
+        , c `notElem` shown
+        , isJust (synonymDecl c)
+        , any (elem (capName c) . typeWords . capType) shown
+        ]
+  where
+    typeWords = T.split (\ch -> not (isAlphaNum ch || ch `elem` ("_'" :: String)))
+
+mentionCap :: Int
+mentionCap = 3
 
 rankExports :: Text -> Text -> [Capability] -> [Capability]
 rankExports modName raw caps = core ++ named ++ internal ++ ops

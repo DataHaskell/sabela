@@ -20,7 +20,7 @@ import Siza.Agent.Loop (
     GrammarMode (..),
     runEpisodeSeeded,
  )
-import Siza.Agent.Loop.WrapUp (wrapUpMarker)
+import Siza.Agent.Loop.WrapUp (isWrapUpNudge)
 import Test.DiscoverFixtures (argText, installNamesFile, runCat, textField)
 import Test.WrapUpSpec (searchAdvicePhrases)
 
@@ -76,7 +76,7 @@ markerCount run =
     length
         [ m
         | m <- arTranscript run
-        , wrapUpMarker `T.isInfixOf` textField "content" m
+        , isWrapUpNudge (textField "content" m)
         ]
 
 contents :: AgentRun -> [Text]
@@ -114,7 +114,7 @@ loopStopGridSpec = describe "the real loop: no stop reason yields an empty final
         let after =
                 drop 1 $
                     dropWhile
-                        (not . T.isInfixOf wrapUpMarker)
+                        (not . isWrapUpNudge)
                         (contents run)
         forM_ after $ \c ->
             forM_ searchAdvicePhrases $ \p ->
@@ -228,4 +228,4 @@ happyFloorSpec = describe "R9.8: happy-path floors add zero wrap-up bytes" $ do
         arFinal run `shouldBe` summary
         markerCount run `shouldBe` 0
         forM_ (contents run) $ \c ->
-            c `shouldSatisfy` (not . T.isInfixOf wrapUpMarker)
+            c `shouldSatisfy` (not . isWrapUpNudge)

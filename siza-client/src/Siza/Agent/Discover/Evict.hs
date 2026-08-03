@@ -18,6 +18,7 @@ module Siza.Agent.Discover.Evict (
     overKey,
     producerMarker,
     shrinkNarrow,
+    shrinkNext,
     shrinkSummary,
 ) where
 
@@ -34,7 +35,7 @@ computed from something the envelope still states, so a reader that needs one
 back can ask for it.
 -}
 elidableFields :: [Text]
-elidableFields = ["producer", "ambiguousWith", "narrow", "summary"]
+elidableFields = ["producer", "ambiguousWith", "narrow", "summary", "next"]
 
 -- | The lexical marker a producer hint is appended to a hit's `use` with.
 producerMarker :: Text
@@ -73,6 +74,13 @@ shrinkNarrow = shedNote "narrow"
 
 shrinkSummary :: Value -> Maybe Value
 shrinkSummary = shedNote "summary"
+
+{- | The next step is advice, derived from what the envelope still states, so
+its trailing notes go before any field carrying a result. The first note is
+kept: it is the step, and the rest qualifies it.
+-}
+shrinkNext :: Value -> Maybe Value
+shrinkNext = shedNote "next"
 
 shedNote :: Text -> Value -> Maybe Value
 shedNote k (Object o) = case KM.lookup (K.fromText k) o of

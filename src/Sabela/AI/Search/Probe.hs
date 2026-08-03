@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Turning a 'Need' into the set of Hoogle queries to issue.
---
--- Every probe is derived from the caller's own terms. Nothing here invents
--- vocabulary the user did not supply: a probe that cannot be traced back to a
--- query term can only match by coincidence.
+{- | Turning a 'Need' into the set of Hoogle queries to issue.
+
+Every probe is derived from the caller's own terms. Nothing here invents
+vocabulary the user did not supply: a probe that cannot be traced back to a
+query term can only match by coincidence.
+-}
 module Sabela.AI.Search.Probe (
     Probe (..),
     planProbes,
@@ -35,13 +36,15 @@ maxPlanProbes = 10
 maxPivotProbes :: Int
 maxPivotProbes = 12
 
--- | Terms carried into a scoped re-query. Enough to discriminate, few enough
--- that the pivot stays cheap.
+{- | Terms carried into a scoped re-query. Enough to discriminate, few enough
+that the pivot stays cheap.
+-}
 maxPivotTerms :: Int
 maxPivotTerms = 2
 
--- | The first wave: the query as asked, plus progressively narrower
--- decompositions of it. All of them run; none short-circuits the others.
+{- | The first wave: the query as asked, plus progressively narrower
+decompositions of it. All of them run; none short-circuits the others.
+-}
 planProbes :: Need -> [Probe]
 planProbes need =
     take maxPlanProbes (dedupe (whole ++ pairs ++ singles))
@@ -59,10 +62,11 @@ planProbes need =
     singles = [Probe t "unigram" 0.7 | t <- needTerms need]
     joined = T.unwords (needTerms need)
 
--- | The second wave: a package or module row is a lead, so ask again inside it.
--- This is the pivot the whole design turns on — Hoogle answers @parquet
--- dataframe@ with nothing but package rows, and the answer lives one scoped
--- query further in.
+{- | The second wave: a package or module row is a lead, so ask again inside it.
+This is the pivot the whole design turns on — Hoogle answers @parquet
+dataframe@ with nothing but package rows, and the answer lives one scoped
+query further in.
+-}
 expandProbes :: Need -> HoogleHit -> [Probe]
 expandProbes need h = case rowKind h of
     RowSymbol -> []

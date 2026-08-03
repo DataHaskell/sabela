@@ -47,8 +47,9 @@ import Siza.Agent.Stack (
     ssHealReds,
  )
 
--- | Something the pipeline did that the caller did not ask for, and would be
--- wrong to discover by reading the notebook later.
+{- | Something the pipeline did that the caller did not ask for, and would be
+wrong to discover by reading the notebook later.
+-}
 data StackNote = StackNote
     { snKind :: !Text
     , snText :: !Text

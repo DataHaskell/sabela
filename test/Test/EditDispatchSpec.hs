@@ -46,26 +46,26 @@ seeded =
         }
 
 spec :: Spec
-spec = describe "handleCellEdit dispatch" $
-    it
+spec = describe "handleCellEdit dispatch"
+    $ it
         "returns before the cell finishes running, so a synchronous PUT is not\
         \ held open for the length of an execution"
-        $ do
-            app <- newApp "." Set.empty Nothing Nothing []
-            (backend, release) <- blockingBackend
-            modifyNotebook (appNotebook app) $ \nb ->
-                nb{nbCells = [seeded]}
-            nb <- readNotebook (appNotebook app)
-            installHaskellSession
-                (appSessions app)
-                backend
-                (neededEnvSig app (collectMetadata nb))
-            rn <- setupReactive app
-            t0 <- getMonotonicTimeNSec
-            _ <- timeout 5_000_000 (rnCellEdit rn 1 "x = 2")
-            t1 <- getMonotonicTimeNSec
-            release
-            -- Elapsed, not timeout's verdict: execCellWith catches
-            -- SomeException, so it swallows the async Timeout and reports
-            -- completion either way.
-            ((t1 - t0) `div` 1_000_000 < 2_000) `shouldBe` True
+    $ do
+        app <- newApp "." Set.empty Nothing Nothing []
+        (backend, release) <- blockingBackend
+        modifyNotebook (appNotebook app) $ \nb ->
+            nb{nbCells = [seeded]}
+        nb <- readNotebook (appNotebook app)
+        installHaskellSession
+            (appSessions app)
+            backend
+            (neededEnvSig app (collectMetadata nb))
+        rn <- setupReactive app
+        t0 <- getMonotonicTimeNSec
+        _ <- timeout 5_000_000 (rnCellEdit rn 1 "x = 2")
+        t1 <- getMonotonicTimeNSec
+        release
+        -- Elapsed, not timeout's verdict: execCellWith catches
+        -- SomeException, so it swallows the async Timeout and reports
+        -- completion either way.
+        ((t1 - t0) `div` 1_000_000 < 2_000) `shouldBe` True

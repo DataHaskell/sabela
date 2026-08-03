@@ -33,7 +33,8 @@ import Test.TruthGen (genIdent, genPrefixed)
 recallSurfaceSpec :: Spec
 recallSurfaceSpec = describe "what the recall tool says about itself" $ do
     it "quotes the marker shape in every description it publishes" $
-        [d | d <- schemaDescriptions recallToolDef, not (recallHintShape `T.isInfixOf` d)]
+        [ d | d <- schemaDescriptions recallToolDef, not (recallHintShape `T.isInfixOf` d)
+        ]
             `shouldBe` []
 
     it "names that same shape when the argument is missing" $

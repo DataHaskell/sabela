@@ -50,8 +50,9 @@ vetSilenceSpec = describe "vetting a proposed check" $ do
         kept `shouldBe` ""
         out `shouldSatisfy` T.isInfixOf "discarded a check"
 
--- | `try` declines what it cannot evaluate, which is what an uncheckable
--- check looks like on the wire.
+{- | `try` declines what it cannot evaluate, which is what an uncheckable
+check looks like on the wire.
+-}
 uncheckable :: ToolName -> Value -> IO (Either Text ToolOutcome)
 uncheckable _ _ =
     pure

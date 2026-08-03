@@ -27,6 +27,7 @@ import Siza.Agent.Discover.Types (
     SourceAnswer (..),
     mkHit,
     okAnswer,
+    statedHitType,
     unavailableAnswer,
  )
 
@@ -130,7 +131,7 @@ bucketHits interp b@(Object o)
             }
     apiHits =
         [ (baseHit n (textAt' "module" a) pkg)
-            { dhType = textAt' "type" a
+            { dhType = statedHitType (textAt' "type" a)
             , dhVersion = version
             , dhOrigin = "hoogle"
             , dhKind = kindFor interp n
@@ -146,7 +147,7 @@ bucketHits _ _ = []
 flatHit :: Interpreted -> Value -> DHit
 flatHit interp h =
     (baseHit n (textAt' "module" h) (textAt' "package" h))
-        { dhType = textAt' "type" h
+        { dhType = statedHitType (textAt' "type" h)
         , dhOrigin = "hoogle"
         , dhKind = kindFor interp n
         }

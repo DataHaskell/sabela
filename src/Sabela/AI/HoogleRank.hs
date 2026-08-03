@@ -1,10 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Sabela.AI.HoogleRank (
-    ecosystemScore,
     keepHit,
     rankHits,
     rankHitsInScope,
+    rankHitsInScopeWith,
     nubOnKey,
 ) where
 
@@ -12,10 +10,10 @@ import Data.List (sortOn)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
-import qualified Data.Text as T
 
 import Sabela.AI.HoogleClient (HoogleHit (..))
 import Sabela.AI.ModuleResolve (isNoiseModule, isOutOfScopePackage)
+import Sabela.AI.Popularity (Popularity, emptyPopularity, packageRankKey)
 
 {- | The one admissibility test every retrieval path shares. Compiler-toolchain
 rows are never an answer to a library question, however well they rank.
@@ -24,58 +22,21 @@ keepHit :: HoogleHit -> Bool
 keepHit h =
     not (isNoiseModule (hhModule h)) && not (isOutOfScopePackage (hhPackage h))
 
-ecosystemScore :: Text -> Int
-ecosystemScore pkg
-    | pkg `elem` ecosystemPackages = 0
-    | isNiche pkg = 2
-    | otherwise = 1
-  where
-    isNiche p =
-        let segs = T.splitOn "-" p
-         in length segs >= 3
-                || T.length p >= 22
-                || any (`T.isInfixOf` p) vendorTokens
-    vendorTokens = ["http-haskell", "client", "sdk", "api-"]
-
-ecosystemPackages :: [Text]
-ecosystemPackages =
-    [ "base"
-    , "containers"
-    , "text"
-    , "bytestring"
-    , "vector"
-    , "time"
-    , "aeson"
-    , "conduit"
-    , "mtl"
-    , "transformers"
-    , "unordered-containers"
-    , "regex-tdfa"
-    , "megaparsec"
-    , "fgl"
-    , "JuicyPixels"
-    , "async"
-    , "http-conduit"
-    , "directory"
-    , "filepath"
-    , "process"
-    , "stm"
-    , "dataframe"
-    , "dataframe-core"
-    , "dataframe-viz"
-    , "dataframe-operations"
-    , "granite"
-    ]
-
 rankHits :: [HoogleHit] -> [HoogleHit]
 rankHits = rankHitsInScope Set.empty
 
 rankHitsInScope :: Set Text -> [HoogleHit] -> [HoogleHit]
-rankHitsInScope inScope hits =
+rankHitsInScope = rankHitsInScopeWith emptyPopularity
+
+{- | Order hits for presentation. Packages the cell already builds against lead;
+the measured ecosystem prior breaks the rest, retrieval order breaks the prior.
+-}
+rankHitsInScopeWith :: Popularity -> Set Text -> [HoogleHit] -> [HoogleHit]
+rankHitsInScopeWith pop inScope hits =
     map snd (nub' (sortOn rankKey (zip [0 :: Int ..] keep)))
   where
     keep = filter keepHit hits
-    rankKey (i, h) = (outOfScope h, ecosystemScore (hhPackage h), i)
+    rankKey (i, h) = (outOfScope h, packageRankKey pop (hhPackage h), i)
     outOfScope h = if hhPackage h `Set.member` inScope then 0 else 1 :: Int
     nub' = nubOnKey (\(_, h) -> (hhName h, hhModule h, hhPackage h))
 

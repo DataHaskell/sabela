@@ -2,10 +2,16 @@
 
 module Sabela.AI.HoleFits (
     HoleFit (..),
+    dropProvenance,
+    packageQualifiers,
     parseHoleFits,
+    qualifiedNames,
     refinementFits,
+    stripPackageQualifiers,
 ) where
 
+import Data.Char (isAlphaNum, isDigit, isUpper)
+import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -155,9 +161,9 @@ whereType blk =
         )
   where
     isWhere x = "where" `T.isPrefixOf` T.strip x
-    stops x = any (`T.isPrefixOf` T.strip x) ["with ", "(imported", "(and "]
+    stops x = any (`T.isPrefixOf` T.strip x) ("with " : provenanceOpeners)
     typeAfterColon s = case T.breakOn "::" s of
-        (_, r) | not (T.null r) -> T.strip (T.drop 2 r)
+        (_, r) | not (T.null r) -> dropProvenance (T.strip (T.drop 2 r))
         _ -> ""
 
 isTypeContinuation :: Text -> Bool
@@ -166,14 +172,38 @@ isTypeContinuation x =
 
 isProvenance :: Text -> Bool
 isProvenance x =
-    any (`T.isPrefixOf` T.strip x) ["with ", "where ", "(imported", "(and "]
+    any (`T.isPrefixOf` T.strip x) (["with ", "where "] <> provenanceOpeners)
+
+{- | The parenthesised notes GHC writes beside a fit rather than as part of its
+type. One list serves the reader that skips such a line and the reader that
+ends a type where one begins.
+-}
+provenanceOpeners :: [Text]
+provenanceOpeners = ["(imported", "(defined", "(bound", "(and"]
+
+{- | A fit's type ends where GHC's note about where the name came from begins:
+the compiler prints a lone fit and its provenance on one line, so everything
+after the @::@ is not a type.
+-}
+dropProvenance :: Text -> Text
+dropProvenance t = T.stripEnd (T.take (go (0 :: Int) 0) t)
+  where
+    go d i
+        | i >= T.length t = i
+        | d == 0 && opens (T.drop i t) = i
+        | otherwise = go (depth d (T.index t i)) (i + 1)
+    opens r = any (`T.isPrefixOf` r) provenanceOpeners
+    depth d c
+        | c `elem` ("([" :: String) = d + 1
+        | c `elem` (")]" :: String) = d - 1
+        | otherwise = d
 
 splitNameType :: Text -> Maybe (Text, Text)
 splitNameType sig = case T.breakOn "::" sig of
     (name, rest)
         | not (T.null rest) ->
             let n = T.strip name
-                t = T.strip (T.drop 2 rest)
+                t = dropProvenance (T.strip (T.drop 2 rest))
              in if T.null n || T.null t then Nothing else Just (n, t)
     _ -> Nothing
 
@@ -182,6 +212,51 @@ blank = T.null . T.strip
 
 indentOf :: Text -> Int
 indentOf = T.length . T.takeWhile (== ' ')
+
+{- | The @pkg-1.2.3:@ prefixes GHC puts on a name it prints from a module the
+reader has not imported. They are part of no type the caller could ever write.
+-}
+packageQualifiers :: Text -> [Text]
+packageQualifiers t =
+    nub
+        [ unit
+        | i <- [0 .. T.length t - 1]
+        , T.index t i == ':'
+        , not ("::" `T.isPrefixOf` T.drop i t)
+        , let unit = T.takeWhileEnd nameChar (T.take i t)
+        , versioned unit
+        ]
+  where
+    nameChar c = isAlphaNum c || c `elem` ("-_.'" :: String)
+    versioned u = case reverse (T.splitOn "-" u) of
+        (v : _ : _) -> not (T.null v) && T.all (\c -> isDigit c || c == '.') v
+        _ -> False
+
+-- | The same text with every package qualifier removed.
+stripPackageQualifiers :: Text -> Text
+stripPackageQualifiers t =
+    foldr (\q -> T.replace (q <> ":") "") t (packageQualifiers t)
+
+{- | Every name a text carries through a module path, as that module and the
+plain name inside it. GHC writes such a name @pkg-1.2.3:Some.Module.entity@ or
+@Some.Module.entity@; the package qualifier is a separate run either way.
+-}
+qualifiedNames :: Text -> [(Text, Text)]
+qualifiedNames t =
+    nub
+        [ (T.intercalate "." (init parts), last parts)
+        | run <- T.groupBy same t
+        , T.any isAlphaNum run
+        , T.all pathChar run
+        , let parts = T.splitOn "." run
+        , length parts > 1
+        , all moduleSegment (init parts)
+        , not (T.null (last parts))
+        ]
+  where
+    pathChar c = isAlphaNum c || c `elem` ("_.'" :: String)
+    same a b = pathChar a == pathChar b
+    moduleSegment s = maybe False (isUpper . fst) (T.uncons s)
 
 refinementFits :: Text -> [(Text, Text)]
 refinementFits blob = concatMap fitOf afterHeader

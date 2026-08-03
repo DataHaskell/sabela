@@ -14,7 +14,7 @@ module Test.EmitLedgerFixtures (
     longAutofix,
     longDiagnostic,
     longSig,
- ) where
+) where
 
 import Data.Aeson (Value (..), encode, object, (.=))
 import qualified Data.Aeson.KeyMap as KM
@@ -23,9 +23,9 @@ import qualified Data.Text.Encoding as TE
 
 import Siza.Agent.EmitLedger (dedupText, emptyEmitLedger)
 
-import Test.DiscoverFixtures (hitsOf)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Test.DiscoverFixtures (hitsOf)
 
 longDiagnostic :: Text
 longDiagnostic =

@@ -1,30 +1,26 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | How much of the ecosystem uses a package.
-
-Two signals, because they disagree and each covers the other's blind spot.
-Downloads measure how many people fetched a package: they under-count anything
-GHC bundles (@base@ and @random@ look tiny) and over-count build-chain traffic.
-Reverse dependencies measure how much of Hackage builds on it: they are near
-zero for a young end-user library, which is exactly the class a notebook reaches
-for — @dataframe@ has 322 downloads and three reverse dependencies.
-
-Measured over the 14,409 packages carrying both, they correlate at only r=0.50,
-so the sum of their logs discriminates better than either alone. Absent means
-zero, never unknown: nothing depending on a package is a fact about it.
+{- | How much of the ecosystem uses a package, measured rather than assumed:
+downloads, which under-count anything GHC bundles, and reverse dependencies,
+which are near zero for a young end-user library. Each covers the other.
 -}
 module Sabela.AI.Popularity (
     Popularity,
+    PackagePrior (..),
     loadPopularity,
+    popularityFromList,
     popularityOf,
     popularityRank,
+    packagePrior,
+    packageRankKey,
     emptyPopularity,
 ) where
 
 import Control.Exception (SomeException, try)
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as BL
+import Data.List (sort)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -32,10 +28,27 @@ import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 
-newtype Popularity = Popularity (Map Text (Int, Int))
+{- | The table, and the median rank that places an unmeasured package against
+it — absent when the measured ranks carry no spread at all.
+-}
+data Popularity = Popularity (Map Text (Int, Int)) (Maybe Int)
 
 emptyPopularity :: Popularity
-emptyPopularity = Popularity Map.empty
+emptyPopularity = popularityFromList []
+
+popularityFromList :: [(Text, (Int, Int))] -> Popularity
+popularityFromList = fromTable . Map.fromList
+
+fromTable :: Map Text (Int, Int) -> Popularity
+fromTable m = Popularity m (spreadMedian (map rankOf (Map.elems m)))
+
+{- | The median measured rank, or nothing when every measured package ranks
+alike: a table with no spread has not discriminated between anything.
+-}
+spreadMedian :: [Int] -> Maybe Int
+spreadMedian rs
+    | null rs || minimum rs == maximum rs = Nothing
+    | otherwise = Just (sort rs !! (length rs `div` 2))
 
 popularityPath :: IO FilePath
 popularityPath =
@@ -56,7 +69,7 @@ loadPopularity = do
             pure $ case r of
                 Left (_ :: SomeException) -> emptyPopularity
                 Right bs -> case A.decode bs of
-                    Just m -> Popularity (Map.map pair m)
+                    Just m -> fromTable (Map.map pair m)
                     Nothing -> emptyPopularity
   where
     pair :: [Int] -> (Int, Int)
@@ -65,14 +78,48 @@ loadPopularity = do
     pair [] = (0, 0)
 
 popularityOf :: Popularity -> Text -> (Int, Int)
-popularityOf (Popularity m) pkg = Map.findWithDefault (0, 0) pkg m
+popularityOf (Popularity m _) pkg = Map.findWithDefault (0, 0) pkg m
 
-{- | A small non-negative rank, higher meaning more used. Scaled so it can sit
-in an ordering key beside integer terms without swamping them.
+{- | A small non-negative rank, higher meaning more used. The two signals
+correlate at only r=0.50 over the 14,409 packages carrying both, so the sum of
+their logs discriminates better than either alone.
 -}
 popularityRank :: Popularity -> Text -> Int
-popularityRank p pkg = round (10 * (logish downloads + logish revdeps))
+popularityRank p pkg = rankOf (popularityOf p pkg)
+
+rankOf :: (Int, Int) -> Int
+rankOf (downloads, revdeps) = round (10 * (logish downloads + logish revdeps))
   where
-    (downloads, revdeps) = popularityOf p pkg
     logish :: Int -> Double
     logish n = log (1 + fromIntegral (max 0 n))
+
+{- | Where a package sits against the measured population: above its median,
+absent from it, or below it. Absence is its own band because a table that has
+never heard of a package has not measured that nothing uses it.
+-}
+data PackagePrior
+    = WellUsed Int
+    | Unmeasured
+    | LittleUsed Int
+    deriving (Eq, Show)
+
+-- | A table that has not discriminated leaves every package unmeasured.
+packagePrior :: Popularity -> Text -> PackagePrior
+packagePrior p@(Popularity m mMed) pkg
+    | Just med <- mMed
+    , Map.member pkg m =
+        if r >= med then WellUsed r else LittleUsed r
+    | otherwise = Unmeasured
+  where
+    r = popularityRank p pkg
+
+{- | An ascending sort key: the band leads, and within a band the measured rank
+descends, so a more-used package sorts first.
+-}
+priorKey :: PackagePrior -> (Int, Int)
+priorKey (WellUsed r) = (0, negate r)
+priorKey Unmeasured = (1, 0)
+priorKey (LittleUsed r) = (2, negate r)
+
+packageRankKey :: Popularity -> Text -> (Int, Int)
+packageRankKey p = priorKey . packagePrior p

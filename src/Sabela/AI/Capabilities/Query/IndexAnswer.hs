@@ -40,6 +40,7 @@ import Sabela.AI.Capabilities.Query.SessionFacts (
     notebookFactPairs,
     renderNotebookFacts,
  )
+import Sabela.AI.HoogleClient (statesDeclaration)
 import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQuery, rankResolveTopK)
 import Sabela.AI.PromptCore (builtinModules, builtinNames, drawingBuiltins)
 import Sabela.AI.QualifiedName (QualifiedName (..))
@@ -185,9 +186,19 @@ worldPairs (WorldHit h st) =
               , "package" .= ihPackage h
               , "packageDeclared" .= (st == Declared)
               ]
-                <> ["signature" .= ihType h | not (T.null (ihType h))]
+                <> typeFact (ihType h)
             )
     ]
+
+{- | How a world fact states an entity's type: a declaration states its own
+shape, everything else a signature. The field is named for what it carries, so
+nothing announces a signature no source gave.
+-}
+typeFact :: Text -> [Pair]
+typeFact t
+    | T.null t = []
+    | statesDeclaration t = ["declaration" .= t]
+    | otherwise = ["signature" .= t]
 
 describe :: IndexHit -> Text
 describe h =
@@ -197,7 +208,12 @@ describe h =
         <> " (package "
         <> ihPackage h
         <> ")"
-        <> (if T.null (ihType h) then "" else "\n  " <> ihName h <> " :: " <> ihType h)
+        <> typeLine
+  where
+    typeLine
+        | T.null (ihType h) = ""
+        | statesDeclaration (ihType h) = "\n  " <> ihType h
+        | otherwise = "\n  " <> ihName h <> " :: " <> ihType h
 
 {- | The vocabulary the environment carries, as a world fact: a drawing name
 lives in a module the notebook can import, the rest are injected and have none.

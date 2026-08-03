@@ -25,6 +25,10 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.Ack (ackWriteAndRun, withNote)
+import Sabela.AI.Capabilities.Edit.Admission (
+    Admission (..),
+    admissionNotes,
+ )
 import Sabela.AI.Capabilities.Edit.Admit (
     conflictJson,
     pendingErrorFor,
@@ -55,6 +59,7 @@ import Sabela.AI.Capabilities.Edit.Submission (
     submissionNotes,
  )
 import Sabela.AI.Capabilities.Edit.ValueGate (prewriteValueVeto)
+import Sabela.AI.Capabilities.Try.Payload.Checked (RunRecord)
 import Sabela.AI.Capabilities.Util (
     fieldInt,
     fieldText,
@@ -177,16 +182,16 @@ routeInsert app store rn cancelTok input cell sub fuel = do
             gate <- gatedCandidate app Nothing (cellLang cell) (cellType cell) sub
             case gate of
                 Left rejection -> pure (withNotes notes (errOutcome rejection))
-                Right (src'', repairNotes) ->
+                Right admission ->
                     commitInsert
                         app
                         store
                         rn
                         cancelTok
                         input
-                        cell{cellSource = src''}
+                        cell{cellSource = admittedSource admission}
                         sub
-                        repairNotes
+                        (`admissionNotes` admission)
                         fuel
 
 supersede ::
@@ -208,10 +213,10 @@ commitInsert ::
     Value ->
     Cell ->
     Submission ->
-    [Text] ->
+    (RunRecord -> [Text]) ->
     Int ->
     IO ToolOutcome
-commitInsert app store rn cancelTok input cell sub repairNotes fuel = do
+commitInsert app store rn cancelTok input cell sub gateNotes fuel = do
     res <- atomicEditNotebook (appNotebook app) $ \nb ->
         case checkedAppend cell nb of
             Left v -> (nb, Left v)
@@ -235,7 +240,7 @@ commitInsert app store rn cancelTok input cell sub repairNotes fuel = do
                 input
                 cell
                 runnable
-                (submissionNotes sub <> repairNotes)
+                (\run -> submissionNotes sub <> gateNotes run)
 
 {- | Whether a notebook that turned red between the route's read and the
 atomic append earns another pass. Bounded: the two can keep flipping, and a

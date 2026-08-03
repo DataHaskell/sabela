@@ -155,7 +155,7 @@ spec = describe "a diagnostic describes the model's own source" $ do
                     | n <- real
                     ]
                         <> [ counterexample (T.unpack n) $
-                            property (n `notElem` offered && not (n `T.isInfixOf` scrubbed))
+                                property (n `notElem` offered && not (n `T.isInfixOf` scrubbed))
                            | n <- preludeHidden
                            ]
 

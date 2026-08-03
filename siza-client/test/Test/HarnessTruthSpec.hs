@@ -17,7 +17,6 @@ import Test.QuickCheck
 import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Verdict (VerdictClass (..), parseVerdict)
 import Siza.Agent.Check (noVerdictNote, noVerdicts)
-import Siza.Agent.Owned (OwnedCell (..), hasArtifact, noWriteReason)
 import Siza.Agent.Messages (
     doneSignalMsg,
     noCheckSignalMsg,
@@ -27,6 +26,7 @@ import Siza.Agent.Messages (
     unconfirmedMsgWith,
     verifyMsgWith,
  )
+import Siza.Agent.Owned (OwnedCell (..), hasArtifact, noWriteReason)
 import Siza.Agent.Tools (offeredNames)
 import Test.DiscoverFixtures (textField)
 import Test.TruthGen (genCheckOver, genGhcDiagnostic, genIdent, genSource)
@@ -159,7 +159,8 @@ verdictMessages = do
     missing <- listOf genIdent
     guidance <- elements [Nothing, Just "print the value and re-check"]
     why <- elements (Nothing : map (Just . noVerdictNote) noVerdicts)
-    ce <- elements [Nothing, Just ("This required example fails: `" <> check <> "`.")]
+    ce <-
+        elements [Nothing, Just ("This required example fails: `" <> check <> "`.")]
     pure
         [ doneSignalMsg cids check
         , noCheckSignalMsg why

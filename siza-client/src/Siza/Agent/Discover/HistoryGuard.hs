@@ -64,7 +64,7 @@ import Siza.Agent.Discover.Ledger (
     refutedBefore,
  )
 import Siza.Agent.Discover.Resolved (provenNames)
-import Siza.Agent.Discover.Types (NotebookEnv (..))
+import Siza.Agent.Discover.Types (NotebookEnv (..), StandingGoal)
 import Siza.Agent.DiscoverTool (discoverKey)
 
 newSearchLedger :: IO (IORef SearchLedger)
@@ -152,7 +152,10 @@ guardDiscover ref inner tc = case discoverKey (tcName tc) (tcArgs tc) of
                 (\l -> let (l', out) = ledgerShortcutStep l q in (l', out))
         led <- readIORef ref
         case shortcut of
-            Just v -> pure (Right (ToolOk (boundEnvelope v)))
+            Just v -> do
+                mEsc <- atomicModifyIORef' ref takeEscalation
+                v' <- spendPending ref inner (factPackages (heldFacts led)) q mEsc v
+                pure (Right (ToolOk (boundEnvelope v')))
             Nothing -> do
                 let facts = heldFacts led
                     pkgs = factPackages facts
@@ -168,11 +171,25 @@ guardDiscover ref inner tc = case discoverKey (tcName tc) (tcArgs tc) of
                                 let (l2, out) = ledgerRecord q v l
                                     (l3, esc) = takeEscalation l2
                                  in (l3, (out, esc))
-                        v'' <- case mEsc of
-                            Nothing -> pure v'
-                            Just sg -> spendEscalation ref inner sg pkgs q v'
+                        v'' <- spendPending ref inner pkgs q mEsc v'
                         pure (Right (ToolOk (boundEnvelope v'')))
                     _ -> pure r
+
+{- | Spend whatever escalation the rung armed, whichever rung armed it. Both
+the miss rung and the dedup rung reach the type query through here, so the one
+query per goal cluster is spent and disclosed the same way on either.
+-}
+spendPending ::
+    IORef SearchLedger ->
+    (ToolCall -> IO (Either Text ToolOutcome)) ->
+    [Text] ->
+    Text ->
+    Maybe StandingGoal ->
+    Value ->
+    IO Value
+spendPending _ _ _ _ Nothing v = pure v
+spendPending ref dispatch pkgs q (Just sg) v =
+    spendEscalation ref dispatch sg pkgs q v
 
 {- | C1-17b: a write whose source was already refused, whitespace aside, says
 so on its own payload. What happened this time is read off the write

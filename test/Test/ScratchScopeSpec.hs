@@ -1,6 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Test.ScratchScopeSpec (spec) where
+module Test.ScratchScopeSpec (
+    genImportFailure,
+    genModule,
+    genName,
+    recordingBackend,
+    spec,
+) where
 
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as LBS
@@ -130,16 +136,6 @@ renderOutcomeText = TE.decodeUtf8 . LBS.toStrict . A.encode
 
 spec :: Spec
 spec = describe "scratch scope replay (intention)" $ do
-    it "replays the cell's imports" $ do
-        cellScopeLines cellSrc
-            `shouldSatisfy` elem "import Text.Megaparsec"
-        cellScopeLines cellSrc
-            `shouldSatisfy` elem "import qualified Text.Megaparsec.Char.Lexer as L"
-
-    it "replays a single-line type synonym — the goal type may be spelled with it" $
-        cellScopeLines cellSrc
-            `shouldSatisfy` elem "type Parser = Parsec Void String"
-
     it "does not replay bindings, signatures, pragmas, or cabal comments" $ do
         let ls = cellScopeLines cellSrc
         ls `shouldSatisfy` (not . any ("sc " `T.isPrefixOf`))
@@ -147,7 +143,7 @@ spec = describe "scratch scope replay (intention)" $ do
         ls `shouldSatisfy` (not . any ("{-#" `T.isPrefixOf`))
         ls `shouldSatisfy` (not . any ("-- cabal:" `T.isPrefixOf`))
 
-    it "preserves source order (a synonym may use an imported type)" $
+    it "replays every import and single-line synonym, in source order" $
         cellScopeLines cellSrc
             `shouldBe` [ "import Text.Megaparsec"
                        , "import qualified Text.Megaparsec.Char.Lexer as L"
@@ -155,19 +151,15 @@ spec = describe "scratch scope replay (intention)" $ do
                        ]
 
     describe "a scope line that failed is reported as that line's failure" $ do
-        it "classifies every shape of import failure as a failure" $
+        it "reads every import failure as that line's, masking, in GHC's words" $
             property $
                 forAll genModule $ \m ->
                     forAll (genImportFailure m) $ \out ->
-                        let line = "import " <> m
-                            rep = scopeReportOf [(line, out)]
-                         in map sfLine (scopeFailures rep) `shouldBe` [line]
-
-        it "marks an import failure as masking, since it hides the body" $
-            property $
-                forAll genModule $ \m ->
-                    forAll (genImportFailure m) $ \out ->
-                        all sfMasking (scopeFailures (scopeReportOf [("import " <> m, out)]))
+                        let fs = scopeFailures (scopeReportOf [("import " <> m, out)])
+                         in map sfLine fs
+                                === ["import " <> m]
+                                .&&. all sfMasking fs
+                                .&&. all ((m `T.isInfixOf`) . sfDiagnostic) fs
 
         it "reports a refusal that is not an import failure, unmasked" $
             property $
@@ -179,14 +171,6 @@ spec = describe "scratch scope replay (intention)" $ do
                                 === [line]
                                 .&&. map sfMasking (scopeFailures rep) === [False]
 
-        it "keeps the session's own words as the diagnostic" $
-            property $
-                forAll genModule $ \m ->
-                    forAll (genImportFailure m) $ \out ->
-                        all
-                            (\f -> m `T.isInfixOf` sfDiagnostic f)
-                            (scopeFailures (scopeReportOf [("import " <> m, out)]))
-
         it "never invents a failure for a line the session said nothing about" $
             property $
                 forAll genModule $ \m ->
@@ -196,16 +180,10 @@ spec = describe "scratch scope replay (intention)" $ do
             property $
                 forAll ((,) <$> genModule <*> genModule) $ \(good, bad) ->
                     good /= bad ==> forAll (genImportFailure bad) $ \out ->
-                        map
-                            sfLine
-                            ( scopeFailures
-                                ( scopeReportOf
-                                    [ ("import " <> good, "")
-                                    , ("import " <> bad, out)
-                                    ]
-                                )
-                            )
-                            === ["import " <> bad]
+                        let rep =
+                                scopeReportOf
+                                    [("import " <> good, ""), ("import " <> bad, out)]
+                         in map sfLine (scopeFailures rep) === ["import " <> bad]
 
     describe "establishing a scope keeps every line's verdict" $ do
         it "reports each refused line, not only the last" $
@@ -241,7 +219,7 @@ spec = describe "scratch scope replay (intention)" $ do
                     backend <- recordingBackend probes (const ("", out))
                     verdict <- vetInScope backend mempty m "someName" "Int"
                     issued <- readIORef probes
-                    pure (isLeft verdict && null issued)
+                    pure (not (isRight verdict) && null issued)
 
         it "runs the probe exactly once when the scope holds" $
             property $
@@ -288,8 +266,5 @@ spec = describe "scratch scope replay (intention)" $ do
                                     && "\"masking\":false"
                                         `T.isInfixOf` rendered (synonymLine n, othOut)
 
-isLeft :: Either a b -> Bool
-isLeft = either (const True) (const False)
-
 isRight :: Either a b -> Bool
-isRight = not . isLeft
+isRight = either (const False) (const True)

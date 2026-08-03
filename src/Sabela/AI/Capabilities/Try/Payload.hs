@@ -15,6 +15,7 @@ module Sabela.AI.Capabilities.Try.Payload (
     trialPlanErrorText,
     trialRefusalClauses,
     refusalClauseFor,
+    tryRepairPairs,
 ) where
 
 import Data.Aeson (Value, object, (.=))
@@ -25,6 +26,7 @@ import Sabela.AI.Capabilities.Try.Payload.Disposable (
     disposablePayload,
     skippedCellHint,
  )
+import Sabela.AI.Capabilities.Try.Payload.Repair (tryRepairPairs)
 import Sabela.AI.Capabilities.Try.Tier (
     disposableEvaluated,
     liveEvaluated,

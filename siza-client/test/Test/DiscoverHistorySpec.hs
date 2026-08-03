@@ -2,12 +2,21 @@
 
 module Test.DiscoverHistorySpec (discoverHistorySpec) where
 
-import Data.Aeson (Value)
+import Data.Aeson (Value, object, (.=))
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck
 
-import Siza.Agent.Discover.Envelope (envelopeChars)
+import Sabela.AI.Types (ToolOutcome (..))
+import Sabela.LLM.Ollama.Client (ToolCall (..))
+import Siza.Agent.Discover.Envelope (
+    envelopeCharBudget,
+    envelopeChars,
+    envelopeViolations,
+ )
 import Siza.Agent.Discover.History (
     SearchLedger,
     emptyLedger,
@@ -16,6 +25,7 @@ import Siza.Agent.Discover.History (
     ledgerShortcut,
     ledgerWorldChanged,
  )
+import Siza.Agent.Discover.HistoryGuard (guardDiscover, newSearchLedger)
 import Siza.Agent.Discover.Interpret (interpret)
 import Siza.Agent.Discover.Merge (discoverEnvelope)
 import Siza.Agent.Discover.Types (
@@ -27,7 +37,8 @@ import Siza.Agent.Discover.Types (
     okAnswer,
     seededBuiltins,
  )
-import Test.DiscoverFixtures (stateOf, textField)
+import Test.DiscoverFixtures (argText, stateOf, textField)
+import Test.DiscoverGen (genGoalFreeRow, genPkgName)
 
 envB :: NotebookEnv
 envB =
@@ -172,3 +183,113 @@ discoverHistorySpec = describe "discover history ledger (R3.8, R5.5-R5.7)" $ do
             [ (t, b) | t <- texts, b <- banned, b `T.isInfixOf` T.toLower t
               ]
                 `shouldBe` []
+
+    dedupEscalationSpec
+
+-- ----------------------------------------- the dedup rung escalates (D5)
+
+consumerQ :: Text
+consumerQ = "consumeIt"
+
+missQ :: Text
+missQ = "someSpelling"
+
+{- | A found answer whose one hit consumes a type nothing held produces, which
+is what leaves a goal standing behind the queries that follow.
+-}
+consumerAnswer :: Text -> Text -> Value
+consumerAnswer goal pkg =
+    object
+        [ "query" .= consumerQ
+        , "state" .= ("found" :: Text)
+        , "total" .= (1 :: Int)
+        , "hits"
+            .= [ object
+                    [ "name" .= consumerQ
+                    , "type" .= (goal <> " -> Text")
+                    , "module" .= holderModule
+                    , "package" .= pkg
+                    , "install" .= ("installed" :: Text)
+                    , "matchKind" .= ("exact" :: Text)
+                    , "origin" .= ("hoogle" :: Text)
+                    , "cabal" .= ("-- cabal: build-depends: " <> pkg)
+                    ]
+               ]
+        ]
+
+holderModule :: Text
+holderModule = "Some.Module"
+
+producerName :: Text
+producerName = "makeIt"
+
+-- | The capability answer a type query comes back with: one real producer.
+producerAnswer :: Text -> Text -> Value
+producerAnswer goal pkg =
+    object ["hits" .= [object ["package" .= pkg, "api" .= [row]]]]
+  where
+    row =
+        object
+            [ "name" .= producerName
+            , "module" .= holderModule
+            , "type" .= ("Int -> " <> goal)
+            ]
+
+missAnswer :: Text -> Value
+missAnswer q =
+    object
+        [ "query" .= q
+        , "state" .= ("not_found" :: Text)
+        , "total" .= (0 :: Int)
+        ]
+
+{- | One consumer call, then the same miss asked @n@ times: the second and
+later asks are duplicates, which is the rung the live rounds closed on.
+-}
+repeatRun :: Int -> Text -> Text -> IO ([Value], [Text])
+repeatRun n goal pkg = do
+    seen <- newIORef []
+    ref <- newSearchLedger
+    let inner tc = do
+            modifyIORef' seen (++ [tc])
+            pure (Right (ToolOk (answerFor tc)))
+        answerFor tc
+            | tcName tc == "search_capability" = producerAnswer goal pkg
+            | argText "query" (tcArgs tc) == consumerQ = consumerAnswer goal pkg
+            | otherwise = missAnswer (argText "query" (tcArgs tc))
+        one q = guardDiscover ref inner (ToolCall "discover" (object ["query" .= q]))
+    outs <- mapM one (consumerQ : replicate n missQ)
+    calls <- readIORef seen
+    pure
+        ( [v | Right (ToolOk v) <- outs]
+        , [argText "query" (tcArgs c) | c <- calls, tcName c == "search_capability"]
+        )
+
+dedupEscalationSpec :: Spec
+dedupEscalationSpec = describe "a duplicate escalates too, once per cluster" $ do
+    prop "a repeated question under a standing goal spends one type query" $
+        forAll ((,) <$> genGoalFreeRow <*> genPkgName) $ \((goal, _, _), pkg) ->
+            ioProperty $ do
+                (outs, typeQs) <- repeatRun 4 goal pkg
+                let said = T.concat (map (textField "next") outs)
+                pure
+                    . counterexample (show (typeQs, said))
+                    $ conjoin
+                        [ typeQs === ["+" <> pkg <> " :: " <> goal]
+                        , map stateOf outs
+                            === ["found", "not_found", "duplicate", "duplicate", "duplicate"]
+                        , property (T.isInfixOf (producerName <> " :: Int -> " <> goal) said)
+                        , concatMap envelopeViolations outs === []
+                        , property (all ((<= envelopeCharBudget) . envelopeChars) outs)
+                        ]
+    prop "the disclosure names the harness's own reasoning, not an answer" $
+        forAll ((,) <$> genGoalFreeRow <*> genPkgName) $ \((goal, _, _), pkg) ->
+            ioProperty $ do
+                (outs, _) <- repeatRun 3 goal pkg
+                let said = T.concat (map (textField "next") outs)
+                pure
+                    . counterexample (T.unpack said)
+                    $ conjoin
+                        [ property (T.isInfixOf "the name is the wrong axis" said)
+                        , property (T.isInfixOf "the type query" said)
+                        ]

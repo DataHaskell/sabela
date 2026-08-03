@@ -150,8 +150,9 @@ recallCall n = ToolCall "recall_result" (indexArgs n)
 reset :: Map.Map Int Text -> IO ()
 reset s = withRecallStore (const ((), s))
 
--- | One prompt: the transcript so far plus this prompt's results, compacted
--- the way the chat loop compacts it.
+{- | One prompt: the transcript so far plus this prompt's results, compacted
+the way the chat loop compacts it.
+-}
 prompt :: [Value] -> [Text] -> IO [Value]
 prompt prev payloads =
     seedTranscript (prev ++ [toolMsgV "discover" p | p <- payloads])
@@ -248,7 +249,8 @@ genPayload :: Gen Text
 genPayload = do
     k <- genPrefixed "k"
     body <- genPrefixed "b"
-    pure ("{\"" <> k <> "\":\"" <> T.take 300 (T.replicate 300 (body <> " ")) <> "\"}")
+    pure
+        ("{\"" <> k <> "\":\"" <> T.take 300 (T.replicate 300 (body <> " ")) <> "\"}")
 
 {- | Blocks a turn repeats, which is what makes the ledger elide rather than
 delta.

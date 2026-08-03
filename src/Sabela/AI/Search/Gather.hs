@@ -1,9 +1,10 @@
--- | Fan out over every probe, fuse the results, rank once.
---
--- The rule this module exists to enforce: arrival order is not relevance.
--- Probes do not compete to answer first; they all run, and a row found by
--- several of them is corroborated rather than shadowed. A row that shares no
--- term with the query is not an answer and is never returned.
+{- | Fan out over every probe, fuse the results, rank once.
+
+The rule this module exists to enforce: arrival order is not relevance.
+Probes do not compete to answer first; they all run, and a row found by
+several of them is corroborated rather than shadowed. A row that shares no
+term with the query is not an answer and is never returned.
+-}
 module Sabela.AI.Search.Gather (
     Retriever,
     searchNeed,
@@ -51,8 +52,9 @@ data Evidence = Evidence
     , evSeen :: Int
     }
 
--- | Reciprocal-rank-fusion damping. Matches the constant the capability
--- reranker already uses, so the two agree when their outputs are compared.
+{- | Reciprocal-rank-fusion damping. Matches the constant the capability
+reranker already uses, so the two agree when their outputs are compared.
+-}
 rrfK :: Double
 rrfK = 60
 
@@ -102,8 +104,9 @@ single p rank h =
         , evSeen = 1
         }
 
--- | Corroboration, not replacement: two probes finding the same row make it a
--- stronger candidate than either alone.
+{- | Corroboration, not replacement: two probes finding the same row make it a
+stronger candidate than either alone.
+-}
 fuse :: Evidence -> Evidence -> Evidence
 fuse a b =
     Evidence
@@ -113,14 +116,17 @@ fuse a b =
         , evSeen = evSeen a + evSeen b
         }
   where
-    richer x y = T.length (hhType x) + T.length (hhDocs x) >= T.length (hhType y) + T.length (hhDocs y)
+    richer x y =
+        T.length (hhType x) + T.length (hhDocs x)
+            >= T.length (hhType y) + T.length (hhDocs y)
 
--- | Grounded rows only, best first.
---
--- 'kindPrior' outranks coverage deliberately: a package whose name happens to
--- concatenate the query terms (@dataframe-parquet@ for \"parquet dataframe\")
--- would otherwise bury the function that does the work. A lead is never a
--- better answer than a symbol, only a better next question.
+{- | Grounded rows only, best first.
+
+'kindPrior' outranks coverage deliberately: a package whose name happens to
+concatenate the query terms (@dataframe-parquet@ for \"parquet dataframe\")
+would otherwise bury the function that does the work. A lead is never a
+better answer than a symbol, only a better next question.
+-}
 rankEvidence :: Popularity -> Need -> Map.Map RowKey Evidence -> [HoogleHit]
 rankEvidence pop need =
     map evRow . sortOn key . filter (grounded need . evRow) . Map.elems
@@ -139,8 +145,9 @@ rankEvidence pop need =
     outOfScope h =
         if hhPackage h `Set.member` needScope need then 0 else 1 :: Int
 
--- | Spend the pivot budget on the leads that best explain the query; the
--- evidence map has no meaningful order of its own.
+{- | Spend the pivot budget on the leads that best explain the query; the
+evidence map has no meaningful order of its own.
+-}
 pivotProbes :: Need -> [HoogleHit] -> [Probe]
 pivotProbes need =
     take maxPivotProbes

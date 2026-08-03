@@ -13,8 +13,23 @@ async function runAll() {
   setStatus('Running all cells...', 'running');
 }
 
+// Restart and clear outputs.
 async function resetNotebook() {
   api('POST', 'reset').then(render).catch(console.error);
+}
+
+// Flush editor drafts so a restart that runs cells runs what is on screen.
+async function flushDrafts() {
+  for (const [id, cm] of Object.entries(editors))
+    await api('PUT', `cell/${parseInt(id)}/source`, { ucSource: cm.getValue() }).catch(() => {});
+}
+
+async function restartAndRunAll() {
+  hideCrashBanner();
+  hideEpochBanner();
+  setStatus('Restarting and running all...', 'running');
+  await flushDrafts();
+  await api('POST', 'restart-run-all').catch(console.error);
 }
 
 async function interruptKernel() {
@@ -22,12 +37,11 @@ async function interruptKernel() {
   await api('POST', 'interrupt').catch(console.error);
 }
 
+// Respawn and run nothing, so restarting because a cell hangs does not
+// immediately re-run the hanging cell.
 async function restartKernel() {
   hideCrashBanner();
   setStatus('Restarting kernel...', 'running');
-  // Flush editor drafts first so the restarted kernel runs what's on screen.
-  for (const [id, cm] of Object.entries(editors))
-    await api('PUT', `cell/${parseInt(id)}/source`, { ucSource: cm.getValue() }).catch(() => {});
   await api('POST', 'restart-kernel').catch(console.error);
 }
 

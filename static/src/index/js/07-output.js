@@ -3,6 +3,18 @@
 // static/src/shared/mime-render.js (referenced before this file in the
 // index shell) so the WASM-mode share runtime reuses identical rendering.
 
+// The symmetric half of updateCellOutput's class removal. Typing marks a cell
+// out of date immediately; without this nothing repaints it until a full
+// render(), which only a structural change triggers.
+function markCellStale(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (el) el.classList.add('dirty');
+  if (notebook) {
+    const cell = notebook.nbCells.find((c) => c.cellId === cellId);
+    if (cell) cell.cellDirty = true;
+  }
+}
+
 // Reconciles outputs in place: blocks are reused by (index, mime) and skipped when
 // `_rendered` content is unchanged, so html iframes survive re-runs — theme reapply,
 // the widget bridge, and _activeTextInput all rely on iframe identity persisting.

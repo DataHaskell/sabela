@@ -172,9 +172,10 @@ recallToolDef =
                                     .= object
                                         [ "type" .= ("integer" :: Text)
                                         , "description"
-                                            .= ("The N from the marker's \""
+                                            .= ( "The N from the marker's \""
                                                     <> recallHintShape
-                                                    <> "\".")
+                                                    <> "\"."
+                                               )
                                         ]
                                 ]
                         , "required" .= (["index"] :: [Text])

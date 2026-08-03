@@ -1460,6 +1460,11 @@ body::before {
 .cell.code.dirty {
   border-left: 2px solid var(--accent);
 }
+/* The cell whose dependencies a build failure named. */
+.cell.blamed {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red);
+}
 .cell.code .cell-gutter {
   display: flex;
   align-items: center;
@@ -2696,6 +2701,98 @@ button.palette-trigger kbd {
     animation: none !important;
   }
 }
+/* Kernel state, distinct from the transport dot beside it. */
+.kernel-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.kernel-chip.idle {
+  color: var(--green);
+  border-color: var(--green);
+}
+.kernel-chip.executing {
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+.kernel-chip.building {
+  color: var(--mauve);
+  border-color: var(--mauve);
+}
+
+/* Not current: the kernel holds nothing for this cell, or an input changed.
+   Distinct from .dirty, which is the local "edited, not yet run". */
+.cell.code.stale .cell-number {
+  color: var(--yellow);
+  font-weight: 600;
+}
+.cell.code.stale .cell-number::after {
+  content: '*';
+}
+
+.notebook-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  background: var(--yellow);
+  color: var(--bg);
+  padding: 8px 16px;
+  font-weight: 600;
+}
+.notebook-banner button {
+  background: var(--bg);
+  color: var(--fg);
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.kernel-log {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 460px;
+  max-height: 45vh;
+  flex-direction: column;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  z-index: 60;
+}
+.kernel-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.kernel-log-body {
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.kernel-log-row {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 1px 0;
+  color: var(--fg-dim);
+}
+.kernel-log-row.error {
+  color: var(--red);
+}
 /* ── Phone layout ──────────────────────────────
          Kept at the end of the stylesheet so these overrides win on source
          order against the base component rules defined earlier (media queries
@@ -3067,6 +3164,14 @@ button.palette-trigger kbd {
   </div>
   <div class="build-modal-body" id="build-log"></div>
 </div>
+
+<div id="kernel-log" class="kernel-log" style="display: none" role="dialog" aria-label="Kernel event log">
+  <div class="kernel-log-header">
+    <span>kernel events</span>
+    <button class="build-modal-close" onclick="toggleKernelLog()" aria-label="Close kernel log">×</button>
+  </div>
+  <div class="kernel-log-body" id="kernel-log-body"></div>
+</div>
     <div class="toolbar">
       <button class="icon-btn" id="btn-sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle file explorer">
         <svg class="icon-svg"><use href="#i-menu" /></svg>
@@ -3108,7 +3213,8 @@ button.palette-trigger kbd {
         <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
       </button>
       <span class="save-indicator" id="save-indicator">saved ✓</span>
-      <span class="sse-dot" id="sse-dot" title="Connection status"></span>
+      <span class="sse-dot" id="sse-dot" title="Event stream connection"></span>
+      <span class="kernel-chip cold" id="kernel-chip" onclick="toggleKernelLog()" title="Kernel state">no kernel</span>
       <span class="status" id="status"></span>
     </div>
 
@@ -3367,7 +3473,11 @@ function renderOverflowMenu() {
 function connectSSE() {
   if (evtSource) evtSource.close();
   evtSource = new EventSource('/api/events');
-  evtSource.onopen = () => document.getElementById('sse-dot').classList.add('connected');
+  evtSource.onopen = () => {
+    document.getElementById('sse-dot').classList.add('connected');
+    // A silent reconnect after a laptop sleep leaves the client's view stale.
+    refreshKernelState();
+  };
   evtSource.onerror = () => document.getElementById('sse-dot').classList.remove('connected');
   evtSource.onmessage = (e) => {
     try {
@@ -3389,6 +3499,34 @@ function openBuildModal(title) {
 function closeBuildModal() {
   document.getElementById('build-modal').style.display = 'none';
 }
+function setBuildModalTitle(text, cls) {
+  const t = document.getElementById('build-modal-title');
+  t.textContent = text;
+  t.className = 'build-modal-title ' + cls;
+}
+// A build that ran out of time is worth retrying at a longer budget; the others are not.
+function kernelErrorTitle(phase) {
+  switch (phase) {
+    case 'buildTimeout':
+      return 'Build timed out';
+    case 'buildFailed':
+      return 'Build failed';
+    case 'preludeFailed':
+      return 'Kernel started but the prelude failed';
+    case 'crashed':
+      return 'Kernel crashed';
+    default:
+      return 'Kernel error';
+  }
+}
+// Mark the cells whose dependencies the failure names, so the user knows where to edit.
+function markBlamedCells(cellIds) {
+  document.querySelectorAll('.cell.blamed').forEach((el) => el.classList.remove('blamed'));
+  cellIds.forEach((cid) => {
+    const el = document.querySelector(`.cell[data-id="${cid}"]`);
+    if (el) el.classList.add('blamed');
+  });
+}
 function appendBuildLog(line) {
   const log = document.getElementById('build-log');
   const modal = document.getElementById('build-modal');
@@ -3403,6 +3541,7 @@ function appendBuildLog(line) {
 function handleSSE(ev) {
   switch (ev.type) {
     case 'cellUpdating':
+      refreshKernelState();
       setCellRunning(ev.cellId, true);
       clearPartialOutput(ev.cellId);
       break;
@@ -3443,6 +3582,7 @@ function handleSSE(ev) {
         });
       break;
     case 'executionDone':
+      refreshKernelState();
       setStatus('Done', '');
       document
         .querySelectorAll('.cell.code.running')
@@ -3450,27 +3590,32 @@ function handleSSE(ev) {
       updateStopButton();
       break;
     case 'sessionStatus': {
-      const building = ev.message === 'starting session' || ev.message.startsWith('installing:');
+      recordKernelEvent('status', ev.message);
+      refreshKernelState();
+      const building = ev.state === 'starting' || ev.state === 'installing';
       setStatus(ev.message, building ? 'compiling' : 'running');
       if (building) {
         openBuildModal('Building…');
-      } else if (ev.message === 'ready') {
+      } else if (ev.state === 'ready') {
         hideCrashBanner();
-        const t = document.getElementById('build-modal-title');
-        t.textContent = 'Build succeeded';
-        t.className = 'build-modal-title ok';
-        setTimeout(closeBuildModal, 2000);
+        setBuildModalTitle('Build succeeded', 'ok');
         setStatus('Done', '');
-      } else if (ev.message === 'crashed') {
+      } else if (ev.state === 'crashed') {
         setStatus('Kernel crashed', 'error');
         showCrashBanner();
-      } else if (ev.message === 'reset') {
-        const t = document.getElementById('build-modal-title');
-        t.textContent = 'Build failed';
-        t.className = 'build-modal-title err';
       }
       break;
     }
+    case 'kernelError':
+      recordKernelEvent('error', kernelErrorTitle(ev.phase) + ': ' + ev.message);
+      setBuildModalTitle(kernelErrorTitle(ev.phase), 'err');
+      appendBuildLog(ev.message);
+      markBlamedCells(ev.cellIds || []);
+      setStatus(kernelErrorTitle(ev.phase), 'error');
+      break;
+    case 'notebookState':
+      applyNotebookState(ev.epoch, ev.staleIds);
+      break;
     case 'installLog':
       appendBuildLog(ev.line);
       break;
@@ -3601,6 +3746,107 @@ function pulseCell(cellId) {
   void el.offsetWidth; // force reflow so the animation restarts
   el.classList.add('responding');
   el.addEventListener('animationend', () => el.classList.remove('responding'), { once: true });
+}
+// ── Kernel state: what the kernel is doing, and what is out of date ──
+// The transport dot means "the event stream is open" and stays green while the
+// kernel is dead. Everything here is about the kernel itself.
+
+let kernelEpoch = null;
+let staleCellIds = new Set();
+const kernelLog = [];
+
+const KERNEL_CHIP_LABELS = {
+  cold: 'no kernel',
+  idle: 'idle',
+  executing: 'running',
+  building: 'building',
+};
+
+function renderKernelChip(state) {
+  const chip = document.getElementById('kernel-chip');
+  if (!chip) return;
+  const tag = (state && state.state) || 'cold';
+  chip.textContent = KERNEL_CHIP_LABELS[tag] || tag;
+  chip.className = 'kernel-chip ' + tag;
+  chip.title = 'Kernel: ' + (KERNEL_CHIP_LABELS[tag] || tag);
+}
+
+// Level-triggered resync: EventSource reconnects silently after a sleep, so the
+// client needs one place to ask what is true now.
+async function refreshKernelState() {
+  try {
+    const status = await api('GET', 'kernel');
+    renderKernelChip(status.state);
+  } catch (_e) {
+    /* leave the chip showing its last known value */
+  }
+}
+
+function applyNotebookState(epoch, staleIds) {
+  if (kernelEpoch !== null && epoch !== kernelEpoch) showEpochBanner();
+  kernelEpoch = epoch;
+  staleCellIds = new Set(staleIds || []);
+  paintStaleCells();
+}
+
+// Staleness is server-computed: it depends on the dependency graph, which the
+// browser does not have.
+function paintStaleCells() {
+  document.querySelectorAll('.cell.code[data-id]').forEach((el) => {
+    const id = parseInt(el.dataset.id, 10);
+    el.classList.toggle('stale', staleCellIds.has(id));
+  });
+}
+
+function showEpochBanner() {
+  let banner = document.getElementById('epoch-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'epoch-banner';
+    banner.className = 'notebook-banner';
+    banner.innerHTML =
+      '<span>The kernel restarted — nothing in this notebook has run against it.</span>' +
+      '<button onclick="restartAndRunAll()">Run all</button>' +
+      '<button onclick="hideEpochBanner()">Dismiss</button>';
+    document.body.prepend(banner);
+  }
+  banner.style.display = 'flex';
+}
+
+function hideEpochBanner() {
+  const banner = document.getElementById('epoch-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+// ── Kernel event log ──────────────────────────────────────────────
+// Every kernel event is already on the bus; keeping them is what makes this
+// class of bug diagnosable after the fact.
+function recordKernelEvent(kind, text) {
+  kernelLog.push({ at: new Date().toLocaleTimeString(), kind, text });
+  if (kernelLog.length > 500) kernelLog.shift();
+  const body = document.getElementById('kernel-log-body');
+  if (body && document.getElementById('kernel-log').style.display !== 'none') renderKernelLog();
+}
+
+function renderKernelLog() {
+  const body = document.getElementById('kernel-log-body');
+  if (!body) return;
+  body.innerHTML = '';
+  kernelLog.forEach((e) => {
+    const row = document.createElement('div');
+    row.className = 'kernel-log-row ' + e.kind;
+    row.textContent = `${e.at}  ${e.kind}  ${e.text}`;
+    body.appendChild(row);
+  });
+  body.scrollTop = body.scrollHeight;
+}
+
+function toggleKernelLog() {
+  const panel = document.getElementById('kernel-log');
+  if (!panel) return;
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'flex';
+  if (!open) renderKernelLog();
 }
 // ── Error markers (gutter) ───────────────────────────────────────
 function applyErrorMarkers(cellId, errors) {
@@ -3875,6 +4121,18 @@ function renderMimeOutput(container, content, mime) {
 // renderMimeOutput + mergeOutputs now live in the shared partial
 // static/src/shared/mime-render.js (referenced before this file in the
 // index shell) so the WASM-mode share runtime reuses identical rendering.
+
+// The symmetric half of updateCellOutput's class removal. Typing marks a cell
+// out of date immediately; without this nothing repaints it until a full
+// render(), which only a structural change triggers.
+function markCellStale(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (el) el.classList.add('dirty');
+  if (notebook) {
+    const cell = notebook.nbCells.find((c) => c.cellId === cellId);
+    if (cell) cell.cellDirty = true;
+  }
+}
 
 // Reconciles outputs in place: blocks are reused by (index, mime) and skipped when
 // `_rendered` content is unchanged, so html iframes survive re-runs — theme reapply,
@@ -5272,6 +5530,7 @@ function renderCodeCell(cell, cellNum) {
   div.dataset.id = cell.cellId;
   if (cell.cellLang === 'Python') div.classList.add('python');
   if (cell.cellDirty) div.classList.add('dirty');
+  if (staleCellIds.has(cell.cellId)) div.classList.add('stale');
   if (cell.cellError) div.classList.add('has-error');
   const compiled = isCompiledSource(cell);
   if (compiled) div.classList.add('compiled');
@@ -5279,7 +5538,7 @@ function renderCodeCell(cell, cellNum) {
   const gutter = document.createElement('div');
   gutter.className = 'cell-gutter';
   gutter.innerHTML =
-    `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>` +
+    `<span class="cell-number" title="Cell id ${cell.cellId}">${cellNum}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>` +
     (compiled
       ? `<button class="compile-tag" onclick="toggleCellCompile(${cell.cellId})" title="Compiled to native code (-O2). Click to switch back to interpreted.">⚡comp</button>`
       : '');
@@ -5375,6 +5634,7 @@ function renderCodeCell(cell, cellNum) {
       // Ignore programmatic setValue() from our own mount as "user edit".
       if (changeObj && changeObj.origin !== 'setValue') {
         dirtyCells.add(cell.cellId);
+        markCellStale(cell.cellId);
       }
     });
     editors[cell.cellId] = cm;
@@ -5631,8 +5891,23 @@ async function runAll() {
   setStatus('Running all cells...', 'running');
 }
 
+// Restart and clear outputs.
 async function resetNotebook() {
   api('POST', 'reset').then(render).catch(console.error);
+}
+
+// Flush editor drafts so a restart that runs cells runs what is on screen.
+async function flushDrafts() {
+  for (const [id, cm] of Object.entries(editors))
+    await api('PUT', `cell/${parseInt(id)}/source`, { ucSource: cm.getValue() }).catch(() => {});
+}
+
+async function restartAndRunAll() {
+  hideCrashBanner();
+  hideEpochBanner();
+  setStatus('Restarting and running all...', 'running');
+  await flushDrafts();
+  await api('POST', 'restart-run-all').catch(console.error);
 }
 
 async function interruptKernel() {
@@ -5640,12 +5915,11 @@ async function interruptKernel() {
   await api('POST', 'interrupt').catch(console.error);
 }
 
+// Respawn and run nothing, so restarting because a cell hangs does not
+// immediately re-run the hanging cell.
 async function restartKernel() {
   hideCrashBanner();
   setStatus('Restarting kernel...', 'running');
-  // Flush editor drafts first so the restarted kernel runs what's on screen.
-  for (const [id, cm] of Object.entries(editors))
-    await api('PUT', `cell/${parseInt(id)}/source`, { ucSource: cm.getValue() }).catch(() => {});
   await api('POST', 'restart-kernel').catch(console.error);
 }
 
@@ -5881,7 +6155,7 @@ function updateDirtyDot() {
   else dot.classList.remove('show');
 }
 setInterval(updateDirtyDot, 600);
-// ── Command palette ──────────────────────────────────────────────
+// ── Command tables: what the palette and overflow menu offer ──
 const PALETTE_COMMANDS = [
   {
     id: 'save',
@@ -5976,7 +6250,19 @@ const PALETTE_COMMANDS = [
   },
   { id: 'interrupt', label: 'Stop running cell', icon: 'i-square', run: () => interruptKernel() },
   { id: 'restart', label: 'Restart kernel', icon: 'i-rotate', run: () => restartKernel() },
-  { id: 'reset', label: 'Reset notebook', icon: 'i-zap', run: () => resetNotebook() },
+  {
+    id: 'restart-run-all',
+    label: 'Restart and run all',
+    icon: 'i-rotate',
+    run: () => restartAndRunAll(),
+  },
+  {
+    id: 'reset',
+    label: 'Restart and clear outputs',
+    icon: 'i-zap',
+    run: () => resetNotebook(),
+  },
+  { id: 'kernel-log', label: 'Kernel event log', icon: 'i-more', run: () => toggleKernelLog() },
   {
     id: 'run-all',
     label: 'Run all cells',
@@ -6054,6 +6340,7 @@ const OVERFLOW_MENU = [
   'theme',
   'ai-settings',
 ];
+// ── Command palette behaviour (tables live in 19b-command-list.js) ──
 const _cmdById = (id) => PALETTE_COMMANDS.find((c) => c.id === id);
 let _paletteFiltered = PALETTE_COMMANDS.slice();
 let _paletteActive = 0;

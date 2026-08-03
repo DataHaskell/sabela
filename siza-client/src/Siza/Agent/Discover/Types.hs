@@ -16,6 +16,11 @@ module Siza.Agent.Discover.Types (
     installText,
     matchKindText,
     hitJson,
+    exportRow,
+    exportRowName,
+    statedHitType,
+    statesDeclaration,
+    typeClause,
 ) where
 
 import Data.Aeson (Value, object, (.=))
@@ -143,6 +148,76 @@ data HackageInfo = HackageInfo
     , hiKnown :: [Text]
     }
     deriving (Eq, Show)
+
+{- | How a hit states its type in prose: a declaration states itself, a
+signature is introduced by @::@. Announcing a declaration as a signature would
+state one no source gave.
+-}
+typeClause :: Text -> Text
+typeClause t
+    | T.null t = ""
+    | statesDeclaration t = t
+    | otherwise = ":: " <> t
+
+{- | Whether text is a whole declaration rather than a signature. One reader of
+the shape, so no renderer announces a declaration as a type and no ranker reads
+one as a producer.
+-}
+statesDeclaration :: Text -> Bool
+statesDeclaration t = any (\k -> (k <> " ") `T.isPrefixOf` t) declKeywords
+
+{- | The keywords whose declaration names its subject after the keyword. The
+listing a card claim is checked against reads its own lines by this list, so a
+declaration means one entity to the writer and to the witness.
+-}
+declKeywords :: [Text]
+declKeywords = ["data", "type", "newtype", "class", "pattern"]
+
+{- | The row a card states for one export: a signature under the entity's own
+name, a declaration as its source stated it. 'exportRowName' is its left
+inverse, so a row and the entity it claims are read from one law.
+-}
+exportRow :: Text -> Text -> Text
+exportRow n ty
+    | T.null (T.strip ty) = n
+    | statesDeclaration ty = ty
+    | otherwise = n <> " :: " <> ty
+
+{- | The entity a stated row names: a signature by its head, a declaration by
+the word after its keyword. The listing a claim is checked against reads its
+own lines this way, so a row and its witness name the same entity.
+-}
+exportRowName :: Text -> Text
+exportRowName row = case T.words (T.replace "::" " :: " row) of
+    (w : _)
+        | w `elem` declKeywords -> wordAt 1 (T.words row)
+        | otherwise -> unqualify (T.takeWhile (/= ',') w)
+    [] -> ""
+  where
+    wordAt i t = case drop i t of
+        (w : _) -> w
+        [] -> ""
+
+-- | A name without its module qualifier, as a listing states it.
+unqualify :: Text -> Text
+unqualify n
+    | T.null base = n
+    | otherwise = base
+  where
+    base = T.takeWhileEnd (/= '.') n
+
+{- | The type text a hit may state: a signature, or a declaration whose source
+expanded it. A declaration head expands to nothing, so it states no type at all
+rather than dressing the hit's own name as its expansion.
+-}
+statedHitType :: Text -> Text
+statedHitType t
+    | not (statesDeclaration s) = s
+    | T.null (T.strip (T.drop 1 rhs)) = ""
+    | otherwise = s
+  where
+    s = T.strip t
+    (_, rhs) = T.breakOn "=" s
 
 {- | A field the harness did not compute is absent, never the placeholder
 "unknown": a mandated placeholder spends the envelope budget that

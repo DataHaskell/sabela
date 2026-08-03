@@ -8,6 +8,8 @@ import qualified Data.Aeson.Key as K
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck
 
 import Siza.Agent.Discover.Envelope (
     boundEnvelope,
@@ -23,6 +25,7 @@ import Siza.Agent.Discover.Types (
     Interpreted (..),
     MatchKind (..),
     NotebookEnv (..),
+    SourceAnswer (..),
     emptyScope,
     okAnswer,
     seededBuiltins,
@@ -40,6 +43,7 @@ import Test.DiscoverFixtures (
     synHoogle,
     textField,
  )
+import Test.DiscoverGen (genModulePair, genPkgPair)
 
 args :: [(Text, Value)] -> Value
 args kvs = object [(K.fromText k, v) | (k, v) <- kvs]
@@ -64,6 +68,28 @@ genStates n =
     cycle3 0 = InstInstalled
     cycle3 1 = InstHidden
     cycle3 _ = InstAbsentKnown
+
+{- | The inventory rows one answer yields, over the modules its hits and its
+package map named.
+-}
+rowsFor :: Text -> [DHit] -> [(Text, [Text])] -> [Value]
+rowsFor topic hs mods =
+    hitsOf
+        ( boundEnvelope
+            ( inventoryEnvelope
+                emptyEnv
+                (topicInterp topic)
+                emptyScope
+                8
+                [(okAnswer "hoogle" hs){saPkgModules = mods}]
+                (HackageInfo True [])
+                []
+            )
+        )
+
+-- | A hit that names its package and no module at all.
+moduleless :: Text -> DHit
+moduleless p = (genHit (p, InstHidden)){dhModule = ""}
 
 genHit :: (Text, InstallState) -> DHit
 genHit (p, st) =
@@ -206,6 +232,27 @@ discoverInventorySpec = describe "inventory mode (R3-T3)" $ do
                 hitText "install" h `shouldBe` "installed-not-loaded"
                 hitText "cabal" h
                     `shouldBe` "-- cabal: build-depends: http-client"
+
+    describe "a package row's module is one its sources named (W5 item 3)" $ do
+        prop "a package no source gave a module for gets no row" $
+            forAll (fst <$> genPkgPair) $ \p ->
+                let rows = rowsFor p [moduleless p] []
+                 in counterexample (show rows) (map (hitText "package") rows === [])
+        prop "a row takes the module its package answer computed" $
+            forAll ((,) . fst <$> genPkgPair <*> (fst <$> genModulePair)) $
+                \(p, m) ->
+                    let rows = rowsFor p [moduleless p] [(p, [m])]
+                     in counterexample (show rows) $
+                            [hitText "module" h | h <- rows] === [m]
+        prop "every emitted row states a module some source named" $
+            forAll ((,) <$> genPkgPair <*> (fst <$> genModulePair)) $
+                \((p, q), m) ->
+                    let hs = [moduleless p, genHit (q, InstInstalled)]
+                        rows = rowsFor p hs [(q, [m])]
+                        named = m : [dhModule h | h <- hs, not (T.null (dhModule h))]
+                        stated = map (hitText "module") rows
+                     in counterexample (show (stated, named)) $
+                            conjoin [property (s `elem` named) | s <- stated]
 
     describe "a package row claims exact only on a whole-name match" $ do
         let pkgRows q pkgs =

@@ -11,6 +11,8 @@ module Sabela.AI.Capability (
     declMembers,
     parseCapabilities,
     relevanceScore,
+    statedType,
+    synonymDecl,
     unqualify,
 ) where
 
@@ -27,6 +29,8 @@ import Sabela.AI.Capability.Parse (
     coalesce,
     declMembers,
     parseCapabilities,
+    statedType,
+    synonymDecl,
     unqualify,
  )
 import Sabela.AI.Similarity (trigramSimilarity)
@@ -125,7 +129,7 @@ scoreCap syns ql qToks c =
             ]
   where
     nameL = T.toLower (capName c)
-    typeL = T.toLower (capType c)
+    typeL = T.toLower (statedType c)
     tokenInName t = T.length t >= 3 && t `T.isInfixOf` nameL
     typeMatch = length qToks >= 2 && all (`T.isInfixOf` typeL) qToks
     synMatch = any (`T.isInfixOf` nameL) (synonymsFor syns ql)

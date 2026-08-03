@@ -4,6 +4,7 @@ module Sabela.AI.Capabilities.Edit.Replace (
     execReplaceCellSource,
     execSupersedeCell,
     applyReplaceCellSource,
+    commitPayload,
 ) where
 
 import Data.Aeson (Value (..), object, (.=))
@@ -11,6 +12,10 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.Edit.Ack (withNote)
+import Sabela.AI.Capabilities.Edit.Admission (
+    Admission (..),
+    admissionPairs,
+ )
 import Sabela.AI.Capabilities.Edit.Admit (conflictJson)
 import Sabela.AI.Capabilities.Edit.GateRepair (gatedCandidate)
 import Sabela.AI.Capabilities.Edit.Run (autoExecuteAfterMutation)
@@ -21,6 +26,7 @@ import Sabela.AI.Capabilities.Edit.Submission (
     reroutedSubmission,
     submissionNotes,
  )
+import Sabela.AI.Capabilities.Try.Payload.Checked (runRecordOf)
 import Sabela.AI.Capabilities.Util (field, fieldInt, fieldText)
 import Sabela.AI.Doc (cellHash)
 import Sabela.AI.Store (AIStore)
@@ -142,8 +148,8 @@ doReplace app store rn cancelTok oldCell sub = do
         gatedCandidate app (Just cid) (cellLang oldCell) (cellType oldCell) sub
     case gate of
         Left rejection -> pure (errOutcome rejection)
-        Right (newSrc', repairNotes) ->
-            commitReplace app store rn cancelTok oldCell newSrc' repairNotes
+        Right admission ->
+            commitReplace app store rn cancelTok oldCell admission
 
 commitReplace ::
     App ->
@@ -151,11 +157,11 @@ commitReplace ::
     ReactiveNotebook ->
     CancelToken ->
     Cell ->
-    Text ->
-    [Text] ->
+    Admission ->
     IO ToolOutcome
-commitReplace app store rn cancelTok oldCell newSrc repairNotes = do
+commitReplace app store rn cancelTok oldCell admission = do
     let cid = cellId oldCell
+        newSrc = admittedSource admission
     res <- atomicEditNotebook (appNotebook app) $ \nb ->
         case setCellSourceChecked oldCell newSrc nb of
             Left conflict -> (nb, Left conflict)
@@ -174,13 +180,19 @@ commitReplace app store rn cancelTok oldCell newSrc repairNotes = do
                     && not (T.null (T.strip newSrc))
                     then autoExecuteAfterMutation app store rn cancelTok cid
                     else pure Null
-            pure $
-                okOutcome $
-                    object
-                        ( [ "cellId" .= cid
-                          , "hash" .= cellHash newCell
-                          , "execution" .= execSummary
-                          , "staleBindings" .= stale
-                          ]
-                            <> ["repairs" .= repairNotes | not (null repairNotes)]
-                        )
+            pure (okOutcome (commitPayload cid newCell execSummary stale admission))
+
+{- | What a committed replace publishes. The gate's finding is completed
+against this payload's own execution record, so the two halves of one object
+cannot contradict each other about whether the candidate ran.
+-}
+commitPayload :: Int -> Cell -> Value -> [Text] -> Admission -> Value
+commitPayload cid newCell execSummary stale admission =
+    object
+        ( [ "cellId" .= cid
+          , "hash" .= cellHash newCell
+          , "execution" .= execSummary
+          , "staleBindings" .= stale
+          ]
+            <> admissionPairs (runRecordOf execSummary) admission
+        )

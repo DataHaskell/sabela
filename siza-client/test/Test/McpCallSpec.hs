@@ -27,7 +27,8 @@ mcpCallSpec :: Spec
 mcpCallSpec = describe "an MCP tools/call on the shared stack" $ do
     it "sheds a huge output instead of shipping it whole" $ do
         env <- liveEnv hugeOutputNotebook
-        r <- toolsCall env (callParams "execute_cell" (object ["cell_id" .= (1 :: Int)]))
+        r <-
+            toolsCall env (callParams "execute_cell" (object ["cell_id" .= (1 :: Int)]))
         let txt = contentText 0 r
         T.length txt `shouldSatisfy` (< 6000)
         txt `shouldSatisfy` T.isInfixOf "outputCount"
@@ -96,7 +97,8 @@ mcpCallSpec = describe "an MCP tools/call on the shared stack" $ do
 
     it "emits no note block when nothing was done behind the caller's back" $ do
         env <- liveEnv hugeOutputNotebook
-        r <- toolsCall env (callParams "execute_cell" (object ["cell_id" .= (1 :: Int)]))
+        r <-
+            toolsCall env (callParams "execute_cell" (object ["cell_id" .= (1 :: Int)]))
         blockCount r `shouldBe` 1
 
 -- | An env built exactly the way runMcp builds one, repair and all.

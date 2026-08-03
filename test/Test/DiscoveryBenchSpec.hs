@@ -16,11 +16,17 @@ changes; a recorder executable is still owed (see the pending note below).
 module Test.DiscoveryBenchSpec (spec) where
 
 import Control.Monad (forM_, unless)
-import Data.Aeson (FromJSON (..), eitherDecodeFileStrict, withObject, (.:), (.:?))
+import Data.Aeson (
+    FromJSON (..),
+    eitherDecodeFileStrict,
+    withObject,
+    (.:),
+    (.:?),
+ )
 import Data.IORef
 import Data.Map.Strict (Map)
-import Data.Maybe (isJust)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (isJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T

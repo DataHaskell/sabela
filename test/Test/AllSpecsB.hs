@@ -47,6 +47,8 @@ import qualified Test.HarnessHonestyLiveSpec as HarnessHonestyLiveSpec
 import qualified Test.HintsSpec as HintsSpec
 import qualified Test.HoleFitsJsonSpec as HoleFitsJsonSpec
 import qualified Test.HoleNudgeSpec as HoleNudgeSpec
+import qualified Test.HoleRewriteSpec as HoleRewriteSpec
+import qualified Test.HoleRewriteTruthSpec as HoleRewriteTruthSpec
 import Test.Hspec (Spec)
 import qualified Test.InterruptTimestampFilterSpec as InterruptTimestampFilterSpec
 import qualified Test.KernelErrorWireSpec as KernelErrorWireSpec
@@ -140,6 +142,8 @@ allSpecsB = do
     FitRuleSpec.spec
     ReadCellFitsSpec.spec
     HoleNudgeSpec.spec
+    HoleRewriteSpec.spec
+    HoleRewriteTruthSpec.spec
     RecordFieldDiscoverySpec.spec
     HintsSpec.spec
     StderrFailureSpec.spec

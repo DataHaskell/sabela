@@ -123,4 +123,3 @@ verifyToolSpec = describe "the verify tool" $ do
                             ( verdictOf out
                                 `shouldSatisfy` (`elem` ["not_applicable", "uncheckable"])
                             )
-

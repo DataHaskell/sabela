@@ -25,7 +25,7 @@ module Siza.Agent.Loop (
 
 import Control.Monad (unless, void, when)
 import Data.Aeson (Value (..), object, (.=))
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
@@ -74,8 +74,9 @@ import Siza.Agent.Loop.Support (
 import Siza.Agent.Loop.Verdict (unconfirmedDiagMsg, verdictMsg)
 import Siza.Agent.Loop.WrapUp (
     budgetView,
+    countUnconfirmed,
     missRungFloor,
-    wrapUpFinal,
+    wrapUpFinalUnconfirmed,
     wrapUpOnce,
  )
 import Siza.Agent.Messages (
@@ -213,6 +214,7 @@ episodeCore sess emits seed emit budget driver prompt maxTurns = do
     streaks <- newIORef Map.empty
     wrapped <- newIORef False
     lastDitch <- newIORef False
+    unconfirmed <- newIORef (0 :: Int)
     (owned0, msgs0) <-
         if null seed
             then do
@@ -247,25 +249,17 @@ episodeCore sess emits seed emit budget driver prompt maxTurns = do
                             pure (foldr recordOwned owned fixes, fixes)
                 let repairMsgs = concatMap auditedRepairMessages fixes
                     msgs' = msgs ++ repairMsgs
+                line <- finalLine stopped owned' (bestFailing owned')
                 flush msgs'
-                    >> pure
-                        ( AgentRun
-                            turn
-                            (nCalls + length fixes)
-                            (wrapUpFinal stopped owned' (bestFailing owned'))
-                            stopped
-                            msgs'
-                        )
-            | otherwise =
-                flush msgs
-                    >> pure
-                        ( AgentRun
-                            turn
-                            nCalls
-                            (wrapUpFinal stopped owned final)
-                            stopped
-                            msgs
-                        )
+                    >> pure (AgentRun turn (nCalls + length fixes) line stopped msgs')
+            | otherwise = do
+                line <- finalLine stopped owned final
+                flush msgs >> pure (AgentRun turn nCalls line stopped msgs)
+        finalLine stopped owned candidate = do
+            n <- readIORef unconfirmed
+            pure (wrapUpFinalUnconfirmed n stopped owned candidate)
+        noteUnconfirmed steps =
+            modifyIORef' unconfirmed (+ countUnconfirmed steps)
         preTurn elapsed turn repairs owned = do
             setSearchPressure ledger (missRungFloor maxTurns (maxTurns - turn))
             wrap <-
@@ -313,6 +307,7 @@ episodeCore sess emits seed emit budget driver prompt maxTurns = do
                                 , Just src <- salvageCell (turnContent t) -> do
                                     let call = ToolCall "insert_cell" (object ["source" .= src])
                                     outcome <- drvDispatch driver call
+                                    noteUnconfirmed [(call, outcome)]
                                     let owned' = recordOwned (call, outcome) owned
                                         salvaged = ToolCall "salvage" (tcArgs call)
                                     out <-
@@ -427,6 +422,7 @@ episodeCore sess emits seed emit budget driver prompt maxTurns = do
                                             (drvDispatch driver)
                                             [(c, o) | (c, Right o) <- steps]
                             when landedNow $ writeIORef delivered True
+                            noteUnconfirmed steps
                             let owned' = foldr recordOwned owned steps
                             signalMsgs <- doneSignalProbe signalled landedNow owned'
                             unless (null signalMsgs) $

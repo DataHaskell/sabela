@@ -26,7 +26,12 @@ import Sabela.AI.Capability (Capability (..))
 import Sabela.AI.DepRepair (addBuildDepend, newDependencies)
 import Sabela.AI.ExtRepair (addExtension)
 import Sabela.AI.Health (scopeSubject)
-import Sabela.AI.Hints (Hint (..), RenameCandidate (..), parseHints, sameNameClass)
+import Sabela.AI.Hints (
+    Hint (..),
+    RenameCandidate (..),
+    parseHints,
+    sameNameClass,
+ )
 import Sabela.AI.ImportRepair (
     addQualifiedImport,
     dropImportList,
@@ -174,10 +179,10 @@ repairCandidates diagnostic src =
         | prune = filter (\(w, _) -> not (w `Set.member` defined)) allRenames
         | otherwise = allRenames
 
-    {- | Rewriting a name the cell binds rewrites its binder too, so the
-    replacement must be able to stand there: neither @Median = ...@ nor
-    @DF.median = ...@ parses. A name the cell only uses is unconstrained.
-    -}
+    -- \| Rewriting a name the cell binds rewrites its binder too, so the
+    --    replacement must be able to stand there: neither @Median = ...@ nor
+    --    @DF.median = ...@ parses. A name the cell only uses is unconstrained.
+    --
     bindable w r
         | w `Set.member` defined = sameNameClass w r && not ("." `T.isInfixOf` r)
         | otherwise = True

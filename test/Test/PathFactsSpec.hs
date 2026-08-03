@@ -26,9 +26,9 @@ import Sabela.AI.PathGate (pathFacts, pathGateCheck, pathRefs)
 import Sabela.AI.Types (toolOutcomeValue)
 import Sabela.State (App (..), newApp)
 import Sabela.State.Environment (Environment (..))
+import Test.ArtefactGen (genArtefactText, genIdent)
 import Test.GateFixture (insertSrc, withFixture)
 import Test.Live (requireLiveIntegration)
-import Test.ArtefactGen (genArtefactText, genIdent)
 
 -- | Reader-shaped identifiers, the vocabulary PathGate.readsLocalFile knows.
 readers :: [Text]
@@ -82,7 +82,8 @@ genPathParts = do
     pure (dir, stem, ext, other)
 
 genSegment :: Gen Text
-genSegment = T.filter (/= '\'') <$> genIdent `suchThat` (not . T.null . T.filter (/= '\''))
+genSegment =
+    T.filter (/= '\'') <$> genIdent `suchThat` (not . T.null . T.filter (/= '\''))
 
 spec :: Spec
 spec = do
@@ -104,7 +105,7 @@ pureSpec = describe "path facts reach the model (C1-21b)" $ do
                                 length facts
                                     == length (pathRefs src)
                                     && map (textOf . field "path") facts
-                                    == pathRefs src
+                                        == pathRefs src
 
     it "reports the artefact's real size on every fact" $
         property $

@@ -35,6 +35,7 @@ import Siza.Agent.Discover.Evict (
     maxTypeChars,
     overKey,
     shrinkNarrow,
+    shrinkNext,
     shrinkSummary,
  )
 import Siza.Agent.Discover.Types (InstallState, installText)
@@ -131,14 +132,15 @@ elidedPromise =
         <> T.intercalate ", " elidableFields
         <> ". Ask again narrowed, or for the named class, to get one back."
 
-{- | Shed the least load-bearing bytes first: advice, then notes, then card
-width, then hits. The last hit is never shed, so an envelope can come back
-over budget.
+{- | Shed the least load-bearing bytes first: the next step, then advice on the
+hits, then notes, then card width, then hits. The last hit is never shed, so an
+envelope can come back over budget.
 -}
 boundEnvelope :: Value -> Value
 boundEnvelope =
     shrinkWith
-        [ dropProducerHint
+        [ shrinkNext
+        , dropProducerHint
         , dropAmbiguousWith
         , shrinkNarrow
         , shrinkCard

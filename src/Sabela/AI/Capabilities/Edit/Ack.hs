@@ -24,6 +24,10 @@ import Text.Read (readMaybe)
 
 import Sabela.AI.Capabilities.Edit.Run (autoExecuteAfterMutation)
 import Sabela.AI.Capabilities.KernelHealth (noteSettled)
+import Sabela.AI.Capabilities.Try.Payload.Checked (
+    RunRecord (..),
+    runRecordOf,
+ )
 import Sabela.AI.Doc (cellHash)
 import Sabela.AI.Store (AIStore, aiWriteReg)
 import Sabela.AI.Types (ToolOutcome (..), errOutcome, okOutcome)
@@ -43,6 +47,10 @@ writeAckDeadlineUs = do
 writeSettleGraceUs :: Int
 writeSettleGraceUs = 15000000
 
+{- | Notes are asked for rather than given: what a write may claim about its
+cell depends on whether this acknowledgement ends up carrying a run of it, and
+that is only known here.
+-}
 ackWriteAndRun ::
     App ->
     AIStore ->
@@ -51,15 +59,18 @@ ackWriteAndRun ::
     Value ->
     Cell ->
     Bool ->
-    [Text] ->
+    (RunRecord -> [Text]) ->
     IO ToolOutcome
-ackWriteAndRun app store rn cancelTok input cell runnable notes = do
+ackWriteAndRun app store rn cancelTok input cell runnable notesFor = do
     pw <- registerWrite (aiWriteReg store) (writeIdentity input) (cellId cell)
     if not runnable
         then do
             settleWrite pw Null
             markDelivered pw
-            pure (okOutcome (ackJson cell AckCompleted (Just Null) False notes))
+            pure
+                ( okOutcome
+                    (ackJson cell AckCompleted (Just Null) False (notesFor RunNotAttempted))
+                )
         else do
             void . forkIO $ do
                 r <-
@@ -72,7 +83,10 @@ ackWriteAndRun app store rn cancelTok input cell runnable notes = do
                 Just s -> do
                     markDelivered pw
                     noteSettled app store
-                    pure (okOutcome (ackJson cell AckCompleted (Just s) False notes))
+                    pure
+                        ( okOutcome
+                            (ackJson cell AckCompleted (Just s) False (notesFor (runRecordOf s)))
+                        )
                 Nothing ->
                     pure
                         ( okOutcome
@@ -81,7 +95,7 @@ ackWriteAndRun app store rn cancelTok input cell runnable notes = do
                                 AckExecuting
                                 Nothing
                                 False
-                                (notes <> [landedNote (cellId cell)])
+                                (notesFor RunUnderway <> [landedNote (cellId cell)])
                             )
                         )
 

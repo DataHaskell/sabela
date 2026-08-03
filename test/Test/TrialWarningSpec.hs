@@ -15,7 +15,10 @@ import qualified Data.Text as T
 import Test.Hspec
 import Test.QuickCheck
 
-import Sabela.AI.Capabilities.Edit.CompileGate (compileGateSpec, defaultedToUnit)
+import Sabela.AI.Capabilities.Edit.CompileGate (
+    compileGateSpec,
+    defaultedToUnit,
+ )
 import Sabela.AI.Capabilities.Try.Payload (disposablePayload)
 import Sabela.Session.Materialize (candidateSafetyPrelude, expressionCandidate)
 import Sabela.Session.MaterializeStage (
@@ -71,7 +74,8 @@ spec = describe "a warning is not a failure" $ do
         "prop_greenNeverRecordsAFailure: whatever GHC wrote to stderr, a green \
         \run records no failure at any stage"
         $ property
-        $ forAll ((,) <$> elements materializeStages <*> oneof [genWarning, genDiagnostic])
+        $ forAll
+            ((,) <$> elements materializeStages <*> oneof [genWarning, genDiagnostic])
         $ \(stage, err) -> failureFor DisposableOk stage err === Nothing
 
     it
@@ -80,9 +84,9 @@ spec = describe "a warning is not a failure" $ do
         $ property
         $ forAll ((,) <$> elements materializeStages <*> genDiagnostic)
         $ \(stage, err) ->
-            not (T.null (T.strip err))
-                ==> failureFor DisposableCompileError stage err
-                =/= Nothing
+            not (T.null (T.strip err)) ==>
+                failureFor DisposableCompileError stage err
+                    =/= Nothing
 
     it
         "prop_aSilentRejectionStillRecordsItsStage: a run that was not green \

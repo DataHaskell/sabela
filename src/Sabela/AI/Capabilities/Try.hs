@@ -39,6 +39,7 @@ import Sabela.AI.Capabilities.Try.Payload (
     invariantPayload,
     planErrorPayload,
     trialPlanErrorText,
+    tryRepairPairs,
  )
 import Sabela.AI.Capabilities.Try.Route (LiveDecision (..), liveDecision)
 import Sabela.AI.Capabilities.Try.Scope (scopedModuleCandidates)
@@ -235,7 +236,8 @@ runDisposable contained app plan = do
             DisposableOk -> pure (disclosed result (okOutcome (disposablePayload result)))
             _ -> do
                 pairs <- localiseTrial contained plan result
-                pure (withPairs pairs (disclosed result (rejected result)))
+                repair <- tryRepairPairs contained (trialSource plan) result
+                pure (withPairs (pairs <> repair) (disclosed result (rejected result)))
   where
     spec = candidateSpec plan
     disclosed result = withPairs (executionPairs spec result)

@@ -227,21 +227,11 @@ ledgerRecord q v led0
                     vG
     {- The goal is worth a type query only while it stands unsatisfied and no
     query has been spent on its cluster; the spend is recorded when decided. -}
-    unspentGoal = case standing of
-        Just sg
-            | not (goalSatisfied sg target v)
-            , goalClusterKey (sgType sg) `Set.notMember` slGoalSpent led ->
-                Just sg
+    unspentGoal = case ledgerUnspentGoal led of
+        Just sg | not (goalSatisfied sg target v) -> Just sg
         _ -> Nothing
     arm l (Advise out) = (l, out)
-    arm l (EscalateType sg out) =
-        ( l
-            { slGoalSpent =
-                Set.insert (goalClusterKey (sgType sg)) (slGoalSpent l)
-            , slEscalate = Just sg
-            }
-        , out
-        )
+    arm l (EscalateType sg out) = (ledgerArm sg l, out)
 
 noteConsulted :: Value -> SearchLedger -> SearchLedger
 noteConsulted v led =

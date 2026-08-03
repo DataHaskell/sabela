@@ -41,23 +41,32 @@ inventoryEnvelope ::
 inventoryEnvelope env interp scope limit answers hk lexical =
     envelopeFrom env interp scope limit answers hk card rows
   where
-    rows = inventoryRows (mergedHits env interp answers hk) interp lexical
+    rows =
+        inventoryRows
+            (concatMap saPkgModules answers)
+            (mergedHits env interp answers hk)
+            interp
+            lexical
     -- Inventory is the mode the miss guidance recommends for "what is
     -- available"; dropping the card here answered that question with a bare
     -- row naming the package and nothing it contains.
     card = listToMaybe (mapMaybe saCard answers)
 
-inventoryRows :: [DHit] -> Interpreted -> [Text] -> [DHit]
-inventoryRows merged interp lexical =
+{- | One row per package the answers know, over the modules they named. A row
+whose sources named no module states none, and a package row with no module
+states nothing a caller can import, so it is dropped rather than padded.
+-}
+inventoryRows :: [(Text, [Text])] -> [DHit] -> Interpreted -> [Text] -> [DHit]
+inventoryRows pkgMods merged interp lexical =
     sortOn (\h -> (fromEnum (dhInstall h), dhPackage h)) (pkgRows ++ lexRows)
   where
     grouped = groupByPackage merged
-    pkgRows = [row p hs | (p, hs) <- grouped]
+    pkgRows = [r | (p, hs) <- grouped, Just r <- [row p hs]]
     lexRows =
         [ DHit
             n
             ""
-            "(not installed)"
+            notInstalled
             n
             ""
             InstAbsentKnown
@@ -69,37 +78,48 @@ inventoryRows merged interp lexical =
         | n <- lexical
         , n `notElem` map fst grouped
         ]
-    row p hs =
-        DHit
-            { dhName = p
-            , dhType = ""
-            , dhModule = leadModule hs
-            , dhPackage = p
-            , dhVersion = firstNonEmpty (map dhVersion hs)
-            , dhInstall = state
-            , dhKind = matchOf p
-            , dhOrigin = firstNonEmpty (map dhOrigin hs)
-            , dhCabal = cabalFor p state hs
-            , dhUse = Nothing
-            , dhClash = Nothing
-            }
+    row p hs = rowOver <$> leadModule p hs
       where
         state = minimum (map dhInstall hs)
+        rowOver m =
+            DHit
+                { dhName = p
+                , dhType = ""
+                , dhModule = m
+                , dhPackage = p
+                , dhVersion = firstNonEmpty (map dhVersion hs)
+                , dhInstall = state
+                , dhKind = matchOf p
+                , dhOrigin = firstNonEmpty (map dhOrigin hs)
+                , dhCabal = cabalFor p state hs
+                , dhUse = Nothing
+                , dhClash = Nothing
+                }
     cabalFor p state hs
         | state `elem` [InstHidden, InstAbsentKnown] =
             case mapMaybe dhCabal hs of
                 (c : _) -> Just c
                 [] -> Just (cabalLine p)
         | otherwise = Nothing
-    leadModule hs =
-        case sortOn (\m -> (isNoiseModule m, T.length m)) (mods hs) of
-            (m : _) -> m
-            [] -> "(package)"
-    mods hs = [m | h <- hs, let m = dhModule h, not (T.null m), m /= "(not installed)"]
+    leadModule p hs =
+        listToMaybe (sortOn (\m -> (isNoiseModule m, T.length m)) (mods p hs))
+    mods p hs =
+        [ m
+        | m <- map dhModule hs ++ concat [ms | (p', ms) <- pkgMods, p' == p]
+        , not (T.null m)
+        , m /= notInstalled
+        ]
     matchOf p =
         if T.toLower p `elem` topicTokens interp
             then MkExact
             else MkSubstring
+
+{- | The stand-in a catalogue-only row carries where a module would go. It is
+not a module, so no module is read out of it; recorded here so the one reader
+and the one writer agree.
+-}
+notInstalled :: Text
+notInstalled = "(not installed)"
 
 groupByPackage :: [DHit] -> [(Text, [DHit])]
 groupByPackage = foldr add []

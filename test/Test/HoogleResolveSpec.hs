@@ -13,6 +13,8 @@ import Sabela.AI.HoogleResolve (
 import Sabela.AI.ImportRepair (addImport)
 import Sabela.Diagnose (notInScopeName)
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck
 
 jsonBlob :: Text
 jsonBlob =
@@ -78,6 +80,8 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
         it "a type name resolves to its package" $
             map hhPackage (parseHoogleBlob typeBlob)
                 `shouldBe` ["stm", "time", "base", "base", "stm"]
+
+    statedTypeSpec
 
     describe "parseHoogleBlob" $ do
         it "parses a JSON array into name/package/module hits" $ do
@@ -145,7 +149,7 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
             map snd (rankResolveTopK 3 "decode" Nothing (parseHoogleBlob ambiguousBlob))
                 `shouldNotContain` ["Network.Pusher.Internal"]
 
-        it "ranks a well-known ecosystem package above a niche one" $
+        it "prefers the shorter module path when nothing else separates two hits" $
             take 1 (rankResolveTopK 3 "decode" Nothing (parseHoogleBlob ambiguousBlob))
                 `shouldBe` [("aeson", "Data.Aeson")]
 
@@ -184,3 +188,86 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
         it "drops the `ghc` hit but keeps a legitimate in-scope alternative" $
             rankResolveTopK 3 "Point" Nothing (parseHoogleBlob mixedBlob)
                 `shouldBe` [("sabela-notebook", "Sabela.Notebook.Picture")]
+
+{- | An identifier the index could carry in a declaration: a type's own name,
+or a name its expansion is built from.
+-}
+genIdent :: Gen Text
+genIdent = do
+    c <- elements ['A' .. 'Z']
+    n <- choose (2, 7)
+    cs <- vectorOf n (elements (['a' .. 'z'] ++ ['A' .. 'Z']))
+    pure (T.pack (c : cs))
+
+-- | One index row carrying the item text given, as hoogle publishes it.
+itemBlob :: Text -> Text
+itemBlob item =
+    T.concat
+        [ "[{\"item\":\""
+        , item
+        , "\",\"module\":{\"name\":\"M.Idx\"}"
+        , ",\"package\":{\"name\":\"idx\"}}]"
+        ]
+
+statedOf :: Text -> [Text]
+statedOf = map hhType . parseHoogleBlob . itemBlob
+
+{- | Wave-5 item 1: the index states a synonym's expansion, the only place it
+carries one, and nothing for a declaration it left unexpanded — a head restated
+as a type is the entity's own name dressed as its expansion.
+-}
+statedTypeSpec :: Spec
+statedTypeSpec = describe "the type an index item states" $ do
+    prop "a synonym item states its whole declaration" $
+        forAll ((,,) <$> genIdent <*> genIdent <*> genIdent) $ \(n, a, b) ->
+            let decl = "type " <> n <> " = (" <> a <> ", " <> b <> ")"
+             in statedOf decl === [decl]
+    prop "a declaration the index left unexpanded states no type" $
+        forAll ((,) <$> elements declHeads <*> genIdent) $ \(kw, n) ->
+            statedOf (kw <> " " <> n <> " a") === [""]
+    prop "a head that ascribes a kind to a binder states no type" $
+        forAll ((,,) <$> elements declHeads <*> genIdent <*> genKind) $
+            \(kw, n, k) ->
+                statedOf (kw <> " " <> n <> " (f :: " <> k <> ")") === [""]
+    prop "a declaration whose own head introduces a signature states it" $
+        forAll ((,,) <$> genIdent <*> genIdent <*> genIdent) $ \(n, a, b) ->
+            let sig = a <> " -> " <> b
+             in statedOf ("pattern " <> n <> " :: " <> sig) === [sig]
+    prop "a signature item still states the type after ::" $
+        forAll ((,,) <$> genIdent <*> genIdent <*> genIdent) $ \(n, a, b) ->
+            statedOf (n <> " :: " <> a <> " -> " <> b)
+                === [a <> " -> " <> b]
+    prop "a head's context is neither the entity nor its expansion" $
+        forAll ((,,) <$> elements declHeads <*> genIdent <*> genContext) $
+            \(kw, n, ctx) ->
+                let hits = parseHoogleBlob (itemBlob (kw <> " " <> ctx <> n <> " a"))
+                 in counterexample (show hits) $
+                        conjoin [map hhName hits === [n], map hhType hits === [""]]
+    prop "the name an item is indexed under never becomes its type" $
+        forAll ((,) <$> elements declHeads <*> genIdent) $ \(kw, n) ->
+            let hits = parseHoogleBlob (itemBlob (kw <> " " <> n <> " a"))
+             in counterexample (show hits) $
+                    conjoin
+                        [ map hhName hits === [n]
+                        , map hhType hits === [""]
+                        ]
+
+declHeads :: [Text]
+declHeads = ["type", "data", "newtype", "class", "pattern"]
+
+-- | A kind an index item can ascribe to one of its head's binders.
+genKind :: Gen Text
+genKind = elements ["Type", "Type -> Type", "k", "[Type]"]
+
+{- | A context an index head can carry before its own name. Its @=>@ is not
+the @=@ of a definition, and its first word is not the entity.
+-}
+genContext :: Gen Text
+genContext = do
+    c1 <- genIdent
+    c2 <- genIdent
+    elements
+        [ c1 <> " a => "
+        , "(" <> c1 <> " a, " <> c2 <> " a) => "
+        , "(" <> c1 <> " a) => "
+        ]

@@ -6,7 +6,7 @@ non-answer, and @dropLastHit@ then sheds a real hit to pay for it.
 -}
 module Test.DiscoverHitFieldSpec (discoverHitFieldSpec) where
 
-import Data.Aeson (Value (..), encode)
+import Data.Aeson (Value (..), encode, object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
@@ -16,6 +16,7 @@ import Test.Hspec
 import Test.QuickCheck
 
 import Siza.Agent.Discover.Affordance (moduleShaped, writableName)
+import Siza.Agent.Discover.Classify (capabilityAnswer)
 import Siza.Agent.Discover.Envelope (
     envelopeViolations,
     hitKeys,
@@ -27,6 +28,7 @@ import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
     NotebookEnv (..),
+    SourceAnswer (..),
     hitJson,
     okAnswer,
     seededBuiltins,
@@ -46,6 +48,76 @@ discoverHitFieldSpec = describe "a hit field is computed or absent (C2-10a)" $ d
     monotoneSpec
     catalogueOnlySpec
     schemaPromiseSpec
+    indexDeclarationSpec
+
+{- | An identifier the index could carry in a declaration: a type's name, or
+the expansion it stands for.
+-}
+genIdent :: Gen Text
+genIdent = do
+    c <- elements ['A' .. 'Z']
+    n <- choose (2, 7)
+    cs <- vectorOf n (elements (['a' .. 'z'] ++ ['A' .. 'Z']))
+    pure (T.pack (c : cs))
+
+{- | The index rows the capability channel publishes for one entity, carrying
+whatever type text the index stated for it.
+-}
+indexHitsOver :: Text -> Text -> [Value]
+indexHitsOver n ty = map hitJson (saHits (capabilityAnswer (interpret envT n) (Just payload)))
+  where
+    payload = object ["hits" .= [object bucket]]
+    bucket =
+        [ "package" .= ("idx" :: Text)
+        , "modules" .= (["M.Idx"] :: [Text])
+        , "api" .= [object ["name" .= n, "module" .= ("M.Idx" :: Text), "type" .= ty]]
+        ]
+
+-- | The row an index bucket states for the entity itself, not for its package.
+apiRowOf :: Text -> Text -> [Value]
+apiRowOf n ty = [h | h <- indexHitsOver n ty, textAt "name" h == n]
+
+{- | The type text a row carries, and the keys it carries it under: a hit that
+states nothing carries no @type@ key at all.
+-}
+typeOf :: Text -> Text -> ([Text], [Text])
+typeOf n ty =
+    ( map (textAt "type") (apiRowOf n ty)
+    , [k | h <- apiRowOf n ty, (k, _) <- fieldsOf h, k == "type"]
+    )
+
+{- | Wave-5 item 1: an index-origin hit carries the declaration its source
+expanded, or no type at all. A declaration head expands to nothing, so
+restating it would dress the hit's own name as its expansion.
+-}
+indexDeclarationSpec :: Spec
+indexDeclarationSpec =
+    describe "an index hit states an expansion its source gave, or nothing" $ do
+        it "the type key is present exactly when the source stated one" $
+            property $
+                forAll ((,,,) <$> genIdent <*> genIdent <*> genIdent <*> elements declHeads) $
+                    \(n, a, b, kw) ->
+                        let decl = "type " <> n <> " = (" <> a <> ", " <> b <> ")"
+                            sig = a <> " -> " <> b
+                         in conjoin
+                                [ counterexample "expansion" (typeOf n decl === ([decl], ["type"]))
+                                , counterexample "head" (snd (typeOf n (kw <> " " <> n <> " a")) === [])
+                                , counterexample "signature" (typeOf n sig === ([sig], ["type"]))
+                                ]
+        it "a head that ascribes a kind to a binder states no type" $
+            property $
+                forAll ((,,) <$> elements declHeads <*> genIdent <*> genKind) $
+                    \(kw, n, k) ->
+                        let head_ = kw <> " " <> n <> " (f :: " <> k <> ")"
+                         in counterexample (T.unpack head_) $
+                                snd (typeOf n head_) === []
+
+declHeads :: [Text]
+declHeads = ["type", "data", "newtype", "class", "pattern"]
+
+-- | A kind an index item can ascribe to one of its head's binders.
+genKind :: Gen Text
+genKind = elements ["Type", "Type -> Type", "k", "[Type]"]
 
 {- | The stand-ins a hit must never carry: a field the harness did not compute
 is absent, so neither of these can be read as a fact.

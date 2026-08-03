@@ -3,6 +3,7 @@
 module Test.DiscoverScopeConserveSpec (discoverScopeConserveSpec) where
 
 import Data.Aeson (Value, object, (.=))
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
@@ -221,6 +222,17 @@ narrowNoteSpec = describe "the narrow disclosure is well formed (C2-smaller-narr
         forAll genRemovalCase $ \(hits, scope) ->
             let narrow = textField "narrow" (scoped scope hits)
              in counterexample (T.unpack narrow) (property (wellFormed narrow))
+    prop "an excluded candidate's declaration is stated as itself" $
+        forAll ((,) <$> genEntity <*> genEntity) $ \(n, a) ->
+            let decl = "type " <> n <> " = " <> a
+                scope = Scope (Just "Ctx.One") Nothing
+                h = (mkHit n "Far.Two" "pfar"){dhType = decl}
+                note = fromMaybe "" (scopeRemovedNote scope [h])
+             in counterexample (T.unpack note) $
+                    conjoin
+                        [ property (decl `T.isInfixOf` note)
+                        , property (not ((":: " <> decl) `T.isInfixOf` note))
+                        ]
     prop "a removal note names an excluded candidate, or says nothing at all" $
         forAll ((,) <$> listOf1 genHit <*> genScope) $ \(removed, scope) ->
             case scopeRemovedNote scope removed of
@@ -238,6 +250,13 @@ wellFormed narrow =
                 && not (": " `T.isSuffixOf` narrow)
                 && not (any (T.null . T.strip) (T.splitOn "; " narrow))
            )
+
+-- | An entity a removed candidate can be about, with nothing of a shape in it.
+genEntity :: Gen T.Text
+genEntity = do
+    c <- elements ['A' .. 'Z']
+    n <- choose (2, 7)
+    T.pack . (c :) <$> vectorOf n (elements (['a' .. 'z'] ++ ['A' .. 'Z']))
 
 genRemovalCase :: Gen ([DHit], Scope)
 genRemovalCase = (,) <$> listOf1 genHit <*> genScope

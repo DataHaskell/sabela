@@ -7,6 +7,8 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck (forAll, (.&&.), (===))
 
 import Sabela.AI.Grammar (discoverGrammarBlock)
 import Siza.Agent.Discover.Affordance (moduleShaped, writableName)
@@ -19,14 +21,17 @@ import Siza.Agent.Discover.Envelope (
     requiredHitKeys,
     schemaPromise,
  )
+import Siza.Agent.Discover.Evict (elidedEntries)
 import Siza.Agent.Discover.History (duplicateEnvelope)
 import Siza.Agent.Discover.Interpret (interpret)
 import Siza.Agent.Discover.Merge (discoverEnvelope)
+import Siza.Agent.Discover.ScopeFilter (scopeRemovedNote)
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
     InstallState (..),
     NotebookEnv (..),
+    Scope (..),
     SourceAnswer (..),
     hitJson,
     mkHit,
@@ -44,6 +49,7 @@ import Test.DiscoverFixtures (
     runCat,
     textField,
  )
+import Test.TruthGen (genModuleName)
 
 env0 :: NotebookEnv
 env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
@@ -76,16 +82,13 @@ wideCard =
                ]
         ]
 
+envOf :: Text -> Int -> [SourceAnswer] -> Value
+envOf q n as = discoverEnvelope env0 (interpret env0 q) n as hk0
+
 ambiguous :: Int -> Int -> Value
-ambiguous n limit =
-    boundEnvelope
-        ( discoverEnvelope
-            env0
-            (interpret env0 "col")
-            limit
-            [okAnswer "hoogle" (map wideHit [1 .. n])]
-            hk0
-        )
+ambiguous n limit = boundEnvelope (envOf "col" limit [okAnswer "hoogle" hits])
+  where
+    hits = map wideHit [1 .. n]
 
 intField :: Text -> Value -> Int
 intField k v = case field k v of
@@ -124,7 +127,7 @@ discoverEnvelopeSpec =
                                     hk0
                                 )
                     envelopeChars v `shouldSatisfy` (<= envelopeCharBudget)
-                    length (exportsOf v) `shouldSatisfy` (>= 8)
+                    length (cardExportsOf v) `shouldSatisfy` (>= 8)
                     length (hitsOf v) `shouldSatisfy` (> 0)
                     map (hitText "module") (take 1 (hitsOf v))
                         `shouldBe` [dhModule (wideHit 1)]
@@ -157,9 +160,7 @@ discoverEnvelopeSpec =
                                 )
                         err = boundEnvelope (badRequest "" "query must be non-blank")
                         dup = duplicateEnvelope "col" "call 3" "3 hits; top: col" []
-                    map
-                        envelopeChars
-                        [miss, err, dup]
+                    map envelopeChars [miss, err, dup]
                         `shouldSatisfy` all (<= envelopeCharBudget)
                 it "the whole synthetic catalogue renders under budget" $ do
                     vs <- mapM runCat discoverables
@@ -257,6 +258,25 @@ discoverEnvelopeSpec =
                             ]
                     bad `shouldBe` []
 
+            describe "a synonym expansion is factual, so it is clamped" $ do
+                it "the clamp step keeps the declaration, never sheds it" $ do
+                    let decl = "type W a = " <> T.replicate 300 "Text -> "
+                        hs = [hitJson (wideHit 1){dhType = decl}]
+                        out = boundEnvelope (duplicateEnvelope "col" "c3" "s" hs)
+                        ty = hitText "type" (head (hitsOf out))
+                    T.length ty `shouldSatisfy` (< T.length decl)
+                    ty `shouldSatisfy` T.isPrefixOf "type W a = "
+                    map fst (elidedEntries out) `shouldSatisfy` notElem "type"
+                prop "an excluded declaration is not stated as a signature" $
+                    forAll genModuleName $ \m ->
+                        let n = T.takeWhileEnd (/= '.') m
+                            decl = "type " <> n <> " = Maybe Int"
+                            h = (mkHit n m "somepkg"){dhType = decl}
+                            note = scopeRemovedNote (elsewhere m) [h]
+                         in fmap (T.isInfixOf decl) note
+                                === Just True
+                                .&&. fmap (T.isInfixOf ":: type ") note === Just False
+
             describe "the cheat-sheet advertises only delivered behaviour" $ do
                 it "discoverGrammarBlock drops the never-empty promise" $ do
                     discoverGrammarBlock
@@ -269,9 +289,10 @@ discoverEnvelopeSpec =
                     discoverGrammarBlock
                         `shouldSatisfy` T.isInfixOf "what was consulted"
 
-exportsOf :: Value -> [Value]
-exportsOf v = case field "card" v of
-    Just (Object c) -> case KM.lookup "exports" c of
-        Just (Array es) -> foldr (:) [] es
-        _ -> []
+elsewhere :: Text -> Scope
+elsewhere m = Scope (Just (m <> ".Elsewhere")) Nothing
+
+cardExportsOf :: Value -> [Value]
+cardExportsOf v = case field "card" v of
+    Just (Object c) | Just (Array es) <- KM.lookup "exports" c -> foldr (:) [] es
     _ -> []

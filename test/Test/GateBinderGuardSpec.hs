@@ -28,7 +28,8 @@ nothing to say about what the cell binds.
 genBoundCell :: Bool -> Gen (Text, [Text])
 genBoundCell broken = do
     binders <- nubbed . filter (/= freeName) <$> listOf1 genIdent
-    let rhs = if broken then " xs = " <> freeName <> " (xs" else " xs = " <> freeName <> " xs"
+    let rhs =
+            if broken then " xs = " <> freeName <> " (xs" else " xs = " <> freeName <> " xs"
     pure (T.unlines [b <> rhs | b <- binders], binders)
   where
     nubbed = foldr (\x acc -> if x `elem` acc then acc else x : acc) []

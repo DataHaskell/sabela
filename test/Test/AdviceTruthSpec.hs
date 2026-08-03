@@ -18,8 +18,8 @@ import Test.QuickCheck
 
 import qualified Data.Set as Set
 
-import Sabela.AI.Capabilities.Edit.Run (executeGuidance)
 import Sabela.AI.Capabilities.Bindings (notebookSource)
+import Sabela.AI.Capabilities.Edit.Run (executeGuidance)
 import Sabela.AI.Capabilities.Query (guidedOutcome)
 import Sabela.AI.Capabilities.Scratchpad (scratchpadPayload)
 import Sabela.AI.CellResult (CellOutcome (..), CellResult (..))
@@ -160,7 +160,8 @@ spec = describe "guidance describes the source it is about" $ do
             exemplars
 
     it "execute_cell reads the advised source from the notebook (C1-4b)" $ do
-        gs <- guidanceOnCell "-- cabal: build-depends: somepkg\nimport Some.Module\n" hidden
+        gs <-
+            guidanceOnCell "-- cabal: build-depends: somepkg\nimport Some.Module\n" hidden
         map gMessage gs `shouldSatisfy` not . any (T.isInfixOf "FIRST line")
         map gMessage gs `shouldSatisfy` any (T.isInfixOf "somepkg")
 
@@ -178,7 +179,8 @@ spec = describe "guidance describes the source it is about" $ do
         joined `shouldNotSatisfy` T.isInfixOf "does not expose"
 
     it "execute_cell still reports a real top-level let (C1-4b)" $ do
-        gs <- guidanceOnCell "let x = 5\n" (located "parse error on input \8216let\8217")
+        gs <-
+            guidanceOnCell "let x = 5\n" (located "parse error on input \8216let\8217")
         map gCategory gs `shouldBe` ["top-level-let"]
 
     prop

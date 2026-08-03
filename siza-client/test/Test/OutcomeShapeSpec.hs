@@ -17,7 +17,11 @@ import qualified Data.Text.Encoding as TE
 import Test.Hspec
 import Test.QuickCheck
 
-import Siza.Agent.OutcomeDistill (distillOutcome, outcomeCharBudget, stripEscapes)
+import Siza.Agent.OutcomeDistill (
+    distillOutcome,
+    outcomeCharBudget,
+    stripEscapes,
+ )
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (K.fromText k) o
@@ -51,7 +55,8 @@ genKey = elements ["containers", "text", "aeson", "mtl", "bytestring", "zzfrob"]
 
 jsonBody :: [Text] -> Text
 jsonBody ks =
-    TE.decodeUtf8 (LBS.toStrict (encode (object [(K.fromText k, String k) | k <- ks])))
+    TE.decodeUtf8
+        (LBS.toStrict (encode (object [(K.fromText k, String k) | k <- ks])))
 
 genPlain :: Gen Text
 genPlain = do
@@ -142,11 +147,16 @@ outcomeShapeSpec = describe "outcome shape survives distillation (C1-15b)" $ do
 
     it "discloses a JSON output's top-level keys instead of a blind prefix" $
         property $
-            forAll (envelopeOf <$> listOf1 (Body "application/json" . jsonBody <$> listOf1 genKey) <*> genValues) $ \env ->
+            forAll
+                ( envelopeOf
+                    <$> listOf1 (Body "application/json" . jsonBody <$> listOf1 genKey)
+                    <*> genValues
+                ) $ \env ->
                 let d = distillOutcome env
                     outs = arrayOf (field "outputs" d)
                  in counterexample (show d) $
-                        not (null outs) ==> all (isJust . field "jsonKeys") outs
+                        not (null outs) ==>
+                            all (isJust . field "jsonKeys") outs
 
     it "reports only keys the JSON output really has" $
         property $

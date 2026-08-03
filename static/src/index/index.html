@@ -30,6 +30,7 @@
     <link rel="stylesheet" href="css/10-command-palette.css" />
     <link rel="stylesheet" href="css/11-panel-tweaks.css" />
     <link rel="stylesheet" href="css/12-signature.css" />
+    <link rel="stylesheet" href="css/14-kernel.css" />
     <link rel="stylesheet" href="css/13-responsive.css" />
   </head>
   <body>
@@ -76,7 +77,8 @@
         <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
       </button>
       <span class="save-indicator" id="save-indicator">saved ✓</span>
-      <span class="sse-dot" id="sse-dot" title="Connection status"></span>
+      <span class="sse-dot" id="sse-dot" title="Event stream connection"></span>
+      <span class="kernel-chip cold" id="kernel-chip" onclick="toggleKernelLog()" title="Kernel state">no kernel</span>
       <span class="status" id="status"></span>
     </div>
 
@@ -236,6 +238,7 @@
     <script src="js/02-api.js"></script>
     <script src="js/03-toolbar.js"></script>
     <script src="js/04-sse.js"></script>
+    <script src="js/04b-kernel.js"></script>
     <script src="js/05-editor.js"></script>
     <script src="js/06-info-panel.js"></script>
     <script src="../shared/mime-render.js"></script>
@@ -252,6 +255,7 @@
     <script src="js/17-render-prose.js"></script>
     <script src="js/18-actions.js"></script>
     <script src="js/19-theme.js"></script>
+    <script src="js/19b-command-list.js"></script>
     <script src="js/20-command-palette.js"></script>
     <script src="js/21-shortcuts.js"></script>
     <script src="js/22-widget-bridge.js"></script>

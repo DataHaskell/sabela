@@ -8,6 +8,7 @@ module Siza.Agent.Discover.Beside (
     besideHits,
     elision,
     restateFloor,
+    restatesHit,
     summaryCap,
 ) where
 
@@ -15,6 +16,7 @@ import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAlphaNum)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -34,6 +36,14 @@ besideHits held summary = clampTo summaryCap (T.intercalate "; " kept)
         is -> marked (T.dropWhileEnd (`elem` trailing) (T.take (minimum is) c))
     fields = concatMap restatedFields held
     trailing = " :-(,>=" :: String
+
+{- | Does this prose re-read a field one of these hits already carries? The
+cutter's own test, for a caller that must drop a whole line rather than shorten
+one.
+-}
+restatesHit :: [Value] -> Text -> Bool
+restatesHit held t =
+    any (any (isJust . (`indexOf` t)) . restatedFields) held
 
 {- | What a cut clause ends with, so a reader can tell prose that ended from
 prose that was taken away.

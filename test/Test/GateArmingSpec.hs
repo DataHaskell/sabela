@@ -14,13 +14,14 @@ import Data.Text (Text)
 import Test.Hspec
 import Test.QuickCheck
 
-import Sabela.AI.Capabilities.Edit.CompileGate (submittedOnly)
+import Sabela.AI.Capabilities.Edit.Admission (Admission (..))
+import Sabela.AI.Capabilities.Edit.CompileGate (compileGateSpec, submittedOnly)
 import Sabela.AI.Capabilities.Edit.GateRepair (acceptGreen, repairArmed)
+import Sabela.AI.Capabilities.Try.Payload.Checked (compiledNotRunNote)
 import Sabela.Session.MaterializeStage (
     DisposableResult (..),
     DisposableVerdict (..),
     MaterializeFailure (..),
-    MaterializeStage (..),
     materializeStages,
     stageReachedCandidate,
  )
@@ -94,10 +95,12 @@ spec = describe "the gate arms and admits only on its own evidence" $ do
             conjoin
                 [ counterexample
                     "a unit-defaulted green is refused"
-                    (isLeft (acceptGreen Nothing ["repaired"] (submittedOnly src) (greenWith warning)))
+                    ( isLeft
+                        (accept src ["repaired"] (greenWith warning))
+                    )
                 , counterexample
                     "and the refusal reaches the caller as a refusal"
-                    ( case acceptGreen Nothing [] (submittedOnly src) (greenWith warning) of
+                    ( case accept src [] (greenWith warning) of
                         Left v -> textField "verdict" v === Just "diagnostic"
                         Right _ -> counterexample "expected a refusal" False
                     )
@@ -109,8 +112,18 @@ spec = describe "the gate arms and admits only on its own evidence" $ do
         $ property
         $ forAll ((,) <$> genCellSource <*> genDefaultingWarning (pure "Integer"))
         $ \(src, warning) ->
-            acceptGreen Nothing ["applied a fix"] (submittedOnly src) (greenWith warning)
-                === Right (src, ["applied a fix"])
+            accept src ["applied a fix"] (greenWith warning)
+                === Right
+                    Admission
+                        { admittedSource = src
+                        , admittedRepairs = ["applied a fix"]
+                        , admittedChecked = [compiledNotRunNote]
+                        }
 
     it "an empty stderr is admitted" $
-        acceptGreen Nothing [] (submittedOnly "x = 1") (greenWith "") `shouldSatisfy` isRight
+        accept "x = 1" [] (greenWith "") `shouldSatisfy` isRight
+
+-- | A green admitted against the spec its own trial was run with.
+accept :: Text -> [Text] -> DisposableResult -> Either Value Admission
+accept src notes =
+    acceptGreen (compileGateSpec Nothing src) Nothing notes (submittedOnly src)

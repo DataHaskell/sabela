@@ -34,8 +34,9 @@ parseErrorText =
     \      Perhaps you need a 'let' in a 'do' block?\n\
     \      e.g. 'let x = 5' instead of 'x = 5'"
 
--- | A "did you mean" naming a constructor for a lowercase binding, the shape
--- GHC emits for any package whose module exports a similarly-spelled type.
+{- | A "did you mean" naming a constructor for a lowercase binding, the shape
+GHC emits for any package whose module exports a similarly-spelled type.
+-}
 notInScopeSuggesting :: Text -> Text -> Text
 notInScopeSuggesting wrong suggestion =
     "<interactive>:1:1: error: [GHC-88464]\n\
@@ -62,7 +63,9 @@ spec = describe "the repair loop never hands back something worse" $ do
             \ started this: two ambiguous names traded for one parse error"
             $ improvesHealthFor
                 Set.empty
-                (health ["Ambiguous occurrence \8216null\8217", "Ambiguous occurrence \8216filter\8217"])
+                ( health
+                    ["Ambiguous occurrence \8216null\8217", "Ambiguous occurrence \8216filter\8217"]
+                )
                 (health [parseErrorText])
                 `shouldBe` False
 
@@ -128,7 +131,8 @@ spec = describe "the repair loop never hands back something worse" $ do
                 `shouldNotContain` ["top-level-let"]
 
         it "still speaks up when the cell really does open with a top-level let" $
-            map gCategory
+            map
+                gCategory
                 ( diagnoseWith
                     Nothing
                     "let x = 5\n"

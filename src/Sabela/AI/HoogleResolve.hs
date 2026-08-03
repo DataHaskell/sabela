@@ -6,14 +6,15 @@ module Sabela.AI.HoogleResolve (
     hoogleDbArgSets,
     rankResolve,
     rankResolveTopK,
+    rankResolveTopKWith,
     hoogleResolve,
     hoogleResolveTopK,
     hoogleQuery,
     hoogleQueryInScope,
     rankHits,
     rankHitsInScope,
+    rankHitsInScopeWith,
     isNoiseModule,
-    ecosystemScore,
     keywords,
     denoise,
     isTypeOrName,
@@ -43,8 +44,14 @@ import Sabela.AI.HoogleProse (
     keywords,
     roundRobin,
  )
-import Sabela.AI.HoogleRank (ecosystemScore, rankHits, rankHitsInScope)
+import Sabela.AI.HoogleRank (rankHits, rankHitsInScope, rankHitsInScopeWith)
 import Sabela.AI.ModuleResolve (isNoiseModule, isOutOfScopePackage)
+import Sabela.AI.Popularity (
+    Popularity,
+    emptyPopularity,
+    loadPopularity,
+    packageRankKey,
+ )
 
 rankResolve :: Text -> [HoogleHit] -> Maybe (Text, Text)
 rankResolve name hits = case rankResolveTopK 1 name Nothing hits of
@@ -52,7 +59,15 @@ rankResolve name hits = case rankResolveTopK 1 name Nothing hits of
     [] -> Nothing
 
 rankResolveTopK :: Int -> Text -> Maybe Text -> [HoogleHit] -> [(Text, Text)]
-rankResolveTopK k name mGoal hits =
+rankResolveTopK = rankResolveTopKWith emptyPopularity
+
+{- | Shortlist the exact-name hits: one contradicting the goal's result head
+sinks, the measured prior orders the rest, the module path settles what is
+left. No term reads the package's name, its shape or its length.
+-}
+rankResolveTopKWith ::
+    Popularity -> Int -> Text -> Maybe Text -> [HoogleHit] -> [(Text, Text)]
+rankResolveTopKWith pop k name mGoal hits =
     take (max 0 k) (nub (map toPair (sortOn rankKey exact)))
   where
     exact =
@@ -72,9 +87,8 @@ rankResolveTopK k name mGoal hits =
     toPair h = (hhPackage h, hhModule h)
     rankKey h =
         ( if typeFits h then 0 else 1 :: Int
-        , ecosystemScore (hhPackage h)
+        , packageRankKey pop (hhPackage h)
         , T.length (hhModule h)
-        , T.length (hhPackage h)
         , hhModule h
         )
 
@@ -89,5 +103,6 @@ hoogleResolveTopK :: Int -> Text -> Maybe Text -> IO [(Text, Text)]
 hoogleResolveTopK k name mGoal
     | T.null name = pure []
     | otherwise = do
+        pop <- loadPopularity
         hits <- queryAllDbs ("search" : "--count=20" : "--json" : [T.unpack name])
-        pure (rankResolveTopK k name mGoal hits)
+        pure (rankResolveTopKWith pop k name mGoal hits)

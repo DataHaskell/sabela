@@ -146,11 +146,14 @@ retries carrying different goals are still the same retry.
 -}
 stackDispatch :: StackSession -> Dispatch -> Dispatch
 stackDispatch ss inner =
-    captureGoal ss (guardDiscover (ssLedger ss) (guardDispatch (ssFutility ss) inner))
+    captureGoal
+        ss
+        (guardDiscover (ssLedger ss) (guardDispatch (ssFutility ss) inner))
         . normalizeToolCall
 
--- | The layer names, in application order. A parity test asserts on this so it
--- cannot pass by exercising nothing.
+{- | The layer names, in application order. A parity test asserts on this so it
+cannot pass by exercising nothing.
+-}
 stackLayers :: [Text]
 stackLayers = ["normalize", "goal", "discover-ledger", "futility"]
 
@@ -165,8 +168,9 @@ the client-side repair layers; the server never sees it.
 -}
 takeGoal :: Value -> (Maybe Text, Value)
 takeGoal (Object o) = case KM.lookup goalKey o of
-    Just (String g) | not (T.null (T.strip g)) ->
-        (Just (T.strip g), Object (KM.delete goalKey o))
+    Just (String g)
+        | not (T.null (T.strip g)) ->
+            (Just (T.strip g), Object (KM.delete goalKey o))
     Just _ -> (Nothing, Object (KM.delete goalKey o))
     Nothing -> (Nothing, Object o)
   where
@@ -187,12 +191,14 @@ recordCall ss step =
 ownedCells :: StackSession -> IO (Map CellId OwnedCell)
 ownedCells = readIORef . ssOwned
 
--- | The cells this session wrote that are currently red, with their
--- diagnostics. Cells the session did not write are never listed.
+{- | The cells this session wrote that are currently red, with their
+diagnostics. Cells the session did not write are never listed.
+-}
 ownedReds :: StackSession -> IO [(CellId, Text)]
 ownedReds ss = do
     owned <- ownedCells ss
-    pure [(cid, ocDiagnostic oc) | (cid, oc) <- Map.toList owned, not (ocHealthy oc)]
+    pure
+        [(cid, ocDiagnostic oc) | (cid, oc) <- Map.toList owned, not (ocHealthy oc)]
 
 {- | How often each rejection's diagnostic class recurred in this session. A
 rejection creates no cell, so this is the only session state a write refused

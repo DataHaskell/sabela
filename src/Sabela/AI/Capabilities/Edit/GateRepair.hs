@@ -7,12 +7,16 @@ module Sabela.AI.Capabilities.Edit.GateRepair (
     frontierRejectionJson,
 ) where
 
-import Data.Bifunctor (second)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.Edit.Admission (
+    Admission (..),
+    admitted,
+    withRepairs,
+ )
 import Sabela.AI.Capabilities.Edit.CompileGate (
     GateSource (..),
     compileGateSpec,
@@ -39,11 +43,12 @@ import Sabela.AI.Capabilities.Edit.Submission (
     compiledText,
     submittedText,
  )
+import Sabela.AI.Capabilities.Try.Payload.Checked (checkedNotes)
 import Sabela.AI.Capabilities.Util (featureEnabled)
 import Sabela.AI.PathGate (pathGateCheck)
 import Sabela.AI.WriteAck (refusalAck)
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
-import Sabela.Session.Materialize (runDisposableTry)
+import Sabela.Session.Materialize (CandidateSpec, runDisposableTry)
 import Sabela.Session.MaterializeStage (
     DisposableResult (..),
     DisposableVerdict (..),
@@ -66,29 +71,45 @@ gatedCandidate ::
     CellLang ->
     CellType ->
     Submission ->
-    IO (Either Value (Text, [Text]))
+    IO (Either Value Admission)
 gatedCandidate app mReplaces lang ty sub
-    | ty /= CodeCell || lang /= Haskell = pure (Right (compiledText sub, []))
+    | ty /= CodeCell || lang /= Haskell = pure (Right (admitted (compiledText sub)))
     | otherwise = do
         compiled <- compileGatedCandidate app mReplaces sub
         case compiled of
             Left rejection -> pure (Left rejection)
-            Right (src', notes) ->
-                keepingNotes notes <$> pathGated app mReplaces src'
+            Right admission ->
+                keepingClaims admission <$> pathGated app mReplaces admission
 
-keepingNotes ::
-    [Text] -> Either Value (Text, [Text]) -> Either Value (Text, [Text])
-keepingNotes earlier = fmap (second (earlier <>))
+{- | The path gate may repair the source under it, so its own admission is the
+one that ships — carrying forward what the compile gate had already settled.
+-}
+keepingClaims :: Admission -> Either Value Admission -> Either Value Admission
+keepingClaims earlier =
+    fmap
+        ( \later ->
+            (withRepairs (admittedRepairs earlier) later)
+                { admittedChecked = admittedChecked earlier <> admittedChecked later
+                }
+        )
 
 {- | Rejects a write whose paths are not there, and silently corrects one
 whose only fault is the directory. Runs on compile-green source so the
 compiler's diagnostic always wins the turn when there is one.
 -}
-pathGated :: App -> Maybe Int -> Text -> IO (Either Value (Text, [Text]))
-pathGated app mReplaces src = do
+pathGated :: App -> Maybe Int -> Admission -> IO (Either Value Admission)
+pathGated app mReplaces admission = do
     others <- otherCellSources app mReplaces
-    result <- pathGateCheck (envWorkDir (appEnv app)) others src
-    pure (either (Left . refusalAck "path-gate" mReplaces) Right result)
+    result <-
+        pathGateCheck (envWorkDir (appEnv app)) others (admittedSource admission)
+    pure
+        ( either
+            (Left . refusalAck "path-gate" mReplaces)
+            (Right . uncurry repaired)
+            result
+        )
+  where
+    repaired src notes = withRepairs notes (admitted src)
 
 otherCellSources :: App -> Maybe Int -> IO [Text]
 otherCellSources app mReplaces = do
@@ -99,11 +120,12 @@ compileGatedCandidate ::
     App ->
     Maybe Int ->
     Submission ->
-    IO (Either Value (Text, [Text]))
+    IO (Either Value Admission)
 compileGatedCandidate app mReplaces sub = do
-    result <- runDisposableTry app (compileGateSpec mReplaces src)
+    result <- runDisposableTry app spec
     case disposableVerdict result of
-        DisposableOk -> pure (acceptGreen mReplaces [] (submissionSource sub) result)
+        DisposableOk ->
+            pure (acceptGreen spec mReplaces [] (submissionSource sub) result)
         verdict -> do
             enabled <- featureEnabled "SABELA_GATE_REPAIR"
             let start = startFrontier (submittedText sub) src result
@@ -112,9 +134,10 @@ compileGatedCandidate app mReplaces sub = do
                     then searchRepair app mReplaces start
                     else pure (Left start)
             case searched of
-                Right frontier ->
+                Right (frontier, ranSpec) ->
                     pure
                         ( acceptGreen
+                            ranSpec
                             mReplaces
                             [disclosure frontier]
                             (frontierSource frontier)
@@ -123,6 +146,7 @@ compileGatedCandidate app mReplaces sub = do
                 Left frontier -> Left <$> frontierRejection app mReplaces frontier
   where
     src = compiledText sub
+    spec = compileGateSpec mReplaces src
 
 -- | What the caller submitted against what the gate put to the compiler.
 submissionSource :: Submission -> GateSource
@@ -139,21 +163,29 @@ frontierSource frontier =
         , gateCompiled = frontierSrc frontier
         }
 
-{- | A green candidate is admitted only once the defaulting check clears it,
-whether it arrived green or went green under repair. A refusal carries the
-notes the commit would have carried.
+{- | A green candidate is admitted only once the defaulting check clears it.
+The property the gate proved is read off the spec the trial was run against,
+never off one rebuilt from the admitted text.
 -}
 acceptGreen ::
+    CandidateSpec ->
     Maybe Int ->
     [Text] ->
     GateSource ->
     DisposableResult ->
-    Either Value (Text, [Text])
-acceptGreen mReplaces notes gsrc result =
+    Either Value Admission
+acceptGreen ranSpec mReplaces notes gsrc result =
     maybe
-        (Right (gateCompiled gsrc, notes))
+        (Right admission)
         Left
         (gateDefaultingRejection mReplaces notes gsrc result)
+  where
+    admission =
+        Admission
+            { admittedSource = gateCompiled gsrc
+            , admittedRepairs = notes
+            , admittedChecked = checkedNotes ranSpec result
+            }
 
 {- | Repair may only run on a fault in the candidate itself. A timeout, or a
 failure at a stage the candidate never reached, is not the model's to fix and
@@ -199,13 +231,22 @@ frontierRejectionJson exposedBy mReplaces prevDefined nudge frontier =
             (frontierResult frontier)
 
 {- | Walks the frontier forward one proven fix at a time, re-reading the
-diagnostic each round so a fix that only uncovers the next error still earns
-its round. @Right@ is green and commits; @Left@ is as far as the search got.
+diagnostic each round. @Right@ commits, carrying the spec its winning probe
+ran; @Left@ is as far as the search got.
 -}
-searchRepair :: App -> Maybe Int -> Frontier -> IO (Either Frontier Frontier)
+searchRepair ::
+    App ->
+    Maybe Int ->
+    Frontier ->
+    IO (Either Frontier (Frontier, CandidateSpec))
 searchRepair app mReplaces = rounds repairRounds probeBudget Set.empty
   where
-    rounds :: Int -> Int -> Set Text -> Frontier -> IO (Either Frontier Frontier)
+    rounds ::
+        Int ->
+        Int ->
+        Set Text ->
+        Frontier ->
+        IO (Either Frontier (Frontier, CandidateSpec))
     rounds left budget seen frontier
         | left <= 0 || budget <= 0 = pure (Left frontier)
         | otherwise = do
@@ -224,14 +265,15 @@ searchRepair app mReplaces = rounds repairRounds probeBudget Set.empty
         Set Text ->
         Frontier ->
         [(Text, [Text])] ->
-        IO (Either Frontier Frontier)
+        IO (Either Frontier (Frontier, CandidateSpec))
     probe _ _ _ frontier [] = pure (Left frontier)
     probe left budget seen frontier ((candidate, fixes) : rest)
         | budget <= 0 = pure (Left frontier)
         | otherwise = do
-            result <- runDisposableTry app (compileGateSpec mReplaces candidate)
+            let spec = compileGateSpec mReplaces candidate
+            result <- runDisposableTry app spec
             let seen' = Set.insert candidate seen
             case stepFrontier frontier (candidate, fixes) result of
-                Commit reached -> pure (Right reached)
+                Commit reached -> pure (Right (reached, spec))
                 Advance reached -> rounds (left - 1) (budget - 1) seen' reached
                 Skip -> probe left (budget - 1) seen' frontier rest

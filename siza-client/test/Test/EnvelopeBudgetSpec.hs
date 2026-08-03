@@ -225,6 +225,7 @@ genLaden = do
         , "total" .= k
         , "narrow" .= T.intercalate "; " [noteAt m1 i | i <- [1 .. notes]]
         , "summary" .= T.intercalate "; " [noteAt m2 i | i <- [1 .. notes]]
+        , "next" .= T.intercalate "; " [noteAt n i | i <- [1 .. notes]]
         ]
   where
     noteAt m i = m <> " note " <> tShow i <> " " <> T.replicate 20 "z"

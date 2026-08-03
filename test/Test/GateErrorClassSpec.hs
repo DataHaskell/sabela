@@ -51,32 +51,47 @@ spec = describe "the frontier only advances within the error class it targeted" 
         "prop_noScopeForParseTrade: a probe that turns a scope error into a \
         \parse error never advances"
         $ property
-        $ forAll ((,,) <$> genCellSource <*> genScopeDiagnostic <*> genParseErrorDiagnostic)
+        $ forAll
+            ((,,) <$> genCellSource <*> genScopeDiagnostic <*> genParseErrorDiagnostic)
         $ \(src, was, now) ->
             forAll genCellSource $ \candidate ->
                 not
                     ( isAdvance
-                        (stepFrontier (startFrontier src src (failing was)) (candidate, ["r"]) (failing now))
+                        ( stepFrontier
+                            (startFrontier src src (failing was))
+                            (candidate, ["r"])
+                            (failing now)
+                        )
                     )
 
     it
         "prop_noScopeForTypeTrade: a probe that clears a scope error by \
         \introducing a type error never advances"
         $ property
-        $ forAll ((,,) <$> genCellSource <*> genScopeDiagnostic <*> genTypeErrorDiagnostic)
+        $ forAll
+            ((,,) <$> genCellSource <*> genScopeDiagnostic <*> genTypeErrorDiagnostic)
         $ \(src, was, now) ->
             forAll genCellSource $ \candidate ->
                 not
                     ( isAdvance
-                        (stepFrontier (startFrontier src src (failing was)) (candidate, ["r"]) (failing now))
+                        ( stepFrontier
+                            (startFrontier src src (failing was))
+                            (candidate, ["r"])
+                            (failing now)
+                        )
                     )
 
     it
         "prop_unmaskingStillAdvances: clearing a missing-module error advances \
         \even though the errors it was hiding then surface"
         $ property
-        $ forAll ((,,) <$> genCellSource <*> genMissingModuleDiagnostic <*> genTypeErrorDiagnostic)
+        $ forAll
+            ((,,) <$> genCellSource <*> genMissingModuleDiagnostic <*> genTypeErrorDiagnostic)
         $ \(src, was, now) ->
             forAll genCellSource $ \candidate ->
                 isAdvance
-                    (stepFrontier (startFrontier src src (failing was)) (candidate, ["dep"]) (failing now))
+                    ( stepFrontier
+                        (startFrontier src src (failing was))
+                        (candidate, ["dep"])
+                        (failing now)
+                    )

@@ -1,11 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Classifying and scoring a single Hoogle row against a 'Need'.
---
--- Two ideas carry the module. A row's /kind/ says whether it is an answer or a
--- lead: a package or module row is Hoogle telling you where to look next.
--- A row's /coverage/ says how much of the query it accounts for, weighted by
--- which field the term was found in, so a name match outranks a docs match.
+{- | Classifying and scoring a single Hoogle row against a 'Need'.
+
+Two ideas carry the module. A row's /kind/ says whether it is an answer or a
+lead: a package or module row is Hoogle telling you where to look next.
+A row's /coverage/ says how much of the query it accounts for, weighted by
+which field the term was found in, so a name match outranks a docs match.
+-}
 module Sabela.AI.Search.Row (
     RowKind (..),
     rowKind,
@@ -26,8 +27,9 @@ import Sabela.AI.Search.Need (Need (..))
 data RowKind = RowSymbol | RowModule | RowPackage
     deriving (Eq, Ord, Show)
 
--- | Hoogle flattens packages, modules and symbols into one row shape; the kind
--- is recoverable from which fields are empty.
+{- | Hoogle flattens packages, modules and symbols into one row shape; the kind
+is recoverable from which fields are empty.
+-}
 rowKind :: HoogleHit -> RowKind
 rowKind h
     | hhName h == hhPackage h && T.null (hhModule h) && T.null (hhType h) =
@@ -41,13 +43,14 @@ kindPrior RowSymbol = 0
 kindPrior RowModule = 1
 kindPrior RowPackage = 2
 
--- | Weighted count of query terms this row accounts for. Zero means the row
--- has nothing to do with the query and must never be returned as an answer.
---
--- Fields corroborate rather than compete: a symbol whose name and haddock both
--- speak to a term outranks one whose name alone does. Naming a package outright
--- is the strongest signal a caller can give, so an exact package match is
--- weighted like an exact name match.
+{- | Weighted count of query terms this row accounts for. Zero means the row
+has nothing to do with the query and must never be returned as an answer.
+
+Fields corroborate rather than compete: a symbol whose name and haddock both
+speak to a term outranks one whose name alone does. Naming a package outright
+is the strongest signal a caller can give, so an exact package match is
+weighted like an exact name match.
+-}
 coverage :: Need -> HoogleHit -> Int
 coverage need h = sum (map (min termCeiling . termWeight . T.toLower) (needTerms need))
   where
@@ -80,22 +83,25 @@ coverage need h = sum (map (min termCeiling . termWeight . T.toLower) (needTerms
 grounded :: Need -> HoogleHit -> Bool
 grounded need h = coverage need h > 0
 
--- | How many distinct query terms the row speaks to at all. Accounting for
--- more of the question beats accounting for one part of it emphatically.
+{- | How many distinct query terms the row speaks to at all. Accounting for
+more of the question beats accounting for one part of it emphatically.
+-}
 termsCovered :: Need -> HoogleHit -> Int
 termsCovered need h =
-    length [t | t <- needTerms need, coverage (need {needTerms = [t]}) h > 0]
+    length [t | t <- needTerms need, coverage (need{needTerms = [t]}) h > 0]
 
--- | No single term may count for more than an exact name match. Without the
--- ceiling a row that restates a term across its type and docs outscores the
--- plainer function that answers the question: @readParquetWithOpts@, whose type
--- mentions @ParquetReadOptions@, would bury @readParquet@.
+{- | No single term may count for more than an exact name match. Without the
+ceiling a row that restates a term across its type and docs outscores the
+plainer function that answers the question: @readParquetWithOpts@, whose type
+mentions @ParquetReadOptions@, would bury @readParquet@.
+-}
 termCeiling :: Int
 termCeiling = 6
 
--- | Lower-cased camel humps and separator-delimited words of an identifier:
--- @readParquet@ becomes @["read","parquet"]@, @DataFrame.IO.Parquet@ becomes
--- @["data","frame","io","parquet"]@.
+{- | Lower-cased camel humps and separator-delimited words of an identifier:
+@readParquet@ becomes @["read","parquet"]@, @DataFrame.IO.Parquet@ becomes
+@["data","frame","io","parquet"]@.
+-}
 humps :: Text -> [Text]
 humps = filter (not . T.null) . map T.pack . go "" . T.unpack
   where

@@ -4,6 +4,9 @@ module Sabela.AI.Capabilities.Edit.CompileGate (
     compileGateCheck,
     compileGateSpec,
     gateHoleNudge,
+    gateRepairPairs,
+    holeAnswerPairs,
+    presentedDiagnostic,
     prevDefinedNames,
     GateSource (..),
     submittedOnly,
@@ -31,17 +34,19 @@ import Sabela.AI.Capabilities.Edit.CompileGate.Source (
     compiledSourcePairs,
     submittedOnly,
  )
-import Sabela.AI.Capabilities.Edit.HoleNudge (attachPairs, holeNudgePairs)
-import Sabela.AI.FitRule (holeFitsJson)
+import Sabela.AI.Capabilities.Edit.HoleNudge (attachPairs)
+import Sabela.AI.Capabilities.Edit.HoleRewrite.Repair (
+    diagnosticRepairPairs,
+    holeAnswerPairs,
+    repairDiagnostic,
+    repairPairs,
+ )
 import Sabela.AI.Health (scopeSubject)
-import Sabela.AI.Hints (expectedTypeOf)
-import Sabela.AI.HoleProbe (holeProbeJson)
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.AI.WriteAck (refusalAck)
 import Sabela.Api (errorJsonWith)
 import Sabela.Diagnose (couldNotFindModule, diagnoseWith, guidancePairs)
 import Sabela.Diagnose.Packages (findModulePackage)
-import Sabela.Errors (scrubHarnessFrames)
 import Sabela.Model (Cell (..), CellType (..), lookupCell)
 import Sabela.Parse (cellNames)
 import Sabela.Session.Materialize (
@@ -79,27 +84,50 @@ compileGateCheck app mReplaces lang ty src
                         gateDefaultingRejection mReplaces [] (submittedOnly src) result
                     )
             verdict -> do
-                nudge <- gateHoleNudge app mReplaces verdict (rawDiagnostic result) src
+                let gsrc = submittedOnly src
+                repair <-
+                    gateHoleNudge app mReplaces verdict (rawDiagnostic result) src
                 exposedBy <- exposingPackage (rawDiagnostic result)
-                pure . Left . attachPairs nudge $
-                    rejectionJson
-                        exposedBy
-                        mReplaces
-                        (submittedOnly src)
-                        prevDefined
-                        result
+                pure . Left . attachPairs repair $
+                    rejectionJson exposedBy mReplaces gsrc prevDefined result
 
+{- | Everything a rejection earns, for the cost of one extra compile: the
+rewrite when a hole can be placed, the standing nudge only when it cannot, and
+what the diagnostic already carried.
+-}
 gateHoleNudge ::
     App -> Maybe Int -> DisposableVerdict -> Text -> Text -> IO [Pair]
-gateHoleNudge app mReplaces verdict diagnostic src
-    | verdict /= DisposableCompileError = pure []
-    | otherwise = holeNudgePairs probe diagnostic src
+gateHoleNudge app mReplaces =
+    gateRepairPairs probe
   where
     probe s = rawDiagnostic <$> runDisposableTry app (compileGateSpec mReplaces s)
+
+{- | The gate's half of the shared repair seam, over any probe, so its cost can
+be counted and its answer compared with the trial's for the same rejection.
+-}
+gateRepairPairs ::
+    (Text -> IO Text) -> DisposableVerdict -> Text -> Text -> IO [Pair]
+gateRepairPairs compile verdict diagnostic src
+    | verdict /= DisposableCompileError = pure []
+    | otherwise = repairPairs compile diagnostic src
 
 rawDiagnostic :: DisposableResult -> Text
 rawDiagnostic result =
     maybe (disposableStderr result) failureMessage (disposableFailure result)
+
+{- | The diagnostic the rejection presents. It is the seam's own normaliser, so
+the words the payload shows are the words its repair was computed from.
+-}
+presentedDiagnostic :: GateSource -> DisposableResult -> Text
+presentedDiagnostic gsrc result
+    | T.null (T.strip presented) = infraFallback
+    | otherwise = presented
+  where
+    presented = repairDiagnostic (gateCompiled gsrc) (rawDiagnostic result)
+
+infraFallback :: Text
+infraFallback =
+    "The compile gate could not verify this write; nothing was committed."
 
 {- | Names the replaced cell's current source defines; a rejection can then
 explain a not-in-scope name the replacement itself removed.
@@ -154,9 +182,7 @@ rejectionJson exposedBy mReplaces gsrc prevDefined result =
                 <> contextPairs
                 <> removedNotePairs
                 <> guidancePairs (diagnoseWith exposedBy submitted diagnostic)
-                <> holeFitPairs
-                <> holeProbePairs
-                <> expectedTypePairs
+                <> diagnosticRepairPairs diagnostic
             )
   where
     src = gateCompiled gsrc
@@ -174,13 +200,7 @@ rejectionJson exposedBy mReplaces gsrc prevDefined result =
             <> ["blamedCell" .= cid | Just cid <- [blamedCell result]]
     skippedJson sc =
         object ["cellId" .= skippedCellId sc, "reason" .= skippedReason sc]
-    diagnostic =
-        let raw = scrubHarnessFrames (rawDiagnostic result)
-         in if T.null (T.strip raw)
-                then infraFallback
-                else dropSelfKnockOns src raw
-    infraFallback =
-        "The compile gate could not verify this write; nothing was committed."
+    diagnostic = presentedDiagnostic gsrc result
     removedNotePairs = case removedDefinitions prevDefined src diagnostic of
         [] -> []
         names ->
@@ -213,13 +233,6 @@ rejectionJson exposedBy mReplaces gsrc prevDefined result =
             " Retry, or state the blocker."
             (\f -> " " <> blockedRemedy (failureStage f) attribution)
             failure
-    holeFitPairs =
-        case holeFitsJson holeFitCap diagnostic of
-            [] -> []
-            fits -> ["holeFits" .= fits]
-    holeProbePairs = maybe [] (\v -> ["holeProbe" .= v]) (holeProbeJson diagnostic)
-    expectedTypePairs =
-        maybe [] (\g -> ["expectedType" .= g]) (expectedTypeOf diagnostic)
 
 {- | Why nothing was committed. Only a candidate the compiler actually read
 was refused by the compile gate; a trial that stopped earlier was blocked
@@ -229,19 +242,6 @@ notCommittedKind :: DisposableResult -> Text
 notCommittedKind result
     | reachedCandidate result = "compile-gate"
     | otherwise = "trial-blocked"
-
-holeFitCap :: Int
-holeFitCap = 8
-
-dropSelfKnockOns :: Text -> Text -> Text
-dropSelfKnockOns src raw
-    | null kept = raw
-    | otherwise = T.intercalate "\n\n" kept
-  where
-    defined = fst (cellNames src)
-    kept = filter (not . phantom) (T.splitOn "\n\n" raw)
-    phantom chunk =
-        maybe False (`Set.member` defined) (scopeSubject chunk)
 
 removedDefinitions :: [Text] -> Text -> Text -> [Text]
 removedDefinitions prevDefined src diagnostic =

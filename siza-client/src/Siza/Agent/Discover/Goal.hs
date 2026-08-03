@@ -28,7 +28,11 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Siza.Agent.Discover.Literal (literalConstructible, literalFill)
-import Siza.Agent.Discover.Types (StandingGoal (..))
+import Siza.Agent.Discover.Types (
+    StandingGoal (..),
+    statesDeclaration,
+    typeClause,
+ )
 
 arrowSegments :: Text -> [Text]
 arrowSegments = map (T.strip . T.pack) . go (0 :: Int) "" . T.unpack
@@ -80,9 +84,13 @@ nominalArgType t =
         && T.all (\c -> isAlphaNum c || c == '\'') t
         && t `notElem` literalConstructible
 
+{- | A declaration is not a producer: a synonym names a type, it does not
+compute one, so nothing that states a declaration answers a goal.
+-}
 producesGoal :: Text -> Text -> Bool
 producesGoal goal ty =
     not (T.null ty)
+        && not (statesDeclaration ty)
         && (normType ty == g || ("-> " <> g) `T.isSuffixOf` normType ty)
   where
     g = normType goal
@@ -171,13 +179,11 @@ withGoal sg target v@(Object o) =
         | sat = []
         | otherwise = ["note" .= ("no hit produces " <> g <> nearest)]
     nearest = case jsonHits v of
-        (h : _) ->
-            "; nearest: "
-                <> jsonText "name" h
-                <> ( let t = jsonText "type" h
-                      in if T.null t then "" else " :: " <> T.take 120 t
-                   )
+        (h : _) -> "; nearest: " <> jsonText "name" h <> stated h
         [] -> ""
+    stated h = case typeClause (T.take 120 (jsonText "type" h)) of
+        "" -> ""
+        c -> " " <> c
 withGoal _ _ v = v
 
 {- | Does any export on the envelope's card produce the goal type? A card that

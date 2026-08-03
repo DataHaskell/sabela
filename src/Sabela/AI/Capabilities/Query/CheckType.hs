@@ -15,7 +15,12 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.AnswerSource (AnswerSource (..), sourceTag)
-import Sabela.AI.Capabilities.Edit.ScratchVet (scratchScopeBackend)
+import Sabela.AI.Capabilities.Edit.ScratchVet (
+    ScopeReport,
+    scopeEstablished,
+    scopeFailureOutcome,
+    scratchScopeReport,
+ )
 import Sabela.AI.Capabilities.Query.IndexAnswer (
     IndexAnswer (..),
     answerModule,
@@ -49,6 +54,7 @@ import Sabela.AI.Capabilities.Query.Struct (
  )
 import Sabela.AI.Capabilities.Util (field, fieldText)
 import Sabela.AI.QualifiedName (QualifiedName (..), lookupSpelling)
+import Sabela.AI.Types (toolOutcomeValue)
 import Sabela.AI.VerifierDistill (answerVerdict, distillTypeAnswer)
 import Sabela.Api (errorJson)
 import Sabela.Model (Notebook)
@@ -174,8 +180,22 @@ withCheckTypeScope app imports k = do
                     )
                 )
         Just store -> do
-            backend <- scratchScopeBackend app store [] (T.unlines imports)
-            Right <$> k "scratch" backend
+            (backend, report) <- scratchScopeReport app store [] (T.unlines imports)
+            inEstablishedScope report "scratch" backend k
+
+{- | The answer an established scope computes, or the refusal a failed one
+earns. A scope line the session refused is reported as that line's failure and
+the question is never put, so no expression is blamed for an import.
+-}
+inEstablishedScope ::
+    ScopeReport ->
+    Text ->
+    SessionBackend ->
+    (Text -> SessionBackend -> IO a) ->
+    IO (Either Value a)
+inEstablishedScope report scope backend k
+    | scopeEstablished report = Right <$> k scope backend
+    | otherwise = pure (Left (toolOutcomeValue (scopeFailureOutcome report)))
 
 fieldTextList :: Text -> Value -> [Text]
 fieldTextList key v = case field key v of

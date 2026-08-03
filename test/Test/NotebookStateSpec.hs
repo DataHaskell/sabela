@@ -3,15 +3,15 @@
 module Test.NotebookStateSpec (spec) where
 
 import Control.Concurrent.STM (atomically, tryReadTChan)
+import Data.Aeson (Value (..), toJSON)
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
-import Data.Aeson (Value (..), toJSON)
 import Data.List (sort)
 import qualified Data.Set as Set
 import Sabela.Deps (collectMetadata)
 import Sabela.Handlers (ReactiveNotebook (..), setupReactive)
 import Sabela.Handlers.Lifecycle (neededEnvSig)
-import Sabela.Model (Cell (..), NotebookEvent (..), Notebook (..))
+import Sabela.Model (Cell (..), Notebook (..), NotebookEvent (..))
 import Sabela.State (App (..), newApp, notebookState)
 import Sabela.State.EventBus (subscribeBroadcast)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)

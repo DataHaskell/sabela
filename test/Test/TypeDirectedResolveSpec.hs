@@ -103,8 +103,10 @@ spec = describe "type-directed resolution (intention)" $ do
                         []
             notInScopeNames "" (Right er) `shouldBe` ["divvy"]
 
-    describe "resolution should respect the cell's ecosystem, not just the name" $ do
-        it "prefers an ecosystem package over a niche one for the same name" $ do
+    describe "resolution should respect more than the name" $ do
+        -- With no popularity table the modules tie on length, so the shortlist
+        -- falls to module order; the prior itself is pinned in HoogleRankSpec.
+        it "orders equally measured hits by module path, never by package" $ do
             let hits =
                     [ HoogleHit "decode" "obscure-thing-9000" "Some.Niche" "..." ""
                     , HoogleHit "decode" "aeson" "Data.Aeson" "..." ""

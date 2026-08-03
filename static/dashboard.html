@@ -1397,8 +1397,11 @@ function connectSSE() {
         hideStatus();
         break;
       case 'sessionStatus':
-        if (ev.message === 'ready') hideStatus();
+        if (ev.state === 'ready') hideStatus();
         else showStatus(ev.message, true);
+        break;
+      case 'kernelError':
+        showStatus(ev.message, false);
         break;
     }
   };

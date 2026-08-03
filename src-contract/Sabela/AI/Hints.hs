@@ -13,8 +13,11 @@ module Sabela.AI.Hints (
 
 import Data.Char (isAlphaNum, isUpper)
 import Data.Maybe (listToMaybe, mapMaybe)
+
 import Data.Text (Text)
 import qualified Data.Text as T
+
+import Sabela.AI.HoleFits (stripPackageQualifiers)
 
 data RenameCandidate = RenameCandidate
     { rcName :: Text
@@ -155,8 +158,20 @@ candidatesIn body = case go "\8216" "\8217" body of
             | T.null rest || not (T.null (T.strip lead)) -> ""
             | otherwise -> T.strip (T.takeWhile (/= ')') (T.drop 1 rest))
 
+{- | The type a mismatch says was wanted, in each of the layouts GHC prints it:
+the @Expected:@ block, the inline @expected type … with actual type@ sentence
+in either quoting, and the bare @Couldn't match type ‘T’ with ‘U’@.
+-}
 expectedTypeOf :: Text -> Maybe Text
-expectedTypeOf err = listToMaybe (mapMaybe expectedAt (zip [0 ..] ls))
+expectedTypeOf err =
+    fmap stripPackageQualifiers . listToMaybe $
+        expectedBlock err
+            <> typeAfter "Couldn't match expected type" " with actual type" err
+            <> typeAfter "Couldn't match type" " with" err
+
+-- | GHC's two-line layout, where the wanted type is indented under @Expected:@.
+expectedBlock :: Text -> [Text]
+expectedBlock err = mapMaybe expectedAt (zip [0 ..] ls)
   where
     ls = T.lines err
     expectedAt (i, l) = do
@@ -173,6 +188,41 @@ expectedTypeOf err = listToMaybe (mapMaybe expectedAt (zip [0 ..] ls))
                 T.unwords
                     (concatMap T.words (T.strip rest : map T.strip continuation))
         if T.null joined then Nothing else Just joined
+
+{- | The type standing after a marker, written either inside GHC's own quotes
+or after a colon and running to the marker that ends it. Lines are rejoined
+first, because GHC wraps a long type onto the following line either way.
+-}
+typeAfter :: Text -> Text -> Text -> [Text]
+typeAfter marker terminator err =
+    [ ty
+    | rest <- afterEach marker (T.unwords (T.words err))
+    , ty <- quotedForm rest <> colonForm rest
+    , not (T.null ty)
+    ]
+  where
+    quotedForm rest = [b | Just b <- [quotedHead (T.stripStart rest)]]
+    colonForm rest =
+        [ T.strip (fst (T.breakOn terminator body))
+        | Just body <- [T.stripPrefix ":" (T.stripStart rest)]
+        ]
+
+-- | The fragment GHC quoted at the head of some text, in either quoting.
+quotedHead :: Text -> Maybe Text
+quotedHead t =
+    listToMaybe
+        [ fst (T.breakOn close rest)
+        | (open, close) <- [("\8216", "\8217"), ("`", "'")]
+        , Just rest <- [T.stripPrefix open t]
+        , close `T.isInfixOf` rest
+        ]
+
+afterEach :: Text -> Text -> [Text]
+afterEach needle t =
+    [ T.drop (i + T.length needle) t
+    | i <- [0 .. T.length t - 1]
+    , needle `T.isPrefixOf` T.drop i t
+    ]
 
 knownExtensions :: [Text]
 knownExtensions =

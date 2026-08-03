@@ -173,4 +173,3 @@ confirmTest feedbackRef proposed = do
                 "  (read as feedback, not a test; continuing with it as your next request.)"
         Nothing -> pure ()
     pure (interpretConfirm proposed input)
-

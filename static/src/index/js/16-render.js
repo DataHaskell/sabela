@@ -65,6 +65,7 @@ function renderCodeCell(cell, cellNum) {
   div.dataset.id = cell.cellId;
   if (cell.cellLang === 'Python') div.classList.add('python');
   if (cell.cellDirty) div.classList.add('dirty');
+  if (staleCellIds.has(cell.cellId)) div.classList.add('stale');
   if (cell.cellError) div.classList.add('has-error');
   const compiled = isCompiledSource(cell);
   if (compiled) div.classList.add('compiled');
@@ -72,7 +73,7 @@ function renderCodeCell(cell, cellNum) {
   const gutter = document.createElement('div');
   gutter.className = 'cell-gutter';
   gutter.innerHTML =
-    `<span class="cell-number">${cell.cellId}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>` +
+    `<span class="cell-number" title="Cell id ${cell.cellId}">${cellNum}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>` +
     (compiled
       ? `<button class="compile-tag" onclick="toggleCellCompile(${cell.cellId})" title="Compiled to native code (-O2). Click to switch back to interpreted.">⚡comp</button>`
       : '');
@@ -168,6 +169,7 @@ function renderCodeCell(cell, cellNum) {
       // Ignore programmatic setValue() from our own mount as "user edit".
       if (changeObj && changeObj.origin !== 'setValue') {
         dirtyCells.add(cell.cellId);
+        markCellStale(cell.cellId);
       }
     });
     editors[cell.cellId] = cm;

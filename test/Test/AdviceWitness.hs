@@ -34,35 +34,42 @@ exemplars =
         )
     ,
         ( "missing-dependency"
-        , ( "import Some.Module\n"
-          , "<no location info>: error: [GHC-87110]\n\
-            \    Could not load module \8216Some.Module\8217.\n\
-            \    It is a member of the hidden package \8216somepkg-1.2.3\8217."
-          )
+        ,
+            ( "import Some.Module\n"
+            , "<no location info>: error: [GHC-87110]\n\
+              \    Could not load module \8216Some.Module\8217.\n\
+              \    It is a member of the hidden package \8216somepkg-1.2.3\8217."
+            )
         )
     ,
         ( "did-you-mean"
-        , ( "answer = lenght xs\n"
-          , located "Variable not in scope: lenght\n    Perhaps you meant \8216length\8217"
-          )
+        ,
+            ( "answer = lenght xs\n"
+            , located "Variable not in scope: lenght\n    Perhaps you meant \8216length\8217"
+            )
         )
     ,
         ( "ambiguous-type"
-        , ( "answer = show (read \"1\")\n"
-          , located "Ambiguous type variable \8216a0\8217 arising from a use of \8216show\8217"
-          )
+        ,
+            ( "answer = show (read \"1\")\n"
+            , located
+                "Ambiguous type variable \8216a0\8217 arising from a use of \8216show\8217"
+            )
         )
     ,
         ( "type-mismatch"
-        , ( "answer = length \"xs\"\n"
-          , located "Couldn't match expected type \8216Int\8217 with actual type \8216[Char]\8217"
-          )
+        ,
+            ( "answer = length \"xs\"\n"
+            , located
+                "Couldn't match expected type \8216Int\8217 with actual type \8216[Char]\8217"
+            )
         )
     ,
         ( "unshowable-result"
-        , ( "answer = mystery\n"
-          , located "No instance for `Show Wind' arising from a use of `print'"
-          )
+        ,
+            ( "answer = mystery\n"
+            , located "No instance for `Show Wind' arising from a use of `print'"
+            )
         )
     ]
 

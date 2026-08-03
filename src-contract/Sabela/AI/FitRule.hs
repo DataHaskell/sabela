@@ -17,7 +17,11 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Grammar.Synth (sanitizeTypeText)
-import Sabela.AI.HoleFits (HoleFit (..), parseHoleFits)
+import Sabela.AI.HoleFits (
+    HoleFit (..),
+    parseHoleFits,
+    stripPackageQualifiers,
+ )
 
 {- | The fits a caller should show the model: GHC's list with the goal-free
 inhabitants removed, then capped.
@@ -28,7 +32,7 @@ holeFitsJson cap = map render . take cap . informativeFits . parseHoleFits
     render f =
         object
             ( [ "write" .= sanitizeTypeText (hfWrite f)
-              , "type" .= sanitizeTypeText (hfType f)
+              , "type" .= sanitizeTypeText (stripPackageQualifiers (hfType f))
               , "refined" .= hfRefined f
               ]
                 <> ["module" .= m | Just m <- [hfModule f]]
@@ -46,15 +50,17 @@ informativeFits = filter ((== Informative) . classifyFit)
 
 {- | A fit is goal-free when it returns one of its own arguments unconstrained,
 when every constraint it carries is discharged at a function type, or when it
-inhabits everything.
+takes nothing and yields a bare variable, which inhabits every goal.
 -}
 classifyFit :: HoleFit -> Freeness
 classifyFit fit
     | hfWrite fit == "undefined" = FreeAxiom
     | projection = FreeProjection
     | arrowStructural = FreeArrow
+    | bottom = FreeAxiom
     | otherwise = Informative
   where
+    bottom = null args && isTypeVar result
     (constraints, body) = splitConstraints (dropForall (hfType fit))
     parts = splitArrow body
     (args, result) = (init' parts, last' parts)

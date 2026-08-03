@@ -104,7 +104,8 @@ errorClasses diagnostic =
             ClassModule
         | anyOf ["parse error", "lexical error"] chunk = ClassParse
         | anyOf ["not in scope", "ambiguous occurrence"] chunk = ClassScope
-        | anyOf ["couldn't match", "no instance for", "ambiguous type"] chunk = ClassType
+        | anyOf ["couldn't match", "no instance for", "ambiguous type"] chunk =
+            ClassType
         | otherwise = ClassOther
     anyOf needles chunk = any (`T.isInfixOf` T.toLower chunk) needles
 

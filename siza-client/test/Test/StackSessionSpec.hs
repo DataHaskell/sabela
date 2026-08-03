@@ -84,7 +84,10 @@ stackSessionSpec = describe "the shared dispatch stack session" $ do
         callThrough ss fake (write "x = 1")
         owned <- ownedCells ss
         Map.keys owned `shouldBe` [101]
-        callThrough ss fake (ToolCall "delete_cell" (object ["cell_id" .= (101 :: Int)]))
+        callThrough
+            ss
+            fake
+            (ToolCall "delete_cell" (object ["cell_id" .= (101 :: Int)]))
         ownedCells ss >>= \m -> Map.keys m `shouldBe` []
 
     it "lists the reds it owns, and only those" $ do
@@ -117,7 +120,7 @@ rejectionLedgerSpec = describe "the rejection ledger a refused write leaves" $ d
                     counterexample (show repeats) $
                         repeats === [repeatsOf steps, repeatsOf steps]
                             .&&. Map.elems (repeatsOf steps)
-                            === [length steps - 1]
+                                === [length steps - 1]
 
     it "counts distinct diagnostics as no repeat at all (C1-17c contrast)" $
         property $
@@ -136,7 +139,7 @@ rejectionLedgerSpec = describe "the rejection ledger a refused write leaves" $ d
                     counterexample (show repeats) $
                         repeats === [repeatsOf steps, repeatsOf steps]
                             .&&. Map.elems (repeatsOf steps)
-                            === [length steps - 1]
+                                === [length steps - 1]
 
 {- | The repeat count the metric defines, computed from the sequence itself:
 one fewer than the number of calls each normalised diagnostic answered.

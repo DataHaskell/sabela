@@ -9,6 +9,7 @@ import qualified Test.BrowseCardSpec as BrowseCardSpec
 import qualified Test.CapabilityApiSpec as CapabilityApiSpec
 import qualified Test.CapabilitySearchSpec as CapabilitySearchSpec
 import qualified Test.CapabilitySpec as CapabilitySpec
+import qualified Test.CheckTypeScopeSpec as CheckTypeScopeSpec
 import qualified Test.ClassifyErrorSpec as ClassifyErrorSpec
 import qualified Test.CompileEscalationSpec as CompileEscalationSpec
 import qualified Test.CompileGateRenderSpec as CompileGateRenderSpec
@@ -37,6 +38,7 @@ import qualified Test.ExportSpec as ExportSpec
 import qualified Test.ExtRepairSpec as ExtRepairSpec
 import qualified Test.GateArmingSpec as GateArmingSpec
 import qualified Test.GateBinderGuardSpec as GateBinderGuardSpec
+import qualified Test.GateCheckedSpec as GateCheckedSpec
 import qualified Test.GateDefaultingSpec as GateDefaultingSpec
 import qualified Test.GateErrorClassSpec as GateErrorClassSpec
 import qualified Test.GatePartialRepairSpec as GatePartialRepairSpec
@@ -48,6 +50,7 @@ import qualified Test.HealthSpec as HealthSpec
 import qualified Test.HoleFitsSpec as HoleFitsSpec
 import qualified Test.HoleProbeSpec as HoleProbeSpec
 import qualified Test.HoogleProseSpec as HoogleProseSpec
+import qualified Test.HoogleRankSpec as HoogleRankSpec
 import qualified Test.HoogleResolveSpec as HoogleResolveSpec
 import Test.Hspec (Spec)
 import qualified Test.ImportRepairSpec as ImportRepairSpec
@@ -70,6 +73,8 @@ import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.NotebookViolationSpec as NotebookViolationSpec
 import qualified Test.OwnedSpec as OwnedSpec
+import qualified Test.PreludeGhciSpec as PreludeGhciSpec
+import qualified Test.PreludeScopeSpec as PreludeScopeSpec
 import qualified Test.PromptUnifySpec as PromptUnifySpec
 import qualified Test.PureEvalLiveSpec as PureEvalLiveSpec
 import qualified Test.QualifiedNameSpec as QualifiedNameSpec
@@ -136,6 +141,7 @@ allSpecsA = do
     GateSourceTruthSpec.spec
     GatePartialRepairSpec.spec
     GateArmingSpec.spec
+    GateCheckedSpec.spec
     DisposableAttributionSpec.spec
     TrialWarningSpec.spec
     SubmissionSpec.spec
@@ -170,6 +176,7 @@ allSpecsA = do
     DiscoveryBenchSpec.spec
     ExportRankSpec.spec
     HoogleProseSpec.spec
+    HoogleRankSpec.spec
     HoogleResolveSpec.spec
     TypeDirectedResolveSpec.spec
     TypeDiscoverySpec.spec
@@ -187,8 +194,11 @@ allSpecsA = do
     ValueEchoSpec.spec
     ValueSynopsisSpec.spec
     ScratchVetSpec.spec
+    PreludeScopeSpec.spec
+    PreludeGhciSpec.spec
     QualifiedNameSpec.spec
     ScratchScopeSpec.spec
+    CheckTypeScopeSpec.spec
     ScratchpadKeySpec.spec
     SearchCacheFreshSpec.spec
     ArgRepairSpec.spec

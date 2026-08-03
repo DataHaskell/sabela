@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | A parsed search request. Retrieval works from this structure, never from
--- rewritten prose: a query is decomposed into terms once, and every probe is
--- derived from those terms.
+{- | A parsed search request. Retrieval works from this structure, never from
+rewritten prose: a query is decomposed into terms once, and every probe is
+derived from those terms.
+-}
 module Sabela.AI.Search.Need (
     Need (..),
     parseNeed,
@@ -40,8 +41,9 @@ parseNeed scope raw =
     stripped = dropDeclKeyword (T.strip raw)
     cleaned = denoise stripped
 
--- | A leading @data@\/@type@\/@newtype@\/@class@ is the Haskell syntax the user
--- typed around the name they want, not a term to search for.
+{- | A leading @data@\/@type@\/@newtype@\/@class@ is the Haskell syntax the user
+typed around the name they want, not a term to search for.
+-}
 dropDeclKeyword :: Text -> Text
 dropDeclKeyword q = case T.words q of
     (kw : rest@(_ : _)) | T.toLower kw `elem` declKeywords -> T.unwords rest
@@ -49,9 +51,10 @@ dropDeclKeyword q = case T.words q of
   where
     declKeywords = ["data", "type", "newtype", "class"]
 
--- | Query terms with their case intact. Case is load-bearing for Hoogle — a
--- capitalised word searches types, a lower-case one searches names — so terms
--- are only folded when they are compared against a row, never when probed.
+{- | Query terms with their case intact. Case is load-bearing for Hoogle — a
+capitalised word searches types, a lower-case one searches names — so terms
+are only folded when they are compared against a row, never when probed.
+-}
 salientWords :: Text -> [Text]
 salientWords q =
     let kept = filter (not . isNoise) (T.words q)

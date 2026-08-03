@@ -21,9 +21,12 @@ import Sabela.AI.Capabilities.CapabilitySearch (
     enrichedOutcome,
     packageBuckets,
  )
+import Sabela.AI.HoogleClient (declKeywords)
 import Sabela.AI.HoogleResolve (HoogleHit (..), parseHoogleBlob)
 import Sabela.AI.Types (ToolOutcome (..), toolOutcomeValue)
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck
 
 qrBlob :: Text
 qrBlob =
@@ -138,6 +141,8 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
         it "is empty when there are no exports" $
             usageExample [] `shouldBe` ""
 
+    declarationExampleSpec
+
     describe "packageBuckets" $
         it "collapses symbol hits to per-package (pkg, synopsis) in first-seen order" $ do
             let hits =
@@ -220,3 +225,61 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
   where
     isOk ToolOk{} = True
     isOk _ = False
+
+{- | Wave-5 item 1: a declaration states a type's own shape, so nothing offers
+it as a signature to call through. The example field is what a caller writes,
+and a declaration dressed as one states a signature no source gave.
+-}
+declarationExampleSpec :: Spec
+declarationExampleSpec = describe "a declaration is never offered as callable" $ do
+    prop "an item stating a declaration is not a value item" $
+        forAll ((,) <$> genTyName <*> genTyName) $ \(n, r) ->
+            isValueItem (HoogleHit n "pkg" "M.Idx" (synonym n r) "")
+                === False
+    prop "an example passes over a declaration for a callable export" $
+        forAll ((,,) <$> genTyName <*> genTyName <*> genValName) $
+            \(n, r, v) ->
+                let decl = ApiFn n "M.Idx" (synonym n r)
+                    val = ApiFn v "M.Idx" (r <> " -> " <> r)
+                 in conjoin
+                        [ usageExample [decl] === ""
+                        , usageExample [decl, val] === usageExample [val]
+                        ]
+    prop "no line of an example states a declaration" $
+        forAll (listOf1 genApiFn) $ \fns ->
+            let ls = T.lines (usageExample fns)
+                bad =
+                    [ l
+                    | l <- ls
+                    , kw <- declKeywords
+                    , (kw <> " ") `T.isInfixOf` l
+                    ]
+             in counterexample (show ls) (bad === [])
+
+{- | A synonym declaration as the index states it: an expansion, arrows and
+all, which a caller can neither call nor split into arguments.
+-}
+synonym :: Text -> Text -> Text
+synonym n r = "type " <> n <> " = " <> r <> " -> " <> r
+
+genTyName :: Gen Text
+genTyName = do
+    c <- elements ['A' .. 'Z']
+    n <- choose (2, 6)
+    cs <- vectorOf n (elements ['a' .. 'z'])
+    pure (T.pack (c : cs))
+
+genValName :: Gen Text
+genValName = genLower `suchThat` (`notElem` declKeywords)
+  where
+    genLower = do
+        n <- choose (3, 7)
+        T.pack <$> vectorOf n (elements ['a' .. 'z'])
+
+-- | An export the index can surface: a callable one, a declaration, or a bare name.
+genApiFn :: Gen ApiFn
+genApiFn = do
+    n <- oneof [genTyName, genValName]
+    r <- genTyName
+    ty <- elements [r <> " -> " <> r, synonym n r, ""]
+    pure (ApiFn n "M.Idx" ty)

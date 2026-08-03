@@ -14,6 +14,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Word (Word8)
 
+import Sabela.Output (ioRefAlias)
+
 {- | The identifier a bridge value is bound to. The one place the prefix is
 written, so a consumer lookup cannot drift from what the preamble actually binds.
 -}
@@ -29,13 +31,19 @@ bridgePreamble store
             | (name, val) <- M.toList store
             ]
 
+{- | Prepended to every cell the harness runs or replays, so it reaches the
+prelude's own alias rather than an unqualified name a user's import could
+have taken over — a clash here is reported against the user's cell.
+-}
 widgetPreamble :: Int -> M.Map Text Text -> Text
 widgetPreamble cid vals =
     let pairs = show [(T.unpack k, T.unpack v) | (k, v) <- M.toList vals]
      in T.unlines
-            [ "writeIORef _sabelaWidgetRef " <> T.pack pairs
-            , "writeIORef _sabelaCellIdRef " <> T.pack (show (show cid))
+            [ writeRef <> " _sabelaWidgetRef " <> T.pack pairs
+            , writeRef <> " _sabelaCellIdRef " <> T.pack (show (show cid))
             ]
+  where
+    writeRef = ioRefAlias <> ".writeIORef"
 
 pythonBridgePreamble :: M.Map Text Text -> Text
 pythonBridgePreamble store

@@ -23,8 +23,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.QuickCheck
 
--- | Reserved words a generated binder must never be, so a generated scope
--- name is always a name a check could legitimately mention.
+{- | Reserved words a generated binder must never be, so a generated scope
+name is always a name a check could legitimately mention.
+-}
 keywords :: [Text]
 keywords =
     [ "case"
@@ -52,8 +53,9 @@ keywords =
 genIdent :: Gen Text
 genIdent = genPrefixed ""
 
--- | A lowercase Haskell identifier under a caller-chosen prefix. Prefixes are
--- how a property gets two name sets that are disjoint by construction.
+{- | A lowercase Haskell identifier under a caller-chosen prefix. Prefixes are
+how a property gets two name sets that are disjoint by construction.
+-}
 genPrefixed :: Text -> Gen Text
 genPrefixed prefix =
     (`suchThat` (`notElem` keywords)) $ do
@@ -149,7 +151,14 @@ genSubstantiveSource = do
         [ n <> " = " <> v
         , n <> " = " <> m <> " " <> v
         , n <> " :: Int\n" <> n <> " = " <> v
-        , "-- cabal: build-depends: " <> p <> "\nimport " <> mod' <> "\n" <> n <> " = " <> v
+        , "-- cabal: build-depends: "
+            <> p
+            <> "\nimport "
+            <> mod'
+            <> "\n"
+            <> n
+            <> " = "
+            <> v
         ]
 
 genSource :: Gen Text

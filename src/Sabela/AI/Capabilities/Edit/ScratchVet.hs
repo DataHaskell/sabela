@@ -17,8 +17,10 @@ module Sabela.AI.Capabilities.Edit.ScratchVet (
     scratchVet,
     splitArrows,
     vetAlias,
+    vetImportLine,
     vetInScope,
     vetProbe,
+    vetTimeoutMicros,
 ) where
 
 import Control.Exception (SomeException, try)

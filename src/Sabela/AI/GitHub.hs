@@ -50,7 +50,10 @@ repoSlug raw = case T.splitOn "/" (T.strip raw) of
     _ -> Left "repo must be \"owner/name\", e.g. \"haskell/containers\""
   where
     segmentOk s =
-        not (T.null s) && T.all (\c -> isAlphaNum c || c `elem` ("-._" :: String)) s && s /= ".." && s /= "."
+        not (T.null s)
+            && T.all (\c -> isAlphaNum c || c `elem` ("-._" :: String)) s
+            && s /= ".."
+            && s /= "."
 
 treeUrl :: Text -> Maybe Text -> Text
 treeUrl slug mRef =
@@ -94,7 +97,8 @@ fetchTree mgr slug mRef = do
     body <- fetchText mgr (treeUrl slug mRef)
     pure $ do
         raw <- body
-        v <- maybe (Left "GitHub returned invalid JSON") Right (decode (LBS.fromStrict raw))
+        v <-
+            maybe (Left "GitHub returned invalid JSON") Right (decode (LBS.fromStrict raw))
         parseTree v
 
 fetchBlob :: Manager -> Text -> Maybe Text -> Text -> IO (Either Text Text)

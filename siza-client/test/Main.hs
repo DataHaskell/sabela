@@ -39,6 +39,7 @@ import Test.DiscoverInventorySpec (discoverInventorySpec)
 import Test.DiscoverLedgerSpec (discoverLedgerSpec)
 import Test.DiscoverMissSpec (discoverMissSpec)
 import Test.DiscoverModeGridSpec (discoverModeGridSpec)
+import Test.DiscoverNextSpec (discoverNextSpec)
 import Test.DiscoverProducerHintSpec (discoverProducerHintSpec)
 import Test.DiscoverQueryShapeSpec (discoverQueryShapeSpec)
 import Test.DiscoverRankPlainSpec (discoverRankPlainSpec)
@@ -100,6 +101,7 @@ import Test.ReenterContrastSpec (reenterAlarmSpec, reenterContrastSpec)
 import Test.RefutedReplaySpec (refutedReplaySpec)
 import Test.RenderContractSpec (renderContractSpec)
 import Test.RenderOutcomeSpec (renderOutcomeSpec)
+import Test.RepairBudgetFlagSpec (repairBudgetFlagSpec)
 import Test.RepairCascadeSpec (repairCascadeSpec)
 import Test.RepairDispatchSpec (repairDispatchSpec)
 import Test.RepairGridSpec (repairGridSpec)
@@ -120,6 +122,7 @@ import Test.ToolRouteSpec (toolRouteSpec)
 import Test.TransportFailureSpec (transportFailureSpec)
 import Test.TransportSpec (toolTimeoutSpec, transportSpec)
 import Test.TrySurfaceSpec (trySurfaceSpec)
+import Test.UnconfirmedWriteSpec (unconfirmedWriteSpec)
 import Test.VerdictEvidenceSpec (verdictEvidenceSpec)
 import Test.VerdictProtectSpec (verdictProtectSpec)
 import Test.VerdictStopSpec (verdictStopSpec)
@@ -180,6 +183,7 @@ main = hspec $ do
     discoverMissSpec
     discoverRequestSpec
     discoverEnvelopeSpec
+    discoverNextSpec
     artifactSpec
     compactSpec
     compactProtectSpec
@@ -196,6 +200,8 @@ main = hspec $ do
     discoverHitFieldSpec
     discoverWorldTruthSpec
     refutedReplaySpec
+    repairBudgetFlagSpec
+    unconfirmedWriteSpec
     discoverEmissionSpec
     cardGateSpec
     verifierSurfaceSpec

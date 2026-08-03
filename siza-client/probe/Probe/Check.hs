@@ -27,6 +27,7 @@ import Siza.Agent.Discover.Envelope (
     envelopeViolations,
  )
 import Siza.Agent.Discover.Evict (evictionViolations)
+import Siza.Agent.Discover.Types (exportRowName)
 
 type Browsed = M.Map Text (Either Text [Text])
 
@@ -106,15 +107,15 @@ cardClaims v = case card v of
         Just (String p) -> p
         _ -> ""
 
-{- | The bare names a card's export rows carry, which is the unit an oracle
-listing can be compared against.
+{- | The entities a card's export rows name, the unit an oracle listing can be
+compared against. A row states a signature or a whole declaration, so the
+subject is read through the published row-shape law, not off the row's head.
 -}
 envelopeExports :: Value -> [Text]
 envelopeExports v = case card v >>= KM.lookup "exports" of
-    Just (Array es) -> [bare s | String s <- toList es, not (T.null (bare s))]
+    Just (Array es) ->
+        [n | String s <- toList es, let n = exportRowName s, not (T.null n)]
     _ -> []
-  where
-    bare = T.takeWhile (\c -> c /= ' ' && c /= ':') . T.strip
 
 card :: Value -> Maybe (KM.KeyMap Value)
 card (Object o) = case KM.lookup "card" o of

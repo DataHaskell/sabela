@@ -26,6 +26,7 @@ import Siza.Agent.Discover.Types (
     InstallState (..),
     Scope (..),
     SourceAnswer (..),
+    typeClause,
  )
 
 {- | Two records name the same entity when they share a name and specific
@@ -117,9 +118,7 @@ scopeRemovedNote scope removed
     shown = take maxNamed described
     describe h =
         T.unwords (filter (not . T.null) [dhName h, sigOf h, inModule h])
-    sigOf h
-        | T.null (dhType h) = ""
-        | otherwise = ":: " <> clip 60 (dhType h)
+    sigOf = typeClause . clip 60 . dhType
     inModule h
         | T.null (dhModule h) = ""
         | otherwise = "(" <> dhModule h <> ")"

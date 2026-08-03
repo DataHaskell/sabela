@@ -22,6 +22,7 @@ import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
 import System.Process (readProcessWithExitCode)
 
+import Sabela.AI.HoogleClient (breakTopLevel, statesDeclaration)
 import Sabela.AI.HoogleResolve (
     HoogleHit (..),
     denoise,
@@ -41,8 +42,16 @@ apiKeywords q
     | T.null (T.strip q) = []
     | otherwise = nub (map T.toLower (keywords (denoise q)))
 
+{- | Whether an item is something a caller can name in an expression. A
+declaration states a type's own shape, so it has no signature to call through
+however much text it carries.
+-}
 isValueItem :: HoogleHit -> Bool
-isValueItem h = not (T.null (T.strip (hhType h)))
+isValueItem h = statesSignature (hhType h)
+
+-- | Whether stated type text is a signature, rather than empty or a shape.
+statesSignature :: Text -> Bool
+statesSignature t = not (T.null (T.strip t)) && not (statesDeclaration t)
 
 rankApiFns :: Int -> [Text] -> [HoogleHit] -> [ApiFn]
 rankApiFns k kws hits =
@@ -99,21 +108,26 @@ enrichPackageApi perPkg kws pkg
     fallbackTerms = ["encode", "new", "run", "make", "to", "from"]
     onlyPkg = filter (\h -> hhPackage h == pkg)
 
+{- | A call skeleton for the first export a caller can name in an expression.
+A declaration carries no signature to call through, so it is passed over
+rather than dressed as one.
+-}
 usageExample :: [ApiFn] -> Text
-usageExample [] = ""
-usageExample (f : _)
-    | T.null (T.strip (afName f)) = ""
-    | otherwise =
-        T.intercalate "\n" (importLine : sigLine : [callLine])
+usageExample fns = case filter callable fns of
+    (f : _) -> T.intercalate "\n" [importLine f, sigLine f, callLine f]
+    [] -> ""
   where
-    importLine
+    callable f =
+        not (T.null (T.strip (afName f)))
+            && not (statesDeclaration (afType f))
+    importLine f
         | T.null (T.strip (afModule f)) = "-- import the module above"
         | otherwise = "import " <> afModule f <> " (" <> afName f <> ")"
-    sigLine
+    sigLine f
         | T.null (T.strip (afType f)) = "-- " <> afName f
         | otherwise = "-- " <> afName f <> " :: " <> afType f
-    callLine = "let result = " <> T.unwords (afName f : args)
-    args = map hole (argTypes (afType f))
+    callLine f = "let result = " <> T.unwords (afName f : args f)
+    args f = map hole (argTypes (afType f))
     hole t = "(_ :: " <> t <> ")"
 
 argTypes :: Text -> [Text]
@@ -149,21 +163,6 @@ splitArrow = go 0 "" []
             let c = T.head t
                 d' = d + delta c
              in go d' (T.snoc acc c) segs (T.tail t)
-    delta c
-        | c `elem` ("([{" :: String) = 1
-        | c `elem` (")]}" :: String) = -1
-        | otherwise = 0
-
-breakTopLevel :: Text -> Text -> Maybe (Text, Text)
-breakTopLevel sep = go (0 :: Int) ""
-  where
-    go _ _ t | T.null t = Nothing
-    go d acc t
-        | d == 0 && sep `T.isPrefixOf` t =
-            Just (acc, T.drop (T.length sep) t)
-        | otherwise =
-            let c = T.head t
-             in go (d + delta c) (T.snoc acc c) (T.tail t)
     delta c
         | c `elem` ("([{" :: String) = 1
         | c `elem` (")]}" :: String) = -1

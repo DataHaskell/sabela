@@ -30,6 +30,9 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Siza.Agent.Discover.Beside (restatesHit)
+import Siza.Agent.Discover.Types (typeClause)
+
 entityOf :: Text -> Text
 entityOf = T.toLower . T.takeWhile (/= ' ') . T.strip
 
@@ -131,12 +134,12 @@ heldHitLine h =
         "" -> ""
         t
             | T.length t > sigClamp ->
-                " :: "
-                    <> T.take sigClamp t
+                " "
+                    <> typeClause (T.take sigClamp t)
                     <> "… (truncated — run check_type "
                     <> topText "name" h
                     <> " for the full signature)"
-            | otherwise -> " :: " <> t
+            | otherwise -> " " <> typeClause t
     pkgVer = T.strip (topText "package" h <> " " <> topText "version" h)
     cabal = topText "cabal" h
 
@@ -149,9 +152,17 @@ closedSummary (Just h) _ ownSummary =
 closedSummary Nothing factsText ownSummary =
     ownSummary <> ". Already held" <> factsText <> "."
 
-giveUpLine :: Maybe Value -> [Text] -> Text
-giveUpLine (Just h) _ = "already held: " <> heldHitLine h <> "."
-giveUpLine Nothing consulted =
+{- | What the closure states beside the hits the same answer carries. A best
+held hit those hits already are is stated by them, in fields, and saying it
+again in prose spends the caller's budget twice.
+-}
+giveUpLine :: [Value] -> Maybe Value -> [Text] -> Text
+giveUpLine carried (Just h) _
+    | restatesHit carried line = ""
+    | otherwise = "already held: " <> line <> "."
+  where
+    line = heldHitLine h
+giveUpLine _ Nothing consulted =
     "no match in any recorded answer (consulted: "
         <> T.intercalate ", " (if null consulted then ["none"] else consulted)
         <> ")."

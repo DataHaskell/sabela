@@ -1,0 +1,92 @@
+/* Kernel state, distinct from the transport dot beside it. */
+.kernel-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.kernel-chip.idle {
+  color: var(--green);
+  border-color: var(--green);
+}
+.kernel-chip.executing {
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+.kernel-chip.building {
+  color: var(--mauve);
+  border-color: var(--mauve);
+}
+
+/* Not current: the kernel holds nothing for this cell, or an input changed.
+   Distinct from .dirty, which is the local "edited, not yet run". */
+.cell.code.stale .cell-number {
+  color: var(--yellow);
+  font-weight: 600;
+}
+.cell.code.stale .cell-number::after {
+  content: '*';
+}
+
+.notebook-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  background: var(--yellow);
+  color: var(--bg);
+  padding: 8px 16px;
+  font-weight: 600;
+}
+.notebook-banner button {
+  background: var(--bg);
+  color: var(--fg);
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.kernel-log {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 460px;
+  max-height: 45vh;
+  flex-direction: column;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  z-index: 60;
+}
+.kernel-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.kernel-log-body {
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.kernel-log-row {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 1px 0;
+  color: var(--fg-dim);
+}
+.kernel-log-row.error {
+  color: var(--red);
+}

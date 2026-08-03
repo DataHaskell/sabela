@@ -22,7 +22,7 @@ import Siza.Agent.Discover.Envelope (boundEnvelope)
 import Siza.Agent.Discover.Fetch (fetchOk)
 import Siza.Agent.Discover.Goal (argTypesOf, nominalArgType, producesGoal)
 import Siza.Agent.Discover.Request (DiscoverRequest (..))
-import Siza.Agent.Discover.Types (StandingGoal (..))
+import Siza.Agent.Discover.Types (StandingGoal (..), exportRow)
 
 establishedFallback ::
     Maybe StandingGoal ->
@@ -50,7 +50,7 @@ producerCard sg exports limit
     ranked = filter produces exports ++ filter (not . produces) exports
     shown = take (max 1 limit) ranked
     total = length exports
-    exportLines = [n <> " :: " <> ty | (n, ty) <- shown]
+    exportLines = [exportRow n ty | (n, ty) <- shown]
     producerCount = length (filter produces exports)
     envelope =
         object

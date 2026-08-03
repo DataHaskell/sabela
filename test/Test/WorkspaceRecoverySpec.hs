@@ -32,7 +32,8 @@ spec :: Spec
 spec = do
     describe "the non-graceful-death marker" $ do
         it "a fresh project is not dirty" $
-            withProject $ \dir -> buildIsDirty dir `shouldReturn` False
+            withProject $
+                \dir -> buildIsDirty dir `shouldReturn` False
         it "spawning marks it, so a kill leaves evidence behind" $
             withProject $ \dir -> do
                 markBuildDirty dir
@@ -63,15 +64,15 @@ spec = do
                 wipeBuildArtifacts dir
                 doesDirectoryExist dir `shouldReturn` True
 
-    describe "recovery decision" $
-        it
+    describe "recovery decision"
+        $ it
             "a project left dirty by a killed build wipes; a cleanly closed one\
             \ keeps its artefacts, so the common case stays fast"
-            $ withProject
-            $ \dir -> do
-                markBuildDirty dir
-                dirty <- buildIsDirty dir
-                dirty `shouldBe` True
-                wipeBuildArtifacts dir
-                clearBuildDirty dir
-                buildIsDirty dir `shouldReturn` False
+        $ withProject
+        $ \dir -> do
+            markBuildDirty dir
+            dirty <- buildIsDirty dir
+            dirty `shouldBe` True
+            wipeBuildArtifacts dir
+            clearBuildDirty dir
+            buildIsDirty dir `shouldReturn` False

@@ -21,10 +21,10 @@ inputRenameSpec = describe "effectful widget type Input (renamed from Behavior)"
         prelude `shouldSatisfy` T.isInfixOf "data Input a = Input"
         prelude `shouldSatisfy` T.isInfixOf "iValue"
         prelude `shouldSatisfy` T.isInfixOf "iShow"
-        prelude `shouldSatisfy` T.isInfixOf "currentValue ::"
-        prelude `shouldSatisfy` T.isInfixOf "showInput ::"
-        prelude `shouldSatisfy` T.isInfixOf "constInput ::"
-        prelude `shouldSatisfy` T.isInfixOf "mkWidget :: Input a -> IO a"
+        prelude `shouldSatisfy` T.isInfixOf "currentValue :: Input a -> SabelaBase.IO a"
+        prelude `shouldSatisfy` T.isInfixOf "showInput :: Input a -> SabelaBase.IO ()"
+        prelude `shouldSatisfy` T.isInfixOf "constInput :: a -> Input a"
+        prelude `shouldSatisfy` T.isInfixOf "mkWidget :: Input a -> SabelaBase.IO a"
     it "keeps a one-release deprecated Behavior alias (prelude only)" $
         prelude `shouldSatisfy` T.isInfixOf "type Behavior = Input"
     it "retires the effectful Behavior record and its fields everywhere" $ do
@@ -35,7 +35,7 @@ inputRenameSpec = describe "effectful widget type Input (renamed from Behavior)"
         widgetDefs `shouldNotSatisfy` T.isInfixOf "Behavior"
         scatterDefs `shouldNotSatisfy` T.isInfixOf "Behavior"
         widgetDefs `shouldSatisfy` T.isInfixOf "Input a"
-        scatterDefs `shouldSatisfy` T.isInfixOf "Input [Int]"
+        scatterDefs `shouldSatisfy` T.isInfixOf "Input [SabelaBase.Int]"
 
 scatterEmbedSpec :: Spec
 scatterEmbedSpec = describe "scatter widget JS embedding" $ do

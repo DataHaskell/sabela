@@ -12,7 +12,7 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.Wai.Handler.Warp (run)
 import Sabela.AI.Provenance (stateBase)
-import Sabela.AI.SearchCache (searchCacheReport)
+import Sabela.AI.SearchCache (adoptLocalDb, searchCacheReport)
 import Sabela.Handlers (
     buildTimeSupportDir,
     initGlobalEnv,
@@ -90,6 +90,16 @@ locateSupportSource = go [buildTimeSupportDir, "sabela-notebook"]
         present <- doesFileExist (dir </> "sabela-notebook.cabal")
         if present then Just <$> makeAbsolute dir else go rest
 
+{- | Where a local search index may live: the repository this binary was built
+from, then the working directory, so a checkout that has one is used and an
+install that has none simply reports none.
+-}
+searchCacheRoots :: IO [FilePath]
+searchCacheRoots = do
+    cwd <- getCurrentDirectory
+    buildRoot <- makeAbsolute (takeDirectory buildTimeSupportDir)
+    pure [buildRoot, cwd]
+
 start :: Int -> FilePath -> FilePath -> [String] -> IO ()
 start port workDir globalFile pkgs = do
     cwd <- getCurrentDirectory
@@ -109,7 +119,10 @@ start port workDir globalFile pkgs = do
     app <- newApp workDir allGlobalDeps (Just httpMgr) mAiToken localPkgs
     rn <- setupReactive app
     registryFile <- writeDiscoveryRegistry port workDir mAiToken
-    searchCacheReport >>= mapM_ (putStrLn . T.unpack)
+    roots <- searchCacheRoots
+    adopted <- adoptLocalDb roots
+    mapM_ (\p -> putStrLn ("  search cache: adopted local index " ++ p)) adopted
+    searchCacheReport roots >>= mapM_ (putStrLn . T.unpack)
     putStrLn $ "sabela running on http://localhost:" ++ show port ++ "/index.html"
     case mAiToken of
         Just _ -> putStrLn "  /api/ai/* requires Authorization: Bearer <SABELA_AI_TOKEN>"

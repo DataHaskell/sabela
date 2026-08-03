@@ -16,8 +16,8 @@ import qualified Data.Text as T
 import Test.Hspec
 import Test.QuickCheck
 
-import Sabela.AI.Capabilities.Edit.GateRepair (frontierRejectionJson)
 import Sabela.AI.Capabilities.Edit.GateFrontier (Frontier (..))
+import Sabela.AI.Capabilities.Edit.GateRepair (frontierRejectionJson)
 import Sabela.Session.MaterializeStage (
     DisposableResult (..),
     DisposableVerdict (..),

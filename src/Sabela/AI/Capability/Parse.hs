@@ -12,6 +12,8 @@ module Sabela.AI.Capability.Parse (
     coalesce,
     declMembers,
     parseCapabilities,
+    statedType,
+    synonymDecl,
     unqualify,
 ) where
 
@@ -50,9 +52,9 @@ declMembers ent = classMethodSigs ent ++ recordSelectorSigs ent
 
 typeDeclaration :: Text -> Text -> [Capability]
 typeDeclaration modName ent =
-    [ Capability modName (unqualify nm) (cleanType head_) Nothing
+    [ Capability modName (unqualify nm) (declType head_ expansion) Nothing
     | Just kw <- [keywordOf ent]
-    , let head_ = declHead kw
+    , let (head_, expansion) = declParts kw ent
           nm = T.takeWhile (\c -> c /= ' ' && c /= ':') head_
     , not (" :: " `T.isInfixOf` head_)
     , not (T.null nm)
@@ -61,20 +63,66 @@ typeDeclaration modName ent =
   where
     keywordOf l =
         listToMaybe
-            [ k
-            | k <- ["type ", "data ", "newtype ", "class "]
-            , k `T.isPrefixOf` l
-            ]
-    declHead kw =
+            [k | k <- synonymKeyword : otherKeywords, k `T.isPrefixOf` l]
+
+otherKeywords :: [Text]
+otherKeywords = ["data ", "newtype ", "class "]
+
+synonymKeyword :: Text
+synonymKeyword = "type "
+
+{- | What a declaration entity says about itself: its head, and — for a synonym
+alone — what it expands to. A constructor list stays truncated at its @=@; a
+synonym's right-hand side is the only thing the declaration has to say.
+-}
+declParts :: Text -> Text -> (Text, Maybe Text)
+declParts kw ent
+    | kw == synonymKeyword = (headOf lhs, expansionOf rhs)
+    | otherwise = (headOf body, Nothing)
+  where
+    body = T.strip (T.drop (T.length kw) (T.strip ent))
+    (lhs, rhs) = T.breakOn "=" body
+    expansionOf r = case T.strip (T.drop 1 r) of
+        e | T.null r || T.null e -> Nothing
+        e -> Just e
+    headOf =
         T.strip
             . T.takeWhile (\c -> c /= '=' && c /= '{')
             . fst
             . T.breakOn " where "
             . snd
             . T.breakOnEnd " => "
-            . T.strip
-            . T.drop (T.length kw)
-            $ T.strip ent
+
+{- | A synonym states the whole declaration where every other entity states a
+head, because the expansion is what a caller needs to build one.
+-}
+declType :: Text -> Maybe Text -> Text
+declType head_ Nothing = cleanType head_
+declType head_ (Just rhs) =
+    synonymKeyword <> cleanType head_ <> " = " <> cleanType rhs
+
+{- | Whether stated type text is a whole declaration rather than a signature.
+One reader of the shape, so no renderer decides it by hand and none announces a
+declaration as a type.
+-}
+statesDeclaration :: Text -> Bool
+statesDeclaration = T.isPrefixOf synonymKeyword
+
+{- | The declaration a capability states when the parse read an expansion for
+it, so no reader has to recognise the shape by hand.
+-}
+synonymDecl :: Capability -> Maybe Text
+synonymDecl c
+    | statesDeclaration (capType c) = Just (capType c)
+    | otherwise = Nothing
+
+{- | The type text a capability offers a ranker: a synonym's expansion, since
+the keyword and the head the parse wrote name the entity rather than type it.
+-}
+statedType :: Capability -> Text
+statedType c = maybe (capType c) expansionOf (synonymDecl c)
+  where
+    expansionOf = T.strip . T.drop 1 . T.dropWhile (/= '=')
 
 classMethods :: Text -> Text -> [Capability]
 classMethods modName line =
@@ -167,12 +215,15 @@ groupFields = reverse . foldl' step []
             (cur : rest) -> (cur <> ", " <> p) : rest
             [] -> [p]
 
-{- | GHCi indents the continuation of a wrapped declaration, so an indented
-line belongs to the declaration above it.
+{- | The entities a listing declares: GHCi indents the continuation of a
+wrapped declaration, and a pragma is a directive about one, not part of it.
 -}
 coalesce :: [Text] -> [Text]
-coalesce [] = []
-coalesce (l : ls) = go l ls
+coalesce = filter (not . T.null) . map dropPragmas . joinContinuations
+
+joinContinuations :: [Text] -> [Text]
+joinContinuations [] = []
+joinContinuations (l : ls) = go l ls
   where
     go cur [] = [cur]
     go cur (x : xs)
@@ -181,6 +232,22 @@ coalesce (l : ls) = go l ls
     isCont x = case T.uncons x of
         Just (h, _) -> h == ' ' || h == '\t'
         Nothing -> False
+
+{- | An entity with its pragmas removed. @{\-# MINIMAL … #-\}@ closes a class
+body, and glued to the last method it states a type no signature gave. An
+unterminated pragma runs to the end of the entity, which is where GHCi ends it.
+-}
+dropPragmas :: Text -> Text
+dropPragmas t
+    | T.null after = t
+    | otherwise = rejoin (T.stripEnd before) (dropPragmas (afterClose after))
+  where
+    (before, after) = T.breakOn "{-#" t
+    afterClose = T.drop 3 . snd . T.breakOn "#-}"
+    rejoin a b
+        | T.null (T.strip b) = a
+        | T.null a = T.stripStart b
+        | otherwise = a <> " " <> T.stripStart b
 
 valueBinding :: Text -> Maybe (Text, Text)
 valueBinding ent

@@ -2,7 +2,11 @@
 function connectSSE() {
   if (evtSource) evtSource.close();
   evtSource = new EventSource('/api/events');
-  evtSource.onopen = () => document.getElementById('sse-dot').classList.add('connected');
+  evtSource.onopen = () => {
+    document.getElementById('sse-dot').classList.add('connected');
+    // A silent reconnect after a laptop sleep leaves the client's view stale.
+    refreshKernelState();
+  };
   evtSource.onerror = () => document.getElementById('sse-dot').classList.remove('connected');
   evtSource.onmessage = (e) => {
     try {
@@ -24,6 +28,34 @@ function openBuildModal(title) {
 function closeBuildModal() {
   document.getElementById('build-modal').style.display = 'none';
 }
+function setBuildModalTitle(text, cls) {
+  const t = document.getElementById('build-modal-title');
+  t.textContent = text;
+  t.className = 'build-modal-title ' + cls;
+}
+// A build that ran out of time is worth retrying at a longer budget; the others are not.
+function kernelErrorTitle(phase) {
+  switch (phase) {
+    case 'buildTimeout':
+      return 'Build timed out';
+    case 'buildFailed':
+      return 'Build failed';
+    case 'preludeFailed':
+      return 'Kernel started but the prelude failed';
+    case 'crashed':
+      return 'Kernel crashed';
+    default:
+      return 'Kernel error';
+  }
+}
+// Mark the cells whose dependencies the failure names, so the user knows where to edit.
+function markBlamedCells(cellIds) {
+  document.querySelectorAll('.cell.blamed').forEach((el) => el.classList.remove('blamed'));
+  cellIds.forEach((cid) => {
+    const el = document.querySelector(`.cell[data-id="${cid}"]`);
+    if (el) el.classList.add('blamed');
+  });
+}
 function appendBuildLog(line) {
   const log = document.getElementById('build-log');
   const modal = document.getElementById('build-modal');
@@ -38,6 +70,7 @@ function appendBuildLog(line) {
 function handleSSE(ev) {
   switch (ev.type) {
     case 'cellUpdating':
+      refreshKernelState();
       setCellRunning(ev.cellId, true);
       clearPartialOutput(ev.cellId);
       break;
@@ -78,6 +111,7 @@ function handleSSE(ev) {
         });
       break;
     case 'executionDone':
+      refreshKernelState();
       setStatus('Done', '');
       document
         .querySelectorAll('.cell.code.running')
@@ -85,27 +119,32 @@ function handleSSE(ev) {
       updateStopButton();
       break;
     case 'sessionStatus': {
-      const building = ev.message === 'starting session' || ev.message.startsWith('installing:');
+      recordKernelEvent('status', ev.message);
+      refreshKernelState();
+      const building = ev.state === 'starting' || ev.state === 'installing';
       setStatus(ev.message, building ? 'compiling' : 'running');
       if (building) {
         openBuildModal('Building…');
-      } else if (ev.message === 'ready') {
+      } else if (ev.state === 'ready') {
         hideCrashBanner();
-        const t = document.getElementById('build-modal-title');
-        t.textContent = 'Build succeeded';
-        t.className = 'build-modal-title ok';
-        setTimeout(closeBuildModal, 2000);
+        setBuildModalTitle('Build succeeded', 'ok');
         setStatus('Done', '');
-      } else if (ev.message === 'crashed') {
+      } else if (ev.state === 'crashed') {
         setStatus('Kernel crashed', 'error');
         showCrashBanner();
-      } else if (ev.message === 'reset') {
-        const t = document.getElementById('build-modal-title');
-        t.textContent = 'Build failed';
-        t.className = 'build-modal-title err';
       }
       break;
     }
+    case 'kernelError':
+      recordKernelEvent('error', kernelErrorTitle(ev.phase) + ': ' + ev.message);
+      setBuildModalTitle(kernelErrorTitle(ev.phase), 'err');
+      appendBuildLog(ev.message);
+      markBlamedCells(ev.cellIds || []);
+      setStatus(kernelErrorTitle(ev.phase), 'error');
+      break;
+    case 'notebookState':
+      applyNotebookState(ev.epoch, ev.staleIds);
+      break;
     case 'installLog':
       appendBuildLog(ev.line);
       break;

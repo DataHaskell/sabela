@@ -17,6 +17,8 @@ import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck
 
 import Sabela.AI.Capabilities.BrowseCard (browseCardFor)
+import Sabela.AI.Capabilities.Query.IndexAnswer (IndexHit (..), indexLookupWith)
+import Sabela.AI.HoogleClient (HoogleHit (..))
 
 -- generators ---------------------------------------------------------------
 
@@ -267,6 +269,18 @@ spec = describe "browse listings parse to lexical entities (C2-5a)" $ do
              in counterexample (show (filter (shared . snd) heads)) $
                     length (nub (map snd heads)) === length heads
 
+    -- Fix Y knock-on: this card reads the listing line, not the capability parse.
+    prop "a synonym export states its expansion, not its bare name" $
+        forAll genListing $ \l ->
+            let decl = "type Alias a = Maybe (Slot a)"
+                es = exportsOf (browseCardFor (Just "Alias") "Syn.Mod" (lRaw l <> decl))
+             in counterexample (show es) (property (decl `elem` es))
+
+    -- check_type's index route: whatever the index carried, it is handed back.
+    it "the index route hands a synonym's type back unchanged" $ do
+        let hit = HoogleHit "Alias" "pkg" "Syn.Mod" "type Alias a = Maybe a" ""
+        h <- indexLookupWith (\_ _ -> pure [hit]) Nothing "Alias"
+        fmap ihType h `shouldBe` Just "type Alias a = Maybe a"
     it "an unparsable row is disclosed, never emitted as a name" $ do
         let raw = T.unlines ["gust :: Int -> Wind", "~ Bool) =>", "-> Expr b"]
             card = browseCardFor Nothing "Syn.Mod" raw

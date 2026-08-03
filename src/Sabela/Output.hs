@@ -8,63 +8,101 @@ import qualified Data.Text as T
 import Sabela.Output.Scatter (scatterDefs)
 import Sabela.Output.Widgets (widgetDefs)
 
+{- | Every name this block looks up is reached through one of its own
+qualified aliases, and it imports nothing unqualified, so neither can a user's
+cell make it ambiguous nor can it outrank that cell's own @hiding@ clause.
+-}
 displayPrelude :: Text
 displayPrelude =
     T.unlines
-        [ "import Data.IORef"
-        , "import qualified System.IO.Unsafe as SabelaUnsafe"
-        , "import qualified Control.Exception"
-        , "import qualified Data.Proxy"
-        , "import qualified Data.Typeable"
-        , ":{"
-        , "data Input a = Input {iValue :: IO a, iShow :: IO ()}"
-        , "instance Functor Input where"
-        , "    fmap f b = Input{iValue = fmap f (iValue b), iShow = iShow b}"
-        , "instance Applicative Input where"
-        , "    pure x = Input{iValue = pure x, iShow = pure ()}"
-        , "    bf <*> bx = Input{iValue = iValue bf <*> iValue bx, iShow = iShow bf >> iShow bx}"
-        , "_sabelaWidgetRef :: IORef [(String, String)]"
-        , "_sabelaWidgetRef = SabelaUnsafe.unsafePerformIO (newIORef [])"
-        , "_sabelaCellIdRef :: IORef String"
-        , "_sabelaCellIdRef = SabelaUnsafe.unsafePerformIO (newIORef \"0\")"
-        , "displayMime_ :: String -> String -> IO ()"
-        , "displayMime_ t c = putStrLn (\"<!-- MIME:\" ++ t ++ \" -->\") >> putStrLn c"
-        , "displayHtml :: String -> IO ()"
-        , "displayHtml = displayMime_ \"text/html\""
-        , "displayMarkdown :: String -> IO ()"
-        , "displayMarkdown = displayMime_ \"text/markdown\""
-        , "displaySvg :: String -> IO ()"
-        , "displaySvg = displayMime_ \"image/svg+xml\""
-        , "displayLatex :: String -> IO ()"
-        , "displayLatex = displayMime_ \"text/latex\""
-        , "displayJson :: String -> IO ()"
-        , "displayJson = displayMime_ \"application/json\""
-        , "displayImage :: String -> String -> IO ()"
-        , "displayImage mime b64 = putStrLn (\"<!-- MIME:\" ++ mime ++ \";base64 -->\") >> putStrLn b64"
-        , "widgetGet :: String -> IO (Maybe String)"
-        , "widgetGet name = fmap (lookup name) (readIORef _sabelaWidgetRef)"
-        , "widgetRead :: Read a => String -> a -> IO a"
-        , "widgetRead name def = fmap (lookup name) (readIORef _sabelaWidgetRef) >>= \\mv -> pure $ case mv of { Nothing -> def; Just s -> case reads s of { [(v,\"\")] -> v; _ -> def } }"
-        , "mkWidget :: Input a -> IO a"
-        , "mkWidget b = iShow b >> iValue b"
-        , "currentValue :: Input a -> IO a"
-        , "currentValue = iValue"
-        , "showInput :: Input a -> IO ()"
-        , "showInput = iShow"
-        , "constInput :: a -> Input a"
-        , "constInput x = Input{iValue = pure x, iShow = pure ()}"
-        , "-- Deprecated aliases; prefer Input / currentValue / showInput."
-        , "type Behavior = Input"
-        , "sample :: Input a -> IO a"
-        , "sample = iValue"
-        , "render :: Input a -> IO ()"
-        , "render = iShow"
-        , "exportBridge :: String -> String -> IO ()"
-        , "exportBridge name val = putStrLn (\"<!-- MIME:EXPORT:\" ++ name ++ \" -->\") >> putStrLn val >> putStrLn \"<!-- MIME:text/plain -->\""
-        ]
+        ( baseAliases
+            <> [ "import qualified System.IO.Unsafe as SabelaUnsafe"
+               , "import qualified Control.Exception"
+               , "import qualified Data.Proxy"
+               , "import qualified Data.Typeable"
+               , ":{"
+               , "data Input a = Input {iValue :: SabelaBase.IO a, iShow :: SabelaBase.IO ()}"
+               , "instance SabelaBase.Functor Input where"
+               , "    fmap f b = Input{iValue = SabelaBase.fmap f (iValue b), iShow = iShow b}"
+               , "instance SabelaBase.Applicative Input where"
+               , "    pure x = Input{iValue = SabelaBase.pure x, iShow = SabelaBase.pure ()}"
+               , "    bf <*> bx = Input{iValue = iValue bf SabelaBase.<*> iValue bx, iShow = iShow bf SabelaBase.>> iShow bx}"
+               , "_sabelaWidgetRef :: SabelaIORef.IORef [(SabelaBase.String, SabelaBase.String)]"
+               , "_sabelaWidgetRef = SabelaUnsafe.unsafePerformIO (SabelaIORef.newIORef [])"
+               , "_sabelaCellIdRef :: SabelaIORef.IORef SabelaBase.String"
+               , "_sabelaCellIdRef = SabelaUnsafe.unsafePerformIO (SabelaIORef.newIORef \"0\")"
+               , "displayMime_ :: SabelaBase.String -> SabelaBase.String -> SabelaBase.IO ()"
+               , "displayMime_ t c = SabelaBase.putStrLn (\"<!-- MIME:\" SabelaBase.++ t SabelaBase.++ \" -->\") SabelaBase.>> SabelaBase.putStrLn c"
+               , "displayHtml :: SabelaBase.String -> SabelaBase.IO ()"
+               , "displayHtml = displayMime_ \"text/html\""
+               , "displayMarkdown :: SabelaBase.String -> SabelaBase.IO ()"
+               , "displayMarkdown = displayMime_ \"text/markdown\""
+               , "displaySvg :: SabelaBase.String -> SabelaBase.IO ()"
+               , "displaySvg = displayMime_ \"image/svg+xml\""
+               , "displayLatex :: SabelaBase.String -> SabelaBase.IO ()"
+               , "displayLatex = displayMime_ \"text/latex\""
+               , "displayJson :: SabelaBase.String -> SabelaBase.IO ()"
+               , "displayJson = displayMime_ \"application/json\""
+               , "displayImage :: SabelaBase.String -> SabelaBase.String -> SabelaBase.IO ()"
+               , "displayImage mime b64 = SabelaBase.putStrLn (\"<!-- MIME:\" SabelaBase.++ mime SabelaBase.++ \";base64 -->\") SabelaBase.>> SabelaBase.putStrLn b64"
+               , "widgetGet :: SabelaBase.String -> SabelaBase.IO (SabelaBase.Maybe SabelaBase.String)"
+               , "widgetGet name = SabelaBase.fmap (SabelaBase.lookup name) (SabelaIORef.readIORef _sabelaWidgetRef)"
+               , "widgetRead :: SabelaBase.Read a => SabelaBase.String -> a -> SabelaBase.IO a"
+               , "widgetRead name def = SabelaBase.fmap (SabelaBase.lookup name) (SabelaIORef.readIORef _sabelaWidgetRef) SabelaBase.>>= \\mv -> SabelaBase.pure (case mv of { SabelaBase.Nothing -> def; SabelaBase.Just s -> case SabelaBase.reads s of { [(v,\"\")] -> v; _ -> def } })"
+               , "mkWidget :: Input a -> SabelaBase.IO a"
+               , "mkWidget b = iShow b SabelaBase.>> iValue b"
+               , "currentValue :: Input a -> SabelaBase.IO a"
+               , "currentValue = iValue"
+               , "showInput :: Input a -> SabelaBase.IO ()"
+               , "showInput = iShow"
+               , "constInput :: a -> Input a"
+               , "constInput x = Input{iValue = SabelaBase.pure x, iShow = SabelaBase.pure ()}"
+               , "-- Deprecated aliases; prefer Input / currentValue / showInput."
+               , "type Behavior = Input"
+               , "sample :: Input a -> SabelaBase.IO a"
+               , "sample = iValue"
+               , "render :: Input a -> SabelaBase.IO ()"
+               , "render = iShow"
+               , "exportBridge :: SabelaBase.String -> SabelaBase.String -> SabelaBase.IO ()"
+               , "exportBridge name val = SabelaBase.putStrLn (\"<!-- MIME:EXPORT:\" SabelaBase.++ name SabelaBase.++ \" -->\") SabelaBase.>> SabelaBase.putStrLn val SabelaBase.>> SabelaBase.putStrLn \"<!-- MIME:text/plain -->\""
+               ]
+        )
         <> widgetDefs
         <> scatterDefs
         <> ":}\n"
+
+{- | The base modules this block resolves its ambient names against, all under
+one alias. Prelude is deliberately not among them: an import of it here would
+sit in the session for good and outrank a user cell's own @hiding@ clause.
+-}
+baseAliases :: [Text]
+baseAliases =
+    [ "import qualified " <> m <> " as SabelaBase"
+    | m <-
+        [ "Control.Applicative"
+        , "Control.Monad"
+        , "Data.Bool"
+        , "Data.Eq"
+        , "Data.Function"
+        , "Data.Functor"
+        , "Data.Int"
+        , "Data.List"
+        , "Data.Maybe"
+        , "Data.String"
+        , "GHC.Float"
+        , "GHC.Real"
+        , "System.IO"
+        , "Text.Read"
+        , "Text.Show"
+        ]
+    ]
+        <> ["import qualified Data.IORef as " <> ioRefAlias]
+
+{- | The alias the injected block reaches @Data.IORef@ by. Written once, so a
+preamble prepended to a user's cell cannot drift from the import behind it.
+-}
+ioRefAlias :: Text
+ioRefAlias = "SabelaIORef"
 
 pureAdmittedMarker, pureIOMarker, pureValueMarker, pureErrorMarker :: Text
 pureAdmittedMarker = "---SABELA_PURE_ADMITTED---"

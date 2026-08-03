@@ -38,6 +38,7 @@ import qualified Data.Text.Encoding as TE
 import Siza.Agent.Discover.Beside (besideHits)
 import Siza.Agent.Discover.Closure (heldPayload, stripTried)
 import Siza.Agent.Discover.Facts (foldFacts, maxHeldFacts)
+import Siza.Agent.Discover.Types (typeClause)
 
 {- | A duplicate hands back the payload it deduped. Returning strictly less
 than the call it stands for is answered by mutating the query, which costs
@@ -135,8 +136,8 @@ harvestFacts v = hitFacts ++ sigFacts ++ aliasFacts
     sigFacts =
         [ "`"
             <> topText "name" h
-            <> "` :: "
-            <> topText "type" h
+            <> "` "
+            <> typeClause (topText "type" h)
             <> " — found in "
             <> topText "module" h
             <> " ("
@@ -219,13 +220,11 @@ foundSummary :: Value -> Text
 foundSummary v = tShow (totalOf v) <> " hits" <> topLine
   where
     topLine = case hitsOf v of
-        (h : _) ->
-            "; top: "
-                <> topText "name" h
-                <> ( let t = topText "type" h
-                      in if T.null t then "" else " :: " <> t
-                   )
+        (h : _) -> "; top: " <> topText "name" h <> stated h
         [] -> ""
+    stated h = case typeClause (topText "type" h) of
+        "" -> ""
+        c -> " " <> c
 
 missSummary :: Value -> Text
 missSummary v = "no match; " <> T.take 120 (topText "next" v)

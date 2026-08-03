@@ -48,9 +48,11 @@ genOutcome :: Gen ToolOutcome
 genOutcome =
     elements
         [ ToolOk (object [])
-        , ToolOk (Object (KM.singleton (Key.fromText "note") (String "kept the cabal line")))
+        , ToolOk
+            (Object (KM.singleton (Key.fromText "note") (String "kept the cabal line")))
         , ToolErr (object [])
-        , ToolErr (Object (KM.singleton (Key.fromText "note") (String "kept the cabal line")))
+        , ToolErr
+            (Object (KM.singleton (Key.fromText "note") (String "kept the cabal line")))
         ]
 
 noteOf :: ToolOutcome -> Maybe Text

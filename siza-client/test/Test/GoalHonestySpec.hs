@@ -3,17 +3,34 @@
 module Test.GoalHonestySpec (goalHonestySpec) where
 
 import Control.Monad (forM_)
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value (..), encode, object, (.=))
+import qualified Data.ByteString.Lazy as BL
 import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import Test.Hspec
+import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck
 
+import Siza.Agent.Discover.Advice (foundSummary, harvestFacts)
+import Siza.Agent.Discover.Construct (constructEnvelope)
 import Siza.Agent.Discover.Facts (compilerFact)
 import Siza.Agent.Discover.Goal (goalSatisfied, standingGoal, withGoal)
 import Siza.Agent.Discover.History (emptyLedger, ledgerRecord)
-import Siza.Agent.Discover.Types (StandingGoal (..))
-import Test.DiscoverFixtures (field, stateOf, textField)
+import Siza.Agent.Discover.Types (
+    DHit (..),
+    HackageInfo (..),
+    Interpreted (..),
+    NotebookEnv (..),
+    StandingGoal (..),
+    emptyScope,
+    mkHit,
+    okAnswer,
+    seededBuiltins,
+ )
+import Test.DiscoverFixtures (field, hitText, hitsOf, stateOf, textField)
+import Test.TruthGen (genPrefixed)
 
 hitJ :: Text -> Text -> Text -> Value
 hitJ n ty p =
@@ -68,6 +85,83 @@ goalHonestySpec = describe "goal honesty (R9-T2)" $ do
     satisfactionGridSpec
     derivationSpec
     gateSpec
+    declarationSpec
+
+{- | Two type names disjoint by construction, so neither is a substring of the
+other and no property passes on an accidental overlap.
+-}
+genTypePair :: Gen (Text, Text)
+genTypePair = (,) <$> conName "u" <*> conName "t"
+  where
+    conName p = capitalise <$> genPrefixed p
+    capitalise t = T.toUpper (T.take 1 t) <> T.drop 1 t
+
+sigType :: Text -> Text
+sigType g = g <> " -> " <> g
+
+synDecl :: Text -> Text -> Text
+synDecl g n = "type " <> n <> " = " <> sigType g
+
+goalEnv :: Text -> [Value] -> Value
+goalEnv g = withGoal (StandingGoal g "useIt" "") "q" . foundEnv "q"
+
+satisfiedIn :: Value -> Maybe Value
+satisfiedIn v = field "goal" v >>= field "satisfied"
+
+noteOf :: Value -> Text
+noteOf v = maybe "" (textField "note") (field "goal" v)
+
+rankedNames :: Text -> [DHit] -> [Text]
+rankedNames g hs = map (hitText "name") (hitsOf (builtEnvelope g hs))
+
+builtEnvelope :: Text -> [DHit] -> Value
+builtEnvelope g hs =
+    constructEnvelope
+        Nothing
+        (seededBuiltins (NotebookEnv [] [] [] [] [] []))
+        (Interpreted g g Nothing "construct" "" [])
+        emptyScope
+        8
+        [okAnswer "session" hs]
+        (HackageInfo True [])
+
+wholeAnswer :: Value -> Text
+wholeAnswer = TE.decodeUtf8 . BL.toStrict . encode
+
+dhOf :: Text -> Text -> DHit
+dhOf n ty = (mkHit n "M.M" "p"){dhType = ty, dhOrigin = "session"}
+
+{- | Type text now states declarations beside signatures. A declaration
+computes nothing, so reading one as a producer claims a goal satisfied by a
+name, and introducing one with @::@ states a signature no source gave.
+-}
+declarationSpec :: Spec
+declarationSpec = describe "a declaration produces nothing" $ do
+    prop "a synonym expanding to the goal does not satisfy it" $
+        forAll genTypePair $ \(g, n) ->
+            satisfiedIn (goalEnv g [hitJ n (synDecl g n) "p"])
+                === Just (Bool False)
+    prop "a function of that very shape does satisfy it (control)" $
+        forAll genTypePair $ \(g, n) ->
+            satisfiedIn (goalEnv g [hitJ (fnOf n) (sigType g) "p"])
+                === Just (Bool True)
+    prop "a declaration never outranks a producer of the goal" $
+        forAll genTypePair $ \(g, n) ->
+            take 1 (rankedNames g [dhOf n (synDecl g n), dhOf (fnOf n) (sigType g)])
+                === [fnOf n]
+    prop "nothing the harness says states a declaration as a signature" $
+        forAll genTypePair $ \(g, n) ->
+            let env = foundEnv "q" [hitJ n (synDecl g n) "p"]
+                said =
+                    [ foundSummary env
+                    , noteOf (goalEnv g [hitJ n (synDecl g n) "p"])
+                    , T.unwords (harvestFacts env)
+                    , wholeAnswer (builtEnvelope g [dhOf n (synDecl g n)])
+                    ]
+             in all (T.isInfixOf (synDecl g n)) said
+                    && not (any (T.isInfixOf (":: " <> synDecl g n)) said)
+  where
+    fnOf = T.toLower
 
 renamings :: [Text -> Text]
 renamings = [id, T.replace "Plot" "Blot" . T.replace "cumulus" "granilus"]

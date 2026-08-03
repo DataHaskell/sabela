@@ -111,16 +111,19 @@ green =
 red :: Text -> DisposableResult
 red diag = green{disposableVerdict = DisposableCompileError, disposableStderr = diag}
 
-{- | A probe that fails exactly when the source defines the poisoned binder.
-Counts its calls so the search's cost is a measured fact.
+{- | A probe that fails exactly when the source defines the poisoned binder,
+read at the start of a line so a longer name ending in it is not mistaken for
+it. Counts its calls so the search's cost is a measured fact.
 -}
 countingProbe :: IORef Int -> Text -> Text -> IO DisposableResult
 countingProbe counter badName src = do
     modifyIORef' counter (+ 1)
     pure $
-        if (badName <> " =") `T.isInfixOf` src
+        if any defines (T.lines src)
             then red ("error: [GHC-88464] Variable not in scope, in " <> badName)
             else green
+  where
+    defines l = (badName <> " =") `T.isPrefixOf` T.stripStart l
 
 budget :: Int
 budget = 6

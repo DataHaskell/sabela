@@ -14,6 +14,7 @@ import Test.QuickCheck
 
 import Sabela.AI.Verdict (VerdictClass (..))
 import Siza.Agent.Check (CheckResult (..), noVerdictNote)
+import Siza.Agent.Loop (AgentRun (..))
 import Siza.Agent.Owned (hasArtifact, noWriteReason)
 import Siza.Agent.Tools (offeredNames)
 import Test.DiscoverFixtures (textField)
@@ -30,7 +31,6 @@ import Test.VerdictEpisode (
     precedingToolMsg,
     verdictClasses,
  )
-import Siza.Agent.Loop (AgentRun (..))
 
 verdictEvidenceSpec :: Spec
 verdictEvidenceSpec = describe "a verdict is evidence, not a habit" $ do

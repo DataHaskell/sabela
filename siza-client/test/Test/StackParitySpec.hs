@@ -6,10 +6,10 @@ observational — one grid of calls, two entry points, identical tapes.
 -}
 module Test.StackParitySpec (stackParitySpec) where
 
+import Control.Monad (forM_)
 import Data.Aeson (Value (..), decodeStrict, object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Control.Monad (forM_)
 import Data.IORef (readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -258,8 +258,9 @@ discoveryNotes mkStack pkg m n = do
     cr <- runToolCall ss (mkStack ss (browsingNotebook n)) (depsInsert pkg m n)
     pure (map snKind (crNotes cr))
 
--- | Run the grid through one entry point's stack: what reached the wire, and
--- what came back as notes.
+{- | Run the grid through one entry point's stack: what reached the wire, and
+what came back as notes.
+-}
 runGrid ::
     IO StackSession ->
     (StackSession -> Dispatch -> Dispatch) ->

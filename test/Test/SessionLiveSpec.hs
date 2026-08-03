@@ -10,7 +10,9 @@ import Control.Concurrent (
     takeMVar,
     threadDelay,
  )
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
+import Sabela.Bridge (widgetPreamble)
 import Sabela.Handlers (ReplSupport (..), setupReplProject)
 import Sabela.Output (displayPrelude)
 import Sabela.Session (interruptIfBusy, mkSessionConfig, runBlock)
@@ -180,7 +182,9 @@ spec = do
                         withTimeout 20_000_000 $
                             runBlock
                                 sess
-                                "writeIORef _sabelaWidgetRef [(\"s\",\"[0,2]\")] >> (currentValue (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0),(5.0,6.0)]) >>= print)"
+                                ( widgetPreamble 0 (M.fromList [("s", "[0,2]")])
+                                    <> "currentValue (scatterSelect \"s\" [(1.0,2.0),(3.0,4.0),(5.0,6.0)]) >>= print"
+                                )
                     (htmlOut, _) <-
                         withTimeout 20_000_000 $
                             runBlock
