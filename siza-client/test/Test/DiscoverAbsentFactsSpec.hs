@@ -15,8 +15,8 @@ import System.FilePath ((</>))
 import Test.Hspec
 
 import Test.DiscoverFixtures (
-    hitsOf,
     hitText,
+    hitsOf,
     installNamesFileWith,
     runCat,
     runCatArgs,

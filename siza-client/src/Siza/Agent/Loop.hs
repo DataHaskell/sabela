@@ -1,3 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+{- | Running one episode: seed the transcript, then hand to the turn loop. The
+state a turn reads lives in "Siza.Agent.Loop.Episode", the turn itself in
+"Siza.Agent.Loop.Step".
+-}
 module Siza.Agent.Loop (
     AgentRun (..),
     StopDecision (..),
@@ -23,82 +29,30 @@ module Siza.Agent.Loop (
     episodeStack,
 ) where
 
-import Control.Monad (unless, void, when)
-import Data.Aeson (Value (..), object, (.=))
-import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
-import Data.Map.Strict (Map)
+import Data.Aeson (Value, object, (.=))
+import Data.IORef (IORef)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe)
-import qualified Data.Set as Set
 import Data.Text (Text)
-import qualified Data.Text as T
-import Sabela.AI.CellResult (CellId)
-import Sabela.AI.Types (ToolOutcome (..))
 
-import Sabela.AI.Salvage (salvageCell)
-import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
-import Siza.Agent.Check (CheckResult (..))
 import Siza.Agent.Discover (
     GrammarMode (..),
     discoverModules,
     proactiveDiscover,
-    runDiscoverOutcomes,
-    seamDiscover,
  )
-import Siza.Agent.Discover.HistoryGuard (
-    closeSearchLedgerRanked,
-    seedSearchLedger,
-    setSearchPressure,
- )
-import Siza.Agent.EmitLedger (
-    EmitLedger,
-    dedupInjected,
-    emitTurn,
-    newEmitLedger,
- )
-import Siza.Agent.Exemplars (retrieveForPrompt, saveVerified)
+import Siza.Agent.Discover.HistoryGuard (seedSearchLedger)
+import Siza.Agent.EmitLedger (EmitLedger, dedupInjected, newEmitLedger)
+import Siza.Agent.Exemplars (retrieveForPrompt)
+import Siza.Agent.Loop.Episode (newEpisode)
 import Siza.Agent.Loop.Prompt (mcpInstructions, systemPrompt)
-import Siza.Agent.Loop.Support (
-    callActs,
-    groundingMsgs,
-    kernelFailureStep,
-    maxChatRetries,
-    maxStuckVerifies,
-    qualifiedBaseNames,
-    replaceCall,
-    sampleK,
-    streakHints,
-    stuckFinal,
-    writeSource,
+import Siza.Agent.Loop.Step (runTurns)
+import Siza.Agent.Loop.Support (qualifiedBaseNames, sampleK, writeSource)
+import Siza.Agent.Loop.Types (
+    AgentRun (..),
+    Driver (..),
+    EpisodeBudget (..),
+    defaultBudget,
  )
-import Siza.Agent.Loop.Verdict (unconfirmedDiagMsg, verdictMsg)
-import Siza.Agent.Loop.WrapUp (
-    budgetView,
-    countUnconfirmed,
-    missRungFloor,
-    wrapUpFinalUnconfirmed,
-    wrapUpOnce,
- )
-import Siza.Agent.Messages (
-    doneSignalMsg,
-    noCheckSignalMsg,
-    reenterAlarmMsg,
-    streakMsg,
-    toolMsg,
- )
-import Siza.Agent.Owned (
-    OwnedCell (..),
-    StopDecision (..),
-    bestFailing,
-    hasArtifact,
-    landedArtifact,
-    noProgressStep,
-    ownedCellOutcome,
-    recordOwned,
-    redSignature,
-    stopDecision,
- )
-import Siza.Agent.Repair (repairRedCells)
+import Siza.Agent.Owned (StopDecision (..), ownedCellOutcome, stopDecision)
 import Siza.Agent.Sample (SampleResult (..), SampleVerify (..), sampleVerifyOne)
 import Siza.Agent.Scaffold (runScaffoldStage)
 import Siza.Agent.Stack (
@@ -107,44 +61,8 @@ import Siza.Agent.Stack (
     newStackSession,
     stackDispatch,
  )
-import Siza.Agent.Stack.Call (CallResult (..), notesMessage, runToolCall)
 import Siza.Agent.ToolRoute (recoverTurn)
-import Siza.Agent.Tools (offeredArgKeys, renderOutcome)
-import Siza.Agent.Transcript (renderMessage)
-
-data AgentRun = AgentRun
-    { arTurns :: Int
-    , arToolCalls :: Int
-    , arFinal :: Text
-    , arStopped :: Text
-    , arTranscript :: [Value]
-    }
-    deriving (Show)
-
-stopTagFor :: CheckResult -> Text
-stopTagFor CheckPassed = "done"
-stopTagFor _ = "done_unverified"
-
--- | An assistant turn that called nothing and said nothing is not a summary.
-silentTurn :: Turn -> Bool
-silentTurn t = null (turnCalls t) && T.null (T.strip (turnContent t))
-
-data Driver = Driver
-    { drvChat :: [Value] -> IO (Either Text Turn)
-    , drvDispatch :: ToolCall -> IO (Either Text ToolOutcome)
-    , drvNow :: IO Double
-    , drvVerify :: Map CellId OwnedCell -> IO (CheckResult, Maybe Text)
-    -- ^ verification is keyed to what this episode owns, not to the notebook
-    }
-
-data EpisodeBudget = EpisodeBudget
-    { ebMaxRepairs :: Int
-    , ebDeadlineSecs :: Double
-    }
-    deriving (Show)
-
-defaultBudget :: EpisodeBudget
-defaultBudget = EpisodeBudget{ebMaxRepairs = 4, ebDeadlineSecs = 600}
+import Siza.Agent.Tools (offeredArgKeys)
 
 runEpisodeWith :: EpisodeBudget -> Driver -> Text -> Int -> IO AgentRun
 runEpisodeWith = runEpisodeWith' GrammarOn
@@ -200,371 +118,20 @@ episodeCore ::
     Int ->
     IO AgentRun
 episodeCore sess emits seed emit budget driver prompt maxTurns = do
-    let ledger = ssLedger sess
-        mode = ssGrammar sess
-    printed <- newIORef (0 :: Int)
-    delivered <- newIORef False
-    signalled <- newIORef False
-    signalDone <- newIORef False
-    chatRetries <- newIORef (0 :: Int)
-    stuck <- newIORef (0 :: Int)
-    reenterStuck <- newIORef (0 :: Int)
-    kernelDown <- newIORef (0 :: Int)
-    seenRedSigs <- newIORef Set.empty
-    streaks <- newIORef Map.empty
-    wrapped <- newIORef False
-    lastDitch <- newIORef False
-    unconfirmed <- newIORef (0 :: Int)
-    (owned0, msgs0) <-
-        if null seed
-            then do
-                exemplars <- retrieveEx
-                pre <- runScaffoldStage (drvDispatch driver) prompt
-                seedSearchLedger (drvDispatch driver) ledger
-                proactive <- proactiveDiscover mode (drvDispatch driver)
-                injected0 <- dedupInjected emits 0 (exemplars ++ pre ++ proactive)
-                pure (Map.empty, initial ++ injected0)
-            else pure (Map.empty, seed ++ [userMsg])
+    ep <- newEpisode sess emits emit budget driver prompt maxTurns
+    msgs0 <- if null seed then seededTranscript else pure (seed ++ [userMsg])
     start <- drvNow driver
-    let flush msgs = do
-            n <- readIORef printed
-            mapM_
-                (\(i, m) -> emit (renderMessage i m <> "\n"))
-                (zip [n + 1 ..] (drop n msgs))
-            writeIORef printed (length msgs)
-        finish owned turn nCalls final stopped msgs
-            | stopped `elem` repairableGiveUpReasons = do
-                already <- readIORef lastDitch
-                (owned', fixes) <-
-                    if already
-                        then pure (owned, [])
-                        else do
-                            writeIORef lastDitch True
-                            fixes <-
-                                repairRedCells (drvDispatch driver) $
-                                    [ (c, ocDiagnostic oc)
-                                    | (c, oc) <- Map.toList owned
-                                    , not (ocHealthy oc)
-                                    ]
-                            pure (foldr recordOwned owned fixes, fixes)
-                let repairMsgs = concatMap auditedRepairMessages fixes
-                    msgs' = msgs ++ repairMsgs
-                line <- finalLine stopped owned' (bestFailing owned')
-                flush msgs'
-                    >> pure (AgentRun turn (nCalls + length fixes) line stopped msgs')
-            | otherwise = do
-                line <- finalLine stopped owned final
-                flush msgs >> pure (AgentRun turn nCalls line stopped msgs)
-        finalLine stopped owned candidate = do
-            n <- readIORef unconfirmed
-            pure (wrapUpFinalUnconfirmed n stopped owned candidate)
-        noteUnconfirmed steps =
-            modifyIORef' unconfirmed (+ countUnconfirmed steps)
-        preTurn elapsed turn repairs owned = do
-            setSearchPressure ledger (missRungFloor maxTurns (maxTurns - turn))
-            wrap <-
-                wrapUpOnce wrapped (rankedFacts owned) $
-                    budgetView
-                        maxTurns
-                        turn
-                        (ebMaxRepairs budget)
-                        repairs
-                        elapsed
-                        (ebDeadlineSecs budget)
-            dedupInjected emits turn wrap
-        go start' turn nCalls repairs owned msgs = do
-            flush msgs
-            if turn >= maxTurns
-                then finish owned turn nCalls (bestFailing owned) "max_turns" msgs
-                else
-                    if repairs >= ebMaxRepairs budget
-                        then finish owned turn nCalls (bestFailing owned) "repair_budget" msgs
-                        else do
-                            now <- drvNow driver
-                            if now - start' >= ebDeadlineSecs budget
-                                then finish owned turn nCalls (bestFailing owned) "deadline" msgs
-                                else do
-                                    wrap <- preTurn (now - start') turn repairs owned
-                                    step start' turn nCalls repairs owned (msgs ++ wrap)
-        step start' turn nCalls repairs owned msgs = do
-            res <- drvChat driver msgs
-            case res of
-                Left e -> do
-                    r <- readIORef chatRetries
-                    if r < maxChatRetries
-                        then do
-                            writeIORef chatRetries (r + 1)
-                            step start' turn nCalls repairs owned msgs
-                        else do
-                            writeIORef chatRetries 0
-                            finish owned turn nCalls ("chat error after retries: " <> e) "error" msgs
-                Right t -> do
-                    writeIORef chatRetries 0
-                    if null (turnCalls t)
-                        then case stopDecision (Map.map ocHealthy owned) of
-                            Stop
-                                | Map.null owned
-                                , Just src <- salvageCell (turnContent t) -> do
-                                    let call = ToolCall "insert_cell" (object ["source" .= src])
-                                    outcome <- drvDispatch driver call
-                                    noteUnconfirmed [(call, outcome)]
-                                    let owned' = recordOwned (call, outcome) owned
-                                        salvaged = ToolCall "salvage" (tcArgs call)
-                                    out <-
-                                        emitTurn
-                                            emits
-                                            turn
-                                            (turnRaw t)
-                                            [toolMsg salvaged (renderOutcome outcome)]
-                                    writeIORef stuck 0
-                                    go start' (turn + 1) (nCalls + 1) repairs owned' (msgs ++ out)
-                            Stop | silentTurn t -> do
-                                finish
-                                    owned
-                                    (turn + 1)
-                                    nCalls
-                                    ""
-                                    "no_reply"
-                                    (msgs ++ [turnRaw t])
-                            Stop -> do
-                                (result, mEv) <- drvVerify driver owned
-                                case result of
-                                    CheckPassed
-                                        | hasArtifact owned -> do
-                                            saveEx owned
-                                            finish
-                                                owned
-                                                (turn + 1)
-                                                nCalls
-                                                (turnContent t)
-                                                (stopTagFor CheckPassed)
-                                                (msgs ++ [turnRaw t])
-                                    CheckNotApplicable
-                                        | hasArtifact owned ->
-                                            finish
-                                                owned
-                                                (turn + 1)
-                                                nCalls
-                                                (turnContent t)
-                                                (stopTagFor CheckNotApplicable)
-                                                (msgs ++ [turnRaw t])
-                                    _ -> do
-                                        s <- readIORef stuck
-                                        if s + 1 >= maxStuckVerifies
-                                            then finish owned (turn + 1) nCalls stuckFinal "stuck" (msgs ++ [turnRaw t])
-                                            else do
-                                                writeIORef stuck (s + 1)
-                                                out <-
-                                                    emitTurn
-                                                        emits
-                                                        turn
-                                                        (turnRaw t)
-                                                        [verdictMsg prompt result mEv owned]
-                                                go
-                                                    start'
-                                                    (turn + 1)
-                                                    nCalls
-                                                    (repairs + 1)
-                                                    owned
-                                                    (msgs ++ out)
-                            Reenter reds -> do
-                                owned' <- repairReds owned reds
-                                redisc <- reDiscover delivered owned' reds
-                                let stillPairs =
-                                        [ (c, ocDiagnostic oc, ocInvariantAlarm oc)
-                                        | (c, oc) <- Map.toList owned'
-                                        , not (ocHealthy oc)
-                                        ]
-                                    still = [c | (c, _, _) <- stillPairs]
-                                    msg =
-                                        if null still
-                                            then unconfirmedDiagMsg prompt Nothing owned'
-                                            else reenterAlarmMsg stillPairs
-                                    sig = redSignature still owned'
-                                out <- emitTurn emits turn (turnRaw t) (msg : redisc)
-                                let msgs' = msgs ++ out
-                                writeIORef stuck 0
-                                rs <- readIORef reenterStuck
-                                seen <- readIORef seenRedSigs
-                                let (seen', repeated) = noProgressStep seen sig
-                                if not (null still) && repeated
-                                    then
-                                        if rs + 1 >= maxStuckVerifies
-                                            then
-                                                finish
-                                                    owned'
-                                                    (turn + 1)
-                                                    nCalls
-                                                    (bestFailing owned')
-                                                    "stuck_reenter"
-                                                    msgs'
-                                            else do
-                                                writeIORef reenterStuck (rs + 1)
-                                                writeIORef seenRedSigs seen'
-                                                go start' (turn + 1) nCalls (repairs + 1) owned' msgs'
-                                    else do
-                                        writeIORef reenterStuck 0
-                                        writeIORef
-                                            seenRedSigs
-                                            (if null still then seen else seen')
-                                        go start' (turn + 1) nCalls (repairs + 1) owned' msgs'
-                        else do
-                            results <- mapM (dispatchCall msgs) (turnCalls t)
-                            let steps = [(crCall r, crOutcome r) | r <- results]
-                                landedNow = any landedArtifact steps
-                            done0 <- readIORef delivered
-                            discovered <-
-                                if done0
-                                    then pure []
-                                    else
-                                        runDiscoverOutcomes
-                                            mode
-                                            (drvDispatch driver)
-                                            [(c, o) | (c, Right o) <- steps]
-                            when landedNow $ writeIORef delivered True
-                            noteUnconfirmed steps
-                            let owned' = foldr recordOwned owned steps
-                            signalMsgs <- doneSignalProbe signalled landedNow owned'
-                            unless (null signalMsgs) $
-                                writeIORef signalDone True
-                            let nudge = []
-                            let toolMsgs =
-                                    [ toolMsg c (renderOutcome o)
-                                    | (c, o) <- steps
-                                    ]
-                                noteMsgs = maybe [] pure (notesMessage results)
-                            hints <- streakHints streaks owned'
-                            out <-
-                                emitTurn emits turn (turnRaw t) $
-                                    toolMsgs
-                                        ++ noteMsgs
-                                        ++ discovered
-                                        ++ map streakMsg hints
-                                        ++ signalMsgs
-                                        ++ nudge
-                            writeIORef stuck 0
-                            down <- kernelFailureStep kernelDown (map snd steps)
-                            if down
-                                then
-                                    finish
-                                        owned'
-                                        (turn + 1)
-                                        (nCalls + length steps)
-                                        (bestFailing owned')
-                                        "kernel_error"
-                                        (msgs ++ out)
-                                else
-                                    go
-                                        start'
-                                        (turn + 1)
-                                        (nCalls + length steps)
-                                        repairs
-                                        owned'
-                                        (msgs ++ out)
-    go start 0 0 0 owned0 msgs0
+    runTurns ep start 0 0 0 Map.empty msgs0
   where
-    repairableGiveUpReasons :: [Text]
-    repairableGiveUpReasons = ["stuck", "stuck_reenter"]
-
-    auditedRepairMessages (tc, out) =
-        [ object
-            [ "role" .= ("assistant" :: Text)
-            , "content" .= ("Automatic final repair attempt." :: Text)
-            , "tool_calls" .= [object ["function" .= callFunction]]
-            ]
-        , toolMsg tc (renderOutcome out)
-        ]
-      where
-        callFunction = object ["name" .= tcName tc, "arguments" .= tcArgs tc]
+    seededTranscript = do
+        exemplars <- retrieveForPrompt prompt
+        pre <- runScaffoldStage (drvDispatch driver) prompt
+        seedSearchLedger (drvDispatch driver) (ssLedger sess)
+        proactive <- proactiveDiscover (ssGrammar sess) (drvDispatch driver)
+        injected0 <- dedupInjected emits 0 (exemplars ++ pre ++ proactive)
+        pure (initial ++ injected0)
     initial =
         [ object ["role" .= ("system" :: Text), "content" .= systemPrompt]
         , userMsg
         ]
     userMsg = object ["role" .= ("user" :: Text), "content" .= prompt]
-    {- The signal is adjacent to the write it is about: it fires on the turn
-    whose own steps landed an artifact, so it can never read as a verdict on
-    the rejection that happened to follow. -}
-    doneSignalProbe signalled landedNow owned'
-        | not landedNow || not (hasArtifact owned') = pure []
-        | otherwise = do
-            already <- readIORef signalled
-            if already
-                then pure []
-                else do
-                    writeIORef signalled True
-                    (r, mDetail) <- drvVerify driver owned'
-                    pure $ case (r, mDetail) of
-                        (CheckPassed, Just check) ->
-                            [doneSignalMsg (Map.keys owned') check]
-                        (CheckFailed, _) -> []
-                        (CheckPassed, Nothing) -> []
-                        _ -> [noCheckSignalMsg mDetail]
-    retrieveEx = retrieveForPrompt prompt
-    saveEx owned =
-        saveVerified
-            prompt
-            [ocSource oc | oc <- Map.elems owned, ocHealthy oc]
-    dispatchCall msgs call = do
-        k <- sampleK
-        if k > 1 && callActs call && isJust (writeSource call)
-            then rejectionDispatch msgs k call
-            else runToolCall sess (drvDispatch driver) call
-
-    rejectionDispatch msgs k call = do
-        o0 <- drvDispatch driver call
-        case ownedCellOutcome call o0 of
-            Just (cid, False) -> do
-                ground <- groundingMsgs (drvDispatch driver) (fromMaybe "" (writeSource call))
-                let msgs' = msgs ++ ground
-                winRef <- newIORef Nothing
-                let sv =
-                        SampleVerify
-                            { svSample = const (fromMaybe "" <$> reAskSource msgs')
-                            , svRollout = rolloutReplace winRef cid
-                            , svInsert = const (pure ())
-                            }
-                _ <- sampleVerifyOne (k - 1) sv
-                mWin <- readIORef winRef
-                case mWin of
-                    Just win -> pure win
-                    Nothing -> restoreOriginal cid call o0
-            _ -> pure (CallResult call o0 [])
-    rolloutReplace winRef cid src
-        | T.null (T.strip src) = pure False
-        | otherwise = do
-            let rc = replaceCall cid src
-            o <- drvDispatch driver rc
-            let ok = maybe False snd (ownedCellOutcome rc o)
-            when ok (writeIORef winRef (Just (CallResult rc o [])))
-            pure ok
-    restoreOriginal cid call o0 = do
-        _ <-
-            maybe
-                (pure ())
-                (void . drvDispatch driver . replaceCall cid)
-                (writeSource call)
-        pure (CallResult call o0 [])
-    reAskSource msgs = do
-        r <- drvChat driver msgs
-        pure $ case r of
-            Right t -> listToMaybe [s | c <- turnCalls t, callActs c, Just s <- [writeSource c]]
-            Left _ -> Nothing
-    repairReds owned reds = do
-        fixes <-
-            repairRedCells
-                (drvDispatch driver)
-                [(c, ocDiagnostic oc) | c <- reds, Just oc <- [Map.lookup c owned]]
-        pure (foldr recordOwned owned fixes)
-    rankedFacts owned =
-        closeSearchLedgerRanked prompt (map ocSource (Map.elems owned)) (ssLedger sess)
-    reDiscover dref owned' reds = do
-        done <- readIORef dref
-        if done
-            then pure []
-            else seamDiscover (ssGrammar sess) (drvDispatch driver) (redCells owned' reds)
-    redCells owned' reds =
-        [ (ocSource oc, ocDiagnostic oc)
-        | c <- reds
-        , Just oc <- [Map.lookup c owned']
-        , not (ocHealthy oc)
-        ]

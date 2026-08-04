@@ -4,6 +4,7 @@
 module Test.ConfigurableTimeoutSpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent.STM (newTVarIO)
 import Data.IORef (newIORef)
 import Data.Unique (newUnique)
 import Sabela.Session (
@@ -40,6 +41,7 @@ dummySessionWithConfig cfg = do
     cbRef <- newIORef (\_ -> pure ())
     klock <- newMVar ()
     qlock <- newMVar ()
+    lockOwner <- newTVarIO Nothing
     uid <- newUnique
     lastInt <- newIORef Nothing
     gen <- newIORef 1
@@ -59,6 +61,7 @@ dummySessionWithConfig cfg = do
             { sessProcSess = ps
             , sessLock = lock
             , sessQueryLock = qlock
+            , sessLockOwner = lockOwner
             , sessErrBuf = errRef
             , sessBaselineBindings = errRef
             , sessCounter = ctrRef

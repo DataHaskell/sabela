@@ -1,6 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+{- | Running a candidate in a throwaway project: snapshot the live notebook,
+build a disposable cabal root, replay the notebook there, then run the
+candidate. The stages live in the submodules; this owns the cache entry.
+-}
 module Sabela.Session.Materialize (
     CandidateSpec (..),
     expressionCandidate,
@@ -31,40 +34,37 @@ import Control.Exception (
     displayException,
     try,
  )
-import Control.Monad (forM_, void)
-import qualified Data.Map.Strict as M
-import Data.Set (Set)
+import Control.Monad (void)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath (isAbsolute, takeDirectory, (</>))
+import System.FilePath (isAbsolute, (</>))
 import System.Timeout (timeout)
 
-import Sabela.AI.Health (healthOfCellError, isClean)
-import Sabela.Bridge (bridgePreamble, widgetPreamble)
-import Sabela.Compiled (CompilePlan (..), moduleFilePath)
-import Sabela.Deps (collectMetadata, mergedMeta, repairDeps)
-import Sabela.Handlers.Shared (partitionExports)
-import Sabela.Model (Cell (..), CellError (..), Notebook (..))
-import Sabela.Output (displayPrelude, parseMimeOutputs)
 import Sabela.Reactivity (
-    ExecutionPlan (..),
+    ExecutionPlan,
     computeFullExecutionPlan,
     haskellCodeCells,
  )
 import Sabela.Session (SessionConfig (..), mkSessionConfig)
-import Sabela.Session.Materialize.Run (
-    runChecked,
-    runLoadChecked,
-    runOptional,
+import Sabela.Session.Materialize.Candidate (
+    CandidateSpec (..),
+    buildBudgetFor,
+    candidateProjectMeta,
+    candidateSafetyPrelude,
+    disposableRouteName,
+    expressionCandidate,
+    materializationPlanFailure,
+    partitionReplayCells,
+    prefixFor,
+    unrestrictedIOError,
  )
+import Sabela.Session.Materialize.Pipeline (evalCandidate, runMaterialized)
+import Sabela.Session.Materialize.Result (emptyResult, failed, snapshotFailure)
 import Sabela.Session.MaterializeSnapshot (
     MaterializeSnapshot (..),
     captureMaterializeSnapshot,
     snapshotStillCurrent,
-    withCurrentSnapshot,
  )
 import Sabela.Session.MaterializeStage (
     DisposableResult (..),
@@ -72,18 +72,12 @@ import Sabela.Session.MaterializeStage (
     MaterializeFailure (..),
     MaterializeStage (..),
     SkippedCell (..),
-    failureFor,
     materializeStageText,
-    stageFailure,
  )
 import Sabela.Session.Process (ghciBackend, newSession)
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
 import Sabela.Session.Query (captureBindingsBaseline)
-import Sabela.Session.Timeout (
-    TimeoutConfig (..),
-    readTimeoutConfig,
-    tryBuildTimedOutMessage,
- )
+import Sabela.Session.Timeout (readTimeoutConfig, tryBuildTimedOutMessage)
 import Sabela.Session.TryCache (
     CacheEntry (..),
     acquireCacheEntry,
@@ -98,41 +92,7 @@ import Sabela.Session.TryCache (
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
-import ScriptHs.Parser (
-    CabalMeta (..),
-    ScriptFile (..),
-    mergeMetas,
-    parseScript,
-    parseScriptNumbered,
- )
-import ScriptHs.Render (toGhciScript)
-
-data CandidateSpec = CandidateSpec
-    { candidateMetadataSource :: Text
-    , candidateSetup :: Text
-    , candidateExpression :: Maybe Text
-    , candidateReplacesCellId :: Maybe Int
-    , candidateDeliberate :: Bool
-    }
-    deriving (Eq, Show)
-
-expressionCandidate :: Text -> CandidateSpec
-expressionCandidate source =
-    CandidateSpec
-        { candidateMetadataSource = source
-        , candidateSetup = ""
-        , candidateExpression = Just source
-        , candidateReplacesCellId = Nothing
-        , candidateDeliberate = False
-        }
-
-buildBudgetFor :: CandidateSpec -> TimeoutConfig -> Int
-buildBudgetFor spec tc
-    | candidateDeliberate spec = tcBuildUs tc
-    | otherwise = tcTryBuildUs tc
-
-disposableRouteName :: Text
-disposableRouteName = "disposable_scratch"
+import ScriptHs.Parser (CabalMeta (..))
 
 runDisposableTry :: App -> CandidateSpec -> IO DisposableResult
 runDisposableTry app spec = do
@@ -187,34 +147,6 @@ runDisposableTry app spec = do
                                     }
   where
     env = appEnv app
-
-prefixFor :: CandidateSpec -> Notebook -> Notebook
-prefixFor spec nb = case candidateReplacesCellId spec of
-    Nothing -> nb
-    Just cid -> nb{nbCells = filter ((/= cid) . cellId) (nbCells nb)}
-
-candidateProjectMeta :: Set Text -> Notebook -> CandidateSpec -> CabalMeta
-candidateProjectMeta globalDeps nb spec =
-    mergedMeta globalDeps (mergeMetas [collectMetadata nb, candidateMeta])
-  where
-    parsed = scriptMeta (parseScript (candidateMetadataSource spec))
-    candidateMeta = parsed{metaDeps = repairDeps (metaDeps parsed)}
-
-materializationPlanFailure :: ExecutionPlan -> Maybe MaterializeFailure
-materializationPlanFailure plan
-    | Just cid <- S.lookupMin (epCycleIds plan) =
-        Just (planFailure cid "notebook contains a dependency cycle")
-    | Just (cid, names) <- M.lookupMin (epRedefErrors plan) =
-        Just
-            ( planFailure
-                cid
-                ("duplicate notebook definitions: " <> T.intercalate ", " names)
-            )
-    | Just (cid, errs) <- M.lookupMin (cpViolations (epCompilePlan plan)) =
-        Just (planFailure cid (diagnosticText errs))
-    | otherwise = Nothing
-  where
-    planFailure cid = stageFailure StagePlan (Just cid)
 
 runInDisposableRoot ::
     App ->
@@ -275,278 +207,6 @@ runInDisposableRoot app snapshot plan meta spec entry cacheRoot deps = do
                             (captureBindingsBaseline sess)
                         )
 
-runMaterialized ::
-    App ->
-    MaterializeSnapshot ->
-    FilePath ->
-    ExecutionPlan ->
-    CandidateSpec ->
-    DisposableResult ->
-    IO () ->
-    ST.SessionBackend ->
-    IO DisposableResult
-runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend = do
-    let context = snapshotRenderContext snapshot
-        (skipped, toReplay) = partitionReplayCells (epCellsToRun plan)
-        base = base0{disposableSkippedCells = skipped}
-    compiled <- loadCompiled projectDir backend (epCompilePlan plan)
-    case compiled of
-        Left msg -> pure (failed base StageCompiled Nothing msg)
-        Right () -> do
-            preludeResult <- runChecked backend displayPrelude
-            case preludeResult of
-                Left msg -> pure (failed base StagePrelude Nothing msg)
-                Right _ -> do
-                    captured <- try captureBaseline
-                    case captured of
-                        Left (e :: SomeException) ->
-                            pure
-                                ( failed
-                                    base
-                                    StagePrelude
-                                    Nothing
-                                    (T.pack (displayException e))
-                                )
-                        Right () -> do
-                            replayed <- replayCells backend context toReplay
-                            case replayed of
-                                Left (done, cid, stage, msg) ->
-                                    pure
-                                        (failed base stage cid msg)
-                                            { disposableReplayedCells = compiledIds <> done
-                                            }
-                                Right (done, scratchBridge) -> do
-                                    finalPrelude <- runChecked backend displayPrelude
-                                    case finalPrelude of
-                                        Left msg ->
-                                            pure
-                                                (failed base StagePrelude Nothing msg)
-                                                    { disposableReplayedCells = compiledIds <> done
-                                                    }
-                                        Right _ -> do
-                                            finalBridge <-
-                                                runOptional
-                                                    backend
-                                                    (bridgePreamble scratchBridge)
-                                            case finalBridge of
-                                                Left msg ->
-                                                    pure
-                                                        (failed base StageCellReplay Nothing msg)
-                                                            { disposableReplayedCells = compiledIds <> done
-                                                            }
-                                                Right _ -> do
-                                                    safety <-
-                                                        runChecked
-                                                            backend
-                                                            (candidateSafetyPrelude spec)
-                                                    case safety of
-                                                        Left msg ->
-                                                            pure
-                                                                (failed base StageSafety Nothing msg)
-                                                                    { disposableReplayedCells =
-                                                                        compiledIds <> done
-                                                                    }
-                                                        Right _ -> do
-                                                            let candidateBase =
-                                                                    base
-                                                                        { disposableReplayedCells =
-                                                                            compiledIds <> done
-                                                                        }
-                                                            candidate <-
-                                                                withCurrentSnapshot
-                                                                    app
-                                                                    snapshot
-                                                                    ( runCandidate
-                                                                        backend
-                                                                        spec
-                                                                        candidateBase
-                                                                    )
-                                                            case candidate of
-                                                                Left message ->
-                                                                    pure
-                                                                        ( snapshotFailure
-                                                                            candidateBase
-                                                                            (compiledIds <> done)
-                                                                            message
-                                                                        )
-                                                                Right result -> pure result
-  where
-    compiledIds = map cellId (epCompileCells plan)
-
-{- | Withdraws unchecked IO from the candidate's scope, and asks GHC to say
-when it resolved an ambiguous type by defaulting, so the gate can tell a cell
-that computes something from one that only type-checks.
--}
-candidateSafetyPrelude :: CandidateSpec -> Text
-candidateSafetyPrelude _ =
-    ":module -System.IO.Unsafe\n:set -Wtype-defaults\n"
-
-runCandidate ::
-    ST.SessionBackend ->
-    CandidateSpec ->
-    DisposableResult ->
-    IO DisposableResult
-runCandidate backend spec base = do
-    setupResult <-
-        if T.null (T.strip (candidateSetup spec))
-            then pure (Right ("", ""))
-            else runChecked backend (candidateSetup spec)
-    case setupResult of
-        Left msg -> pure (failed base StageCandidateSetup Nothing msg)
-        Right (setupOut, setupErr) -> case candidateExpression spec of
-            Nothing ->
-                pure
-                    base
-                        { disposableVerdict = DisposableOk
-                        , disposableStdout = setupOut
-                        , disposableStderr = setupErr
-                        }
-            Just expression -> evalCandidate backend expression base
-
-{- | Evaluate the candidate with the pure evaluator, which admits a value only
-after inferring a type that is not IO. One it declines as IO is reported with
-that type and left unrun: a fresh project is not a sandbox.
--}
-evalCandidate ::
-    ST.SessionBackend -> Text -> DisposableResult -> IO DisposableResult
-evalCandidate backend expression base = do
-    generation <- ST.sbSessionGen backend
-    result <-
-        ST.sbEvalPureLive
-            backend
-            ST.PureEvalRequest
-                { ST.pureEvalExpectedGeneration = generation
-                , ST.pureEvalTimeoutUs = candidateTimeoutUs
-                , ST.pureEvalExpression = expression
-                }
-    let out = ST.pureEvalOutput result
-        err = ST.pureEvalError result
-        inferredText = T.strip (ST.pureEvalInferredType result)
-        inferred =
-            if T.null inferredText
-                then Nothing
-                else Just inferredText
-        finish verdict stage =
-            base
-                { disposableVerdict = verdict
-                , disposableType = inferred
-                , disposableStdout = out
-                , disposableStderr = err
-                , disposableFailure = failureFor verdict stage err
-                }
-    case ST.pureEvalVerdict result of
-        ST.PureEvalSucceeded -> pure (finish DisposableOk StageCandidateRun)
-        ST.PureEvalUnshowable -> pure (finish DisposableOk StageCandidateRun)
-        ST.PureEvalRejected
-            | unrestrictedIOError err -> pure (finish DisposableOk StageCandidateTypecheck)
-            | otherwise -> pure (finish DisposableCompileError StageCandidateTypecheck)
-        ST.PureEvalRuntimeError -> pure (finish DisposableRuntimeError StageCandidateRun)
-        ST.PureEvalTimedOut -> pure (finish DisposableTimedOut StageCandidateRun)
-        ST.PureEvalStale -> pure (finish DisposableUnavailable StageCandidateTypecheck)
-        ST.PureEvalInvariantFailed -> pure (finish DisposableUnavailable StageCandidateRun)
-        ST.PureEvalUnavailable -> pure (finish DisposableUnavailable StageCandidateRun)
-
-candidateTimeoutUs :: Int
-candidateTimeoutUs = 30 * 1000000
-
-unrestrictedIOError :: Text -> Bool
-unrestrictedIOError raw =
-    let lower = T.toLower raw
-     in "sabela_unrestricted_io" `T.isInfixOf` lower
-            || "scratch candidate is io" `T.isInfixOf` lower
-            || "candidate is io" `T.isInfixOf` lower
-
-data RenderContext = RenderContext
-    { rcBridgeValues :: M.Map Text Text
-    , rcWidgetValues :: M.Map Int (M.Map Text Text)
-    }
-
-snapshotRenderContext :: MaterializeSnapshot -> RenderContext
-snapshotRenderContext snapshot =
-    RenderContext
-        { rcBridgeValues = msBridgeValues snapshot
-        , rcWidgetValues = msWidgetValues snapshot
-        }
-
-renderCell :: RenderContext -> M.Map Text Text -> Cell -> Text
-renderCell context bridge cell =
-    widgetPreamble
-        (cellId cell)
-        (M.findWithDefault M.empty (cellId cell) (rcWidgetValues context))
-        <> bridgePreamble bridge
-        <> toGhciScript (scriptLines (fst (parseScriptNumbered (cellSource cell))))
-
-replayCells ::
-    ST.SessionBackend ->
-    RenderContext ->
-    [Cell] ->
-    IO
-        ( Either
-            ([Int], Maybe Int, MaterializeStage, Text)
-            ([Int], M.Map Text Text)
-        )
-replayCells backend context = go True [] (rcBridgeValues context)
-  where
-    go _ done bridge [] = pure (Right (reverse done, bridge))
-    go preludeReady done bridge (cell : rest) = do
-        preludeResult <-
-            if preludeReady
-                then pure (Right ("", ""))
-                else runChecked backend displayPrelude
-        case preludeResult of
-            Left msg ->
-                pure (Left (reverse done, Nothing, StagePrelude, msg))
-            Right _ -> do
-                result <- runChecked backend (renderCell context bridge cell)
-                case result of
-                    Left msg ->
-                        pure
-                            ( Left
-                                (reverse done, Just (cellId cell), StageCellReplay, msg)
-                            )
-                    Right (out, _) ->
-                        go
-                            False
-                            (cellId cell : done)
-                            (applyBridgeExports bridge out)
-                            rest
-
-applyBridgeExports :: M.Map Text Text -> Text -> M.Map Text Text
-applyBridgeExports bridge rawOut =
-    M.union
-        (M.fromList [(name, T.strip value) | (name, value) <- exports])
-        bridge
-  where
-    (exports, _) = partitionExports (parseMimeOutputs rawOut)
-
-loadCompiled ::
-    FilePath ->
-    ST.SessionBackend ->
-    CompilePlan ->
-    IO (Either Text ())
-loadCompiled projectDir backend cplan
-    | M.null (cpModules cplan) = pure (Right ())
-    | otherwise = do
-        forM_ (M.toList (cpModules cplan)) $ \(name, source) -> do
-            let path = projectDir </> moduleFilePath name
-            createDirectoryIfMissing True (takeDirectory path)
-            TIO.writeFile path source
-        let moduleNames = M.keys (cpModules cplan)
-            loadCommand =
-                T.unwords
-                    ( ":load"
-                        : [T.pack (show (projectDir </> moduleFilePath name)) | name <- moduleNames]
-                    )
-        loaded <- runLoadChecked backend loadCommand
-        case loaded of
-            Left msg -> pure (Left msg)
-            Right _ -> do
-                imported <-
-                    runChecked
-                        backend
-                        (T.unlines ["import " <> name | name <- moduleNames])
-                pure (void imported)
-
 resolveLocalPackages :: Environment -> CabalMeta -> [FilePath]
 resolveLocalPackages env meta =
     stableNub (envLocalPackages env <> map resolve (metaPackages meta))
@@ -562,67 +222,6 @@ stableNub = go S.empty
     go seen (x : xs)
         | x `S.member` seen = go seen xs
         | otherwise = x : go (S.insert x seen) xs
-
-diagnosticText :: [CellError] -> Text
-diagnosticText errs =
-    case filter (not . T.null) (map (T.strip . ceMessage) errs) of
-        [] -> "notebook plan is not materializable"
-        messages -> T.intercalate "\n" messages
-
-emptyResult :: [Text] -> DisposableResult
-emptyResult deps =
-    DisposableResult
-        { disposableRoute = disposableRouteName
-        , disposableVerdict = DisposableUnavailable
-        , disposableType = Nothing
-        , disposableStdout = ""
-        , disposableStderr = ""
-        , disposableFailure = Nothing
-        , disposableReplayedCells = []
-        , disposableSkippedCells = []
-        , disposableDependencies = deps
-        }
-
-partitionReplayCells :: [Cell] -> ([SkippedCell], [Cell])
-partitionReplayCells = foldr step ([], [])
-  where
-    step cell (skips, keep)
-        | isClean (healthOfCellError (cellError cell)) = (skips, cell : keep)
-        | otherwise = (SkippedCell (cellId cell) (skipReason cell) : skips, keep)
-    skipReason cell =
-        maybe
-            "cell has an unresolved compile error"
-            (compact . T.strip)
-            (cellError cell)
-    compact = T.unwords . T.words
-
-snapshotFailure :: DisposableResult -> [Int] -> Text -> DisposableResult
-snapshotFailure base replayed message =
-    base
-        { disposableVerdict = DisposableUnavailable
-        , disposableStderr = message
-        , disposableFailure =
-            Just (MaterializeFailure StageSnapshot Nothing message)
-        , disposableReplayedCells = replayed
-        }
-
-failed ::
-    DisposableResult ->
-    MaterializeStage ->
-    Maybe Int ->
-    Text ->
-    DisposableResult
-failed base stage cid message =
-    base
-        { disposableVerdict = verdictForFailure message
-        , disposableStderr = message
-        , disposableFailure = Just (stageFailure stage cid message)
-        }
-
-verdictForFailure :: Text -> DisposableVerdict
-verdictForFailure message
-    | "timed out" `T.isInfixOf` T.toLower message = DisposableTimedOut
-    | otherwise = DisposableCompileError
 
 closeQuietly :: IO () -> IO ()
 closeQuietly action = void (try action :: IO (Either SomeException ()))

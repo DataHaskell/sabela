@@ -77,6 +77,7 @@ spec = describe "disposable notebook materialization" $ do
                     , candidateSetup = ""
                     , candidateExpression = Just "notebookValue"
                     , candidateReplacesCellId = Nothing
+                    , candidateDeliberate = False
                     }
             meta = candidateProjectMeta (Set.singleton "aeson") notebook candidate
         metaDeps meta `shouldMatchList` ["aeson", "bytestring", "containers", "text"]

@@ -42,6 +42,7 @@ library
                       Siza.Cli.Annotate
                       Siza.Cli.Chat
                       Siza.Cli.Await
+                      Siza.Cli.Options
                       Siza.Cli.Provenance
                       Siza.Cli.Retro
                       Siza.Provenance
@@ -54,6 +55,10 @@ library
                       Siza.Retro.Distribution
                       Siza.Retro.Report
                       Siza.Agent.Loop
+                      Siza.Agent.Loop.Episode
+                      Siza.Agent.Loop.Sampling
+                      Siza.Agent.Loop.Step
+                      Siza.Agent.Loop.Types
                       Siza.Agent.Loop.Support
                       Siza.Agent.Loop.WrapUp
                       Siza.Agent.Loop.Verdict
@@ -280,6 +285,7 @@ test-suite siza-client-test
                       Test.SteerFeedSpec
                       Test.DiscoverGoalSpec
                       Test.DiscoverGoalRankSpec
+                      Test.DiscoverGoalRankSpec.Worlds
                       Test.DiscoverEscalateSpec
                       Test.DiscoverProducerHintSpec
                       Test.DiscoverInventorySpec

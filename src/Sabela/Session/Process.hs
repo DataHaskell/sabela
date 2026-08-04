@@ -26,11 +26,9 @@ import Control.Concurrent.STM (newTVarIO)
 import Control.Exception (SomeException, try)
 import Control.Monad (void, when)
 import Data.IORef (atomicModifyIORef', newIORef)
-import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import GHC.Conc (getNumProcessors)
 import Sabela.Session (
     Session (..),
     SessionConfig (..),
@@ -54,8 +52,12 @@ import Sabela.Session.ParentPoller (spawnParentPoller)
 import Sabela.Session.Proc (
     ProcSession (..),
     destroySession,
-    sessionProcessSpec,
     withSpawnedSession,
+ )
+import Sabela.Session.Process.Invocation (
+    ghciArgs,
+    ghciProcessSpec,
+    rtsGhcOptions,
  )
 import Sabela.Session.Query (
     evalPureLive,
@@ -71,13 +73,10 @@ import Sabela.Session.Query (
 import Sabela.Session.Reader (errLoop)
 import Sabela.Session.Workspace (clearBuildDirty, markBuildDirty)
 import qualified Sabela.SessionTypes as ST
-import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
 import System.IO (Handle, hClose, hFlush, hPutStrLn)
-import System.Process (CreateProcess, proc, waitForProcess)
+import System.Process (waitForProcess)
 import System.Timeout (timeout)
-import Text.Read (readMaybe)
 
 newSession :: SessionConfig -> IO Session
 newSession cfg = newSessionStreaming cfg (\_ -> pure ())
@@ -101,73 +100,6 @@ firstSessionGen = 1
 bumpSessionGen :: Session -> IO Int
 bumpSessionGen sess =
     atomicModifyIORef' (sessionGen sess) (\g -> (g + 1, g + 1))
-
-ghciProcessSpec :: SessionConfig -> IO CreateProcess
-ghciProcessSpec cfg = do
-    mGhc <- lookupEnv "GHC"
-    mHeap <- lookupEnv "SABELA_GHCI_MAXHEAP"
-    caps <- resolveGhciCaps
-    let compilerArgs = ["--with-compiler=" ++ ghc | ghc <- maybeToList mGhc]
-        args = ghciArgs cfg (rtsGhcOptions caps mHeap) ++ compilerArgs
-    pure (sessionProcessSpec (Just (scWorkDir cfg)) (proc "cabal" args))
-
-resolveGhciCaps :: IO Int
-resolveGhciCaps = do
-    mCaps <- lookupEnv "SABELA_GHCI_CAPS"
-    case mCaps >>= readMaybe of
-        Just n | n > 0 -> pure n
-        _ -> min detectedCapsCeiling <$> getNumProcessors
-
-detectedCapsCeiling :: Int
-detectedCapsCeiling = 8
-
-ghciArgs :: SessionConfig -> String -> [String]
-ghciArgs cfg rtsOpts =
-    storeArgs
-        ++ [ "repl"
-           , "exe:main"
-           , "--project-dir=" ++ scProjectDir cfg
-           , "--builddir=" ++ scProjectDir cfg </> "dist-newstyle"
-           , "-v1"
-           , "--repl-options=-odir " ++ objDir ++ " -hidir " ++ objDir ++ jsonDiag
-           , "--ghc-options=" ++ rtsOpts
-           ]
-  where
-    storeArgs = maybe [] (\dir -> ["--store-dir=" ++ dir]) (scCabalStoreDir cfg)
-    objDir = scProjectDir cfg </> "ghci-objs"
-    jsonDiag
-        | scJsonDiagnostics cfg = " -fdiagnostics-as-json"
-        | otherwise = ""
-
-rtsGhcOptions :: Int -> Maybe String -> String
-rtsGhcOptions caps mHeap =
-    concat
-        [ "+RTS -N"
-        , show n
-        , " -A"
-        , show (nurseryMb n)
-        , "m -n4m -H1G"
-        , heap
-        , " -RTS"
-        ]
-  where
-    n = max 1 caps
-    heap = case mHeap of
-        Nothing -> " -M" ++ defaultMaxHeap
-        Just "0" -> ""
-        Just h -> " -M" ++ h
-
-nurseryMb :: Int -> Int
-nurseryMb caps = max nurseryFloorMb (nurseryTotalMb `div` max 1 caps)
-
-nurseryTotalMb :: Int
-nurseryTotalMb = 512
-
-nurseryFloorMb :: Int
-nurseryFloorMb = 16
-
-defaultMaxHeap :: String
-defaultMaxHeap = "8g"
 
 buildSessionState ::
     SessionConfig ->

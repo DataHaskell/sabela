@@ -5,6 +5,7 @@ module Test.InterruptTimestampFilterSpec (spec) where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent.STM (newTVarIO)
 import Data.IORef (newIORef)
 import Data.Time (getCurrentTime)
 import Data.Unique (newUnique)
@@ -39,6 +40,7 @@ dummySession = do
     q <- newOutQueue
     lock <- newMVar ()
     queryLock <- newMVar ()
+    lockOwner <- newTVarIO Nothing
     errRef <- newIORef []
     ctrRef <- newIORef 0
     cbRef <- newIORef (\_ -> pure ())
@@ -62,6 +64,7 @@ dummySession = do
             { sessProcSess = ps
             , sessLock = lock
             , sessQueryLock = queryLock
+            , sessLockOwner = lockOwner
             , sessErrBuf = errRef
             , sessBaselineBindings = errRef
             , sessCounter = ctrRef

@@ -4,7 +4,6 @@
 module Test.SessionSpec (spec) where
 
 import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar (newMVar)
 import Control.Concurrent.STM (atomically)
 import Data.Function ((&))
 import Data.IORef (IORef, newIORef, writeIORef)
@@ -28,7 +27,6 @@ import Test.Hspec (
     shouldSatisfy,
  )
 
-import Data.Unique (newUnique)
 import Sabela.Session (
     Marker (Marker),
     Session (..),
@@ -43,7 +41,6 @@ import Sabela.Session.Drain (
     DrainResult (..),
     drainUntilMarker,
  )
-import Sabela.Session.Proc (ProcSession (..))
 import Sabela.Session.Process (
     closeSession,
     ghciArgs,
@@ -58,65 +55,10 @@ import Sabela.Session.Reader (
     enqueueLine,
     newOutQueue,
  )
-import Sabela.Session.Timeout (
-    defaultTimeoutConfig,
-    tcExecutionUs,
-    tcResyncUs,
- )
-
-dummySession ::
-    OutQueue ->
-    IORef [Text] ->
-    IORef Int ->
-    SessionConfig ->
-    IO Session
-dummySession q errRef ctrRef cfg = do
-    lock <- newMVar ()
-    qlock <- newMVar ()
-    cbRef <- newIORef (\_ -> pure ())
-    klock <- newMVar ()
-    uid <- newUnique
-    lastInt <- newIORef Nothing
-    gen <- newIORef 1
-    let ps =
-            ProcSession
-                { psId = uid
-                , psProc = error "dummySession: psProc used unexpectedly"
-                , psPgid = Nothing
-                , psKillLock = klock
-                , psStdin = error "dummySession: psStdin used unexpectedly"
-                , psStdout = error "dummySession: psStdout used unexpectedly"
-                , psStderr = error "dummySession: psStderr used unexpectedly"
-                , psQueue = q
-                }
-    pure
-        Session
-            { sessProcSess = ps
-            , sessLock = lock
-            , sessQueryLock = qlock
-            , sessErrBuf = errRef
-            , sessBaselineBindings = errRef
-            , sessCounter = ctrRef
-            , sessConfig = cfg
-            , sessErrCallback = cbRef
-            , sessNonce = 4242
-            , sessLastInterruptTime = lastInt
-            , sessionGen = gen
-            }
+import Test.SessionSpec.Fixture (defaultCfg, dummySession)
 
 push :: OutQueue -> Text -> IO ()
 push q t = atomically (enqueueLine q (T.length t) t)
-
-defaultCfg :: SessionConfig
-defaultCfg =
-    SessionConfig
-        { scProjectDir = "."
-        , scWorkDir = "."
-        , scCabalStoreDir = Nothing
-        , scExecutionTimeoutUs = tcExecutionUs defaultTimeoutConfig
-        , scResyncTimeoutUs = tcResyncUs defaultTimeoutConfig
-        , scJsonDiagnostics = False
-        }
 
 emptyMeta :: CabalMeta
 emptyMeta =

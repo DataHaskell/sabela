@@ -37,6 +37,14 @@
 # do / $ / return / pure / lambda, `if c then True else False`, `concat . map`,
 # `length xs == 0`, `maybe True`/`fromMaybe`, section rewrites, etc. They stay on.
 
+# --- Algebraic-law tests ----------------------------------------------------
+# A law test has to spell out the side the law says is redundant (`fmap id b`,
+# `mempty <> a`) — the hint firing there is the property under test. Scoped to
+# the spec modules that assert those laws, so the hints stay live everywhere else.
+- ignore: {name: Functor law, within: [Test.NotebookFrpSpec]}
+- ignore: {name: "Monoid law, left identity", within: [Test.NotebookPictureSpec]}
+- ignore: {name: "Monoid law, right identity", within: [Test.NotebookPictureSpec]}
+
 # --- Deliberately NOT enabled (mirrors the golangci `disable:` block) --------
 # - group generalise-for-conciseness: flags ~22 existing sites; enable once those
 #   are cleaned up, else the gate drowns (cf. the golangci "enable in future" TODOs).

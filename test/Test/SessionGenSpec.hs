@@ -4,6 +4,7 @@
 module Test.SessionGenSpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent.STM (newTVarIO)
 import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
@@ -43,6 +44,7 @@ dummySession g = do
     q <- newOutQueue
     lock <- newMVar ()
     queryLock <- newMVar ()
+    lockOwner <- newTVarIO Nothing
     errRef <- newIORef []
     ctrRef <- newIORef 0
     cbRef <- newIORef (\_ -> pure ())
@@ -66,6 +68,7 @@ dummySession g = do
             { sessProcSess = ps
             , sessLock = lock
             , sessQueryLock = queryLock
+            , sessLockOwner = lockOwner
             , sessErrBuf = errRef
             , sessBaselineBindings = errRef
             , sessCounter = ctrRef

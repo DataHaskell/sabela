@@ -42,3 +42,7 @@ eval-runs/
 
 __pycache__/
 *.pyc
+
+# scripts/presubmit.sh writes a throwaway project file (CI's -Werror flags on
+# top of cabal.project) and builds it into its own dist tree.
+.presubmit.cabal.project

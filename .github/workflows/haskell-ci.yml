@@ -196,7 +196,8 @@ jobs:
           find sdist -maxdepth 1 -type f -name '*.tar.gz' -exec tar -C $GITHUB_WORKSPACE/unpacked -xzvf {} \;
       - name: generate cabal.project
         run: |
-          PKGDIR_sabela="$(find "$GITHUB_WORKSPACE/unpacked" -maxdepth 1 -type d -regex '.*/sabela-*')"
+          PKGDIR_sabela="$(find "$GITHUB_WORKSPACE/unpacked" -maxdepth 1 -type d -regex '.*/sabela-[0-9.]*')"
+          test -n "$PKGDIR_sabela" || { echo "sdist unpack produced no sabela-<version> directory"; exit 1; }
           echo "PKGDIR_sabela=${PKGDIR_sabela}" >> "$GITHUB_ENV"
           rm -f cabal.project cabal.project.local
           touch cabal.project
@@ -207,7 +208,10 @@ jobs:
           echo "package sabela" >> cabal.project
           echo "    ghc-options: -Werror=unused-packages" >> cabal.project
           echo "package sabela" >> cabal.project
-          echo "    ghc-options: -Werror=incomplete-patterns -Werror=incomplete-uni-patterns" >> cabal.project
+          # -Werror=incomplete-uni-patterns is deliberately NOT here: the
+          # promotion is package-wide, src is already clean, and the suite binds
+          # refutable patterns on purpose (`let Right plan = ...`).
+          echo "    ghc-options: -Werror=incomplete-patterns" >> cabal.project
           cat >> cabal.project <<EOF
           EOF
           $HCPKG list --simple-output --names-only | perl -ne 'for (split /\s+/) { print "constraints: any.$_ installed\n" unless /^(sabela)$/; }' >> cabal.project.local

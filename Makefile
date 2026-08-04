@@ -3,13 +3,19 @@
 # to make rebuilding the embedded frontend and search cache discoverable.
 
 .PHONY: help frontend frontend-check hub-assets search-cache capability-index \
-        hackage-facts \
+        hackage-facts presubmit presubmit-quick \
         search-cache-local test test-fast payload-probe
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| sort \
 		| awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+
+presubmit: ## Run every gate CI runs (frontend, fourmolu, hlint, module cap, -Werror build + tests)
+	./scripts/presubmit.sh
+
+presubmit-quick: ## The presubmit gates that need no compile (seconds, not minutes)
+	./scripts/presubmit.sh --quick
 
 test: ## Run the whole suite, integration specs included (slow: real cabal builds + GHCi)
 	cabal test

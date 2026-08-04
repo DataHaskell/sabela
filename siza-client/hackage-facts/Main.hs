@@ -18,7 +18,11 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
 import qualified Data.Text.IO as TIO
-import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirectory)
+import System.Directory (
+    createDirectoryIfMissing,
+    doesFileExist,
+    getHomeDirectory,
+ )
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, (</>))

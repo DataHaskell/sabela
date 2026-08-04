@@ -1,15 +1,10 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE TupleSections #-}
 
 {- | Process-group lifecycle for interpreter subprocesses: masked spawn
 into a registry, group signalling, and the single 'destroySession'
-teardown chokepoint every kill path must route through.
-
-The group-signalling leaves ('termGroupQuiet', 'killGroupQuiet',
-'intGroupQuiet', 'rawKill') are the only platform-specific pieces: on
-POSIX they signal the leader's process group; on Windows they act on the
-process handle via the portable @process@ API (TerminateProcess and a
-Ctrl-Break sent to the group). Everything above them is shared.
+teardown chokepoint every kill path must route through. The signalling
+leaves it sequences are platform-specific and live in
+"Sabela.Session.Proc.Signal"; everything here is shared.
 -}
 module Sabela.Session.Proc (
     ProcSession (..),
@@ -24,24 +19,26 @@ module Sabela.Session.Proc (
 ) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (MVar, newMVar, withMVar)
-import Control.Exception (
-    SomeException,
-    mask,
-    onException,
-    try,
-    uninterruptibleMask_,
- )
+import Control.Concurrent.MVar (newMVar, withMVar)
+import Control.Exception (mask, onException, uninterruptibleMask_)
 import Control.Monad (forM_, void)
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Unique (Unique, newUnique)
-import Sabela.Session.Reader (OutQueue, drainToEof, newOutQueue, readLoop)
+import Sabela.Session.Proc.Signal (
+    ProcSession (..),
+    closeQuiet,
+    intGroupQuiet,
+    killGroupQuiet,
+    quiet,
+    rawKill,
+    termGroupQuiet,
+ )
+import Sabela.Session.Reader (drainToEof, newOutQueue, readLoop)
 import System.IO (
     BufferMode (LineBuffering),
     Handle,
-    hClose,
     hSetBinaryMode,
     hSetBuffering,
     hSetEncoding,
@@ -52,7 +49,6 @@ import System.IO (
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (
     CreateProcess (create_group, cwd, std_err, std_in, std_out),
-    ProcessHandle,
     StdStream (CreatePipe),
     createProcess,
     getPid,
@@ -60,40 +56,6 @@ import System.Process (
     waitForProcess,
  )
 import System.Timeout (timeout)
-
-#if defined(mingw32_HOST_OS)
-import Data.Word (Word32)
-import System.Process (interruptProcessGroupOf, terminateProcess)
-#else
-import System.Posix.Signals (
-    Signal,
-    sigINT,
-    sigKILL,
-    sigTERM,
-    signalProcessGroup,
- )
-import System.Posix.Types (ProcessGroupID)
-#endif
-
-#if defined(mingw32_HOST_OS)
--- | Windows has no POSIX process-group id; getPid yields a Word32.
-type ProcessGroupID = Word32
-#endif
-
-{- | A spawned interpreter process: handles, its process group (captured
-once at spawn, while the leader is alive), the output queue its reader
-feeds, and the kill-lock serialising teardown.
--}
-data ProcSession = ProcSession
-    { psId :: Unique
-    , psProc :: ProcessHandle
-    , psPgid :: Maybe ProcessGroupID
-    , psKillLock :: MVar ()
-    , psStdin :: Handle
-    , psStdout :: Handle
-    , psStderr :: Handle
-    , psQueue :: OutQueue
-    }
 
 {- | The sole way to build a session 'CreateProcess': piped std handles
 and an own process group, so group signals can never reach the server.
@@ -233,58 +195,10 @@ forceKillGroup ps = withMVar (psKillLock ps) $ \_ -> do
         Just _ -> pure ()
         Nothing -> killGroupQuiet ps
 
--- | Pre-registration failure path: forcibly kill the leftover tree, reap.
-rawKill :: ProcessHandle -> IO ()
-rawKill ph = uninterruptibleMask_ $ do
-    rawKillTree ph
-    quiet (void (waitForProcess ph))
-
-#if defined(mingw32_HOST_OS)
--- | Windows has no process group to signal: terminate the handle.
-rawKillTree :: ProcessHandle -> IO ()
-rawKillTree ph = quiet (terminateProcess ph)
-#else
--- | POSIX: group-KILL by the live handle's pid (the group leader).
-rawKillTree :: ProcessHandle -> IO ()
-rawKillTree ph = do
-    mPid <- getPid ph
-    forM_ mPid $ \pid -> quiet (signalProcessGroup sigKILL pid)
-#endif
-
-#if defined(mingw32_HOST_OS)
-{- | Graceful, forcible, and interrupt signals to a session's tree.
-Windows has no process-group signals: TERM and KILL both terminate the
-process (TerminateProcess) and INT sends Ctrl-Break to its group.
--}
-termGroupQuiet, killGroupQuiet, intGroupQuiet :: ProcSession -> IO ()
-termGroupQuiet ps = quiet (terminateProcess (psProc ps))
-killGroupQuiet ps = quiet (terminateProcess (psProc ps))
-intGroupQuiet ps = quiet (interruptProcessGroupOf (psProc ps))
-#else
-{- | Graceful, forcible, and interrupt signals to a session's tree. POSIX
-sends the signal to the leader's process group.
--}
-termGroupQuiet, killGroupQuiet, intGroupQuiet :: ProcSession -> IO ()
-termGroupQuiet = signalGroupQuiet sigTERM
-killGroupQuiet = signalGroupQuiet sigKILL
-intGroupQuiet = signalGroupQuiet sigINT
-
-signalGroupQuiet :: Signal -> ProcSession -> IO ()
-signalGroupQuiet sig ps =
-    forM_ (psPgid ps) $ \pgid -> quiet (signalProcessGroup sig pgid)
-#endif
-
-closeQuiet :: Handle -> IO ()
-closeQuiet h = void (timeout closeTimeoutUs (quiet (hClose h)))
-
-quiet :: IO () -> IO ()
-quiet act = void (try act :: IO (Either SomeException ()))
-
-gracePolls, gracePollUs, drainTimeoutUs, closeTimeoutUs :: Int
+gracePolls, gracePollUs, drainTimeoutUs :: Int
 gracePolls = 40
 gracePollUs = 50000
 drainTimeoutUs = 2000000
-closeTimeoutUs = 1000000
 
 {- | Live sessions by id, inserted at spawn and removed at reap, so the
 shutdown sweep reclaims sessions that no manager slot references.

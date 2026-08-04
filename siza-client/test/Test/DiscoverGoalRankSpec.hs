@@ -34,7 +34,6 @@ import Siza.Agent.Discover.Types (
 import Siza.Agent.DiscoverTool (runDiscoverCall)
 import Test.CatalogueSim (SimWorld (..), runWorldArgs, simWorldCall)
 import Test.DiscoverFixtures (
-    SynPkg (..),
     argText,
     field,
     hitText,
@@ -43,24 +42,19 @@ import Test.DiscoverFixtures (
     stateOf,
     textField,
  )
-
-env0 :: NotebookEnv
-env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
-
-interpFor :: Text -> Interpreted
-interpFor t = Interpreted t t Nothing "construct" "" []
-
-dh :: Text -> Text -> Text -> Text -> DHit
-dh n ty m p =
-    (mkHit n m p){dhType = ty, dhOrigin = "session"}
-
-intField :: Text -> Value -> Int
-intField k v = case field k v of
-    Just (Number n) -> round n
-    _ -> (-1)
-
-names :: Value -> [Text]
-names = map (hitText "name") . hitsOf
+import Test.DiscoverGoalRankSpec.Worlds (
+    attachWorld,
+    bareWorld,
+    constructPlot,
+    dh,
+    env0,
+    intField,
+    interpFor,
+    literalWorld,
+    names,
+    provWorld,
+    runGuard,
+ )
 
 discoverGoalRankSpec :: Spec
 discoverGoalRankSpec = describe "goal-provenance ranking + producer attachment (R8-T2)" $ do
@@ -146,51 +140,6 @@ provenanceRankSpec = describe "the held consumer's package outranks lexical winn
             decisions = [rankedNames (sg c) (c, f) | (c, f) <- spellings]
         length (nub decisions) `shouldBe` 1
 
-provWorld :: SimWorld
-provWorld = SimWorld pkgs pkgs
-  where
-    pkgs =
-        [ SynPkg
-            "plume"
-            "1.0.0"
-            False
-            [
-                ( "Zzz.Deep"
-                ,
-                    [ ("bars", "[(Text, Double)] -> Plot -> Text")
-                    , ("zzzPlot", "Plot")
-                    ]
-                )
-            ]
-        , SynPkg
-            "chartx"
-            "2.0.0"
-            False
-            [("Aaa.A", [("aaaPlot", "Plot"), ("defaultPlotLineStyle", "LineStyle")])]
-        ]
-
-runGuard :: SimWorld -> [Value] -> IO [Value]
-runGuard w argsList = do
-    ref <- newSearchLedger
-    let inner tc = case tcName tc of
-            "discover" ->
-                Right
-                    <$> runDiscoverCall
-                        True
-                        (simWorldCall w)
-                        (argText "query" (tcArgs tc))
-                        (tcArgs tc)
-            _ -> pure (Right (ToolOk (object [])))
-        outOf r = case r of
-            Right (ToolOk v) -> v
-            Right (ToolErr v) -> v
-            Left _ -> object []
-    mapM (fmap outOf . guardDiscover ref inner . ToolCall "discover") argsList
-
-constructPlot :: Value
-constructPlot =
-    object ["query" .= ("Plot" :: Text), "mode" .= ("construct" :: Text)]
-
 provenanceLoopSpec :: Spec
 provenanceLoopSpec = describe "provenance flows from the ledger's held consumer fact" $ do
     it "after the consumer fact lands, its package's producer ranks first" $ do
@@ -260,44 +209,3 @@ attachmentSpec = describe "an unconstructible argument's producers ride the SAME
                    | envelopeChars v > envelopeCharBudget
                    ]
             )
-
-attachWorld :: SimWorld
-attachWorld = SimWorld pkgs pkgs
-  where
-    pkgs =
-        [ SynPkg
-            "plume"
-            "1.0.0"
-            False
-            [("Zzz.Deep", [("bars", "[(Text, Double)] -> Plot -> Text")])]
-        , SynPkg
-            "framing"
-            "2.0.0"
-            False
-            [
-                ( "Fr.M"
-                ,
-                    [ ("zzzPlot", "Plot")
-                    , ("mkPlot", "Text -> Plot")
-                    , ("farPlot", "Int -> Int -> Plot")
-                    ]
-                )
-            ]
-        ]
-
-literalWorld :: SimWorld
-literalWorld = SimWorld pkgs pkgs
-  where
-    pkgs =
-        [ SynPkg
-            "plume"
-            "1.0.0"
-            False
-            [("Zzz.Deep", [("gust", "Int -> Wind"), ("zzzPlot", "Plot")])]
-        ]
-
-bareWorld :: SimWorld
-bareWorld = SimWorld pkgs pkgs
-  where
-    pkgs =
-        [SynPkg "plume" "1.0.0" False [("Nimbus.Sky", [("drizzle", "Sky -> Rain")])]]

@@ -1,9 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | A fault in the tooling a trial runs on is not a verdict on the candidate's
-dependencies. Read as one it states a standing limit the session does not have,
-which is what stopped the live hodatime episode from ever installing a package
-(docs/discover/live/live_hodatime.md).
+{- | A tooling fault is not a verdict on the candidate's dependencies. Read as
+one it states a limit the session does not have, which stopped the live
+hodatime episode installing at all (docs/discover/live/live_hodatime.md).
 -}
 module Test.EnvironmentFaultSpec (spec) where
 
@@ -12,7 +11,6 @@ import qualified Data.Text as T
 import Test.Hspec
 
 import Sabela.AI.Capabilities.Try.Payload (disposablePayload)
-import Test.DisposableFixtures (baseResult, gateOf, reasonOf)
 import Sabela.Session.MaterializeStage (
     DisposableResult (..),
     DisposableVerdict (..),
@@ -20,6 +18,7 @@ import Sabela.Session.MaterializeStage (
     MaterializeStage (..),
     environmentFault,
  )
+import Test.DisposableFixtures (baseResult, gateOf, reasonOf)
 
 {- | The index fault the live hodatime episode ran onto: cabal could not read
 its own package index, and the trial stopped before the candidate.

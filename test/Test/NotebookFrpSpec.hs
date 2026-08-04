@@ -20,10 +20,10 @@ spec = do
     describe "Behavior: Functor/Applicative laws" $ do
         let b = 2 * time + 1
         it "fmap id = id" $
-            map (at (id b)) [0, 1, 2] `shouldBe` map (at b) [0, 1, 2]
+            map (at (fmap id b)) [0, 1, 2] `shouldBe` map (at b) [0, 1, 2]
         it "fmap (f . g) = fmap f . fmap g" $
             map (at (fmap ((+ 1) . (* 2)) b)) [0, 1]
-                `shouldBe` map (at (fmap ((+ 1) . (* 2)) b)) [0, 1]
+                `shouldBe` map (at (fmap (+ 1) (fmap (* 2) b))) [0, 1]
         it "pure/<*> applies pointwise" $
             at ((+ 1) <$> time) 4 `shouldBe` (5 :: Double)
 
