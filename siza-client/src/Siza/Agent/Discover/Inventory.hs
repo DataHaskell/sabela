@@ -11,11 +11,12 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.ModuleResolve (isNoiseModule)
+import Siza.Agent.Discover.CabalFacts (PkgFacts)
 import Siza.Agent.Discover.Guidance (cabalLine)
 import Siza.Agent.Discover.Merge (envelopeFrom, mergedHits)
 import Siza.Agent.Discover.Types (
     DHit (..),
-    HackageInfo,
+    HackageInfo (..),
     InstallState (..),
     Interpreted (..),
     MatchKind (..),
@@ -47,6 +48,7 @@ inventoryEnvelope env interp scope limit answers hk lexical =
             (mergedHits env interp answers hk)
             interp
             lexical
+            (hiFacts hk)
     -- Inventory is the mode the miss guidance recommends for "what is
     -- available"; dropping the card here answered that question with a bare
     -- row naming the package and nothing it contains.
@@ -56,25 +58,33 @@ inventoryEnvelope env interp scope limit answers hk lexical =
 whose sources named no module states none, and a package row with no module
 states nothing a caller can import, so it is dropped rather than padded.
 -}
-inventoryRows :: [(Text, [Text])] -> [DHit] -> Interpreted -> [Text] -> [DHit]
-inventoryRows pkgMods merged interp lexical =
+inventoryRows ::
+    [(Text, [Text])] ->
+    [DHit] ->
+    Interpreted ->
+    [Text] ->
+    [(Text, PkgFacts)] ->
+    [DHit]
+inventoryRows pkgMods merged interp lexical facts =
     sortOn (\h -> (fromEnum (dhInstall h), dhPackage h)) (pkgRows ++ lexRows)
   where
     grouped = groupByPackage merged
     pkgRows = [r | (p, hs) <- grouped, Just r <- [row p hs]]
     lexRows =
         [ DHit
-            n
-            ""
-            notInstalled
-            n
-            ""
-            InstAbsentKnown
-            (matchOf n)
-            "hackage"
-            (Just (cabalLine n))
-            Nothing
-            Nothing
+            { dhName = n
+            , dhType = ""
+            , dhModule = notInstalled
+            , dhPackage = n
+            , dhVersion = ""
+            , dhInstall = InstAbsentKnown
+            , dhKind = matchOf n
+            , dhOrigin = "hackage"
+            , dhCabal = Just (cabalLine n)
+            , dhUse = Nothing
+            , dhClash = Nothing
+            , dhFacts = lookup n facts
+            }
         | n <- lexical
         , n `notElem` map fst grouped
         ]
@@ -94,7 +104,12 @@ inventoryRows pkgMods merged interp lexical =
                 , dhCabal = cabalFor p state hs
                 , dhUse = Nothing
                 , dhClash = Nothing
+                , dhFacts = factsFor p state
                 }
+    -- Only a package the session cannot speak for needs the index's words.
+    factsFor p state
+        | state `elem` [InstAbsentKnown, InstAbsentUnknown] = lookup p facts
+        | otherwise = Nothing
     cabalFor p state hs
         | state `elem` [InstHidden, InstAbsentKnown] =
             case mapMaybe dhCabal hs of

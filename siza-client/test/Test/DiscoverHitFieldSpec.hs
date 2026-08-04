@@ -142,7 +142,7 @@ catalogueOnlySpec = describe "the catalogue-only hit is built from what is known
                             (interpret envT pkg)
                             10
                             [okAnswer "session" []]
-                            (HackageInfo True [pkg])
+                            (HackageInfo True [pkg] [])
                     hs = hitsOf v
                     bad =
                         [ (k, s)
@@ -173,13 +173,13 @@ schemaPromiseSpec = describe "the schema promise is one the merge can keep" $
                                 (interpret envT pkg)
                                 10
                                 [okAnswer "session" []]
-                                (HackageInfo True [pkg])
+                                (HackageInfo True [pkg] [])
                             , discoverEnvelope
                                 envT
                                 (interpret envT n)
                                 40
                                 [okAnswer "session" ghs]
-                                (HackageInfo True [])
+                                (HackageInfo True [] [])
                             ]
                         bad =
                             [ h

@@ -3,6 +3,7 @@
 # to make rebuilding the embedded frontend and search cache discoverable.
 
 .PHONY: help frontend frontend-check hub-assets search-cache capability-index \
+        hackage-facts \
         search-cache-local test test-fast payload-probe
 
 help: ## Show available targets
@@ -38,6 +39,9 @@ hub-assets: ## Refresh the hub's WASM assets (sabela-hub/static/) so it builds/d
 search-cache: ## Build/refresh the LOCAL Hoogle + Hackage-names cache the resolver queries (no network at run time)
 	./tools/update-search-cache.sh
 	@echo "Cache refreshed. Queries hit the local DB only — never the public services."
+
+hackage-facts: ## Rebuild only data/hackage-facts.tsv (package modules, homepage, synopsis) from the local cabal index
+	./tools/update-search-cache.sh --facts-only
 
 search-cache-local: ## Rebuild only data/hoogle-local.hoo (in-repo + store packages); skips the full-Hackage download
 	./tools/update-search-cache.sh --local-hoogle-only

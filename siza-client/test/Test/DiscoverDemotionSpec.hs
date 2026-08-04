@@ -57,6 +57,7 @@ subHit m =
         Nothing
         Nothing
         Nothing
+        Nothing
 
 discoverDemotionSpec :: Spec
 discoverDemotionSpec = describe "stratum + demotion (R3-T3)" $ do

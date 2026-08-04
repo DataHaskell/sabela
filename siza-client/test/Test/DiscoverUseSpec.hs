@@ -49,7 +49,7 @@ discoverUseSpec = describe "every hit says how to call it (C2-7)" $ do
     cardClashSpec
 
 hkT :: HackageInfo
-hkT = HackageInfo True []
+hkT = HackageInfo True [] []
 
 envelopeOf :: NotebookEnv -> Text -> [DHit] -> Value
 envelopeOf env q hs =
@@ -93,6 +93,7 @@ useStampSpec = describe "C2-7a the use note is stamped at the chokepoint" $ do
                                 InstInstalled
                                 MkExact
                                 "session"
+                                Nothing
                                 Nothing
                                 Nothing
                                 Nothing
@@ -241,6 +242,7 @@ synHit n m p =
         InstInstalled
         MkExact
         "session"
+        Nothing
         Nothing
         Nothing
         Nothing

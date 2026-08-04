@@ -78,6 +78,8 @@ library
                       Siza.Agent.Ack
                       Siza.Agent.Discover
                       Siza.Agent.Discover.Types
+                      Siza.Agent.Discover.CabalFacts
+                      Siza.Agent.Discover.Absent
                       Siza.Agent.Discover.Interpret
                       Siza.Agent.Discover.UnitName
                       Siza.Agent.Discover.Classify
@@ -203,6 +205,24 @@ executable siza-probe
                     , process >= 1.6 && < 1.8
                     , text >= 1.2 && < 3
 
+-- Builds the local Hackage facts cache from the cabal index tar. Run by
+-- tools/update-search-cache.sh, never at query time.
+executable siza-hackage-facts
+    import:           warnings
+    hs-source-dirs:   hackage-facts
+    main-is:          Main.hs
+    default-language: Haskell2010
+    default-extensions: OverloadedStrings, LambdaCase
+    ghc-options:      -rtsopts
+    build-depends:    base >= 4 && < 5
+                    , siza-client
+                    , bytestring >= 0.11 && < 0.13
+                    , containers >= 0.6.7 && < 0.9
+                    , directory >= 1.3 && < 1.4
+                    , filepath >= 1.4 && < 1.6
+                    , tar >= 0.5 && < 0.7
+                    , text >= 1.2 && < 3
+
 -- Run EXPLICITLY by target
 -- (cabal test siza-client:test:siza-client-test), never `cabal test all`.
 test-suite siza-client-test
@@ -222,6 +242,8 @@ test-suite siza-client-test
                       Test.DiscoverFixtures
                       Test.CatalogueSim
                       Test.DiscoverCatalogueSpec
+                      Test.CabalFactsSpec
+                      Test.DiscoverAbsentFactsSpec
                       Test.DiscoverScopeLedgerSpec
                       Test.DiscoverWorldChangeSpec
                       Test.DiscoverConstructSpec

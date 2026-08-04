@@ -46,6 +46,7 @@ gateDispatch tc = case tcName tc of
     q = case tcArgs tc of
         Object o | Just (String s) <- KM.lookup "query" o -> s
         _ -> ""
+    hitEnv :: Text -> Text -> Text -> Value
     hitEnv qq n ty =
         object
             [ "query" .= qq

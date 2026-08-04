@@ -91,6 +91,7 @@ producerHit goal f =
         Nothing
         Nothing
         Nothing
+        Nothing
 
 constructEnvelope ::
     Maybe StandingGoal ->

@@ -43,7 +43,7 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True []
+hkT = HackageInfo True [] []
 
 foundOver :: Text -> [DHit] -> Value
 foundOver q hs =

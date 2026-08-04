@@ -12,6 +12,7 @@ module Siza.Retro.Metrics (
     transcriptMetrics,
 ) where
 
+import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import qualified Data.Set as S

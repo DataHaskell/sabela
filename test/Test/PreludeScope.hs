@@ -161,13 +161,17 @@ localBinders d = S.union patNames whereNames
             | b <- universeBi d :: [Hs.HsLocalBinds Hs.GhcPs]
             ]
 
--- | The record selectors a declaration in this source brings into being.
+{- | The record selectors a declaration in this source brings into being.
+Reached through 'Hs.ConDecl' rather than the record-field type, whose name
+changed in ghc-lib-parser 9.14; a constructor holds no other field occurrence.
+-}
 fieldBinders :: Hs.HsModule Hs.GhcPs -> Set Text
 fieldBinders m =
     S.fromList
         [ n
-        | fld <- universeBi m :: [Hs.HsConDeclRecField Hs.GhcPs]
-        , rdr <- universeBi (Hs.cdrf_names fld) :: [RdrName]
+        | con <- universeBi m :: [Hs.ConDecl Hs.GhcPs]
+        , fo <- universeBi con :: [Hs.FieldOcc Hs.GhcPs]
+        , rdr <- universeBi fo :: [RdrName]
         , Just n <- [unqualified rdr]
         ]
 

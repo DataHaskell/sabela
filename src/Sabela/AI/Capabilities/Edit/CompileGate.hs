@@ -231,7 +231,7 @@ rejectionJson exposedBy mReplaces gsrc prevDefined result =
     remedySentence =
         maybe
             " Retry, or state the blocker."
-            (\f -> " " <> blockedRemedy (failureStage f) attribution)
+            (\f -> " " <> blockedRemedy f attribution)
             failure
 
 {- | Why nothing was committed. Only a candidate the compiler actually read

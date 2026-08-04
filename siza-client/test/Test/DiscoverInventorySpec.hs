@@ -82,7 +82,7 @@ rowsFor topic hs mods =
                 emptyScope
                 8
                 [(okAnswer "hoogle" hs){saPkgModules = mods}]
-                (HackageInfo True [])
+                (HackageInfo True [] [])
                 []
             )
         )
@@ -105,6 +105,7 @@ genHit (p, st) =
         Nothing
         Nothing
         Nothing
+        Nothing
   where
     moduleOf t = "M." <> T.toTitle t
 
@@ -117,7 +118,7 @@ genInventory n limit =
             emptyScope
             limit
             [okAnswer "hoogle" (map genHit states)]
-            (HackageInfo True [p | (p, InstAbsentKnown) <- states])
+            (HackageInfo True [p | (p, InstAbsentKnown) <- states] [])
             []
         )
   where
@@ -268,7 +269,7 @@ discoverInventorySpec = describe "inventory mode (R3-T3)" $ do
                             | p <- pkgs
                             ]
                         ]
-                        (HackageInfo True pkgs)
+                        (HackageInfo True pkgs [])
                         []
                     )
             kindsOf v = [hitText "matchKind" h | h <- hitsOf v]

@@ -7,7 +7,7 @@ its refusals are stated as a grammar the surface can publish (C1-5d).
 module Test.TryFrontierSpec (spec) where
 
 import Data.Either (isRight)
-import Data.List (isInfixOf)
+import Data.List (foldl', isInfixOf)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T

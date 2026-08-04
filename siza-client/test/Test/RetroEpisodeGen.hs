@@ -17,6 +17,7 @@ module Test.RetroEpisodeGen (
 ) where
 
 import Data.Aeson (object, toJSON, (.=))
+import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T

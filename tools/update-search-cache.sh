@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# Build/refresh the LOCAL search cache the neuro-symbolic Hackage resolver
-# queries: (1) the full Hackage package-name list and (2) a local Hoogle
-# database. Queries at run time hit ONLY this local cache — never the public
-# Hoogle/Hackage services — so the resolve loop is never throttled or rate
-# limited. Rerun this command to refresh the cache when Hackage moves.
-#
-# Usage: ./tools/update-search-cache.sh [--names-only|--hoogle-only]
-#
-# Requires: cabal, ghc, tar. Installs `hoogle` into the cabal store if absent.
-# Writes: data/hackage-packages.txt, data/search-cache.meta; the Hoogle DB
-# lands in hoogle's default data dir ("$(hoogle --version)" prints it).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NAMES_OUT="$REPO_ROOT/data/hackage-packages.txt"
+FACTS_OUT="$REPO_ROOT/data/hackage-facts.tsv"
 META_OUT="$REPO_ROOT/data/search-cache.meta"
 INDEX_TAR="${CABAL_INDEX_TAR:-$HOME/.cabal/packages/hackage.haskell.org/01-index.tar}"
 
@@ -21,14 +11,15 @@ DO_NAMES=1
 DO_HOOGLE=1
 DO_CAPABILITY=0
 DO_LOCAL=0
+DO_FACTS=0
+
+LOCAL_UNIVERSES=""
+LOCAL_DIRS=0
 case "${1:-}" in
     --names-only) DO_HOOGLE=0 ;;
+    --facts-only) DO_NAMES=0; DO_HOOGLE=0; DO_FACTS=1 ;;
     --hoogle-only) DO_NAMES=0 ;;
-    # Rebuild only data/hoogle-local.hoo (installed + in-repo packages);
-    # skips the slow full-Hackage download.
     --local-hoogle-only) DO_NAMES=0; DO_HOOGLE=0; DO_LOCAL=1 ;;
-    # The SHIP capability-search index (vectors+sidecar+revdeps). Opt-in: it is
-    # heavier and needs a local ollama (nomic-embed-text). See tools/build_capability_index.hs.
     --capability-index) DO_NAMES=0; DO_HOOGLE=0; DO_CAPABILITY=1 ;;
     "") ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
@@ -48,12 +39,17 @@ refresh_index() {
 write_names() {
     [ -f "$INDEX_TAR" ] || { echo "no Hackage index at $INDEX_TAR — run cabal update" >&2; exit 1; }
     echo "==> extracting package names from $INDEX_TAR" >&2
-    # Index entries are <pkg>/<version>/<pkg>.cabal; the top path segment is
-    # the package name. Pure-local, no network.
     tar tf "$INDEX_TAR" \
         | awk -F/ 'NF>=2 && $1 != "" {print $1}' \
         | sort -u > "$NAMES_OUT"
     echo "   wrote $(wc -l < "$NAMES_OUT" | tr -d ' ') package names -> $NAMES_OUT" >&2
+}
+
+write_facts() {
+    [ -f "$INDEX_TAR" ] || { echo "no Hackage index at $INDEX_TAR — run cabal update" >&2; exit 1; }
+    echo "==> extracting package facts from $INDEX_TAR" >&2
+    CABAL_INDEX_TAR="$INDEX_TAR" cabal run -v0 siza-hackage-facts -- \
+        --tar "$INDEX_TAR" --out "$FACTS_OUT" >&2
 }
 
 ensure_hoogle() {
@@ -79,36 +75,84 @@ generate_hoogle() {
     generate_local_hoogle
 }
 
-# Index the WHOLE installed package DB — exposed AND hidden/local packages —
-# from the local haddock docs, into a second database the resolver unions in
-# (SABELA_HOOGLE_LOCAL_DB; see Sabela.AI.HoogleResolve.hoogleDbArgSets).
-# Staleness contract: this snapshot is as of generation time; packages
-# installed afterwards are unindexed until the next run (the discover session
-# evidence still classifies their install state live).
+hoogle_dirs_under() {
+    find "$1" -name '*.txt' -path '*doc/html*' 2>/dev/null \
+        | sed 's#/[^/]*$##' \
+        | sort -u
+}
+
+repo_haddock_dirs() {
+    (cd "$REPO_ROOT" && cabal haddock all --haddock-hoogle >&2) \
+        || echo "   cabal haddock all failed; indexing whatever is already built" >&2
+    hoogle_dirs_under "$REPO_ROOT/dist-newstyle"
+}
+
+store_package_db() {
+    store="$(cabal path --store-dir 2>/dev/null || true)"
+    [ -n "$store" ] || store="$HOME/.cabal/store"
+    ver="$(ghc --numeric-version 2>/dev/null || true)"
+    [ -n "$ver" ] || return 0
+    for d in "$store/ghc-$ver" "$store/ghc-$ver"-*; do
+        if [ -d "$d/package.db" ]; then echo "$d/package.db"; return 0; fi
+    done
+}
+
+store_haddock_dirs() {
+    db="$(store_package_db)"
+    [ -n "$db" ] && [ -d "$db" ] || return 0
+    ghc-pkg --package-db="$db" field --simple-output '*' haddock-html 2>/dev/null \
+        | tr ' ' '\n' \
+        | sed '/^$/d' \
+        | sort -u \
+        | while read -r d; do
+            if [ -d "$d" ] && ls "$d"/*.txt >/dev/null 2>&1; then echo "$d"; fi
+        done
+}
+
+sample_symbol() {
+    doc="$(find "$1" -maxdepth 1 -name '*.txt' 2>/dev/null | head -1)"
+    [ -n "$doc" ] || return 0
+    awk "/^[a-zA-Z_][a-zA-Z0-9_']* :: /{print \$1; exit}" "$doc"
+}
+
 generate_local_hoogle() {
     local_db="$REPO_ROOT/data/hoogle-local.hoo"
-    echo "==> hoogle generate --local (installed DB + in-repo packages)" >&2
-    # In-repo packages (never on Hackage) index from haddock-hoogle output;
-    # the bare --local form needs store haddocks that a machine may lack.
-    (cd "$REPO_ROOT" && cabal haddock sabela-notebook --haddock-hoogle >&2) \
-        || echo "   cabal haddock sabela-notebook failed; skipping repo docs" >&2
-    repo_docs=$(find "$REPO_ROOT/dist-newstyle" -name "sabela-notebook.txt" 2>/dev/null | head -1)
+    echo "==> hoogle generate (in-repo + store packages, one --local per package)" >&2
+    args=()
+    universes=""
+    probe_dir=""
+    while read -r d; do
+        [ -n "$d" ] || continue
+        args+=("--local=$d")
+        [ -n "$probe_dir" ] || probe_dir="$d"
+        case ",$universes," in *,repo,*) ;; *) universes="${universes:+$universes,}repo" ;; esac
+    done <<EOF
+$(repo_haddock_dirs)
+EOF
+    while read -r d; do
+        [ -n "$d" ] || continue
+        args+=("--local=$d")
+        [ -n "$probe_dir" ] || probe_dir="$d"
+        case ",$universes," in *,store,*) ;; *) universes="${universes:+$universes,}store" ;; esac
+    done <<EOF
+$(store_haddock_dirs)
+EOF
+    echo "   ${#args[@]} package doc dirs (universes: ${universes:-none})" >&2
     ok=0
-    if [ -n "$repo_docs" ]; then
-        repo_dir="$(dirname "$repo_docs")"
-        if hoogle generate --local --local="$repo_dir" --database="$local_db" >&2 \
-            && hoogle search --database="$local_db" --count=1 displayPicture 2>/dev/null \
-                | grep -q displayPicture; then
-            ok=1
-        elif hoogle generate --local="$repo_dir" --database="$local_db" >&2; then
-            echo "   store haddocks unusable; indexed in-repo packages only" >&2
-            ok=1
-        fi
-    elif hoogle generate --local --database="$local_db" >&2; then
+    if hoogle generate --local ${args[@]+"${args[@]}"} --database="$local_db" >&2 \
+        && local_db_answers "$local_db" "$probe_dir"; then
+        universes="${universes:+$universes,}global"
+        ok=1
+    elif [ "${#args[@]}" -gt 0 ] \
+        && hoogle generate ${args[@]+"${args[@]}"} --database="$local_db" >&2 \
+        && local_db_answers "$local_db" "$probe_dir"; then
+        echo "   compiler doc root unusable; indexed the named dirs only" >&2
         ok=1
     fi
     if [ "$ok" = 1 ]; then
-        echo "   wrote installed-DB index -> $local_db" >&2
+        LOCAL_UNIVERSES="$universes"
+        LOCAL_DIRS="${#args[@]}"
+        echo "   wrote local index -> $local_db" >&2
         echo "   set SABELA_HOOGLE_LOCAL_DB=$local_db so queries union it in" >&2
     else
         rm -f "$local_db"
@@ -116,18 +160,43 @@ generate_local_hoogle() {
     fi
 }
 
-[ "$DO_NAMES" = 1 ] && { refresh_index; write_names; }
+local_db_answers() {
+    [ -f "$1" ] || return 1
+    [ -n "$2" ] || return 0
+    sym="$(sample_symbol "$2")"
+    [ -n "$sym" ] || return 0
+    hoogle search --database="$1" --count=1 "$sym" 2>/dev/null | grep -q "$sym"
+}
+
+[ "$DO_NAMES" = 1 ] && { refresh_index; write_names; write_facts; }
 [ "$DO_HOOGLE" = 1 ] && generate_hoogle
+[ "$DO_FACTS" = 1 ] && write_facts
 [ "$DO_LOCAL" = 1 ] && { ensure_hoogle; generate_local_hoogle; }
 [ "$DO_CAPABILITY" = 1 ] && { build_capability_index; exit 0; }
+
+carried_universes() {
+    [ -f "$META_OUT" ] || return 0
+    grep -E '^hoogle_local_(universes|dirs)=' "$META_OUT" || true
+}
+
+CARRIED="$(carried_universes)"
 
 {
     echo "# machine-produced by tools/update-search-cache.sh — do not hand-edit"
     echo "generated_epoch=$(date +%s)"
     echo "generated_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     [ -f "$NAMES_OUT" ] && echo "hackage_packages=$(wc -l < "$NAMES_OUT" | tr -d ' ')"
+    [ -f "$FACTS_OUT" ] && echo "hackage_facts=$FACTS_OUT"
+    [ -f "$FACTS_OUT" ] && echo "hackage_facts_packages=$(wc -l < "$FACTS_OUT" | tr -d ' ')"
     command -v hoogle >/dev/null 2>&1 && echo "hoogle=$(command -v hoogle)"
-    [ -f "$REPO_ROOT/data/hoogle-local.hoo" ] \
-        && echo "hoogle_local_db=$REPO_ROOT/data/hoogle-local.hoo"
+    if [ -f "$REPO_ROOT/data/hoogle-local.hoo" ]; then
+        echo "hoogle_local_db=$REPO_ROOT/data/hoogle-local.hoo"
+        if [ -n "$LOCAL_UNIVERSES" ]; then
+            echo "hoogle_local_universes=$LOCAL_UNIVERSES"
+            echo "hoogle_local_dirs=$LOCAL_DIRS"
+        elif [ -n "$CARRIED" ]; then
+            echo "$CARRIED"
+        fi
+    fi
 } > "$META_OUT"
 echo "==> search cache updated; meta -> $META_OUT" >&2

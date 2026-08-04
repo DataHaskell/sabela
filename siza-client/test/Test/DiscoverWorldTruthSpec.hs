@@ -72,7 +72,7 @@ indexEnvelope pkg m ns extra =
         (interpret envT pkg)
         20
         (extra ++ [indexAnswer pkg m ns])
-        (HackageInfo True [pkg])
+        (HackageInfo True [pkg] [])
 
 {- | Names an index carries that Haskell cannot write where an import expects
 one: a row can hold a package, a qualified spelling or a phrase.
@@ -190,7 +190,7 @@ installEvidenceSpec = describe "install is the session's own evidence" $ do
                                 (interpret envT n)
                                 20
                                 [sessionHidden m pkg, flatAnswer m n]
-                                (HackageInfo True [])
+                                (HackageInfo True [] [])
                         bad =
                             [ (hitText "name" hj, hitText "install" hj)
                             | hj <- hitsOf v

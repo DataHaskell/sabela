@@ -14,6 +14,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
+import Siza.Agent.Discover.Absent (absentKnownHits, absentScopeNote)
 import Siza.Agent.Discover.Affordance (
     markClashes,
     scopeUse,
@@ -30,7 +31,6 @@ import Siza.Agent.Discover.Installed (
     packageState,
     sessionFacts,
  )
-import Siza.Agent.Discover.Interpret (stripVersion)
 import Siza.Agent.Discover.Rank (
     demotedCount,
     fuse,
@@ -58,7 +58,6 @@ import Siza.Agent.Discover.Types (
     HackageInfo (..),
     InstallState (..),
     Interpreted (..),
-    MatchKind (..),
     NotebookEnv (..),
     Scope (..),
     SourceAnswer (..),
@@ -137,7 +136,9 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
         | state == "not_found" =
             Just (missNext env interp scope (dedupSources answers) hk)
         | otherwise = actionNext shownHits
-    scopeNote = scopeDisclosure scope total (length rankedAll)
+    scopeNote = case absentScopeNote scope answers hk of
+        Just n -> Just n
+        Nothing -> scopeDisclosure scope total (length rankedAll)
     removedNote = scopeRemovedNote scope (removedByScope rankedAll scope)
     absentNote = absentTailNote ranked shownHits
     demoted = demotedCount (drop (max 1 limit) ranked)
@@ -184,7 +185,7 @@ mergedHitsRecent recentPkgs env interp answers hk =
     allHits =
         map
             (attributeFrom pkgModules)
-            (concatMap saHits answers ++ hackageOnlyHit)
+            (concatMap saHits answers ++ absentKnownHits interp answers hk)
     importedPkgs =
         nub $
             [ p
@@ -272,26 +273,5 @@ mergedHitsRecent recentPkgs env interp answers hk =
         | isNothing (dhUse h) = h{dhUse = scopeUse importTargets (neAliases env) h}
         | otherwise = h
     importTargets = map snd (neAliases env) ++ neImports env
-    -- The catalogue knows the package exists and nothing else about it, so
-    -- module, version and type are left uncomputed rather than stood in for.
-    hackageOnlyHit =
-        [ DHit
-            pkg
-            ""
-            ""
-            pkg
-            ""
-            InstAbsentKnown
-            MkExact
-            "hackage"
-            (Just (cabalLine pkg))
-            Nothing
-            Nothing
-        | iShape interp `elem` ["name", "package"]
-        , let pkg = stripVersion (iName interp)
-        , pkg `elem` hiKnown hk
-        , pkg `notElem` [dhPackage h | a <- answers, h <- saHits a]
-        ]
-
 tShow :: Int -> Text
 tShow = T.pack . show

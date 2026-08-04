@@ -28,7 +28,7 @@ env0 :: NotebookEnv
 env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True []
+hk0 = HackageInfo True [] []
 
 installedMaxBy :: DHit
 installedMaxBy =

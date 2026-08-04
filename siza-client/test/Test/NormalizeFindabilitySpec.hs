@@ -21,7 +21,7 @@ import Siza.Agent.Discover.Types (HackageInfo (..))
 import Test.DiscoverFixtures (hitText, hitsOf, stateOf)
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True []
+hk0 = HackageInfo True [] []
 
 corruptions :: [Text]
 corruptions =

@@ -21,6 +21,7 @@ module Sabela.AI.Capabilities.Edit (
 ) where
 
 import Data.Aeson (Value, object, (.=))
+import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
 

@@ -8,6 +8,7 @@ module Test.DiscoverEscalateSpec (discoverEscalateSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.List (foldl')
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T

@@ -26,7 +26,7 @@ emitLedgerSummarySpec = describe "a duplicate's only content survives (C2-6e)" $
         let dup q =
                 encodeT
                     ( object
-                        [ "query" .= q
+                        [ "query" .= (q :: Text)
                         , "state" .= ("duplicate" :: Text)
                         , "ref" .= ("call 3" :: Text)
                         , "summary" .= longSummary
@@ -41,7 +41,7 @@ emitLedgerSummarySpec = describe "a duplicate's only content survives (C2-6e)" $
             let msg q =
                     encodeT
                         ( object
-                            [ "query" .= q
+                            [ "query" .= (q :: Text)
                             , "state" .= ("found" :: Text)
                             , K.fromText k .= longSummary
                             ]

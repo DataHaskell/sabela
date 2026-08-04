@@ -8,14 +8,11 @@ over one of each (LEDGER C2-2d, C2-2e).
 module Test.DisposableAttributionSpec (spec) where
 
 import Data.Aeson (Value (..))
-import qualified Data.Aeson.Key as Key
-import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 import Test.QuickCheck
 
-import Sabela.AI.Capabilities.Edit.CompileGate (rejectionJson, submittedOnly)
 import Sabela.AI.Capabilities.Try.Payload (disposablePayload)
 import Sabela.AI.Verdict (verdictVocabulary)
 import Sabela.Session.MaterializeStage (
@@ -26,41 +23,23 @@ import Sabela.Session.MaterializeStage (
     MaterializeStage (..),
     attributionOf,
     blamedCell,
+    environmentFault,
     materializeStages,
     stageFailure,
     stageNamesCell,
     stageReachedCandidate,
     stageUsedCandidateMetadata,
  )
+import Test.DisposableFixtures (
+    baseResult,
+    field,
+    gateOf,
+    intField,
+    messageOf,
+    reasonOf,
+    textField,
+ )
 import Test.HarnessGen (genCellSource, genDiagnostic)
-
-field :: Text -> Value -> Maybe Value
-field k (Object o) = KM.lookup (Key.fromText k) o
-field _ _ = Nothing
-
-textField :: Text -> Value -> Maybe Text
-textField k v = case field k v of
-    Just (String s) -> Just s
-    _ -> Nothing
-
-intField :: Text -> Value -> Maybe Int
-intField k v = case field k v of
-    Just (Number d) -> Just (round d)
-    _ -> Nothing
-
-baseResult :: DisposableResult
-baseResult =
-    DisposableResult
-        { disposableRoute = "disposable_scratch"
-        , disposableVerdict = DisposableCompileError
-        , disposableType = Nothing
-        , disposableStdout = ""
-        , disposableStderr = ""
-        , disposableFailure = Nothing
-        , disposableReplayedCells = []
-        , disposableSkippedCells = []
-        , disposableDependencies = []
-        }
 
 genVerdict :: Gen DisposableVerdict
 genVerdict =
@@ -88,14 +67,6 @@ genResult = do
         , stage
         )
 
-gateOf :: Text -> DisposableResult -> Value
-gateOf src = rejectionJson Nothing Nothing (submittedOnly src) []
-
-reasonOf :: Value -> Maybe Text
-reasonOf v = case textField "reason" v of
-    Just t -> Just t
-    Nothing -> textField "error" v
-
 {- | The same result re-pinned to one stage with the replay record asked for,
 so a property can vary attribution without varying the diagnostic.
 -}
@@ -106,8 +77,6 @@ atStage stage replayed result =
             Just (MaterializeFailure stage Nothing (messageOf result))
         , disposableReplayedCells = replayed
         }
-  where
-    messageOf = maybe "" failureMessage . disposableFailure
 
 {- | The two things a remedy can say to a caller whose candidate never ran:
 that it has no lever at all, or that its own dependency metadata is one.
@@ -224,6 +193,7 @@ spec = describe "try and the gate classify one result the same way" $ do
             let result = atStage stage [] result0
              in ( stageUsedCandidateMetadata stage
                     && attributionOf result == AttributedHarness
+                    && not (environmentFault (messageOf result))
                 )
                     ==> conjoin
                         [ counterexample "try hides the cause" $

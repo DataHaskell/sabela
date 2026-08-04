@@ -53,7 +53,7 @@ envB =
         )
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True []
+hk0 = HackageInfo True [] []
 
 foundCumulus :: Value
 foundCumulus =
@@ -62,7 +62,7 @@ foundCumulus =
         (interpret envB "cumulus")
         8
         [okAnswer "session" [hiddenBars]]
-        (HackageInfo True ["cumulus"])
+        (HackageInfo True ["cumulus"] [])
   where
     hiddenBars =
         (mkHit "bars" "Cumulus.Plot" "cumulus")

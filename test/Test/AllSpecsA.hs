@@ -29,6 +29,7 @@ import qualified Test.DiscoveryBenchSpec as DiscoveryBenchSpec
 import qualified Test.DisposableAttributionSpec as DisposableAttributionSpec
 import qualified Test.EditDispatchSpec as EditDispatchSpec
 import qualified Test.EnvStaleSpec as EnvStaleSpec
+import qualified Test.EnvironmentFaultSpec as EnvironmentFaultSpec
 import qualified Test.ErrorIndexSpec as ErrorIndexSpec
 import qualified Test.ErrorsJsonSpec as ErrorsJsonSpec
 import qualified Test.ExampleSearchSpec as ExampleSearchSpec
@@ -143,6 +144,7 @@ allSpecsA = do
     GateArmingSpec.spec
     GateCheckedSpec.spec
     DisposableAttributionSpec.spec
+    EnvironmentFaultSpec.spec
     TrialWarningSpec.spec
     SubmissionSpec.spec
     ClassifyErrorSpec.spec

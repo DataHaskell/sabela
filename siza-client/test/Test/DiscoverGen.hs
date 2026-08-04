@@ -130,7 +130,7 @@ genHitOver n m p = do
     ver <- elements ["", "0.1.0", "2.3"]
     ty <- elements ["", "Int -> Int", "Map k v -> Bool"]
     origin <- elements ["session", "hoogle", "hackage"]
-    pure (DHit n ty m p ver inst kind origin Nothing Nothing Nothing)
+    pure (DHit n ty m p ver inst kind origin Nothing Nothing Nothing Nothing)
 
 {- | Hits sharing one bare name across several modules, one of which the
 harness did not compute — the shape a source answer with a missing or
@@ -160,6 +160,7 @@ clashHit n m p =
         Nothing
         Nothing
         Nothing
+        Nothing
 
 {- | Session hits exactly as Classify.matchHit shapes them: origin "session",
 blank package and version, installed, no cabal line — the attribution shape a
@@ -178,7 +179,8 @@ genSessionHit = do
     kind <- arbitraryBoundedEnum
     owner <- genTypeName
     use <- elements [Nothing, Just (owner <> " { " <> n <> " = ... }")]
-    pure (DHit n ty m "" "" InstInstalled kind "session" Nothing use Nothing)
+    pure
+        (DHit n ty m "" "" InstInstalled kind "session" Nothing use Nothing Nothing)
 
 {- | Two source answers whose package listings both claim one module: distinct
 packages, one shared module name, each answer's hit attributed to its own

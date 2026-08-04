@@ -22,7 +22,19 @@ import Siza.Agent.Discover.Types (
 
 baseHit :: Text -> Text -> Text -> DHit
 baseHit n m p =
-    DHit n "" m p "" InstAbsentUnknown MkSemantic "" Nothing Nothing Nothing
+    DHit
+        n
+        ""
+        m
+        p
+        ""
+        InstAbsentUnknown
+        MkSemantic
+        ""
+        Nothing
+        Nothing
+        Nothing
+        Nothing
 
 textAt :: K.Key -> KM.KeyMap Value -> Text
 textAt k o = case KM.lookup k o of

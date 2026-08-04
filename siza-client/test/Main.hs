@@ -3,6 +3,7 @@ module Main (main) where
 import Test.AdviceSpec (adviceSpec)
 import Test.AgentCheckSpec (agentCheckSpec)
 import Test.ArtifactSpec (artifactSpec)
+import Test.CabalFactsSpec (cabalFactsSpec)
 import Test.CandidateRankSpec (candidateRankSpec)
 import Test.CandidateSpec (candidateSpec)
 import Test.CardGateSpec (cardGateSpec)
@@ -18,6 +19,7 @@ import Test.CounterexampleSpec (counterexampleSpec)
 import Test.CrossSeamSpec (crossSeamSpec)
 import Test.DeadlineStartSpec (deadlineStartSpec)
 import Test.DiscoverAbsentBoundSpec (discoverAbsentBoundSpec)
+import Test.DiscoverAbsentFactsSpec (discoverAbsentFactsSpec)
 import Test.DiscoverCardMatchSpec (discoverCardMatchSpec)
 import Test.DiscoverCatalogueSpec (discoverCatalogueSpec)
 import Test.DiscoverClosureSpec (discoverClosureSpec)
@@ -165,6 +167,8 @@ main = hspec $ do
     writeAckClientSpec
     discoverToolSpec
     discoverCatalogueSpec
+    cabalFactsSpec
+    discoverAbsentFactsSpec
     discoverHiddenDbSpec
     discoverTruthSpec
     discoverUnitScrubSpec

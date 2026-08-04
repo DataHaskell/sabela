@@ -192,8 +192,9 @@ simSession sessionPkgs q mScope
         ]
     synonymNoise =
         [matchJ "Syn.Anim" "puffLoop" "Frame -> Frame" "synonym" | q == "gust"]
+    matchJ :: Text -> Text -> Text -> Text -> Value
     matchJ m n t via =
-        object ["module" .= m, "name" .= n, "type" .= t, "via" .= (via :: Text)]
+        object ["module" .= m, "name" .= n, "type" .= t, "via" .= via]
 
 simCapability :: [SynPkg] -> Text -> Value
 simCapability universe q = object ["query" .= q, "hits" .= map bucket matching]

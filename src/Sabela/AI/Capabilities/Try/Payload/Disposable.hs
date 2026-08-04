@@ -102,7 +102,7 @@ contextBlockedPayload result failure =
         )
   where
     attribution = attributionOf result
-    reason = blockedReason (failureStage failure) attribution
+    reason = blockedReason failure attribution
 
 {- | Whose code was running, as one machine-readable word. Only a cell the
 stage itself ran was blocked in its replay; scaffolding that ran after a cell
@@ -116,15 +116,15 @@ blockedOutcome _ = "harness_blocked"
 the stage and the replay record support, so a failure the harness owns is
 never handed back as the caller's.
 -}
-blockedReason :: MaterializeStage -> Attribution -> Text
-blockedReason stage attribution =
+blockedReason :: MaterializeFailure -> Attribution -> Text
+blockedReason failure attribution =
     "Your candidate was never reached: the trial run stopped at the "
-        <> materializeStageText stage
+        <> materializeStageText (failureStage failure)
         <> " stage, in "
         <> attributionText attribution
         <> ". This is not a verdict on your code — see the failure field for \
            \the diagnostic. "
-        <> blockedRemedy stage attribution
+        <> blockedRemedy failure attribution
 
 tShow :: Int -> Text
 tShow = T.pack . show

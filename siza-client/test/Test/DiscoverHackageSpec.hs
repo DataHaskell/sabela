@@ -3,6 +3,7 @@
 module Test.DiscoverHackageSpec (discoverHackageSpec) where
 
 import Control.Exception (bracket)
+import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import System.Directory (
     createDirectoryIfMissing,
@@ -16,8 +17,14 @@ import Test.Hspec
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Sabela.AI.Capabilities.ToolName (parseToolName)
+import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
 import Siza.Agent.Discover.Classify (notebookAnswer)
-import Siza.Agent.Discover.Hackage (hackageInfoFor, hackageMatching)
+import Siza.Agent.Discover.Hackage (
+    hackageFactsFor,
+    hackageInfoFor,
+    hackageMatching,
+    hackageModuleOwners,
+ )
 import Siza.Agent.Discover.Interpret (interpret)
 import Siza.Agent.Discover.Types (
     DHit (..),
@@ -41,11 +48,76 @@ withNames act = bracket acquire release (const act)
         pure dir
     release dir = unsetEnv "SABELA_HACKAGE_NAMES" >> removeDirectoryRecursive dir
 
+withFacts :: IO a -> IO a
+withFacts act = bracket acquire release (const act)
+  where
+    acquire = do
+        tmp <- getTemporaryDirectory
+        let dir = tmp </> "siza-hackage-facts-spec"
+        createDirectoryIfMissing True dir
+        let path = dir </> "facts.tsv"
+        TIO.writeFile
+            path
+            ( T.unlines
+                [ "hodatime\thttps://example.invalid/hodatime\tA date/time \
+                  \library\tData.HodaTime Data.HodaTime.Duration \
+                  \Data.HodaTime.Calendar.Gregorian"
+                , "cassava\t\tCSV parsing\tData.Csv Data.Csv.Streaming"
+                , "bare\t\t\t"
+                ]
+            )
+        setEnv "SABELA_HACKAGE_FACTS" path
+        pure dir
+    release dir = unsetEnv "SABELA_HACKAGE_FACTS" >> removeDirectoryRecursive dir
+
 discoverHackageSpec :: Spec
 discoverHackageSpec = do
     mcpSurfaceSpec
     notebookSourceSpec
     hackageNameSpec
+    hackageFactsSpec
+
+hackageFactsSpec :: Spec
+hackageFactsSpec = describe "the hackage facts source" $ do
+    describe "what a not-installed package states about itself" $ do
+        it "carries the modules a dependent may import" $ do
+            fs <- withFacts (hackageFactsFor ["hodatime"])
+            map (pfModules . snd) fs
+                `shouldBe` [
+                               [ "Data.HodaTime"
+                               , "Data.HodaTime.Duration"
+                               , "Data.HodaTime.Calendar.Gregorian"
+                               ]
+                           ]
+        it "carries where to read about it" $ do
+            fs <- withFacts (hackageFactsFor ["hodatime"])
+            map (pfHomepage . snd) fs
+                `shouldBe` ["https://example.invalid/hodatime"]
+        it "states nothing for a package the index does not hold" $
+            withFacts (hackageFactsFor ["nosuchpkg"]) `shouldReturn` []
+        it "reads a row that states only a name" $ do
+            fs <- withFacts (hackageFactsFor ["bare"])
+            map (pfModules . snd) fs `shouldBe` [[]]
+
+    describe "which package exposes a module" $ do
+        it "names the package a module is imported from" $ do
+            os <- withFacts (hackageModuleOwners "Data.HodaTime")
+            map fst os `shouldBe` ["hodatime"]
+        it "answers for a module below the root too" $ do
+            os <- withFacts (hackageModuleOwners "Data.Csv.Streaming")
+            map fst os `shouldBe` ["cassava"]
+        it "does not answer for a module no package exposes" $
+            withFacts (hackageModuleOwners "Data.Nonesuch") `shouldReturn` []
+        it "does not answer for a prefix that is not itself a module" $
+            withFacts (hackageModuleOwners "Data") `shouldReturn` []
+
+    describe "an absent facts cache" $
+        it "states no facts rather than denying the package" $ do
+            unsetEnv "SABELA_HACKAGE_FACTS"
+            setEnv "SABELA_HACKAGE_FACTS" "/nonexistent/facts.tsv"
+            fs <- hackageFactsFor ["cassava"]
+            unsetEnv "SABELA_HACKAGE_FACTS"
+            fs `shouldBe` []
 
 env0 :: NotebookEnv
 env0 = NotebookEnv [] [] [] [] [] []

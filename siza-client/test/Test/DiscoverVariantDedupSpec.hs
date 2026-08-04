@@ -27,7 +27,7 @@ env0 :: NotebookEnv
 env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True []
+hk0 = HackageInfo True [] []
 
 intField :: Text -> Value -> Int
 intField k v = case field k v of

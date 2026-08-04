@@ -53,7 +53,7 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True []
+hkT = HackageInfo True [] []
 
 foundFor :: Text -> Value
 foundFor n =
@@ -199,7 +199,11 @@ answerHashSpec = describe "answer-hash dedup: an unchanged answer is a one-line 
         let inner _ = do
                 modifyIORef' calls (+ 1)
                 pure (Right (ToolOk (vFor "col")))
-            ask q = guardDiscover ref inner (ToolCall "discover" (object ["query" .= q]))
+            ask q =
+                guardDiscover
+                    ref
+                    inner
+                    (ToolCall "discover" (object ["query" .= (q :: Text)]))
         mapM_ ask (["col", "`col`", "col @Int"] :: [Text])
         Right (ToolOk stopped) <- ask "col scoped differently"
         readIORef calls `shouldReturn` 3

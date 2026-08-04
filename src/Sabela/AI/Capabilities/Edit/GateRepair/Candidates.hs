@@ -12,7 +12,7 @@ module Sabela.AI.Capabilities.Edit.GateRepair.Candidates (
     proofCap,
 ) where
 
-import Data.List (nub, partition)
+import Data.List (foldl', nub, partition)
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text)

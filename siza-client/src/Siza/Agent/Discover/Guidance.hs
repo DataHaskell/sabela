@@ -12,6 +12,7 @@ import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
@@ -21,7 +22,11 @@ import Siza.Agent.Discover.Types (
     NotebookEnv (..),
     Scope (..),
     SourceAnswer (..),
+    shownModules,
  )
+
+tShow :: Int -> Text
+tShow = T.pack . show
 
 {- | An install step, offered only when the top hit is what the caller asked
 for. Read off a merely-similar top hit it advises installing a package for a
@@ -29,10 +34,11 @@ name the notebook may already hold, which is advice against interest.
 -}
 actionNext :: [DHit] -> Maybe Text
 actionNext hits = case hits of
-    (h : _) | derivable h -> fmap (fit h) (installStep h)
+    (h : _) | derivable h -> fmap (withRest h . fit h) (installStep h)
     _ -> Nothing
   where
     derivable h = dhKind h `elem` [MkExact, MkModule]
+    withRest h step = step <> restOfModules h
     fit h step
         | T.length full <= actionNextCap = full
         | otherwise = step
@@ -47,6 +53,22 @@ actionNext hits = case hits of
         (InstAbsentKnown, Just c) ->
             Just ("not installed, on Hackage — make a cell's first line: " <> c)
         _ -> Nothing
+
+{- | The modules a bounded hit did not show, and the scope that lists them. A
+count with no way to reach the rest reads as a wall.
+-}
+restOfModules :: DHit -> Text
+restOfModules h = case dhFacts h of
+    Just f
+        | rest > 0 ->
+            " ("
+                <> tShow rest
+                <> " more modules: discover {package=\""
+                <> dhPackage h
+                <> "\"})"
+      where
+        rest = length (pfModules f) - length (shownModules f)
+    _ -> ""
 
 {- | The characters a next step may spend. An install line longer than this on
 its own is emitted whole: truncating it would leave a line that does not build.

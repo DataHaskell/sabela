@@ -22,6 +22,7 @@ module Sabela.Session.MaterializeStage (
     attributionText,
     blamedCell,
     blockedRemedy,
+    environmentFault,
     failureFor,
     resultVerdictClass,
 ) where
@@ -202,31 +203,57 @@ attributionText (AttributedAfterCell cid) =
         <> " (the last cell that ran)"
 attributionText AttributedHarness = "the harness's own setup code"
 
+{- | A fault in the machinery a trial runs on rather than in anything the
+candidate or a cell states: the tooling could not read its own index, or could
+not reach the network. A retry can clear it; nothing written can.
+-}
+environmentFault :: Text -> Bool
+environmentFault msg = any (`T.isInfixOf` T.toLower msg) environmentFaultMarks
+
+environmentFaultMarks :: [Text]
+environmentFaultMarks =
+    [ "could not read index"
+    , "checkforupdates"
+    , "getaddrinfo"
+    , "connection refused"
+    , "network is unreachable"
+    , "connection timed out"
+    ]
+
 {- | What the caller can do about a failure at a stage its candidate never
 reached. Only a stage none of the candidate's input reached may be called
 unclearable; elsewhere the metadata it contributed is a lever it has.
 -}
-blockedRemedy :: MaterializeStage -> Attribution -> Text
-blockedRemedy stage attribution = case attribution of
-    AttributedCandidate -> "Retry, or state the blocker."
-    AttributedCell cid ->
-        "Fix or remove cell "
-            <> tShow cid
-            <> " (or skip it by making it compile), then retry."
-    AttributedAfterCell cid ->
-        "Cell "
-            <> tShow cid
-            <> " is the last that ran before it; start with what that cell \
-               \brings into scope, then retry."
-    AttributedHarness
-        | stageUsedCandidateMetadata stage -> metadataRemedy
-        | otherwise ->
-            "Nothing you write in the candidate can clear it; retry, or say so."
+blockedRemedy :: MaterializeFailure -> Attribution -> Text
+blockedRemedy failure attribution
+    | environmentFault (failureMessage failure) = environmentRemedy
+    | otherwise = case attribution of
+        AttributedCandidate -> "Retry, or state the blocker."
+        AttributedCell cid ->
+            "Fix or remove cell "
+                <> tShow cid
+                <> " (or skip it by making it compile), then retry."
+        AttributedAfterCell cid ->
+            "Cell "
+                <> tShow cid
+                <> " is the last that ran before it; start with what that cell \
+                   \brings into scope, then retry."
+        AttributedHarness
+            | stageUsedCandidateMetadata (failureStage failure) -> metadataRemedy
+            | otherwise ->
+                "Nothing you write in the candidate can clear it; retry, or \
+                \say so."
   where
     metadataRemedy =
         "This stage used the notebook's dependency metadata merged with any \
         \dependencies your candidate declares, so a package your candidate \
         \names can break it. Retry, or state the blocker."
+    environmentRemedy =
+        "The tooling this stage runs on could not read its own package index \
+        \or reach the network. No candidate causes that and none can clear \
+        \it, so it is not a verdict on the dependencies your candidate \
+        \declares, and it does not mean this session cannot install \
+        \packages. Retry, or state the blocker."
 
 tShow :: Int -> Text
 tShow = T.pack . show

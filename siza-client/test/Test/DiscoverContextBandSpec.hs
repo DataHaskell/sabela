@@ -34,7 +34,7 @@ env0 :: NotebookEnv
 env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True []
+hk0 = HackageInfo True [] []
 
 sigWith :: Int -> Int -> Text
 sigWith c t = constraints <> "Text -> Expr a" <> tyArgs

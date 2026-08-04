@@ -40,7 +40,7 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True []
+hkT = HackageInfo True [] []
 
 foundKind :: MatchKind -> Text -> Text -> Value
 foundKind kind q name =

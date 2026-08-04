@@ -18,7 +18,7 @@ import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isDigit, isLower)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (
@@ -51,7 +51,12 @@ import Siza.Agent.Discover.Fetch (
     queryVariants,
  )
 import Siza.Agent.Discover.Goal (goalFromArgs, recentFromArgs)
-import Siza.Agent.Discover.Hackage (hackageInfoFor, hackageMatching)
+import Siza.Agent.Discover.Hackage (
+    hackageInfoFor,
+    hackageMatching,
+    withFactsFor,
+    withModuleOwners,
+ )
 import Siza.Agent.Discover.Interpret (interpret)
 import Siza.Agent.Discover.Inventory (inventoryEnvelope, topicTokens)
 import Siza.Agent.Discover.Merge (
@@ -160,7 +165,7 @@ runDiscoverGoal mSG recent capSearch call req0
             then do
                 cAnswers <- constructAnswers call interp
                 let answers = cAnswers ++ envA : exact0
-                hk <- hackageInfoFor (candidatePackages interp answers)
+                hk <- hackageInfoFor (candidatePackages interp answers ++ scopePkg req)
                 let v = constructEnvelope mSG env interp (drScope req) (drLimit req) answers hk
                 vOut <-
                     establishedFallback mSG call req $
@@ -184,7 +189,8 @@ runDiscoverGoal mSG recent capSearch call req0
                         then attachProducers mSG call env interp (base ++ probed)
                         else pure []
                 let answers = base ++ probed ++ attached
-                hk <- hackageInfoFor (candidatePackages interp answers)
+                hk0 <- hackageInfoFor (candidatePackages interp answers ++ scopePkg req)
+                hk <- moduleOwnerFacts interp hk0
                 v <- answerFor recent req env interp answers hk
                 vOut <-
                     establishedFallback mSG call req $
@@ -262,6 +268,7 @@ answerFor recent req env interp answers hk = case drMode req of
             )
     ModeInventory -> do
         lexical <- hackageMatching lexicalCap (topicTokens interp)
+        hkL <- withFactsFor lexical hk
         pure
             ( inventoryEnvelope
                 env
@@ -269,9 +276,21 @@ answerFor recent req env interp answers hk = case drMode req of
                 (drScope req)
                 (drLimit req)
                 answers
-                hk
+                hkL
                 lexical
             )
 
 lexicalCap :: Int
 lexicalCap = 25
+
+-- | The package a request scoped itself to, which is a candidate like any other.
+scopePkg :: DiscoverRequest -> [Text]
+scopePkg req = maybeToList (scPackage (drScope req))
+
+{- | A module name no installed package exposes is not thereby absent: the
+index states which package exposes it, and that package is the answer.
+-}
+moduleOwnerFacts :: Interpreted -> HackageInfo -> IO HackageInfo
+moduleOwnerFacts interp hk
+    | iShape interp == "module" = withModuleOwners (iName interp) hk
+    | otherwise = pure hk

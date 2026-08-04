@@ -44,7 +44,7 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True []
+hkT = HackageInfo True [] []
 
 envelope :: Text -> Scope -> Int -> [SourceAnswer] -> HackageInfo -> Value
 envelope q = discoverEnvelopeScoped envT (interpret envT q)
@@ -226,7 +226,7 @@ installStates c claimants =
                 { saPkgModules = [(p, [evModule c]) | p <- claimants]
                 }
             ]
-            (HackageInfo True [owner c])
+            (HackageInfo True [owner c] [])
 
 {- | A3 client line and the wire half of A1: what a session match states is
 what the hit carries, and the record-update syntax describes a field rather

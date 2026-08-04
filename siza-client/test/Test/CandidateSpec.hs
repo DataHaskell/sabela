@@ -61,7 +61,7 @@ entryEnvelope (pkg, hidden, m, n, ty) =
         (interpret envT n)
         8
         [okAnswer "session" [hit]]
-        (HackageInfo True [])
+        (HackageInfo True [] [])
   where
     hit =
         (mkHit n m pkg)

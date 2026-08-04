@@ -223,7 +223,7 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True []
+hkT = HackageInfo True [] []
 
 -- | The envelope a card-only answer produces: no hits, so only the card speaks.
 cardEnvelope :: Text -> Value -> Value

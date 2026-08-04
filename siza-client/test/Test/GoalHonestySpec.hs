@@ -123,7 +123,7 @@ builtEnvelope g hs =
         emptyScope
         8
         [okAnswer "session" hs]
-        (HackageInfo True [])
+        (HackageInfo True [] [])
 
 wholeAnswer :: Value -> Text
 wholeAnswer = TE.decodeUtf8 . BL.toStrict . encode

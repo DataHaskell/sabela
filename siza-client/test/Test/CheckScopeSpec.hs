@@ -57,13 +57,14 @@ checkScopeSpec = describe "the covering check's scope (C1-1, C1-1b)" $ do
                     pure (v `shouldSatisfy` isRight)
 
     it
-        "does not depend on which names the notebook listing happened to return first" $
-        property $
-            forAll (scopedNotebook 20 3) $ \(users, tasks) ->
-                forAll (genCheckOver users) $ \check -> ioProperty $ do
-                    scope <- scopeFor (kernel (users <> tasks) check) tasks
-                    v <- vetVerdictAgainst (kernel (users <> tasks) check) scope check
-                    pure (v `shouldSatisfy` isLeft)
+        "does not depend on which names the notebook listing happened to return first"
+        $ property
+        $ forAll (scopedNotebook 20 3)
+        $ \(users, tasks) ->
+            forAll (genCheckOver users) $ \check -> ioProperty $ do
+                scope <- scopeFor (kernel (users <> tasks) check) tasks
+                v <- vetVerdictAgainst (kernel (users <> tasks) check) scope check
+                pure (v `shouldSatisfy` isLeft)
 
     it "refuses every check when the harness typed nothing at all" $
         property $
@@ -136,18 +137,19 @@ checkScopeSpec = describe "the covering check's scope (C1-1, C1-1b)" $ do
                         pure (v `shouldBe` Left (refusalNote Ungrounded))
 
         it
-            "reports a check that mentions nothing in scope as unreferenced, typed or not" $
-            property $
-                forAll (scopedNotebook 3 3) $ \(users, tasks) ->
-                    forAll ((,) <$> genCheckOver users <*> genPerturbableType) $
-                        \(check, ty) -> ioProperty $ do
-                            let call = kernel (users <> tasks) check
-                            untyped <- vetVerdictAgainst call (CheckScope tasks []) check
-                            typed <- vetVerdictAgainst call (scopeOfType tasks ty) check
-                            pure
-                                ( [untyped, typed]
-                                    `shouldBe` replicate 2 (Left (refusalNote NoReference))
-                                )
+            "reports a check that mentions nothing in scope as unreferenced, typed or not"
+            $ property
+            $ forAll (scopedNotebook 3 3)
+            $ \(users, tasks) ->
+                forAll ((,) <$> genCheckOver users <*> genPerturbableType) $
+                    \(check, ty) -> ioProperty $ do
+                        let call = kernel (users <> tasks) check
+                        untyped <- vetVerdictAgainst call (CheckScope tasks []) check
+                        typed <- vetVerdictAgainst call (scopeOfType tasks ty) check
+                        pure
+                            ( [untyped, typed]
+                                `shouldBe` replicate 2 (Left (refusalNote NoReference))
+                            )
 
     describe "C2-1f: a check outlives only the notebook it was proposed against" $ do
         it "keys on every cell's id and hash" $

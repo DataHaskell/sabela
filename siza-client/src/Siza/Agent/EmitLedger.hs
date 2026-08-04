@@ -19,7 +19,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isSpace)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.List (mapAccumL)
+import Data.List (foldl', mapAccumL)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
