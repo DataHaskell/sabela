@@ -72,7 +72,7 @@ spec = describe "R9 regression floor" $ do
                         { drvChat = chat
                         , drvDispatch = disp
                         , drvNow = pure 0
-                        , drvVerify = pure (CheckPassed, Nothing)
+                        , drvVerify = const (pure (CheckPassed, Nothing))
                         }
             run <-
                 runEpisodeWith'

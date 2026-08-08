@@ -5,6 +5,8 @@ module Sabela.AI.HoogleClient (
     HoogleHit (..),
     breakTopLevel,
     declKeywords,
+    documentedVersion,
+    hoogleDbArgs,
     hoogleDbArgSets,
     itemType,
     parseHoogleBlob,
@@ -17,6 +19,7 @@ import Control.Exception (SomeException, try)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Types as A
 import qualified Data.ByteString.Lazy as BL
+import Data.Char (isDigit)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -32,8 +35,24 @@ data HoogleHit = HoogleHit
     , hhModule :: Text
     , hhType :: Text
     , hhDocs :: Text
+    , hhVersion :: Text
     }
     deriving (Eq, Show)
+
+{- | The release a hit's documentation was generated from, read off the
+@\<package\>\/\<version\>\/doc\/html\/@ path the index was built from. Empty
+when the url states none, because an unstated version is not a version claim.
+-}
+documentedVersion :: Text -> Text
+documentedVersion = go . T.splitOn "/"
+  where
+    go (v : "doc" : "html" : _) | isVersion v = v
+    go (_ : rest) = go rest
+    go [] = ""
+    isVersion t =
+        not (T.null t)
+            && T.any isDigit t
+            && T.all (\c -> isDigit c || c == '.') t
 
 {- | Hoogle emits UTF-8; encoding it as Latin-1 corrupts any result set
 containing a single non-ASCII character and silently yields no hits at all.
@@ -54,12 +73,14 @@ hitFromValue = A.parseMaybe $ \v -> A.withObject "hit" parse v
         item <- o A..: "item"
         mModName <- nameIn o "module"
         mPkgName <- nameIn o "package"
+        urls <- mapM (urlIn o) ["module", "package"]
         docs <- o A..:? "docs" A..!= ""
         let d = stripHtml docs
             pkg = fromMaybe "" mPkgName
+            ver = firstNonEmpty (map documentedVersion urls)
         pure $ case T.words (T.strip item) of
-            ["package", p] -> HoogleHit p p "" "" d
-            ["module", m] -> HoogleHit m pkg m "" d
+            ["package", p] -> HoogleHit p p "" "" d ver
+            ["module", m] -> HoogleHit m pkg m "" d ver
             _ ->
                 HoogleHit
                     (itemName item)
@@ -67,10 +88,16 @@ hitFromValue = A.parseMaybe $ \v -> A.withObject "hit" parse v
                     (fromMaybe "" mModName)
                     (itemType item)
                     d
-    nameIn o k = do
+                    ver
+    firstNonEmpty vs = case filter (not . T.null) vs of
+        (v : _) -> v
+        [] -> ""
+    nameIn o k = fieldIn o k "name"
+    urlIn o k = fromMaybe "" <$> fieldIn o k "url"
+    fieldIn o k f = do
         mObj <- o A..:? k
         case mObj of
-            Just (A.Object oo) -> oo A..:? "name"
+            Just (A.Object oo) -> oo A..:? f
             _ -> pure Nothing
     itemName item = case T.words (T.strip item) of
         (kw : rest) | kw `elem` declKeywords -> subjectOf (T.unwords rest)
@@ -171,14 +198,33 @@ stripHtml = T.unwords . T.words . go
             | T.null rest -> before
             | otherwise -> before <> go (T.drop 1 (T.dropWhile (/= '>') rest))
 
+{- | One argument set per database to query. The main database contributes an
+empty set — no @--database@ flag, which is hoogle's own default — so it is
+always reached; an auxiliary database is reached only when it is there.
+-}
+hoogleDbArgs :: Maybe FilePath -> [Maybe FilePath] -> [[String]]
+hoogleDbArgs mainDb auxDbs =
+    maybe [] dbArg mainDb : [dbArg p | Just p <- auxDbs]
+  where
+    dbArg p = ["--database=" ++ p]
+
+{- | Hoogle's own database symbol-indexes Stackage members only, so the
+Hackage-wide index is what answers for everything else.
+-}
 hoogleDbArgSets :: IO [[String]]
 hoogleDbArgSets = do
-    db <- lookupEnv "SABELA_HOOGLE_DB"
-    localDb <- lookupEnv "SABELA_HOOGLE_LOCAL_DB"
-    localOk <- maybe (pure False) doesFileExist localDb
-    pure $
-        maybe [] (\p -> ["--database=" ++ p]) db
-            : [["--database=" ++ p] | localOk, Just p <- [localDb]]
+    mainDb <- lookupEnv "SABELA_HOOGLE_DB"
+    auxDbs <-
+        mapM
+            existingEnvPath
+            ["SABELA_HOOGLE_LOCAL_DB", "SABELA_HOOGLE_HACKAGE_DB"]
+    pure (hoogleDbArgs mainDb auxDbs)
+
+existingEnvPath :: String -> IO (Maybe FilePath)
+existingEnvPath name = do
+    p <- lookupEnv name
+    ok <- maybe (pure False) doesFileExist p
+    pure (if ok then p else Nothing)
 
 queryAllDbs :: [String] -> IO [HoogleHit]
 queryAllDbs args = do

@@ -59,6 +59,12 @@ type JsonAPI =
             :> QueryParam "limit" Int
             :> Get '[JSON] FilePreview
         :<|> "api"
+            :> "dataset"
+            :> "preview"
+            :> QueryParam "path" Text
+            :> QueryParam "rows" Int
+            :> Get '[JSON] DatasetPreview
+        :<|> "api"
             :> "file"
             :> "create"
             :> ReqBody '[JSON] CreateFileRequest

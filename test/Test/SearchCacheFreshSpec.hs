@@ -12,6 +12,7 @@ import Sabela.AI.SearchCache (
     freshnessRoot,
     localIndexFreshness,
     parseMetaEpoch,
+    parseMetaPath,
  )
 
 {- | An arbitrary path segment. No repository layout or artefact name is
@@ -57,6 +58,41 @@ spec = describe "search cache freshness (intention)" $ do
 
         it "reads nothing from an unparseable value" $
             parseMetaEpoch "generated_epoch=whenever" `shouldBe` Nothing
+
+    describe "parseMetaPath — the database the generator says it built" $ do
+        it "reads the path recorded under the key asked for" $
+            property $
+                forAll genPath $ \p ->
+                    parseMetaPath
+                        "hoogle_hackage_db"
+                        ( T.unlines
+                            [ "hoogle_local_db=/elsewhere.hoo"
+                            , "hoogle_hackage_db=" <> T.pack p
+                            ]
+                        )
+                        `shouldBe` Just p
+
+        it "reads nothing for a key the meta does not record" $
+            property $
+                forAll genPath $ \p ->
+                    parseMetaPath
+                        "hoogle_hackage_db"
+                        (T.unlines ["hoogle_local_db=" <> T.pack p])
+                        `shouldBe` Nothing
+
+        {- A key recorded with no value is not a path, and adopting "" would
+        point the server at the working directory. -}
+        it "reads nothing from a key recorded with an empty value" $
+            parseMetaPath "hoogle_hackage_db" "hoogle_hackage_db=\n"
+                `shouldBe` Nothing
+
+        it "never reads a key that merely shares a prefix" $
+            property $
+                forAll genPath $ \p ->
+                    parseMetaPath
+                        "hoogle_hackage_db"
+                        (T.unlines ["hoogle_hackage_dbx=" <> T.pack p])
+                        `shouldBe` Nothing
 
     describe "localIndexFreshness — a claim only when both sides are known" $ do
         it "says nothing when the index has no recorded age" $

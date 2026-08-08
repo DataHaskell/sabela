@@ -5,7 +5,7 @@ module Test.HoleFitSpec (spec) where
 import Data.Text (Text)
 import Test.Hspec
 
-import Eval.HoleFit (
+import Sabela.AI.HoleRepair (
     arityFromError,
     dropAnnotation,
     droppableAnnotation,
@@ -31,7 +31,7 @@ blob =
     \      apply (_ :: b -> [Double])"
 
 spec :: Spec
-spec = describe "Eval.HoleFit (substitute-and-verify core)" $ do
+spec = describe "Sabela.AI.HoleRepair (substitute-and-verify core)" $ do
     describe "goalFromError" $ do
         it "reads the wrong name and goal type from a printed not-in-scope error" $
             goalFromError

@@ -64,16 +64,19 @@ function hideCrashBanner() {
   if (banner) banner.style.display = 'none';
 }
 
-async function addCell(afterId, type, lang) {
+// Returns the new cell's id, so a caller inserting several in a row can
+// thread each one after the last.
+async function addCell(afterId, type, lang, source) {
   const l = lang || 'Haskell';
-  await api('POST', 'cell', {
+  const created = await api('POST', 'cell', {
     icAfter: afterId,
     icType: type,
     icLang: l,
-    icSource: type === 'CodeCell' ? '' : 'New text',
+    icSource: source !== undefined ? source : type === 'CodeCell' ? '' : 'New text',
   });
   const nb = await api('GET', 'notebook');
   render(nb);
+  return created.cellId;
 }
 
 async function clearCellOutput(cellId) {

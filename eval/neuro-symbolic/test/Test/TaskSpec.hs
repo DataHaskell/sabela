@@ -9,7 +9,7 @@ import Data.Text (Text, isInfixOf)
 import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
-import Siza.Agent.Check (CheckResult (..))
+import Siza.Agent.Check (CheckResult (..), classifyMarker)
 import Test.Hspec
 
 import Eval.Task (
@@ -171,21 +171,20 @@ spec = describe "plotting/dataframe tasks" $ do
                 `shouldSatisfy` ("step 1" `isInfixOf`)
 
     describe "runMarkerWith (grade off-notebook)" $
-        it "deletes the marker cell after grading so the notebook keeps no GRADE cell" $ do
+        it "deletes the marker cell it inserted, so the notebook keeps no GRADE cell" $ do
             calls <- newIORef []
             let fake tn args = do
                     modifyIORef' calls (++ [(tn, args)])
                     pure . Right $ case tn of
-                        ListCells ->
-                            ToolOk (object ["cells" .= [object ["id" .= (5 :: Int)]]])
+                        InsertCell -> ToolOk (object ["cellId" .= (5 :: Int)])
                         ExecuteCell ->
                             ToolOk
                                 (object ["outputs" .= [object ["oiOutput" .= ("GRADE_PASS" :: Text)]]])
                         _ -> ToolOk (object [])
-            (green, _) <- runMarkerWith fake (markerSrc "True")
-            green `shouldBe` True
+            run <- runMarkerWith fake (markerSrc "True")
+            classifyMarker run `shouldBe` CheckPassed
             seen <- readIORef calls
-            map fst seen `shouldBe` [InsertCell, ListCells, ExecuteCell, DeleteCell]
+            map fst seen `shouldBe` [InsertCell, ExecuteCell, DeleteCell]
             lookup DeleteCell seen `shouldBe` Just (object ["cell_id" .= (5 :: Int)])
 
 isWithheld :: Verdict -> Bool

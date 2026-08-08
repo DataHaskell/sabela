@@ -18,8 +18,10 @@ import Test.ContextCharsSpec (contextCharsSpec)
 import Test.CounterexampleSpec (counterexampleSpec)
 import Test.CrossSeamSpec (crossSeamSpec)
 import Test.DeadlineStartSpec (deadlineStartSpec)
+import Test.DeclaredModulesSpec (declaredModulesSpec)
 import Test.DiscoverAbsentBoundSpec (discoverAbsentBoundSpec)
 import Test.DiscoverAbsentFactsSpec (discoverAbsentFactsSpec)
+import Test.DiscoverAdviceLegalSpec (discoverAdviceLegalSpec)
 import Test.DiscoverCardMatchSpec (discoverCardMatchSpec)
 import Test.DiscoverCatalogueSpec (discoverCatalogueSpec)
 import Test.DiscoverClosureSpec (discoverClosureSpec)
@@ -36,6 +38,7 @@ import Test.DiscoverHiddenDbSpec (discoverHiddenDbSpec)
 import Test.DiscoverHistorySpec (discoverHistorySpec)
 import Test.DiscoverHitFieldSpec (discoverHitFieldSpec)
 import Test.DiscoverHomonymSpec (discoverHomonymSpec)
+import Test.DiscoverInstalledScopeSpec (discoverInstalledScopeSpec)
 import Test.DiscoverInvariantSpec (discoverInvariantSpec)
 import Test.DiscoverInventorySpec (discoverInventorySpec)
 import Test.DiscoverLedgerSpec (discoverLedgerSpec)
@@ -46,10 +49,12 @@ import Test.DiscoverProducerHintSpec (discoverProducerHintSpec)
 import Test.DiscoverQueryShapeSpec (discoverQueryShapeSpec)
 import Test.DiscoverRankPlainSpec (discoverRankPlainSpec)
 import Test.DiscoverRecordBudgetSpec (discoverRecordBudgetSpec)
+import Test.DiscoverRepoSlugSpec (discoverRepoSlugSpec)
 import Test.DiscoverRequestSpec (discoverRequestSpec)
 import Test.DiscoverResolvedSpec (discoverResolvedSpec)
 import Test.DiscoverScopeConserveSpec (discoverScopeConserveSpec)
 import Test.DiscoverScopeLedgerSpec (discoverScopeLedgerSpec)
+import Test.DiscoverScopeReachSpec (discoverScopeReachSpec)
 import Test.DiscoverSeedSpec (discoverSeedSpec)
 import Test.DiscoverToolClientSpec (discoverToolSpec)
 import Test.DiscoverTruthSpec (discoverTruthSpec)
@@ -168,7 +173,12 @@ main = hspec $ do
     discoverToolSpec
     discoverCatalogueSpec
     cabalFactsSpec
+    declaredModulesSpec
     discoverAbsentFactsSpec
+    discoverAdviceLegalSpec
+    discoverRepoSlugSpec
+    discoverScopeReachSpec
+    discoverInstalledScopeSpec
     discoverHiddenDbSpec
     discoverTruthSpec
     discoverUnitScrubSpec

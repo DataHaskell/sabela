@@ -19,8 +19,8 @@ import Eval.Agent (
     runEpisodeWith,
  )
 import Eval.Ollama (ToolCall (..), Turn (..))
-import Eval.Scaffold (scaffoldCall, scaffoldText)
 import Eval.Task (Grader (..), Task (..))
+import Siza.Agent.Scaffold (scaffoldCall, scaffoldText)
 
 dfTask :: Task
 dfTask =
@@ -134,6 +134,10 @@ openBudget = defaultBudget{ebMaxRepairs = maxBound, ebDeadlineSecs = 1 / 0}
 doneTurn :: Turn
 doneTurn = Turn (object ["role" .= ("assistant" :: Text)]) "done" []
 
+{- | A driver reading a fixed script. Past its end it repeats the last turn:
+the loop decides when to stop, and a fixture that crashed on one extra prompt
+would report an exception where the stop tag is the thing under test.
+-}
 scriptedDriver ::
     (ToolCall -> IO (Either Text ToolOutcome)) -> [Turn] -> IO Driver
 scriptedDriver disp script = do
@@ -141,11 +145,11 @@ scriptedDriver disp script = do
     let nextTurn _msgs = do
             i <- readIORef cursor
             modifyIORef' cursor (+ 1)
-            pure (Right (script !! i))
+            pure (Right (script !! min i (length script - 1)))
     pure
         Driver
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = pure (CheckPassed, Nothing)
+            , drvVerify = const (pure (CheckPassed, Nothing))
             }

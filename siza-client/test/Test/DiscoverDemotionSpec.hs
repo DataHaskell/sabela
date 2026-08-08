@@ -148,9 +148,19 @@ discoverDemotionSpec = describe "stratum + demotion (R3-T3)" $ do
                 hitText "version" h
                     `shouldSatisfy` (not . T.isInfixOf "package env")
 
-    describe "miss guidance points at inventory (R5.3)" $
-        it "a nonsense miss names mode=inventory" $ do
+    describe "miss guidance names a followable step (R5.3)" $ do
+        it "a nonsense miss is not a dead end" $ do
             installNamesFileWith synHackageNames
             v <- runCatArgs "qqzzyx" (args [])
             stateOf v `shouldBe` "not_found"
+            textField "next" v `shouldSatisfy` (not . T.null)
+        {- Inventory lists candidate packages for a topic and states no
+        signature, so it answers a topic and not a missed name. -}
+        it "a topic miss names mode=inventory" $ do
+            installNamesFileWith synHackageNames
+            v <- runCatArgs "qqzzyx wubble frotz" (args [])
             textField "next" v `shouldSatisfy` T.isInfixOf "inventory"
+        it "a missed name does not name it" $ do
+            installNamesFileWith synHackageNames
+            v <- runCatArgs "qqzzyx" (args [])
+            textField "next" v `shouldSatisfy` (not . T.isInfixOf "inventory")

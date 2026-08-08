@@ -52,7 +52,7 @@ import Eval.Task (
     taskId,
     taskPrompt,
  )
-import Eval.Tools (catalogue, dispatch)
+import Eval.Tools (dispatch, episodeCatalogue)
 import Eval.TranscriptLint (lintLine, lintMessages, stopIssues)
 import Siza.Transport (Conn, getHealth)
 
@@ -70,14 +70,14 @@ data BenchConfig = BenchConfig
 
 runArm :: BenchConfig -> Text -> GrammarMode -> Int -> Task -> IO RunStat
 runArm cfg base mode seed task = do
-    cat <- catalogue
+    cat <- episodeCatalogue
     let driver =
             Driver
                 { drvChat =
                     \msgs -> chatSeeded False (Just seed) (bcManager cfg) (bcModel cfg) msgs cat
                 , drvDispatch = dispatch (bcConn cfg) base
                 , drvNow = realToFrac <$> getPOSIXTime
-                , drvVerify = gradeVerify (bcConn cfg) base task
+                , drvVerify = const (gradeVerify (bcConn cfg) base task)
                 }
     run <-
         runEpisodeWith' mode (bcBudget cfg) driver (taskPrompt task) (bcMaxTurns cfg)

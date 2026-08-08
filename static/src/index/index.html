@@ -31,6 +31,7 @@
     <link rel="stylesheet" href="css/11-panel-tweaks.css" />
     <link rel="stylesheet" href="css/12-signature.css" />
     <link rel="stylesheet" href="css/14-kernel.css" />
+    <link rel="stylesheet" href="css/15-dataset.css" />
     <link rel="stylesheet" href="css/13-responsive.css" />
   </head>
   <body>
@@ -85,40 +86,69 @@
     <div class="main-layout">
       <!-- Left sidebar: file explorer -->
       <div class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-          <span>files</span>
-          <button onclick="startNewFile()" title="New file" aria-label="New file">
-            <svg class="icon-svg small"><use href="#i-file-plus" /></svg>
+        <div class="side-tabs" role="tablist" aria-label="Sidebar panes">
+          <button
+            class="side-tab active"
+            role="tab"
+            data-pane="files"
+            aria-selected="true"
+            onclick="selectSidePane('files')"
+          >
+            Files
           </button>
-          <button onclick="startNewFolder()" title="New folder" aria-label="New folder">
-            <svg class="icon-svg small"><use href="#i-folder-plus" /></svg>
-          </button>
-          <button onclick="startUpload('.')" title="Upload files" aria-label="Upload files">
-            <svg class="icon-svg small"><use href="#i-upload" /></svg>
-          </button>
-          <button onclick="startImportUrl('.')" title="Import from URL" aria-label="Import from URL">
-            <svg class="icon-svg small"><use href="#i-link" /></svg>
-          </button>
-          <button onclick="collapseAllDirs()" title="Collapse all" aria-label="Collapse all folders">
-            <svg class="icon-svg small"><use href="#i-fold" /></svg>
-          </button>
-          <button onclick="refreshFiles()" title="Refresh" aria-label="Refresh file tree">
-            <svg class="icon-svg small"><use href="#i-refresh" /></svg>
+          <button class="side-tab" role="tab" data-pane="data" aria-selected="false" onclick="selectSidePane('data')">
+            Data
           </button>
         </div>
-        <div class="sidebar-filter">
-          <input
-            type="text"
-            id="file-filter"
-            placeholder="filter files…"
-            autocomplete="off"
-            spellcheck="false"
-            oninput="applyFileFilter()"
-            aria-label="Filter files by name"
-          />
+        <div class="side-pane" id="side-pane-files">
+          <div class="sidebar-header">
+            <span>files</span>
+            <button onclick="startNewFile()" title="New file" aria-label="New file">
+              <svg class="icon-svg small"><use href="#i-file-plus" /></svg>
+            </button>
+            <button onclick="startNewFolder()" title="New folder" aria-label="New folder">
+              <svg class="icon-svg small"><use href="#i-folder-plus" /></svg>
+            </button>
+            <button onclick="startUpload('.')" title="Upload files" aria-label="Upload files">
+              <svg class="icon-svg small"><use href="#i-upload" /></svg>
+            </button>
+            <button onclick="startImportUrl('.')" title="Import from URL" aria-label="Import from URL">
+              <svg class="icon-svg small"><use href="#i-link" /></svg>
+            </button>
+            <button onclick="collapseAllDirs()" title="Collapse all" aria-label="Collapse all folders">
+              <svg class="icon-svg small"><use href="#i-fold" /></svg>
+            </button>
+            <button onclick="refreshFiles()" title="Refresh" aria-label="Refresh file tree">
+              <svg class="icon-svg small"><use href="#i-refresh" /></svg>
+            </button>
+          </div>
+          <div class="sidebar-filter">
+            <input
+              type="text"
+              id="file-filter"
+              placeholder="filter files…"
+              autocomplete="off"
+              spellcheck="false"
+              oninput="applyFileFilter()"
+              aria-label="Filter files by name"
+            />
+          </div>
+          <div id="new-item-input" style="display: none"></div>
+          <div class="file-tree" id="file-tree"></div>
         </div>
-        <div id="new-item-input" style="display: none"></div>
-        <div class="file-tree" id="file-tree"></div>
+        <div class="side-pane" id="side-pane-data" style="display: none">
+          <div class="sidebar-header">
+            <span>datasets</span>
+            <button onclick="startUpload('.')" title="Upload files" aria-label="Upload a dataset">
+              <svg class="icon-svg small"><use href="#i-upload" /></svg>
+            </button>
+            <button onclick="loadDataFiles()" title="Refresh" aria-label="Refresh dataset list">
+              <svg class="icon-svg small"><use href="#i-refresh" /></svg>
+            </button>
+          </div>
+          <div class="data-list" id="data-list"></div>
+          <div class="data-detail" id="data-detail"></div>
+        </div>
       </div>
 
       <!-- Notebook area -->
@@ -238,12 +268,15 @@
     <script src="js/02-api.js"></script>
     <script src="js/03-toolbar.js"></script>
     <script src="js/04-sse.js"></script>
+    <script src="js/04a-build-modal.js"></script>
     <script src="js/04b-kernel.js"></script>
     <script src="js/05-editor.js"></script>
     <script src="js/06-info-panel.js"></script>
     <script src="../shared/mime-render.js"></script>
     <script src="js/07-output.js"></script>
     <script src="js/08-file-explorer.js"></script>
+    <script src="js/08c-dataset.js"></script>
+    <script src="js/08d-dataset-view.js"></script>
     <script src="js/09-file-preview.js"></script>
     <script src="js/10-file-io.js"></script>
     <script src="js/11-file-context-menu.js"></script>

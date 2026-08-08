@@ -116,7 +116,7 @@ spec = describe "Sabela.AI.HoogleResolve" $ do
         it "is Nothing when the only exact hit is an .Internal module" $
             rankResolve
                 "foo"
-                [HoogleHit "foo" "pkg" "Data.Foo.Internal" "" ""]
+                [HoogleHit "foo" "pkg" "Data.Foo.Internal" "" "" ""]
                 `shouldBe` Nothing
 
     describe "addImport" $ do

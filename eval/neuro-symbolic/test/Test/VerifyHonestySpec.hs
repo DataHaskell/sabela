@@ -9,8 +9,9 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Types (ToolOutcome (..))
+import Sabela.AI.Verdict (VerdictClass (..), parseVerdict)
 import Siza.Agent.Check (CheckResult (..))
-import Siza.Agent.Messages (doneSignal, unconfirmedMessage)
+import Siza.Agent.Messages (unconfirmedMessage)
 import Test.Hspec
 
 import Eval.Agent (
@@ -52,10 +53,10 @@ spec = describe "verify-channel honesty (R5-T5, three-valued)" $ do
                     [callTurn "insert_cell", doneTurn, doneTurn, doneTurn, doneTurn]
                     (pure (CheckUncheckable, Just "print the best expression"))
             run <- runEpisodeWith openBudget driver "task" 10
-            let verifies = channelContents "verify" (arTranscript run)
+            let verifies = verdictChannel (arTranscript run)
             verifies `shouldSatisfy` (not . null)
-            head verifies `shouldSatisfy` T.isInfixOf "not yet confirmed"
-            head verifies `shouldSatisfy` T.isInfixOf "print the best expression"
+            verifies `shouldSatisfy` any (T.isInfixOf "not yet confirmed")
+            verifies `shouldSatisfy` any (T.isInfixOf "print the best expression")
             mapM_
                 ( \c ->
                     T.toLower c `shouldSatisfy` (not . T.isInfixOf "fail")
@@ -68,7 +69,7 @@ spec = describe "verify-channel honesty (R5-T5, three-valued)" $ do
                     [callTurn "insert_cell", doneTurn, doneTurn, doneTurn, doneTurn]
                     (pure (CheckFailed, Just "This required example fails: `x == 1`."))
             run <- runEpisodeWith openBudget driver "task" 10
-            let verifies = channelContents "verify" (arTranscript run)
+            let verifies = verdictChannel (arTranscript run)
             verifies `shouldSatisfy` (not . null)
             head verifies `shouldSatisfy` T.isInfixOf "x == 1"
 
@@ -82,13 +83,13 @@ spec = describe "verify-channel honesty (R5-T5, three-valued)" $ do
                     , callTurn "read_cell"
                     , doneTurn
                     ]
-                    (pure (CheckPassed, Nothing))
+                    (pure (CheckPassed, Just "total == 42"))
             run <- runEpisodeWith openBudget driver "task" 10
             arStopped run `shouldBe` "done"
             let signals =
                     [ c
-                    | c <- channelContents "verify" (arTranscript run)
-                    , doneSignal `T.isInfixOf` c
+                    | c <- verdictChannel (arTranscript run)
+                    , parseVerdict c == Just VerdictOk
                     ]
             length signals `shouldBe` 1
         it "emits NOTHING mid-loop when the contract is not satisfied" $ do
@@ -107,8 +108,8 @@ spec = describe "verify-channel honesty (R5-T5, three-valued)" $ do
             let msgs = arTranscript run
                 firstStopIx = length (takeWhile (not . isDoneTurnMsg) msgs)
                 before = take firstStopIx msgs
-            channelContents "verify" before `shouldBe` []
-            [c | c <- channelContents "verify" msgs, doneSignal `T.isInfixOf` c]
+            verdictChannel before `shouldBe` []
+            [c | c <- verdictChannel msgs, parseVerdict c == Just VerdictOk]
                 `shouldBe` []
         it "does not add chatter on the happy path (write then stop)" $ do
             driver <-
@@ -118,7 +119,7 @@ spec = describe "verify-channel honesty (R5-T5, three-valued)" $ do
                     (pure (CheckPassed, Nothing))
             run <- runEpisodeWith openBudget driver "task" 10
             arStopped run `shouldBe` "done"
-            channelContents "verify" (arTranscript run) `shouldBe` []
+            verdictChannel (arTranscript run) `shouldBe` []
 
 openBudget :: EpisodeBudget
 openBudget = defaultBudget{ebMaxRepairs = maxBound, ebDeadlineSecs = 1 / 0}
@@ -128,7 +129,10 @@ callTurn name =
     Turn
         (object ["role" .= ("assistant" :: Text)])
         ""
-        [ToolCall name (object [])]
+        [ToolCall name (args name)]
+  where
+    args "insert_cell" = object ["source" .= ("total = 42" :: Text)]
+    args _ = object []
 
 doneTurn :: Turn
 doneTurn =
@@ -143,12 +147,15 @@ isDoneTurnMsg (Object o) =
         && KM.lookup "content" o == Just (String "ok")
 isDoneTurnMsg _ = False
 
-channelContents :: Text -> [Value] -> [Text]
-channelContents name msgs =
+{- | What the harness itself said this episode: the gate's own channel, read
+by the name the harness stamps rather than by any tool the model can call.
+-}
+verdictChannel :: [Value] -> [Text]
+verdictChannel msgs =
     [ c
     | Object o <- msgs
     , KM.lookup "role" o == Just (String "tool")
-    , KM.lookup "tool_name" o == Just (String name)
+    , KM.lookup "tool_name" o == Just (String "health_gate")
     , Just (String c) <- [KM.lookup (K.fromText "content") o]
     ]
 
@@ -176,5 +183,5 @@ scriptedDriver disp script verify = do
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = verify
+            , drvVerify = const verify
             }

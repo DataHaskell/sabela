@@ -42,16 +42,27 @@ establishedFallback mSG call req vOut
 
 producerCard :: StandingGoal -> [(Text, Text)] -> Int -> Maybe Value
 producerCard sg exports limit
-    | null exports = Nothing
+    | null stated = Nothing
     | otherwise = Just (boundEnvelope envelope)
   where
+    {- A name with no signature is not an export a caller can use. Scraped from
+    an index that cannot see the package, such rows are its silence, and
+    counting them renders that silence as a listing. -}
+    stated =
+        [ (n, ty)
+        | (n0, ty0) <- exports
+        , let n = T.strip n0
+        , let ty = T.strip ty0
+        , not (T.null n)
+        , not (T.null ty)
+        ]
     g = sgType sg
     produces (_, ty) = producesGoal g ty
-    ranked = filter produces exports ++ filter (not . produces) exports
+    ranked = filter produces stated ++ filter (not . produces) stated
     shown = take (max 1 limit) ranked
-    total = length exports
+    total = length stated
     exportLines = [exportRow n ty | (n, ty) <- shown]
-    producerCount = length (filter produces exports)
+    producerCount = length (filter produces stated)
     envelope =
         object
             [ "state" .= ("found" :: Text)

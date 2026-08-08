@@ -30,6 +30,16 @@ csv =
     \bob,25,8.0,false\n\
     \carol,41,7.25,true\n"
 
+{- | A real-world export: the cells that would otherwise split wrongly are
+quoted, so a naive split reads 3 fields on one row and 2 on the others.
+-}
+quotedCsv :: Text
+quotedCsv =
+    "country,code,gdp\n\
+    \Afghanistan,AFG,537777811.1\n\
+    \\"Bahamas, The\",BHS,169803921.6\n\
+    \\"Congo, Dem. Rep.\",COD,1000000.0\n"
+
 -- | The delimited reading, or a failure naming the verdict that came back.
 viewOf :: PeekResult -> DelimitedView
 viewOf r = case peekVerdict r of
@@ -75,6 +85,26 @@ spec = do
             case peekVerdict (peekData 5 "hello there\nthis is prose\n") of
                 NotDelimited _ -> pure ()
                 Delimited v -> expectationFailure ("read prose as " <> show v)
+
+    describe "peekData reads quoted cells" $ do
+        let q = viewOf (peekData 5 quotedCsv)
+
+        it "keeps the row width when a quoted cell holds the delimiter" $
+            length (dvColumns q) `shouldBe` 3
+        it "names the columns from the header rather than the quoted row" $
+            map pcName (dvColumns q)
+                `shouldBe` [Just "country", Just "code", Just "gdp"]
+        it "returns the quoted cell as one field, quotes stripped" $
+            map head (dvRows q)
+                `shouldBe` ["Afghanistan", "Bahamas, The", "Congo, Dem. Rep."]
+        it "still types the unquoted numeric column" $
+            map pcType (dvColumns q) `shouldBe` [ColText, ColText, ColDouble]
+        it "treats a doubled quote inside a quoted cell as one quote" $
+            map head (dvRows (viewOf (peekData 5 "a,b\n\"x\"\"y\",2\n\"p\",3\n")))
+                `shouldBe` ["x\"y", "p"]
+        it "keeps a quote used as data mid-cell, and still splits the row" $
+            dvRows (viewOf (peekData 5 "a,b\n5\" long,2\n3\" wide,4\n"))
+                `shouldBe` [["5\" long", "2"], ["3\" wide", "4"]]
 
     describe "peek_data JSON shape" $ do
         let v = peekResultJSON (peekData 2 csv)

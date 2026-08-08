@@ -52,6 +52,7 @@ import Sabela.Server.Ai (
     setAIConfigH,
  )
 import Sabela.Server.Api (FullAPI, fullProxy)
+import Sabela.Server.Dataset (datasetPreviewH)
 import Sabela.Server.Export (
     exportDashboardApp,
     exportHaskellApp,
@@ -180,6 +181,7 @@ server app rn =
         :<|> listFilesH app
         :<|> readFileH app
         :<|> readFilePreviewH app
+        :<|> datasetPreviewH app
         :<|> createFileH app
         :<|> writeFileH app
         :<|> deleteFileH app

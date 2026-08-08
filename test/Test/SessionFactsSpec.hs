@@ -244,26 +244,26 @@ spec = describe "world facts versus session facts (D3)" $ do
         it "a qualified spelling finds what the bare spelling finds" $ do
             let env = notebookAliasEnv (nb [code 1 "import qualified Zz.Yy as Q"])
                 qn = resolveSpelling env "Q.widget"
-                hit = HoogleHit "widget" "zzpkg" "Zz.Yy" "Int -> Int" ""
+                hit = HoogleHit "widget" "zzpkg" "Zz.Yy" "Int -> Int" "" ""
             found <- indexLookupWith (\_ _ -> pure [hit]) (qnModule qn) (qnBare qn)
             fmap ihName found `shouldBe` Just "widget"
 
         it "the module the qualifier named narrows a shared name" $ do
-            let here = HoogleHit "widget" "here" "Aa.Bb" "Int" ""
-                there = HoogleHit "widget" "there" "Cc.Dd" "Int" ""
+            let here = HoogleHit "widget" "here" "Aa.Bb" "Int" "" ""
+                there = HoogleHit "widget" "there" "Cc.Dd" "Int" "" ""
             found <- indexLookupWith (\_ _ -> pure [there, here]) (Just "Aa.Bb") "widget"
             fmap ihPackage found `shouldBe` Just "here"
 
         it "a module with nothing of that name widens rather than lying" $ do
-            let there = HoogleHit "widget" "there" "Cc.Dd" "Int" ""
+            let there = HoogleHit "widget" "there" "Cc.Dd" "Int" "" ""
             found <- indexLookupWith (\_ _ -> pure [there]) (Just "Aa.Bb") "widget"
             fmap ihPackage found `shouldBe` Just "there"
 
         it "the qualifier's module beats the hit the ranker prefers unaided" $
             property $ \(Modul outer) (Modul inner) (Pkg p) (Ident n) ->
                 let scoped = outer <> "." <> inner
-                    hIn = HoogleHit n (p <> p) scoped "" ""
-                    hOut = HoogleHit n p outer "" ""
+                    hIn = HoogleHit n (p <> p) scoped "" "" ""
+                    hOut = HoogleHit n p outer "" "" ""
                  in rankResolveTopK 1 n Nothing [hIn, hOut] == [(p, outer)] ==>
                         ioProperty $ do
                             found <-

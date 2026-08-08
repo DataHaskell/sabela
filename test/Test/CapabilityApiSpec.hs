@@ -11,6 +11,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.CapabilityApi (
     ApiFn (..),
+    PackageApi (..),
     apiKeywords,
     isValueItem,
     rankApiFns,
@@ -89,7 +90,7 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
             length vals `shouldBe` 3
 
         it "keeps at most k and dedups by (name, module)" $ do
-            let hit = HoogleHit "f" "pkg" "Mod" "Int" "d"
+            let hit = HoogleHit "f" "pkg" "Mod" "Int" "d" ""
                 ranked = rankApiFns 6 [] [hit, hit, hit]
             length ranked `shouldBe` 1
 
@@ -146,9 +147,9 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
     describe "packageBuckets" $
         it "collapses symbol hits to per-package (pkg, synopsis) in first-seen order" $ do
             let hits =
-                    [ HoogleHit "a" "geohash" "Data.Geohash" "x" "Geohash encoding"
-                    , HoogleHit "b" "geohash" "Data.Geohash" "y" "second"
-                    , HoogleHit "c" "split" "Data.List.Split" "z" "split lists"
+                    [ HoogleHit "a" "geohash" "Data.Geohash" "x" "Geohash encoding" ""
+                    , HoogleHit "b" "geohash" "Data.Geohash" "y" "second" ""
+                    , HoogleHit "c" "split" "Data.List.Split" "z" "split lists" ""
                     ]
             packageBuckets hits
                 `shouldBe` [("geohash", "Geohash encoding"), ("split", "split lists")]
@@ -160,7 +161,10 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
                 let api =
                         [ ApiFn "encode" "Data.Geohash" "Int -> (Double, Double) -> Maybe String"
                         ]
-                    out = enrichedOutcome "lat/long prefix code" [("geohash", "Geohash encoding", api)]
+                    out =
+                        enrichedOutcome
+                            "lat/long prefix code"
+                            [PackageApi "geohash" "Geohash encoding" "" api]
                 out `shouldSatisfy` isOk
                 hitsField out
                     `shouldBe` toJSON
@@ -188,10 +192,11 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
 
         it "attaches an example only to the top few packages, by the top export" $ do
             let mk n =
-                    ( n
-                    , "syn"
-                    , [ApiFn ("f" <> n) ("M." <> n) "Int -> Int"]
-                    )
+                    PackageApi
+                        n
+                        "syn"
+                        ""
+                        [ApiFn ("f" <> n) ("M." <> n) "Int -> Int"]
                 out = enrichedOutcome "q" (map (mk . T.pack . show) [1 .. 5 :: Int])
             case hitsField out of
                 Array v ->
@@ -200,7 +205,7 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
                 other -> expectationFailure ("unexpected hits shape: " <> show other)
 
         it "omits the example field when no export surfaces (empty api)" $ do
-            let out = enrichedOutcome "q" [("only-data", "syn", [])]
+            let out = enrichedOutcome "q" [PackageApi "only-data" "syn" "" []]
             case hitsField out of
                 Array v
                     | [Object h] <- toList v ->
@@ -213,7 +218,7 @@ spec = describe "Sabela.AI.Capabilities.CapabilityApi" $ do
                 `shouldBe` ToolOk (object ["query" .= ("nothing here" :: Text), "hits" .= ([] :: [Value])])
 
         it "emits the cabal line and empty api for a package with no surfaced exports" $ do
-            let out = enrichedOutcome "q" [("mystery-pkg", "syn", [])]
+            let out = enrichedOutcome "q" [PackageApi "mystery-pkg" "syn" "" []]
             case hitsField out of
                 Array v
                     | [Object h] <- foldr (:) [] v -> do
@@ -234,7 +239,7 @@ declarationExampleSpec :: Spec
 declarationExampleSpec = describe "a declaration is never offered as callable" $ do
     prop "an item stating a declaration is not a value item" $
         forAll ((,) <$> genTyName <*> genTyName) $ \(n, r) ->
-            isValueItem (HoogleHit n "pkg" "M.Idx" (synonym n r) "")
+            isValueItem (HoogleHit n "pkg" "M.Idx" (synonym n r) "" "")
                 === False
     prop "an example passes over a declaration for a callable export" $
         forAll ((,,) <$> genTyName <*> genTyName <*> genValName) $

@@ -47,13 +47,37 @@ gridOf delims ls
     | otherwise =
         listToMaybe (sortOn (negate . gridWidth) (mapMaybe consistent delims))
   where
-    consistent d = case map (T.splitOn d) ls of
+    consistent d = case map (splitRow d) ls of
         rows@(r : _)
             | let w = length r
             , w >= 2
             , all ((== w) . length) rows ->
                 Just (Grid d rows w)
         _ -> Nothing
+
+{- | A row split on the delimiter, leaving a delimiter inside double quotes
+alone. A machine-written table quotes exactly the cells that would otherwise
+split wrongly, so reading the quotes is what keeps its rows one width.
+-}
+splitRow :: Text -> Text -> [Text]
+splitRow d t = case T.unpack d of
+    [c] | T.any (== '"') t -> splitOnUnquoted c t
+    _ -> T.splitOn d t
+
+{- | Fields of one quoted row. A quote opens a cell only at the cell's start,
+so a quote used as data mid-cell stays data; inside a quoted cell a doubled
+quote is a single quote.
+-}
+splitOnUnquoted :: Char -> Text -> [Text]
+splitOnUnquoted d = go [] False . T.unpack
+  where
+    go cur _ [] = [pack' cur]
+    go cur True ('"' : '"' : cs) = go ('"' : cur) True cs
+    go cur True ('"' : cs) = go cur False cs
+    go [] False ('"' : cs) = go [] True cs
+    go cur False (c : cs) | c == d = pack' cur : go [] False cs
+    go cur inQ (c : cs) = go (c : cur) inQ cs
+    pack' = T.pack . reverse
 
 {- | The grid's first row, when the cells give evidence that it names the
 columns: a column whose first cell does not read as a number while every

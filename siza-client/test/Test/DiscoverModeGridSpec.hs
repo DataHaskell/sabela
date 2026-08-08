@@ -105,10 +105,13 @@ discoverModeGridSpec =
                 next `shouldNotSatisfy` ("write the cell" `T.isInfixOf`)
                 next `shouldNotSatisfy` ("red cell" `T.isInfixOf`)
 
-            it "points a miss at the inventory that would list what IS there" $ do
+            {- The route to what IS there for an imported module is the
+            compiler, not a package listing: inventory states no signature. -}
+            it "points a miss at what would list what IS there" $ do
                 v <- runCatArgs "Z.gustNope" (object [])
-                T.toLower (textField "next" v)
-                    `shouldSatisfy` ("inventory" `T.isInfixOf`)
+                let next = T.toLower (textField "next" v)
+                next `shouldSatisfy` ("exports" `T.isInfixOf`)
+                next `shouldNotSatisfy` ("inventory" `T.isInfixOf`)
 
 framePkgs :: [SynPkg]
 framePkgs =

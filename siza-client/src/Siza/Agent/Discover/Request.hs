@@ -83,12 +83,15 @@ requestSchema =
         ( "mode"
         , "string"
         , False
-        , "\"search\" (default) ranks matching names; \"inventory\" answers \
-          \'what is available for this topic': one bounded card listing \
-          \candidate packages as installed, hidden, or absent-known (with \
-          \the -- cabal: line to declare); \"construct\" answers 'how do I \
-          \make a value of type T' by ranking producers of T (a ready-made \
-          \value first, then constructors, then functions returning T)."
+        , "Leave unset for \"search\" (the default), which is how you find a \
+          \function, type or module and is the only mode that states \
+          \signatures. \"inventory\" answers the narrower question 'which \
+          \PACKAGES exist for this topic': one bounded card listing them as \
+          \installed, hidden, or absent-known (with the build-depends line \
+          \to declare), and no signatures — so it cannot say what a function \
+          \takes or returns. \"construct\" answers 'how do I make a value of \
+          \type T' by ranking producers of T (a ready-made value first, then \
+          \constructors, then functions returning T)."
         )
     ]
 

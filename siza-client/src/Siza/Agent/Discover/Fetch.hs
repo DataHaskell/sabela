@@ -32,6 +32,7 @@ import Siza.Agent.Discover.Interpret (
 import Siza.Agent.Discover.Types (
     Interpreted (..),
     NotebookEnv,
+    Scope (..),
     SourceAnswer (..),
  )
 
@@ -67,9 +68,17 @@ queryVariants q =
             && maybe False (not . isUpper . fst) (T.uncons w)
     isTypeWord w = maybe False (isUpper . fst) (T.uncons (T.dropWhile (== '.') w))
 
-capabilityArgs :: Bool -> Interpreted -> Value
-capabilityArgs capSearch interp =
-    object ["query" .= iRaw interp, "semantic" .= capSearch]
+{- | A scoped request is a precise one, so the scope rides along: searched
+globally, a package the caller named loses on rank to whatever else answers to
+the same word, and the scope filter then has nothing of theirs to keep.
+-}
+capabilityArgs :: Bool -> Scope -> Interpreted -> Value
+capabilityArgs capSearch scope interp =
+    object
+        ( ["query" .= iRaw interp, "semantic" .= capSearch]
+            ++ ["package" .= p | Just p <- [scPackage scope]]
+            ++ ["module" .= m | Just m <- [scModule scope]]
+        )
 
 fetchNotebookEnv ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) -> IO NotebookEnv

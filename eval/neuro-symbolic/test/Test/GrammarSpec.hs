@@ -132,7 +132,7 @@ spec = describe "E1 grammar prompting" $ do
             ("search_capability" `T.isInfixOf` block) `shouldBe` False
             ("find_example_cell" `T.isInfixOf` block) `shouldBe` False
         it "keeps the -- cabal: install mechanism" $
-            ("-- cabal: build-depends:" `T.isInfixOf` block) `shouldBe` True
+            ("`-- cabal:` line" `T.isInfixOf` block) `shouldBe` True
 
     describe "synthesizeGrammar (live :browse -> grammar prior)" $ do
         let graniteBlock =

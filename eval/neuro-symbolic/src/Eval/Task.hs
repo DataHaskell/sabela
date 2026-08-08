@@ -34,7 +34,9 @@ import Eval.Render (gradeRender, textField)
 import Eval.Tools (renderOutcome)
 import Siza.Agent.Check (
     CheckResult (..),
+    MarkerRun (..),
     checkVerdict3With,
+    classifyCheck,
     markerSrc,
     runMarkerWith,
  )
@@ -144,8 +146,14 @@ gradeWith conn base task grader = case grader of
     ByFit points tol -> gradeFit conn base points tol
     BySteps stages -> gradeSteps conn base task stages
 
+{- | A marker's pass flag and the text to report. A refused scratch cell ran
+nothing, so it can never grade as a pass however its rejection reads.
+-}
 runMarker :: Conn -> Text -> Text -> IO (Bool, Text)
-runMarker conn base = runMarkerWith (callTool conn base)
+runMarker conn base src = summarise <$> runMarkerWith (callTool conn base) src
+  where
+    summarise (MarkerRefused why) = (False, why)
+    summarise (MarkerRan out) = (classifyCheck out == CheckPassed, out)
 
 gradeOutputTask :: Conn -> Text -> IO (Verdict, Text)
 gradeOutputTask conn base = do

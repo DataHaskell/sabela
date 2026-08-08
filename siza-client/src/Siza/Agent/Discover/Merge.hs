@@ -14,7 +14,11 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.RepairDispatch (DiagClass (ClassHiddenPackage), diagClassText)
-import Siza.Agent.Discover.Absent (absentKnownHits, absentScopeNote)
+import Siza.Agent.Discover.Absent (
+    absentKnownHits,
+    absentScopeNote,
+    withIndexFacts,
+ )
 import Siza.Agent.Discover.Affordance (
     markClashes,
     scopeUse,
@@ -31,6 +35,7 @@ import Siza.Agent.Discover.Installed (
     packageState,
     sessionFacts,
  )
+import Siza.Agent.Discover.ModuleList (ModuleView (..))
 import Siza.Agent.Discover.Rank (
     demotedCount,
     fuse,
@@ -62,7 +67,7 @@ import Siza.Agent.Discover.Types (
     Scope (..),
     SourceAnswer (..),
     emptyScope,
-    hitJson,
+    hitJsonView,
  )
 
 discoverEnvelope ::
@@ -109,7 +114,7 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
         [ "query" .= iRaw interp
         , "interpreted" .= interpretedJson interp
         , "state" .= state
-        , "hits" .= map hitJson shownHits
+        , "hits" .= map (\h -> hitJsonView (moduleView h) h) shownHits
         , "shown" .= length shownHits
         , "omitted" .= (total - length shownHits)
         , "total" .= total
@@ -127,6 +132,12 @@ envelopeFrom env interp scope limit answers hk card rankedAll =
         partition (cardAnswers interp) (maybe [] pure scopedCard)
     cardIsEvidence = not (null answering)
     shownCard = listToMaybe answering
+    {- A request scoped to a package asked about that package, which is the
+    follow-up 'restOfModules' and 'absentScopeNote' name: it gets the whole
+    structure, where a wider search gets the leading modules. -}
+    moduleView h
+        | Just p <- scPackage scope, p == dhPackage h = ModuleWhole
+        | otherwise = ModuleLead
     ranked = markClashes (filter (attributedKeep rankedAll scope) rankedAll)
     total = length ranked
     shownHits = capAbsentKnown (max 1 limit) ranked
@@ -175,7 +186,9 @@ mergedHitsRecent ::
     [Text] -> NotebookEnv -> Interpreted -> [SourceAnswer] -> HackageInfo -> [DHit]
 mergedHitsRecent recentPkgs env interp answers hk =
     sortOn (rankKeyRecent recentPkgs importedPkgs env interp)
-        . map enrichVersion
+        -- The index speaks only where the session could not, so it is asked
+        -- after 'finalise' has settled what the session knows.
+        . map (withIndexFacts hk . enrichVersion)
         . fuseAll
         $ map finalise allHits
   where

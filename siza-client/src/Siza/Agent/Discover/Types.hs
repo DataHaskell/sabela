@@ -8,7 +8,6 @@ module Siza.Agent.Discover.Types (
     Interpreted (..),
     HackageInfo (..),
     StandingGoal (..),
-    shownModules,
     emptyScope,
     mkHit,
     okAnswer,
@@ -17,6 +16,7 @@ module Siza.Agent.Discover.Types (
     installText,
     matchKindText,
     hitJson,
+    hitJsonView,
     exportRow,
     exportRowName,
     statedHitType,
@@ -25,13 +25,12 @@ module Siza.Agent.Discover.Types (
 ) where
 
 import Data.Aeson (Value, object, (.=))
-import Data.Aeson.Types (Pair)
-import Data.List (sortOn)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.PromptCore (builtinModules, builtinNames)
 import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
+import Siza.Agent.Discover.ModuleList (ModuleView (..), factRows)
 
 data InstallState
     = InstBuiltin
@@ -242,7 +241,10 @@ statedHitType t
 'Siza.Agent.Discover.Envelope.dropLastHit' then reclaims from a real hit.
 -}
 hitJson :: DHit -> Value
-hitJson h =
+hitJson = hitJsonView ModuleLead
+
+hitJsonView :: ModuleView -> DHit -> Value
+hitJsonView view h =
     object $
         [ "name" .= dhName h
         , "install" .= installText (dhInstall h)
@@ -256,32 +258,6 @@ hitJson h =
             <> ["cabal" .= c | Just c <- [dhCabal h]]
             <> ["use" .= u | Just u <- [dhUse h]]
             <> ["ambiguousWith" .= c | Just c <- [dhClash h]]
-            <> factRows (dhFacts h)
+            <> factRows view (dhFacts h)
   where
     computed k t = [k .= t | not (T.null t)]
-
-{- | What the index states about a package nothing installed can speak for.
-The module list is the answer to "what do I import", so it is bounded and
-led by the modules a caller reaches for first.
--}
-factRows :: Maybe PkgFacts -> [Pair]
-factRows Nothing = []
-factRows (Just f) =
-    ["homepage" .= pfHomepage f | not (T.null (pfHomepage f))]
-        <> ["modules" .= shownModules f | not (null (pfModules f))]
-
--- | At most this many modules ride on a hit; the rest are a scope away.
-shownModuleCap :: Int
-shownModuleCap = 6
-
-{- | Public roots first, then depth, then name: the entry point a caller wants
-leads, and an internal module never displaces it.
--}
-shownModules :: PkgFacts -> [Text]
-shownModules = take shownModuleCap . sortOn moduleRank . pfModules
-
-moduleRank :: Text -> (Int, Int, Text)
-moduleRank m = (if isInternalModule m then 1 else 0, T.count "." m, m)
-
-isInternalModule :: Text -> Bool
-isInternalModule m = "Internal" `elem` T.splitOn "." m

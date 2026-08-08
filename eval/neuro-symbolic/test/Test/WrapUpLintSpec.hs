@@ -20,8 +20,8 @@ allStops = capStops ++ ["done", "stuck", "stuck_reenter", "error"]
 ownedShapes :: [Map.Map Int OwnedCell]
 ownedShapes =
     [ Map.empty
-    , Map.fromList [(0, OwnedCell True "" "x = 1")]
-    , Map.fromList [(1, OwnedCell False "not in scope: colx" "y = colx")]
+    , Map.fromList [(0, OwnedCell True "" "x = 1" False)]
+    , Map.fromList [(1, OwnedCell False "not in scope: colx" "y = colx" False)]
     ]
 
 spec :: Spec

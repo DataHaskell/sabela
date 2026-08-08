@@ -105,7 +105,8 @@ typeTokens = filter (not . T.null) . T.split (not . identChar)
     identChar c = isAlphaNum c || c `elem` ("._'" :: String)
 
 asHit :: Text -> ExportRow -> HoogleHit
-asHit modName r = HoogleHit (bareName (erName r)) "" modName (erType r) (erDocs r)
+asHit modName r =
+    HoogleHit (bareName (erName r)) "" modName (erType r) (erDocs r) ""
 
 {- | @:browse@ qualifies a re-exported name with the module that defines it:
 @Chart@ lists @NumHask.Algebra.Additive.+@. An unqualified name, or one

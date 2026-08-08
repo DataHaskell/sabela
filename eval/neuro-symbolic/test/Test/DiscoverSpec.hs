@@ -20,9 +20,13 @@ import Eval.Agent (
     discoverModules,
     runEpisodeWith,
  )
-import Eval.Discover (GrammarMode (..), proactiveDiscover, rediscoverModules)
 import Eval.Ollama (ToolCall (..), Turn (..))
 import Eval.Task (Grader (..), Task (..))
+import Siza.Agent.Discover (
+    GrammarMode (..),
+    proactiveDiscover,
+    rediscoverModules,
+ )
 
 installSrc :: Text
 installSrc =
@@ -128,7 +132,7 @@ spec = describe "D1 discover stage" $ do
                             { drvChat = chatRec
                             , drvDispatch = disp
                             , drvNow = pure 0
-                            , drvVerify = pure (CheckPassed, Nothing)
+                            , drvVerify = const (pure (CheckPassed, Nothing))
                             }
                 run <- runEpisodeWith openBudget driver (taskPrompt dummyTask) 10
                 arStopped run `shouldBe` "done"
@@ -140,21 +144,23 @@ spec = describe "D1 discover stage" $ do
                 ("bars ::" `T.isInfixOf` lastCtx) `shouldBe` True
         it "a SUCCEEDED install write gets no module-API bytes (R6.10)" $ do
             calls <- newIORef []
+            turns <- newIORef (0 :: Int)
             let disp tc@(ToolCall name a) = do
                     modifyIORef' calls (++ [tc])
                     pure $ case name of
                         "find_function" -> Right (browseResult (argOf a))
                         _ -> Right okOutcome
-                scriptOnce msgs =
-                    pure . Right $
-                        if any hasInstall msgs then doneTurn else installTurn
-                hasInstall v = "insert_cell" `T.isInfixOf` T.pack (show v)
+                greenScript = [installTurn, doneTurn]
+                scriptOnce _ = do
+                    i <- readIORef turns
+                    modifyIORef' turns (+ 1)
+                    pure (Right (greenScript !! min i (length greenScript - 1)))
                 driver =
                     Driver
                         { drvChat = scriptOnce
                         , drvDispatch = disp
                         , drvNow = pure 0
-                        , drvVerify = pure (CheckPassed, Nothing)
+                        , drvVerify = const (pure (CheckPassed, Nothing))
                         }
             run <- runEpisodeWith openBudget driver (taskPrompt dummyTask) 10
             arStopped run `shouldBe` "done"

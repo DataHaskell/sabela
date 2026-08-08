@@ -13,6 +13,12 @@ import Data.IORef (readIORef, writeIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.Output (
+    pureAdmittedMarker,
+    pureErrorMarker,
+    pureIOMarker,
+    pureValueMarker,
+ )
 import Sabela.Session (
     Session (..),
     checkProcessAlive,
@@ -36,12 +42,6 @@ import Sabela.Session.Query.PureEval.Protocol (
     diagnostic,
     evalCommand,
     framed,
- )
-import Sabela.Output (
-    pureAdmittedMarker,
-    pureErrorMarker,
-    pureIOMarker,
-    pureValueMarker,
  )
 import Sabela.SessionTypes (
     PureEvalRecovery (..),

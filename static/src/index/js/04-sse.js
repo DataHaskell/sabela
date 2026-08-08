@@ -17,56 +17,6 @@ function connectSSE() {
   };
 }
 
-function openBuildModal(title) {
-  const modal = document.getElementById('build-modal');
-  const titleEl = document.getElementById('build-modal-title');
-  titleEl.textContent = title;
-  titleEl.className = 'build-modal-title';
-  document.getElementById('build-log').innerHTML = '';
-  modal.style.display = 'flex';
-}
-function closeBuildModal() {
-  document.getElementById('build-modal').style.display = 'none';
-}
-function setBuildModalTitle(text, cls) {
-  const t = document.getElementById('build-modal-title');
-  t.textContent = text;
-  t.className = 'build-modal-title ' + cls;
-}
-// A build that ran out of time is worth retrying at a longer budget; the others are not.
-function kernelErrorTitle(phase) {
-  switch (phase) {
-    case 'buildTimeout':
-      return 'Build timed out';
-    case 'buildFailed':
-      return 'Build failed';
-    case 'preludeFailed':
-      return 'Kernel started but the prelude failed';
-    case 'crashed':
-      return 'Kernel crashed';
-    default:
-      return 'Kernel error';
-  }
-}
-// Mark the cells whose dependencies the failure names, so the user knows where to edit.
-function markBlamedCells(cellIds) {
-  document.querySelectorAll('.cell.blamed').forEach((el) => el.classList.remove('blamed'));
-  cellIds.forEach((cid) => {
-    const el = document.querySelector(`.cell[data-id="${cid}"]`);
-    if (el) el.classList.add('blamed');
-  });
-}
-function appendBuildLog(line) {
-  const log = document.getElementById('build-log');
-  const modal = document.getElementById('build-modal');
-  if (modal.style.display === 'none') modal.style.display = 'flex';
-  const el = document.createElement('div');
-  if (/error:/i.test(line)) el.className = 'build-log-error';
-  el.textContent = line;
-  log.appendChild(el);
-  log.scrollTop = log.scrollHeight;
-}
-
 function handleSSE(ev) {
   switch (ev.type) {
     case 'cellUpdating':
@@ -127,7 +77,7 @@ function handleSSE(ev) {
         openBuildModal('Building…');
       } else if (ev.state === 'ready') {
         hideCrashBanner();
-        setBuildModalTitle('Build succeeded', 'ok');
+        finishBuildModal('Build succeeded', 'ok');
         setStatus('Done', '');
       } else if (ev.state === 'crashed') {
         setStatus('Kernel crashed', 'error');
@@ -137,7 +87,7 @@ function handleSSE(ev) {
     }
     case 'kernelError':
       recordKernelEvent('error', kernelErrorTitle(ev.phase) + ': ' + ev.message);
-      setBuildModalTitle(kernelErrorTitle(ev.phase), 'err');
+      finishBuildModal(kernelErrorTitle(ev.phase), 'err');
       appendBuildLog(ev.message);
       markBlamedCells(ev.cellIds || []);
       setStatus(kernelErrorTitle(ev.phase), 'error');

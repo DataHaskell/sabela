@@ -4,7 +4,7 @@
 
 .PHONY: help frontend frontend-check hub-assets search-cache capability-index \
         hackage-facts presubmit presubmit-quick \
-        search-cache-local test test-fast payload-probe
+        search-cache-local search-cache-hackage test test-fast payload-probe
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -52,6 +52,10 @@ hackage-facts: ## Rebuild only data/hackage-facts.tsv (package modules, homepage
 search-cache-local: ## Rebuild only data/hoogle-local.hoo (in-repo + store packages); skips the full-Hackage download
 	./tools/update-search-cache.sh --local-hoogle-only
 	@echo "Local index rebuilt. The server adopts it at start when SABELA_HOOGLE_LOCAL_DB is unset."
+
+search-cache-hackage: ## Index every Hackage package that ships haddock, not just Stackage ones (~15 min, ~1.4 GB, machine-local)
+	./tools/update-search-cache.sh --hackage-hoogle-only
+	@echo "Hackage index built. The server adopts it at start when SABELA_HOOGLE_HACKAGE_DB is unset."
 
 capability-index: ## Build/refresh the SHIP capability-search index (data/capability-*); needs a local ollama (nomic-embed-text)
 	./tools/update-search-cache.sh --capability-index

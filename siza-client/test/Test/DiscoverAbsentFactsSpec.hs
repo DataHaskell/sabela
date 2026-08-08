@@ -20,8 +20,10 @@ import Test.DiscoverFixtures (
     installNamesFileWith,
     runCat,
     runCatArgs,
+    runCatArgsIn,
     stateOf,
     synHackageNames,
+    synHoogleCatalogued,
     textField,
  )
 
@@ -41,14 +43,31 @@ installFactsFile = do
               \Data.Vapour.Cloud.Layer Data.Vapour.Droplet \
               \Data.Vapour.Droplet.Size Data.Vapour.Mist"
             , "nimbus\t\tRain\tNimbus.Sky"
+            , "hodograph\thttps://example.invalid/hodograph\tWind shear plots\t\
+              \Data.Hodograph.Internal.Raw Data.Hodograph Data.Hodograph.Plot \
+              \Data.Hodograph.Plot.Polar Data.Hodograph.Shear \
+              \Data.Hodograph.Shear.Layer Data.Hodograph.Trace \
+              \Data.Hodograph.Wind"
             ]
         )
     setEnv "SABELA_HACKAGE_FACTS" path
 
 installBoth :: IO ()
 installBoth = do
-    installNamesFileWith (synHackageNames ++ ["vapour"])
+    installNamesFileWith (synHackageNames ++ ["vapour", "hodograph"])
     installFactsFile
+
+{- | The live shape: Hoogle names the package but describes nothing in it, so
+another source has already spoken for it by the time the index is consulted.
+-}
+runCatalogued :: Text -> IO Value
+runCatalogued q =
+    runCatArgsIn synHoogleCatalogued q (object ["query" .= q])
+
+-- | The scoped follow-up, where Hoogle has already named the package.
+runScopedCatalogued :: Text -> IO Value
+runScopedCatalogued pkg =
+    runCatArgsIn synHoogleCatalogued "" (object ["package" .= pkg])
 
 discoverAbsentFactsSpec :: Spec
 discoverAbsentFactsSpec =
@@ -117,6 +136,117 @@ discoverAbsentFactsSpec =
                     textField "narrow" v
                         `shouldSatisfy` (not . T.isInfixOf "matched none")
 
+            {- The 2026-08-07 episode: eight scoped searches, every one
+            answered "matched none; drop the filter". The module named a
+            package the index could describe and nothing asked it which. -}
+            describe "scoping to a module only an absent package exposes" $ do
+                it "names the package that exposes the scoped module" $ do
+                    v <- runModScoped "Data.Vapour.Cloud" "condense"
+                    textField "narrow" v `shouldSatisfy` T.isInfixOf "vapour"
+                it "says the index covers installed packages only" $ do
+                    v <- runModScoped "Data.Vapour.Cloud" "condense"
+                    textField "narrow" v
+                        `shouldSatisfy` T.isInfixOf "not installed"
+                it "carries the cabal line that would make it searchable" $ do
+                    v <- runModScoped "Data.Vapour.Cloud" "condense"
+                    textField "narrow" v
+                        `shouldSatisfy` T.isInfixOf "build-depends: vapour"
+                it "does not blame the filter for a package it never consulted" $ do
+                    v <- runModScoped "Data.Vapour.Cloud" "condense"
+                    textField "narrow" v
+                        `shouldSatisfy` (not . T.isInfixOf "drop the filter")
+                {- A module scope under an installed package must keep saying
+                what it says now; this note is for the absent case only. -}
+                it "says nothing of the kind for a module already in scope" $ do
+                    v <- runModScoped "Data.Map" "condense"
+                    textField "narrow" v
+                        `shouldSatisfy` (not . T.isInfixOf "not installed")
+
+                {- Listing the indexes as consulted implies they could have
+                answered. For a package none of them covers they could not, and
+                the caller who reads it as "no such name" varies the query. -}
+                it "does not claim the indexes could have answered" $ do
+                    v <- runModScoped "Data.Vapour.Cloud" "condense"
+                    textField "next" v
+                        `shouldSatisfy` (not . T.isInfixOf "No match for")
+                it "names the install that would let them answer" $ do
+                    v <- runModScoped "Data.Vapour.Cloud" "condense"
+                    textField "next" v
+                        `shouldSatisfy` T.isInfixOf "build-depends: vapour"
+                it "still names the sources when the miss is a real miss" $ do
+                    v <- runCat "zzznotathing"
+                    textField "next" v
+                        `shouldSatisfy` T.isInfixOf "No match for"
+
+            {- Hoogle holds installed haddock only, so for an absent package it
+            names it and describes nothing. That must not displace the index,
+            the only source that can describe the package at all. -}
+            describe "when Hoogle has already named the package" $ do
+                it "still states the modules a dependent may import" $ do
+                    v <- runCatalogued "hodograph"
+                    modulesOf v `shouldSatisfy` elem "Data.Hodograph"
+                it "still leads with the root module" $ do
+                    v <- runCatalogued "hodograph"
+                    take 1 (modulesOf v) `shouldBe` ["Data.Hodograph"]
+                it "still carries the import line" $ do
+                    v <- runCatalogued "hodograph"
+                    firstHit v "use" `shouldBe` "import Data.Hodograph"
+                it "still says where to read about it" $ do
+                    v <- runCatalogued "hodograph"
+                    firstHit v "homepage"
+                        `shouldBe` "https://example.invalid/hodograph"
+                it "names the module on the hit, not just in the list" $ do
+                    v <- runCatalogued "hodograph"
+                    firstHit v "module" `shouldBe` "Data.Hodograph"
+                it "does not claim the package is installed" $ do
+                    v <- runCatalogued "hodograph"
+                    firstHit v "install" `shouldBe` "absent-known"
+
+            {- Two notes tell the caller a follow-up lists the rest. Returning
+            the same leading modules to it makes the answer a loop. -}
+            describe "the follow-up the leading answer promises" $ do
+                it "names the scoped call" $ do
+                    v <- runCat "vapour"
+                    textField "next" v
+                        `shouldSatisfy` T.isInfixOf "package=\"vapour\""
+                it "delivers more of the structure than the lead did" $ do
+                    lead <- runCat "vapour"
+                    whole <- runScoped "vapour" ""
+                    length (modulesOf whole)
+                        `shouldSatisfy` (> length (modulesOf lead))
+                it "reaches a module the lead had to leave out" $ do
+                    lead <- runCat "vapour"
+                    whole <- runScoped "vapour" ""
+                    let gained =
+                            [m | m <- modulesOf whole, m `notElem` modulesOf lead]
+                    gained `shouldSatisfy` not . null
+                it "does not collapse a single-root package to one row" $ do
+                    v <- runScopedCatalogued "hodograph"
+                    length (modulesOf v) `shouldSatisfy` (> 1)
+                it "reaches past the depth the lead ranking stops at" $ do
+                    v <- runScopedCatalogued "hodograph"
+                    modulesOf v `shouldSatisfy` elem "Data.Hodograph.Shear.Layer"
+
+            {- A module filter the index cannot match exactly is not thereby
+            unknown: the fragment names a namespace the index does hold, and
+            saying so beats sending the caller back to guess. -}
+            describe "a module fragment no package exposes exactly" $ do
+                it "resolves a distinctive fragment to the real module" $ do
+                    v <- runCat "Hodograph"
+                    stateOf v `shouldBe` "found"
+                    map (hitText "module") (hitsOf v)
+                        `shouldSatisfy` any (T.isPrefixOf "Data.Hodograph")
+                it "names the package that exposes it" $ do
+                    v <- runCat "Hodograph"
+                    map (hitText "package") (hitsOf v)
+                        `shouldSatisfy` elem "hodograph"
+                it "leaves an exact module match untouched" $ do
+                    v <- runCat "Data.Vapour.Cloud"
+                    firstHit v "module" `shouldBe` "Data.Vapour.Cloud"
+                it "does not engage on a fragment too short to mean anything" $ do
+                    v <- runCat "Ho"
+                    stateOf v `shouldBe` "not_found"
+
             describe "what the facts cache cannot answer" $
                 it "a module no package exposes stays not_found" $ do
                     v <- runCat "Data.Frobwizzle.Core"
@@ -124,6 +254,10 @@ discoverAbsentFactsSpec =
 
 runScoped :: Text -> Text -> IO Value
 runScoped pkg q = runCatArgs q (object ["query" .= q, "package" .= pkg])
+
+-- | Scoped to a module rather than a package, as the live episode was.
+runModScoped :: Text -> Text -> IO Value
+runModScoped m q = runCatArgs q (object ["query" .= q, "module" .= m])
 
 modulesOf :: Value -> [Text]
 modulesOf v = case hitsOf v of

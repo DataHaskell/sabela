@@ -66,6 +66,7 @@ helperToHoogleHits = map toHit
             , hhModule = ""
             , hhType = ""
             , hhDocs = heSynopsis h
+            , hhVersion = ""
             }
 
 runCapabilityHelper :: Int -> Text -> IO [HelperHit]

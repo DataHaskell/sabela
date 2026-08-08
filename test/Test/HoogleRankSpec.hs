@@ -91,7 +91,7 @@ genTable = do
     vectorOf n ((,) <$> genPkg <*> genCounts)
 
 hit :: Text -> Text -> Text -> HoogleHit
-hit n pkg modu = HoogleHit n pkg modu "" ""
+hit n pkg modu = HoogleHit n pkg modu "" "" ""
 
 -- | Two package names and the counts a table would carry for each.
 genRankedPair :: Gen (Text, Text, (Int, Int), (Int, Int))

@@ -17,6 +17,7 @@ hit =
         "Data.Attoparsec.Text"
         "(Char -> Bool) -> Parser Text"
         ""
+        ""
 
 spec :: Spec
 spec = describe "type-directed resolution (intention)" $ do
@@ -108,8 +109,8 @@ spec = describe "type-directed resolution (intention)" $ do
         -- falls to module order; the prior itself is pinned in HoogleRankSpec.
         it "orders equally measured hits by module path, never by package" $ do
             let hits =
-                    [ HoogleHit "decode" "obscure-thing-9000" "Some.Niche" "..." ""
-                    , HoogleHit "decode" "aeson" "Data.Aeson" "..." ""
+                    [ HoogleHit "decode" "obscure-thing-9000" "Some.Niche" "..." "" ""
+                    , HoogleHit "decode" "aeson" "Data.Aeson" "..." "" ""
                     ]
             map fst (rankResolveTopK 3 "decode" Nothing hits)
                 `shouldBe` ["aeson", "obscure-thing-9000"]
@@ -122,6 +123,7 @@ spec = describe "type-directed resolution (intention)" $ do
                         "parser-x"
                         "Parser.X"
                         "(Char -> Bool) -> ParsecT Void String Identity String"
+                        ""
                         ""
             map fst (rankResolveTopK 3 "takeWhile1" (Just goal) [hit, matching])
                 `shouldBe` ["parser-x", "attoparsec"]

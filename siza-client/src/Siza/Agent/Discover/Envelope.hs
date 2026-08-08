@@ -38,6 +38,7 @@ import Siza.Agent.Discover.Evict (
     shrinkNext,
     shrinkSummary,
  )
+import Siza.Agent.Discover.ModuleList (factKeys)
 import Siza.Agent.Discover.Types (InstallState, installText)
 
 badRequest :: Text -> Text -> Value
@@ -95,6 +96,7 @@ requiredHitKeys = ["name", "install", "matchKind", "origin"]
 optionalHitKeys :: [Text]
 optionalHitKeys =
     ["module", "package", "version", "type", "cabal", "use", "ambiguousWith"]
+        ++ factKeys
 
 hitKeys :: [Text]
 hitKeys = requiredHitKeys ++ optionalHitKeys

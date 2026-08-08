@@ -2,7 +2,7 @@
 
 module Test.SalvageSpec (spec) where
 
-import Data.Aeson (object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text, isInfixOf)
 import qualified Data.Text as T
@@ -20,8 +20,8 @@ import Eval.Agent (
     runEpisodeWith,
  )
 import Eval.Ollama (ToolCall (..), Turn (..))
-import Eval.Salvage (salvageCell, salvageInsertSource)
 import Eval.Task (Grader (..), Task (..))
+import Sabela.AI.Salvage (salvageCell, salvageInsertSource)
 
 spec :: Spec
 spec = describe "Rank 3 code-fence salvage" $ do
@@ -126,11 +126,28 @@ callTurn name =
     Turn
         (object ["role" .= ("assistant" :: Text)])
         "```haskell\nrevenueTotal = 600\n```"
-        [ToolCall name (object [])]
+        [ToolCall name (writeArgs name)]
+
+{- | A write carries the source the loop reads back off it. A committed cell
+with no source is not an artifact, so an episode scripted without one can
+never reach a stop.
+-}
+writeArgs :: Text -> Value
+writeArgs "insert_cell" = object ["source" .= scriptedSource]
+writeArgs "replace_cell_source" =
+    object ["cell_id" .= (1 :: Int), "new_source" .= scriptedSource]
+writeArgs _ = object []
+
+scriptedSource :: Text
+scriptedSource = "revenueTotal = 600"
 
 doneTurn :: Turn
 doneTurn = Turn (object ["role" .= ("assistant" :: Text)]) "done" []
 
+{- | A driver reading a fixed script. Past its end it repeats the last turn:
+the loop decides when to stop, and a fixture that crashed on one extra prompt
+would report an exception where the stop tag is the thing under test.
+-}
 scriptedDriver ::
     (ToolCall -> IO (Either Text ToolOutcome)) -> [Turn] -> IO Driver
 scriptedDriver disp script = do
@@ -138,13 +155,13 @@ scriptedDriver disp script = do
     let nextTurn _msgs = do
             i <- readIORef cursor
             modifyIORef' cursor (+ 1)
-            pure (Right (script !! i))
+            pure (Right (script !! min i (length script - 1)))
     pure
         Driver
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = pure (CheckPassed, Nothing)
+            , drvVerify = const (pure (CheckPassed, Nothing))
             }
 
 alwaysHealthy :: ToolCall -> IO (Either Text ToolOutcome)

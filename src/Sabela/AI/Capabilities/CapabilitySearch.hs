@@ -13,12 +13,15 @@ import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.List (nub)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Capabilities.CapabilityApi (
     ApiFn (..),
+    PackageApi (..),
     enrichPackages,
+    hoogleFor,
     usageExample,
  )
 import Sabela.AI.Capabilities.CapabilityHelper (
@@ -60,9 +63,7 @@ execSearchCapability app input
         let inScope = availablePackages nb (envGlobalDeps (appEnv app))
         pkgs <-
             if null helperHits
-                then
-                    packageBuckets . exactFilter
-                        <$> hoogleQueryInScope inScope maxHits q
+                then packageBuckets . exactFilter <$> searched inScope
                 else pure [(hePackage h, heSynopsis h) | h <- helperHits]
         enriched <- enrichPackages enrichPkgs perPkgApi q pkgs
         pure (enrichedOutcome q enriched)
@@ -70,6 +71,19 @@ execSearchCapability app input
     q = fieldText "query" input
     exact = boolField "exact" input == Just True
     exactFilter = if exact then exactOnlyHits q else id
+    {- A scope makes the request precise, so it is asked of Hoogle directly.
+    Ranked against all of Hackage the scoped package loses to whatever else
+    answers to the same word, and the caller's filter is left nothing to keep. -}
+    searched inScope = case scopeTerm of
+        Just s -> hoogleFor s q
+        Nothing -> hoogleQueryInScope inScope maxHits q
+    scopeTerm =
+        listToMaybe
+            [ s
+            | k <- ["package", "module"]
+            , let s = T.strip (fieldText k input)
+            , not (T.null s)
+            ]
 
 semanticWanted :: Value -> Bool
 semanticWanted input = boolField "semantic" input /= Just False
@@ -99,7 +113,7 @@ packageBuckets hits =
         (h : _) -> hhDocs h
         [] -> ""
 
-enrichedOutcome :: Text -> [(Text, Text, [ApiFn])] -> ToolOutcome
+enrichedOutcome :: Text -> [PackageApi] -> ToolOutcome
 enrichedOutcome q hits =
     okOutcome $
         object (["query" .= q, "hits" .= zipWith hitJSON [0 ..] hits] <> nameFallback)
@@ -109,15 +123,18 @@ enrichedOutcome q hits =
         | T.null qs || T.any (== ' ') qs = []
         | otherwise = ["tryCabal" .= ("-- cabal: build-depends: " <> qs)]
     qs = T.strip q
-    hitJSON i (pkg, syn, api) =
+    hitJSON i h =
         object $
-            [ "package" .= pkg
-            , "synopsis" .= truncDocs syn
-            , "cabal" .= ("-- cabal: build-depends: " <> pkg)
+            [ "package" .= paPackage h
+            , "synopsis" .= truncDocs (paSynopsis h)
+            , "cabal" .= ("-- cabal: build-depends: " <> paPackage h)
             , "modules" .= nub (filter (not . T.null) (map afModule api))
             , "api" .= map apiJSON api
             ]
+                ++ ["version" .= paVersion h | not (T.null (paVersion h))]
                 ++ ["example" .= ex | i < examplePkgs, ex <- [usageExample api], not (T.null ex)]
+      where
+        api = paApi h
     apiJSON a =
         object
             [ "name" .= afName a

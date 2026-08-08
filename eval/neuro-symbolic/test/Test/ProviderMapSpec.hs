@@ -7,10 +7,10 @@ import Test.Hspec
 
 import Eval.Ollama (Turn (..))
 import qualified Eval.Ollama as O
-import Eval.Provider (turnToCompletion)
 import Sabela.Ids (ToolCallId (..))
 import Sabela.LLM.Completion (Completion (..), StopCondition (..))
 import Sabela.LLM.Message (ContentPart (..), ToolCall (..))
+import Sabela.LLM.Ollama (turnToCompletion)
 
 spec :: Spec
 spec = describe "turnToCompletion (Ollama Turn -> neutral Completion)" $ do

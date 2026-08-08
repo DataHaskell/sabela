@@ -278,7 +278,7 @@ spec = describe "browse listings parse to lexical entities (C2-5a)" $ do
 
     -- check_type's index route: whatever the index carried, it is handed back.
     it "the index route hands a synonym's type back unchanged" $ do
-        let hit = HoogleHit "Alias" "pkg" "Syn.Mod" "type Alias a = Maybe a" ""
+        let hit = HoogleHit "Alias" "pkg" "Syn.Mod" "type Alias a = Maybe a" "" ""
         h <- indexLookupWith (\_ _ -> pure [hit]) Nothing "Alias"
         fmap ihType h `shouldBe` Just "type Alias a = Maybe a"
     it "an unparsable row is disclosed, never emitted as a name" $ do

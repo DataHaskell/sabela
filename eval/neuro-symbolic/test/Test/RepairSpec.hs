@@ -13,19 +13,39 @@ import Sabela.AI.Types (ToolOutcome (..))
 import Test.Hspec
 
 import Eval.Ollama (ToolCall (..))
-import Eval.Repair (substituteAndVerify)
+import Siza.Agent.Repair (substituteAndVerify)
 
-blob :: Text
-blob =
-    "Valid hole fits include\n\
-    \  columnAsList :: Columnable a => Expr a -> DataFrame -> [a]\n\
-    \  toColumn :: Columnable a => DataFrame -> [a]"
+{- | The shape find_by_type answers in: structured fits, which the repair
+layer re-renders into the plain form the hole-fit parser owns.
+-}
+fitsResult :: Value
+fitsResult =
+    object
+        [ "fits"
+            .= [ object
+                    [ "write" .= firstFit
+                    , "type" .= ("Wrapper a => Holder a -> [a]" :: Text)
+                    , "module" .= ("Some.Module" :: Text)
+                    ]
+               , object
+                    [ "write" .= secondFit
+                    , "type" .= ("Wrapper a => Holder a -> [a]" :: Text)
+                    , "module" .= ("Some.Module" :: Text)
+                    ]
+               ]
+        ]
+
+firstFit :: Text
+firstFit = "elemsOf"
+
+secondFit :: Text
+secondFit = "itemsOf"
 
 origSrc :: Text
-origSrc = "total = sum (getCol df)"
+origSrc = "total = sum (pickOut hld)"
 
 goal :: Text
-goal = "Variable not in scope: getCol :: DataFrame -> [Double]"
+goal = "Variable not in scope: pickOut :: Holder -> [Double]"
 
 mockDispatch ::
     (Text -> Bool) -> IORef [ToolCall] -> ToolCall -> IO (Either Text ToolOutcome)
@@ -34,7 +54,7 @@ mockDispatch greenIf ref tc@(ToolCall name args) = do
     pure $
         Right $
             ToolOk $ case name of
-                "find_by_type" -> object ["result" .= blob]
+                "find_by_type" -> fitsResult
                 "read_cell" -> object ["source" .= origSrc]
                 "replace_cell_source" ->
                     object
@@ -56,23 +76,23 @@ lastReplaceSource calls =
         [] -> ""
 
 spec :: Spec
-spec = describe "Eval.Repair.substituteAndVerify" $ do
+spec = describe "Siza.Agent.Repair.substituteAndVerify" $ do
     it "substitutes the first fit and keeps it when it compiles" $ do
         ref <- newIORef []
         res <- substituteAndVerify (mockDispatch (const True) ref) 1 goal
         case res of
             Just (ToolCall "replace_cell_source" args, _) ->
-                newSourceOf args `shouldBe` "total = sum (columnAsList df)"
+                newSourceOf args `shouldBe` "total = sum (" <> firstFit <> " hld)"
             _ -> expectationFailure ("unexpected outcome: " <> show res)
         calls <- readIORef ref
         map tcName calls `shouldBe` ["find_by_type", "read_cell", "replace_cell_source"]
 
     it "backtracks to the next fit when the first does not compile" $ do
         ref <- newIORef []
-        res <- substituteAndVerify (mockDispatch ("toColumn" `T.isInfixOf`) ref) 1 goal
+        res <- substituteAndVerify (mockDispatch (secondFit `T.isInfixOf`) ref) 1 goal
         case res of
             Just (ToolCall "replace_cell_source" args, _) ->
-                newSourceOf args `shouldBe` "total = sum (toColumn df)"
+                newSourceOf args `shouldBe` "total = sum (" <> secondFit <> " hld)"
             _ -> expectationFailure ("unexpected outcome: " <> show res)
         calls <- readIORef ref
         map tcName calls

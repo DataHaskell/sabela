@@ -22,7 +22,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
-import Siza.Agent.Ack (reconcileWrite)
+import Siza.Agent.Ack (reconcileWrite, withDeclaredModules)
 import Siza.Agent.DiscoverTool (runDiscoverCall)
 import Siza.Agent.Recall (answerRecall, recallToolDef, recallToolName)
 import Siza.Agent.Render (renderOutcome, withInsertDefaults)
@@ -67,11 +67,12 @@ dispatch conn base tc = case routeCallWith offeredArgKeys tc of
     RouteVerify chk _ ->
         Right <$> runVerifyCall (callTool conn base) chk
     RouteTool InsertCell a ->
-        reconcile =<< callTool conn base InsertCell (withInsertDefaults a)
-    RouteTool tn a -> reconcile =<< callTool conn base tn a
+        reconcile a =<< callTool conn base InsertCell (withInsertDefaults a)
+    RouteTool tn a -> reconcile a =<< callTool conn base tn a
     RouteUnknown name -> pure (Left (unknownToolMsg name))
   where
-    reconcile = reconcileWrite (callTool conn base)
+    reconcile a out =
+        withDeclaredModules a =<< reconcileWrite (callTool conn base) out
 
 unknownToolMsg :: Text -> Text
 unknownToolMsg name =

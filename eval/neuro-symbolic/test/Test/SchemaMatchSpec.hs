@@ -64,6 +64,17 @@ spec = describe "schema-match name recovery (R9-T5 corpus property)" $ do
                     hint `shouldSatisfy` T.isInfixOf "delete_cell"
                 other ->
                     expectationFailure ("expected a parse-failure reprompt: " <> show other)
+    it "a name truncated past the binding floor never binds to another tool" $
+        forM_ offeredNames $ \real -> do
+            let stub = T.take (minNameStub - 2) real
+                t =
+                    recoverTurn offeredArgKeys
+                        <$> parseTurn (encode (chatBody [callObjA stub (payloadFor real)]))
+            case t of
+                Right t' ->
+                    (stub, map tcName (turnCalls t'))
+                        `shouldSatisfy` ((`elem` [[real], [stub]]) . snd)
+                Left e -> expectationFailure ("unexpected Left: " <> show e)
     it "an ambiguous truncated prefix (kernel_) reprompts, never guesses" $
         case routeCallWith offeredArgKeys (ToolCall "kernel_" (object [])) of
             RouteBadArgs hint ->
@@ -91,12 +102,19 @@ spec = describe "schema-match name recovery (R9-T5 corpus property)" $ do
                     Right t' -> map tcName (turnCalls t') `shouldBe` ["insert_cell"]
                     Left e -> expectationFailure ("unexpected Left: " <> show e)
 
+{- | The shortest prefix the router will still bind to a name. Truncating past
+it leaves a token no offered name is within drift of, which the router must
+reprompt on rather than guess — pinned separately below.
+-}
+minNameStub :: Int
+minNameStub = 4
+
 garbleClasses :: [(String, Text -> Text)]
 garbleClasses =
     [ ("thinking-fused suffix", (<> "?We"))
     , ("pure punctuation", const "\x2026\x2026..????????????")
     , ("unicode-ellipsis garble", const "?\x2026..??...????..??..???]")
-    , ("truncated name", \n -> T.take (T.length n - 4) n)
+    , ("truncated name", \n -> T.take (max minNameStub (T.length n - 4)) n)
     , ("near-miss name", \n -> T.dropEnd 1 n <> "z")
     ]
 

@@ -8,15 +8,19 @@ module Siza.Agent.Discover.Absent (
     absentKnownHits,
     absentScopeNote,
     entryModule,
+    withIndexFacts,
 ) where
 
+import Control.Applicative ((<|>))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.ModuleResolve (namesFragment)
 import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
-import Siza.Agent.Discover.Guidance (cabalLine)
+import Siza.Agent.Discover.Guidance (absentScopePackage, cabalLine)
 import Siza.Agent.Discover.Interpret (stripVersion)
+import Siza.Agent.Discover.ModuleList (shownModules)
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
@@ -25,7 +29,6 @@ import Siza.Agent.Discover.Types (
     MatchKind (..),
     Scope (..),
     SourceAnswer (..),
-    shownModules,
  )
 
 {- | The hits the index alone supports: the package a query names, and the
@@ -45,14 +48,24 @@ absentKnownHits interp answers hk = namedPackage ++ moduleOwners
         , let facts = lookup pkg (hiFacts hk)
         ]
     moduleOwners =
-        [ absentHit pkg (Just asked) MkModule (Just f)
+        [ absentHit pkg (Just m) MkModule (Just f)
         | iShape interp == "module"
-        , let asked = iName interp
         , (pkg, f) <- hiFacts hk
-        , asked `elem` pfModules f
         , pkg `notElem` answered
+        , m <- namedModules (iName interp) f
         ]
     answered = [dhPackage h | a <- answers, h <- saHits a]
+
+{- | The modules a module-shaped query names in a package: the one it names
+exactly, or — failing that — the real names whose namespace it opens. A fragment
+is never handed back as though it were a module the package exposes.
+-}
+namedModules :: Text -> PkgFacts -> [Text]
+namedModules asked f
+    | asked `elem` pfModules f = [asked]
+    | otherwise = shownModules f{pfModules = matched}
+  where
+    matched = [m | m <- pfModules f, namesFragment asked m]
 
 absentHit :: Text -> Maybe Text -> MatchKind -> Maybe PkgFacts -> DHit
 absentHit pkg mMod kind facts =
@@ -71,6 +84,27 @@ absentHit pkg mMod kind facts =
         , dhFacts = facts
         }
 
+{- | What the index states about the package a hit already stands for, so a
+Hoogle answer naming one does not cost the caller its only description. Where
+the session can speak it is the authority, and the index stays silent.
+-}
+withIndexFacts :: HackageInfo -> DHit -> DHit
+withIndexFacts hk h
+    | dhName h /= dhPackage h = h
+    | dhInstall h `notElem` [InstAbsentKnown, InstAbsentUnknown] = h
+    | Just f <- lookup (dhPackage h) (hiFacts hk) =
+        withEntryModule (entryModule (Just f)) h{dhFacts = dhFacts h <|> Just f}
+    | otherwise = h
+
+{- | The entry point, where the hit states no module of its own. A blank module
+is unknown, so filling it states what the index states and nothing more.
+-}
+withEntryModule :: Maybe Text -> DHit -> DHit
+withEntryModule (Just m) h
+    | T.null (dhModule h) =
+        h{dhModule = m, dhUse = dhUse h <|> Just ("import " <> m)}
+withEntryModule _ h = h
+
 {- | The module a caller reaches for first, when the package states one that
 stands above the rest. A package with several roots names no entry point, so
 none is invented for it.
@@ -87,18 +121,29 @@ Hoogle databases hold installed packages, so their silence about one that is
 not installed is the reach of the index, never the package lacking the name.
 -}
 absentScopeNote :: Scope -> [SourceAnswer] -> HackageInfo -> Maybe Text
-absentScopeNote scope answers hk = case scPackage scope of
-    Just p
-        | Just f <- lookup p (hiFacts hk)
-        , p `notElem` map fst (concatMap saPkgModules answers) ->
-            Just
-                ( "package="
-                    <> p
-                    <> " is not installed, so the session and Hoogle indexes \
-                       \hold nothing from it; Hackage states it exposes "
-                    <> T.pack (show (length (pfModules f)))
-                    <> " modules — discover {package=\""
-                    <> p
-                    <> "\"} lists them"
-                )
-    _ -> Nothing
+absentScopeNote scope answers hk = do
+    p <- absentScopePackage scope answers hk
+    f <- lookup p (hiFacts hk)
+    pure (maybe (packageNote p f) (moduleNote p) (scModule scope))
+  where
+    packageNote p f =
+        "package="
+            <> p
+            <> " is not installed, so the session and Hoogle indexes \
+               \hold nothing from it; Hackage states it exposes "
+            <> T.pack (show (length (pfModules f)))
+            <> " modules — discover {package=\""
+            <> p
+            <> "\"} lists them"
+    {- A module scope names a package as surely as a package scope does. Left
+    unsaid, the caller reads the empty result as the module lacking the name
+    and varies the query, which is the loop the hodatime episode ran. -}
+    moduleNote p m =
+        "module="
+            <> m
+            <> " is exposed by "
+            <> p
+            <> ", which is not installed, so the session and Hoogle \
+               \indexes hold nothing from it — "
+            <> cabalLine p
+            <> " makes it searchable"

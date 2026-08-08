@@ -40,7 +40,10 @@ spec = describe "verdict lint (R8.4 x section 5.3: verifier answers decode)" $ d
             `shouldContain` ["verifier-no-verdict"]
     it "GREEN: every current verify-channel producer passes" $
         lintMessages
-            [doneSignalMsg, verifyMsgWith 0 [] Nothing, unconfirmedMsgWith 1 [] Nothing]
+            [ doneSignalMsg [1] "x == 1"
+            , verifyMsgWith 0 [] Nothing
+            , unconfirmedMsgWith 1 [] Nothing
+            ]
             `shouldBe` []
     it "GREEN: a try payload carrying the verdict field passes" $
         rules

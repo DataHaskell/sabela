@@ -9,14 +9,23 @@ import Test.Hspec
 
 import Eval.Agent (systemPrompt)
 import Sabela.AI.Grammar (discoverGrammarBlock, grammarPromptBlock)
-import Sabela.AI.PromptCore (sharedPromptCore, sharedPromptCoreWith)
+import Sabela.AI.PromptCore (
+    sabelaBuiltins,
+    sharedPromptCore,
+    sharedPromptCoreWith,
+ )
 
 surfaces :: [(String, Text)]
-surfaces =
+surfaces = ruleSurfaces ++ [("siza/eval full systemPrompt", systemPrompt)]
+
+{- | The surfaces that state working rules. The siza/eval system prompt is not
+one of them: it names the tools and the built-in library and stops there.
+-}
+ruleSurfaces :: [(String, Text)]
+ruleSurfaces =
     [ ("product chat (sharedPromptCore)", sharedPromptCore)
     , ("product core explicit", sharedPromptCoreWith grammarPromptBlock)
     , ("siza/eval core", sharedPromptCoreWith discoverGrammarBlock)
-    , ("siza/eval full systemPrompt", systemPrompt)
     ]
 
 bannedClasses :: [(String, [Text])]
@@ -76,9 +85,11 @@ literalCallerReachesWrite rules = case concatMap blocking rules of
 
 spec :: Spec
 spec = describe "shared prompt core (unified, satisfiable)" $ do
-    it "embeds the shared prompt core with the discover cheat-sheet" $
-        (sharedPromptCoreWith discoverGrammarBlock `T.isInfixOf` systemPrompt)
-            `shouldBe` True
+    it "embeds the built-in library block the product core also carries" $
+        (sabelaBuiltins `T.isInfixOf` systemPrompt) `shouldBe` True
+
+    it "states no working rules, so none can be asserted of it" $
+        workingRules systemPrompt `shouldBe` []
 
     describe "prompt lint: banned phrase classes on every surface" $
         forM_ surfaces $ \(name, surface) ->
@@ -89,8 +100,9 @@ spec = describe "shared prompt core (unified, satisfiable)" $ do
                             `shouldBe` (cls, p, False)
 
     describe "R6.8 satisfiability: rules can be followed verbatim" $ do
-        it "the working rules are non-empty (the caller has rules to obey)" $
-            workingRules systemPrompt `shouldSatisfy` (not . null)
+        forM_ ruleSurfaces $ \(name, surface) ->
+            it (name ++ ": the working rules are non-empty") $
+                workingRules surface `shouldSatisfy` (not . null)
         forM_ surfaces $ \(name, surface) ->
             it
                 (name ++ ": a literal caller writing a binding-referencing cell reaches a write")

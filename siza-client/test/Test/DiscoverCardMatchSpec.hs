@@ -177,9 +177,17 @@ exportRowTypeSpec = describe "the type an export row announces" $ do
             \(g, n, a) ->
                 let sig = a <> " -> " <> a
                  in producerExports g [(n, sig)] === [n <> " :: " <> sig]
-    prop "a row whose source stated no type announces none" $
+    {- A typeless name is the index's silence about a package it cannot see;
+    announced as a bare row it read as an export (live_hodatime). -}
+    prop "a row whose source stated no type is not an export at all" $
         forAll ((,) <$> genRowName <*> genRowName) $ \(g, n) ->
-            producerExports g [(n, "")] === [n]
+            producerExports g [(n, "")] === []
+    prop "a typeless source never has a type invented for it" $
+        forAll ((,,) <$> genRowName <*> genRowName <*> genRowName) $
+            \(g, n, a) ->
+                let sig = a <> " -> " <> a
+                 in announcedTypes (producerExports g [(n, ""), (n <> "b", sig)])
+                        === [sig]
     prop "a declaration is not a producer of the goal it expands to"
         $ forAll
             ((,,,) <$> genRowName <*> genRowName <*> genRowName <*> elements rowKeywords)
@@ -211,10 +219,10 @@ exportRowTypeSpec = describe "the type an export row announces" $ do
         $ forAll
             ((,,,) <$> genRowName <*> genRowName <*> genRowName <*> elements rowKeywords)
         $ \(g, n, a, kw) ->
-            let tys = ["", a <> " -> " <> a, kw <> " " <> n <> " = " <> a]
+            let tys = [a <> " -> " <> a, kw <> " " <> n <> " = " <> a]
                 rows = concat [producerExports g [(n, ty)] | ty <- tys]
              in counterexample (show rows) $
-                    map exportRowName rows === [n, n, n]
+                    map exportRowName rows === [n, n]
 
 shouldNotBeQ :: (Eq a, Show a) => a -> a -> Property
 shouldNotBeQ x y = counterexample (show x <> " == " <> show y) (x /= y)

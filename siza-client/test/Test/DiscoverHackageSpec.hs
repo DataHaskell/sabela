@@ -64,6 +64,10 @@ withFacts act = bracket acquire release (const act)
                   \Data.HodaTime.Calendar.Gregorian"
                 , "cassava\t\tCSV parsing\tData.Csv Data.Csv.Streaming"
                 , "bare\t\t\t"
+                , "widgets-a\t\tWidgets\tWeb.Widget.Types"
+                , "widgets-b\t\tWidgets\tUi.Widget.Types"
+                , "widgets-c\t\tWidgets\tApp.Widget.Types"
+                , "widgets-d\t\tWidgets\tLib.Widget.Types"
                 ]
             )
         setEnv "SABELA_HACKAGE_FACTS" path
@@ -110,6 +114,17 @@ hackageFactsSpec = describe "the hackage facts source" $ do
             withFacts (hackageModuleOwners "Data.Nonesuch") `shouldReturn` []
         it "does not answer for a prefix that is not itself a module" $
             withFacts (hackageModuleOwners "Data") `shouldReturn` []
+        it "reads a fragment of a distinguishing component" $ do
+            os <- withFacts (hackageModuleOwners "Hoda")
+            map fst os `shouldBe` ["hodatime"]
+        it "answers with the real module names, never the fragment" $ do
+            os <- withFacts (hackageModuleOwners "Hoda")
+            concatMap (pfModules . snd) os
+                `shouldSatisfy` all (T.isPrefixOf "Data.HodaTime")
+        it "says nothing for a fragment too many packages share" $
+            withFacts (hackageModuleOwners "Widget") `shouldReturn` []
+        it "still says nothing for a fragment too short to mean anything" $
+            withFacts (hackageModuleOwners "Ho") `shouldReturn` []
 
     describe "an absent facts cache" $
         it "states no facts rather than denying the package" $ do

@@ -14,8 +14,16 @@ cd "$ROOT"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
+# A single-file cabal script (`#!/usr/bin/env cabal`) is a program, not a
+# module: cabal compiles it alone and it cannot import a sibling, so the cap
+# has nothing to split it into.
+is_cabal_script() {
+  head -n 1 "$1" | grep -q '^#!.*cabal'
+}
+
 while IFS= read -r f; do
   [ -f "$f" ] || continue
+  is_cabal_script "$f" && continue
   n=$(wc -l < "$f" | tr -d ' ')
   if [ "$n" -gt "$LIMIT" ]; then
     printf '%6d  %s\n' "$n" "$f" >> "$tmp"

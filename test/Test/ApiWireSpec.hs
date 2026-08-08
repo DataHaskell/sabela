@@ -7,6 +7,7 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy.Char8 as LC8
 import Data.Maybe (mapMaybe)
+import Data.Text (Text)
 import Sabela.AI.Capabilities.ToolName (parseToolName, toolWireName)
 import Sabela.AI.Capabilities.Tools (chatTools)
 import Sabela.Anthropic.Types (ToolDef (..))
@@ -20,6 +21,36 @@ evField :: String -> NotebookEvent -> Maybe Value
 evField k ev = case decode (encode ev) of
     Just (Object o) -> KM.lookup (Key.fromString k) o
     _ -> Nothing
+
+delimitedPreview :: Text -> DatasetPreview
+delimitedPreview path =
+    DatasetPreview
+        { dpPath = path
+        , dpDelimited = True
+        , dpReason = Nothing
+        , dpDelimiter = Just ","
+        , dpHasHeader = True
+        , dpColumns = [DatasetColumn 0 (Just "lat") "Double"]
+        , dpRows = [["1.5"], ["2.5"]]
+        , dpRowCount = 2
+        , dpLineCount = 3
+        , dpTruncated = False
+        , dpBytes = 24
+        }
+
+refusedPreview :: Text -> DatasetPreview
+refusedPreview path =
+    (delimitedPreview path)
+        { dpDelimited = False
+        , dpReason = Just "outside the workspace"
+        , dpDelimiter = Nothing
+        , dpHasHeader = False
+        , dpColumns = []
+        , dpRows = []
+        , dpRowCount = 0
+        , dpLineCount = 0
+        , dpBytes = 0
+        }
 
 spec :: Spec
 spec = describe "Sabela.Api wire shapes" $ do
@@ -54,6 +85,32 @@ spec = describe "Sabela.Api wire shapes" $ do
         it "round-trips through encode/decode" $
             decode (encode (FilePreview "hi" 5 2 7 False))
                 `shouldBe` Just (FilePreview "hi" 5 2 7 False)
+
+    describe "DatasetPreview" $ do
+        it "emits the dp* keys the Data panel reads" $ do
+            let s = LC8.unpack (encode (delimitedPreview "a.csv"))
+            s `shouldContain` "dpPath"
+            s `shouldContain` "dpDelimited"
+            s `shouldContain` "dpColumns"
+            s `shouldContain` "dpRows"
+            s `shouldContain` "dpRowCount"
+            s `shouldContain` "dpTruncated"
+        it "round-trips a delimited preview through encode/decode" $
+            decode (encode (delimitedPreview "a.csv"))
+                `shouldBe` Just (delimitedPreview "a.csv")
+        it "round-trips a refusal through encode/decode" $
+            decode (encode (refusedPreview "../x"))
+                `shouldBe` Just (refusedPreview "../x")
+        it "emits an unnamed column's dcName as null, not an empty string" $
+            LC8.unpack (encode (DatasetColumn 0 Nothing "Double"))
+                `shouldContain` "\"dcName\":null"
+        it "emits dcType as the colTypeName string, not a tagged constructor" $
+            LC8.unpack (encode (DatasetColumn 1 (Just "lat") "Double"))
+                `shouldContain` "\"dcType\":\"Double\""
+        it "carries a refusal reason with no rows rather than an empty table" $ do
+            dpRows (refusedPreview "../x") `shouldBe` []
+            dpDelimited (refusedPreview "../x") `shouldBe` False
+            dpReason (refusedPreview "../x") `shouldBe` Just "outside the workspace"
 
     describe "InsertCell" $ do
         it "decodes icAfter=-1 as AtBeginning" $

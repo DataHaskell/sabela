@@ -63,6 +63,7 @@ instance FromJSON Row where
                 <*> o .: "m"
                 <*> o .: "t"
                 <*> o .: "d"
+                <*> pure ""
 
 corpusPath, fixturePath :: FilePath
 corpusPath = "data/eval/discovery-corpus.json"

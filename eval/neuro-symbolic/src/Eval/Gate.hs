@@ -48,7 +48,7 @@ import Eval.Task (
     taskId,
     taskPrompt,
  )
-import Eval.Tools (catalogue, dispatch)
+import Eval.Tools (dispatch, episodeCatalogue)
 import Eval.TranscriptLint (lintLine, lintMessages, stopIssues)
 import Siza.Agent.Transcript (contextChars)
 
@@ -151,7 +151,7 @@ runArmGate ::
     IO (RunStat, Text, Int)
 runArmGate cfg lever base seed mode task = do
     setCapabilityEnv lever mode
-    cat <- catalogue
+    cat <- episodeCatalogue
     let attempt s = do
             when (s /= seed) $
                 putStrLn $
@@ -171,7 +171,7 @@ runArmGate cfg lever base seed mode task = do
                                 chatSeeded False (Just s) mgr (bcModel cfg) msgs cat
                         , drvDispatch = dispatch (bcConn cfg) base
                         , drvNow = realToFrac <$> getPOSIXTime
-                        , drvVerify = gradeVerify (bcConn cfg) base task
+                        , drvVerify = const (gradeVerify (bcConn cfg) base task)
                         }
             runEpisodeWith'
                 GrammarOn

@@ -1,39 +1,50 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module Sabela.AI.Capabilities.CapabilityApi (
     ApiFn (..),
+    PackageApi (..),
     apiKeywords,
     rankApiFns,
     isValueItem,
     enrichPackages,
     enrichPackageApi,
+    hoogleFor,
     usageExample,
     splitArrow,
 ) where
 
-import Control.Exception (SomeException, try)
 import Data.List (nub, sortOn)
-import Data.Maybe (fromMaybe)
 import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as T
-import System.Environment (lookupEnv)
-import System.Exit (ExitCode (..))
-import System.Process (readProcessWithExitCode)
 
-import Sabela.AI.HoogleClient (breakTopLevel, statesDeclaration)
+import Sabela.AI.HoogleClient (
+    breakTopLevel,
+    queryAllDbs,
+    statesDeclaration,
+ )
 import Sabela.AI.HoogleResolve (
     HoogleHit (..),
     denoise,
     keywords,
-    parseHoogleBlob,
  )
 
 data ApiFn = ApiFn
     { afName :: Text
     , afModule :: Text
     , afType :: Text
+    }
+    deriving (Eq, Show)
+
+{- | A package's answer to a capability query. 'paVersion' is the release the
+index documented, which for a package the caller has not installed need not be
+the release they would get; empty when the index states none.
+-}
+data PackageApi = PackageApi
+    { paPackage :: Text
+    , paSynopsis :: Text
+    , paVersion :: Text
+    , paApi :: [ApiFn]
     }
     deriving (Eq, Show)
 
@@ -79,34 +90,37 @@ nubOnKey f = go []
         | otherwise = x : go (f x : seen) xs
 
 enrichPackages ::
-    Int -> Int -> Text -> [(Text, Text)] -> IO [(Text, Text, [ApiFn])]
+    Int -> Int -> Text -> [(Text, Text)] -> IO [PackageApi]
 enrichPackages nPkgs perPkg query pkgs = do
     let kws = apiKeywords query
         (top, rest) = splitAt (max 0 nPkgs) pkgs
     enriched <- mapM (enrichOne kws) top
-    pure (enriched ++ map (\(p, s) -> (p, s, [])) rest)
+    pure (enriched ++ map (\(p, s) -> PackageApi p s "" []) rest)
   where
     enrichOne kws (p, s) = do
-        api <- enrichPackageApi perPkg kws p
-        pure (p, s, api)
+        (api, ver) <- enrichPackageApi perPkg kws p
+        pure (PackageApi p s ver api)
 
-enrichPackageApi :: Int -> [Text] -> Text -> IO [ApiFn]
+-- | A package's callable API, with the release the index documented it from.
+enrichPackageApi :: Int -> [Text] -> Text -> IO ([ApiFn], Text)
 enrichPackageApi perPkg kws pkg
-    | T.null (T.strip pkg) = pure []
+    | T.null (T.strip pkg) = pure ([], "")
     | otherwise = do
-        bin <- fromMaybe "hoogle" <$> lookupEnv "SABELA_HOOGLE_BIN"
-        db <- lookupEnv "SABELA_HOOGLE_DB"
-        let runKw = hoogleFor bin db pkg
+        let runKw = hoogleFor pkg
         kwHits <- concat <$> mapM runKw queryTerms
         hits <-
             if null kwHits
                 then concat <$> mapM runKw fallbackTerms
                 else pure kwHits
-        pure (rankApiFns perPkg kws (onlyPkg hits))
+        let mine = onlyPkg hits
+        pure (rankApiFns perPkg kws mine, statedVersion mine)
   where
     queryTerms = take 5 kws
     fallbackTerms = ["encode", "new", "run", "make", "to", "from"]
     onlyPkg = filter (\h -> hhPackage h == pkg)
+    statedVersion hs = case filter (not . T.null) (map hhVersion hs) of
+        (v : _) -> v
+        [] -> ""
 
 {- | A call skeleton for the first export a caller can name in an expression.
 A declaration carries no signature to call through, so it is passed over
@@ -153,7 +167,6 @@ stripContext ty =
 splitArrow :: Text -> [Text]
 splitArrow = go 0 "" []
   where
-    flush acc segs = reverse (acc : segs)
     go :: Int -> Text -> [Text] -> Text -> [Text]
     go _ acc segs t
         | T.null t = reverse (acc : segs)
@@ -168,14 +181,11 @@ splitArrow = go 0 "" []
         | c `elem` (")]}" :: String) = -1
         | otherwise = 0
 
-hoogleFor :: FilePath -> Maybe FilePath -> Text -> Text -> IO [HoogleHit]
-hoogleFor bin db pkg term = do
-    let dbArg = maybe [] (\p -> ["--database=" ++ p]) db
-        q = "+" ++ T.unpack pkg ++ " " ++ T.unpack term
-        args = ["search", "--count=12", "--json"] ++ dbArg ++ [q]
-    r <- try (readProcessWithExitCode bin args "")
-    pure $ case r of
-        Left (_ :: SomeException) -> []
-        Right (ExitSuccess, out, _)
-            | not (null out) -> parseHoogleBlob (T.pack out)
-        Right _ -> []
+{- | A package's hits for one term, across every database in reach. Naming one
+database holds the answer to hoogle's own index, which symbol-indexes Stackage
+members only, so a package off it is found and then described as having no API.
+-}
+hoogleFor :: Text -> Text -> IO [HoogleHit]
+hoogleFor pkg term =
+    queryAllDbs
+        ["search", "--count=12", "--json", "+" ++ T.unpack pkg ++ " " ++ T.unpack term]

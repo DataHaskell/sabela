@@ -94,11 +94,13 @@ library
                       Siza.Agent.Discover.SessionAnswer
                       Siza.Agent.Discover.Affordance
                       Siza.Agent.Discover.Installed
+                      Siza.Agent.Discover.Mode
                       Siza.Agent.Discover.Merge
                       Siza.Agent.Discover.Rank
                       Siza.Agent.Discover.Render
                       Siza.Agent.Discover.Resolved
                       Siza.Agent.Discover.ScopeFilter
+                      Siza.Agent.Discover.ModuleList
                       Siza.Agent.Discover.Inventory
                       Siza.Agent.Discover.Fetch
                       Siza.Agent.Discover.Guidance
@@ -248,7 +250,13 @@ test-suite siza-client-test
                       Test.CatalogueSim
                       Test.DiscoverCatalogueSpec
                       Test.CabalFactsSpec
+                      Test.DeclaredModulesSpec
                       Test.DiscoverAbsentFactsSpec
+                      Test.DiscoverAdviceLegalSpec
+                      Test.DiscoverRepoSlugSpec
+                      Test.DiscoverInstalledScopeSpec
+                      Test.DiscoverScopeReachSpec
+                      Test.DiscoverUniverse
                       Test.DiscoverScopeLedgerSpec
                       Test.DiscoverWorldChangeSpec
                       Test.DiscoverConstructSpec

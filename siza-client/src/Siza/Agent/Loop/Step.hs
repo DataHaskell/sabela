@@ -62,10 +62,17 @@ import Siza.Agent.Tools (renderOutcome)
 
 type Owned = Map CellId OwnedCell
 
+{- | What every step of the loop threads forward: the episode, the wall-clock it
+started at, the turn, tool-call and repair counts, the cells it owns, and the
+transcript so far.
+-}
+type Stepping a =
+    Episode -> Double -> Int -> Int -> Int -> Owned -> [Value] -> a
+
 {- | Drive turns until a budget runs out or a branch finishes the run. @start@
 is the wall-clock the deadline is measured from.
 -}
-runTurns :: Episode -> Double -> Int -> Int -> Int -> Owned -> [Value] -> IO AgentRun
+runTurns :: Stepping (IO AgentRun)
 runTurns ep start turn nCalls repairs owned msgs = do
     flush ep msgs
     if turn >= epMaxTurns ep
@@ -83,7 +90,7 @@ runTurns ep start turn nCalls repairs owned msgs = do
   where
     stop reason = finish ep owned turn nCalls (bestFailing owned) reason msgs
 
-step :: Episode -> Double -> Int -> Int -> Int -> Owned -> [Value] -> IO AgentRun
+step :: Stepping (IO AgentRun)
 step ep start turn nCalls repairs owned msgs = do
     res <- drvChat (epDriver ep) msgs
     case res of
@@ -112,8 +119,7 @@ step ep start turn nCalls repairs owned msgs = do
 {- | The model called nothing. Either it is done, it salvaged a cell out of its
 own prose, or red cells send it back in.
 -}
-noCallTurn ::
-    Episode -> Double -> Int -> Int -> Int -> Owned -> [Value] -> Turn -> IO AgentRun
+noCallTurn :: Stepping (Turn -> IO AgentRun)
 noCallTurn ep start turn nCalls repairs owned msgs t =
     case stopDecision (Map.map ocHealthy owned) of
         Stop
@@ -141,8 +147,7 @@ noCallTurn ep start turn nCalls repairs owned msgs t =
 {- | A stop the model asked for, checked. A pass with an artifact ends the run;
 anything else re-enters with the verdict, until the stuck budget runs out.
 -}
-verifyStop ::
-    Episode -> Double -> Int -> Int -> Int -> Owned -> [Value] -> Turn -> IO AgentRun
+verifyStop :: Stepping (Turn -> IO AgentRun)
 verifyStop ep start turn nCalls repairs owned msgs t = do
     (result, mEv) <- drvVerify (epDriver ep) owned
     case result of
@@ -194,17 +199,7 @@ verifyStop ep start turn nCalls repairs owned msgs t = do
 {- | Red cells send the model back in. A red signature it has already seen
 counts as no progress; enough of those in a row end the run.
 -}
-reenter ::
-    Episode ->
-    Double ->
-    Int ->
-    Int ->
-    Int ->
-    Owned ->
-    [Value] ->
-    Turn ->
-    [CellId] ->
-    IO AgentRun
+reenter :: Stepping (Turn -> [CellId] -> IO AgentRun)
 reenter ep start turn nCalls repairs owned msgs t reds = do
     owned' <- repairReds ep owned reds
     redisc <- reDiscover ep owned' reds
@@ -247,8 +242,7 @@ reenter ep start turn nCalls repairs owned msgs t reds = do
             runTurns ep start (turn + 1) nCalls (repairs + 1) owned' msgs'
 
 -- | The model called tools: dispatch them all, then report what they returned.
-calledTurn ::
-    Episode -> Double -> Int -> Int -> Int -> Owned -> [Value] -> Turn -> IO AgentRun
+calledTurn :: Stepping (Turn -> IO AgentRun)
 calledTurn ep start turn nCalls repairs owned msgs t = do
     results <- mapM (dispatchCall (epSess ep) (epDriver ep) msgs) (turnCalls t)
     let steps = [(crCall r, crOutcome r) | r <- results]

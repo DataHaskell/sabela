@@ -2,7 +2,7 @@
 
 module Test.RepairBudgetSpec (spec) where
 
-import Data.Aeson (object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -28,7 +28,20 @@ callTurn name =
     Turn
         (object ["role" .= ("assistant" :: Text)])
         "```haskell\nx = 1\n```"
-        [ToolCall name (object [])]
+        [ToolCall name (writeArgs name)]
+
+{- | A write carries the source the loop reads back off it. A committed cell
+with no source is not an artifact, so an episode scripted without one can
+never reach a stop.
+-}
+writeArgs :: Text -> Value
+writeArgs "insert_cell" = object ["source" .= scriptedSource]
+writeArgs "replace_cell_source" =
+    object ["cell_id" .= (1 :: Int), "new_source" .= scriptedSource]
+writeArgs _ = object []
+
+scriptedSource :: Text
+scriptedSource = "x = 1"
 
 doneTurn :: Turn
 doneTurn = Turn (object ["role" .= ("assistant" :: Text)]) "done" []
@@ -47,6 +60,10 @@ redWithDiag _ =
                    ]
             ]
 
+{- | A driver reading a fixed script. Past its end it repeats the last turn:
+the loop decides when to stop, and a fixture that crashed on one extra prompt
+would report an exception where the stop tag is the thing under test.
+-}
 scriptedDriver ::
     Double -> (ToolCall -> IO (Either Text ToolOutcome)) -> [Turn] -> IO Driver
 scriptedDriver dt disp script = do
@@ -55,7 +72,7 @@ scriptedDriver dt disp script = do
     let nextTurn _msgs = do
             i <- readIORef cursor
             modifyIORef' cursor (+ 1)
-            pure (Right (script !! i))
+            pure (Right (script !! min i (length script - 1)))
         now = do
             t <- readIORef clock
             modifyIORef' clock (+ dt)
@@ -65,7 +82,7 @@ scriptedDriver dt disp script = do
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = now
-            , drvVerify = pure (CheckPassed, Nothing)
+            , drvVerify = const (pure (CheckPassed, Nothing))
             }
 
 spec :: Spec

@@ -14,9 +14,9 @@ module Siza.Agent.DiscoverTool (
     runDiscoverTool,
 ) where
 
+import Control.Monad (foldM)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
-import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isDigit, isLower)
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.Text (Text)
@@ -26,7 +26,6 @@ import Sabela.AI.Capabilities.ToolName (
     primaryArgKey,
  )
 import Sabela.AI.Types (ToolOutcome (..))
-import Siza.Agent.Discover.Advice (setField)
 import Siza.Agent.Discover.Classify (
     candidatePackages,
     capabilityAnswer,
@@ -53,15 +52,14 @@ import Siza.Agent.Discover.Fetch (
 import Siza.Agent.Discover.Goal (goalFromArgs, recentFromArgs)
 import Siza.Agent.Discover.Hackage (
     hackageInfoFor,
-    hackageMatching,
-    withFactsFor,
     withModuleOwners,
  )
 import Siza.Agent.Discover.Interpret (interpret)
-import Siza.Agent.Discover.Inventory (inventoryEnvelope, topicTokens)
-import Siza.Agent.Discover.Merge (
-    discoverEnvelopeRecent,
-    discoverEnvelopeScoped,
+import Siza.Agent.Discover.Mode (
+    answerFor,
+    asConstruct,
+    isConstruct,
+    modeRedirect,
  )
 import Siza.Agent.Discover.ProducerCard (
     establishedFallback,
@@ -79,9 +77,7 @@ import Siza.Agent.Discover.Request (
 import Siza.Agent.Discover.Types (
     HackageInfo,
     Interpreted (..),
-    NotebookEnv,
     Scope (..),
-    SourceAnswer,
     StandingGoal,
  )
 
@@ -173,7 +169,11 @@ runDiscoverGoal mSG recent capSearch call req0
                 pure (ToolOk (boundEnvelope (withProducerHint vOut)))
             else do
                 sess <- fetchSessionScoped call (scModule (drScope req)) interp
-                cap <- fetchOk call SearchCapability (capabilityArgs capSearch interp)
+                cap <-
+                    fetchOk
+                        call
+                        SearchCapability
+                        (capabilityArgs capSearch (drScope req) interp)
                 nb <-
                     fetchOk call FindCellsByContent (object ["pattern" .= iName interp])
                 let base =
@@ -190,7 +190,7 @@ runDiscoverGoal mSG recent capSearch call req0
                         else pure []
                 let answers = base ++ probed ++ attached
                 hk0 <- hackageInfoFor (candidatePackages interp answers ++ scopePkg req)
-                hk <- moduleOwnerFacts interp hk0
+                hk <- moduleOwnerFacts interp (drScope req) hk0
                 v <- answerFor recent req env interp answers hk
                 vOut <-
                     establishedFallback mSG call req $
@@ -203,94 +203,17 @@ runDiscoverGoal mSG recent capSearch call req0
         "query must be a non-blank string, or name a module or package to ask \
         \for that scope's card"
 
-isConstruct :: DiscoverRequest -> Interpreted -> Bool
-isConstruct req interp = drMode req == ModeConstruct || iShape interp == "construct"
-
-modeRedirect ::
-    DiscoverRequest ->
-    NotebookEnv ->
-    Interpreted ->
-    [SourceAnswer] ->
-    HackageInfo ->
-    Value ->
-    Value
-modeRedirect req env interp0 answers hk v
-    | stateText v /= "not_found" = v
-    | stateText searchV /= "found" = v
-    | otherwise = setField "next" redirectNote searchV
-  where
-    searchV =
-        discoverEnvelopeScoped env interp0 (drScope req) (drLimit req) answers hk
-    redirectNote =
-        "'"
-            <> iName interp0
-            <> "' resolves; mode="
-            <> modeName
-            <> " had no mode-shaped answer for it, so this is its search \
-               \rendering (modes change the rendering, never the index)."
-    modeName = case drMode req of
-        ModeInventory -> "inventory"
-        ModeConstruct -> "construct"
-        ModeSearch
-            | iShape interp0 == "construct" -> "construct"
-            | otherwise -> "search"
-
-stateText :: Value -> Text
-stateText (Object o) = case KM.lookup "state" o of
-    Just (String s) -> s
-    _ -> ""
-stateText _ = ""
-
-asConstruct :: DiscoverRequest -> Interpreted -> Interpreted
-asConstruct req interp
-    | drMode req == ModeConstruct = interp{iShape = "construct"}
-    | otherwise = interp
-
-answerFor ::
-    [Text] ->
-    DiscoverRequest ->
-    NotebookEnv ->
-    Interpreted ->
-    [SourceAnswer] ->
-    HackageInfo ->
-    IO Value
-answerFor recent req env interp answers hk = case drMode req of
-    ModeSearch ->
-        pure
-            ( discoverEnvelopeRecent
-                recent
-                env
-                interp
-                (drScope req)
-                (drLimit req)
-                answers
-                hk
-            )
-    ModeInventory -> do
-        lexical <- hackageMatching lexicalCap (topicTokens interp)
-        hkL <- withFactsFor lexical hk
-        pure
-            ( inventoryEnvelope
-                env
-                interp
-                (drScope req)
-                (drLimit req)
-                answers
-                hkL
-                lexical
-            )
-
-lexicalCap :: Int
-lexicalCap = 25
-
 -- | The package a request scoped itself to, which is a candidate like any other.
 scopePkg :: DiscoverRequest -> [Text]
 scopePkg req = maybeToList (scPackage (drScope req))
 
-{- | A module name no installed package exposes is not thereby absent: the
-index states which package exposes it, and that package is the answer.
+{- | A module no installed package exposes is not thereby absent: the index
+states which package exposes it. A scoped module raises that same question as a
+queried one, so both ask it, or a scoped search denies a describable package.
 -}
-moduleOwnerFacts :: Interpreted -> HackageInfo -> IO HackageInfo
-moduleOwnerFacts interp hk
-    | iShape interp == "module" = withModuleOwners (iName interp) hk
-    | otherwise = pure hk
+moduleOwnerFacts :: Interpreted -> Scope -> HackageInfo -> IO HackageInfo
+moduleOwnerFacts interp scope hk0 = foldM (flip withModuleOwners) hk0 asked
+  where
+    asked =
+        [iName interp | iShape interp == "module"]
+            ++ [m | Just m <- [scModule scope], m /= iName interp]

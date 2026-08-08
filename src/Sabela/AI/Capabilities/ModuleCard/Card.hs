@@ -14,7 +14,7 @@ module Sabela.AI.Capabilities.ModuleCard.Card (
 import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
 import Data.Char (isAlpha, isAlphaNum)
-import Data.List (group, nub, partition, sort)
+import Data.List (nub, partition, sort)
 import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -26,6 +26,7 @@ import Sabela.AI.Capability (
     synonymDecl,
     unqualify,
  )
+import Sabela.AI.ModuleResolve (boundedModules)
 import Sabela.AI.PackageIndex (
     PackageEntry (..),
     packagesExposingModule,
@@ -176,9 +177,9 @@ packageCard p syn =
             <> ["synopsis" .= syn | not (T.null syn)]
         )
 
-{- | The module list a card carries. Over the cap, names collapse to their
-two-component namespace with a count: truncating by name order drops whichever
-module sorts late, which is as often as not the one the caller needs.
+{- | The module list a card carries. Over the cap, names collapse to a namespace
+with a count: truncating by name order drops whichever module sorts late, which
+is as often as not the one the caller needs.
 -}
 modulePairs :: [Text] -> [Pair]
 modulePairs ms
@@ -188,16 +189,7 @@ modulePairs ms
         , "moreModules" .= (length ms - length shown)
         ]
   where
-    shown = take packageModuleCap (bucketModules ms)
-
-bucketModules :: [Text] -> [Text]
-bucketModules ms =
-    [ if n > 1 then p <> " (" <> T.pack (show n) <> ")" else p
-    | g@(p : _) <- group (sort (map prefix2 ms))
-    , let n = length g
-    ]
-  where
-    prefix2 = T.intercalate "." . take 2 . T.splitOn "."
+    shown = take packageModuleCap (boundedModules packageModuleCap ms)
 
 packageModuleCap :: Int
 packageModuleCap = 20

@@ -15,6 +15,7 @@ import Data.Either (isLeft)
 import Data.Maybe (isJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory, (</>))
@@ -26,7 +27,13 @@ import Sabela.AI.Artefact (sampleBytes)
 import Sabela.AI.Capabilities.Query (execPeekData)
 import Sabela.AI.Types (ToolOutcome, toolOutcomeIsError, toolOutcomeValue)
 import Sabela.State (newApp)
-import Test.ArtefactGen (genOversizeGrid, genUndecodableBytes)
+import Test.ArtefactGen (
+    GridSpec (..),
+    genGridSpec,
+    genOversizeGrid,
+    genUndecodableBytes,
+    renderGrid,
+ )
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (K.fromText k) o
@@ -67,6 +74,19 @@ overSample = do
     n <- choose (0, 20)
     pure (body, n)
 
+{- | An oversize body that is genuinely a table. A one-column file has no
+delimiter to find, so it is no counterexample to reading tables.
+-}
+overTable :: Gen (BS.ByteString, Int)
+overTable = do
+    gs <- genGridSpec `suchThat` table
+    let one = renderGrid gs
+        reps = sampleBytes `div` max 1 (T.length one) + 2
+    n <- choose (0, 20)
+    pure (TE.encodeUtf8 (T.replicate reps one), n)
+  where
+    table g = length (gsRows g) >= 2 && all ((>= 2) . length) (gsRows g)
+
 -- | A counterexample the size of the case, not the size of the file.
 sizeOf :: (BS.ByteString, Int) -> String
 sizeOf (body, n) = show (BS.length body, n)
@@ -101,6 +121,18 @@ spec = describe "the delimited peek answers from one artefact (C1-14b)" $ do
                         pure $
                             counterexample (show (map keysOf verdicts)) $
                                 length verdicts == 1
+
+    it "still reads a grid as delimited when the file outruns the sample" $
+        withMaxSuccess 10 $
+            property $
+                forAllShow overTable sizeOf $ \(body, n) ->
+                    ioProperty $ do
+                        v <- toolOutcomeValue <$> peekBytes ["n" .= n] body
+                        let verdicts =
+                                [field "verdict" o | o <- objectsIn v, hasKey o "verdict"]
+                        pure $
+                            counterexample (show (verdicts, field "view" v)) $
+                                verdicts == [Just (String "delimited")]
 
     it
         "counts only where it says which bytes it counted"

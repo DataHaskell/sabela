@@ -33,7 +33,10 @@ import Sabela.AI.Types (ToolOutcome)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
 import Siza.Agent.Discover (seamDiscover)
-import Siza.Agent.Discover.HistoryGuard (closeSearchLedgerRanked, setSearchPressure)
+import Siza.Agent.Discover.HistoryGuard (
+    closeSearchLedgerRanked,
+    setSearchPressure,
+ )
 import Siza.Agent.EmitLedger (EmitLedger, dedupInjected)
 import Siza.Agent.Exemplars (saveVerified)
 import Siza.Agent.Loop.Types (

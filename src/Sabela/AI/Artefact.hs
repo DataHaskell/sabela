@@ -99,7 +99,20 @@ wants more rows gets them here rather than as a second reading beside the
 first, so the payload keeps one answer per question.
 -}
 atRowLimit :: Int -> Artefact -> Artefact
-atRowLimit n a = a{arPeek = peekData n (arText a)}
+atRowLimit n a = a{arPeek = peekData n (peekableText a)}
+
+peekableText :: Artefact -> Text
+peekableText a = wholeLines (arTruncated a) (arText a)
+
+{- | A truncated sample stops mid-line, and that last fragment has fewer
+fields than the rows above it, so every delimited file bigger than the
+sample would read as ragged. Drop it before looking for a table.
+-}
+wholeLines :: Bool -> Text -> Text
+wholeLines False t = t
+wholeLines True t
+    | T.any (== '\n') t = T.dropWhileEnd (/= '\n') t
+    | otherwise = t
 
 describe :: Integer -> BS.ByteString -> BS.ByteString -> Artefact
 describe size headBs tailBs =
@@ -117,7 +130,7 @@ describe size headBs tailBs =
   where
     truncated = size > fromIntegral (BS.length headBs)
     body = decodePrefix truncated headBs
-    peeked = peekData peekRowLimit body
+    peeked = peekData peekRowLimit (wholeLines truncated body)
     view
         | binaryish body = BinaryView
         | Delimited _ <- peekVerdict peeked = DelimitedView'

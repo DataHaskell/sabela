@@ -3,7 +3,7 @@
 module Test.DiscoverRequestSpec (discoverRequestSpec) where
 
 import Control.Monad (forM_)
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value (..), object)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Text (Text)
@@ -27,6 +27,7 @@ import Test.DiscoverFixtures (
     field,
     hitText,
     hitsOf,
+    installFactsRows,
     installNamesFile,
     runCatArgs,
     stateOf,
@@ -99,6 +100,7 @@ discoverRequestSpec = describe "discover request schema (R1.7/R2.7/R2.8)" $ do
     describe "R2.7 scope filters are honoured or disclosed, never silent" $ do
         it "a filter matching nothing says so and names the unfiltered count" $ do
             installNamesFile
+            installFactsRows []
             v <- runCatArgs "gust" (args [("module", String "Nimbus.Sky")])
             hitsOf v `shouldBe` []
             textField "narrow" v `shouldSatisfy` T.isInfixOf "matched none"

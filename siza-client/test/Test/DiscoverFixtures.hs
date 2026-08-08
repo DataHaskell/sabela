@@ -5,7 +5,9 @@ module Test.DiscoverFixtures (
     synInstalled,
     synHidden,
     synAbsent,
+    synCatalogueOnly,
     synHoogle,
+    synHoogleCatalogued,
     synHackageNames,
     catalogueExports,
     catalogueModules,
@@ -17,6 +19,7 @@ module Test.DiscoverFixtures (
     runCat,
     runCatArgs,
     runCatArgsIn,
+    installFactsRows,
     installNamesFile,
     installNamesFileWith,
     argText,
@@ -43,55 +46,20 @@ import System.FilePath ((</>))
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.DiscoverTool (runDiscoverCall, runDiscoverTool)
-
-data SynPkg = SynPkg
-    { spName :: Text
-    , spVersion :: Text
-    , spHidden :: Bool
-    , spModules :: [(Text, [(Text, Text)])]
-    }
-
-synInstalled :: [SynPkg]
-synInstalled =
-    [ SynPkg
-        "zephyr"
-        "1.2.0"
-        False
-        [ ("Zephyr.Core", [("gust", "Int -> Wind"), ("lull", "Wind -> Wind")])
-        , ("Zephyr.Internal.Raw", [("gustRaw", "Int -> Int")])
-        ]
-    , SynPkg
-        "stratus"
-        "0.9.1"
-        False
-        [
-            ( "Stratus.Air"
-            , [("lull", "Air -> Air"), ("stratify", "[Air] -> Layered")]
-            )
-        ]
-    ]
-
-synHidden :: SynPkg
-synHidden =
-    SynPkg
-        "cumulus"
-        "0.3.1"
-        True
-        [("Cumulus.Plot", [("bars", "[(Text, Double)] -> Plot -> Text")])]
-
-synAbsent :: SynPkg
-synAbsent =
-    SynPkg "nimbus" "2.0.0" False [("Nimbus.Sky", [("drizzle", "Sky -> Rain")])]
-
-synHoogle :: [SynPkg]
-synHoogle = synInstalled ++ [synHidden, synAbsent]
+import Test.DiscoverUniverse (
+    SynPkg (..),
+    synAbsent,
+    synCatalogueOnly,
+    synHackageNames,
+    synHidden,
+    synHoogle,
+    synHoogleCatalogued,
+    synInstalled,
+ )
 
 sessionPkgsIn :: [SynPkg] -> [SynPkg]
 sessionPkgsIn universe =
     [p | p <- universe, spName p /= spName synAbsent]
-
-synHackageNames :: [Text]
-synHackageNames = sort (map spName synHoogle)
 
 catalogueExports :: [Text]
 catalogueExports =
@@ -249,6 +217,17 @@ runCatArgsIn universe q args = do
 
 installNamesFile :: IO ()
 installNamesFile = installNamesFileWith synHackageNames
+
+{- | Pin the Hackage facts a spec runs against. Without this a spec inherits
+whatever file the previously-run one set, so what the index can say about a
+scope depends on test order.
+-}
+installFactsRows :: [Text] -> IO ()
+installFactsRows rows = do
+    dir <- getTemporaryDirectory
+    let path = dir </> "siza-discover-test-facts-rows.tsv"
+    TIO.writeFile path (T.unlines rows)
+    setEnv "SABELA_HACKAGE_FACTS" path
 
 installNamesFileWith :: [Text] -> IO ()
 installNamesFileWith names = do

@@ -26,6 +26,7 @@ import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
+import Sabela.AI.ModuleResolve (namesFragment)
 import Siza.Agent.Discover.CabalFacts (PkgFacts (..), parseFactsRow)
 import Siza.Agent.Discover.Types (HackageInfo (..))
 
@@ -137,14 +138,46 @@ withFactsFor names hk = do
     pure (withHackageFacts [] facts hk)
 
 {- | The packages that expose a module, for a name the session cannot resolve
-because nothing exposing it is installed.
+because nothing exposing it is installed. Exactly, or — where nothing matches
+exactly and the fragment is distinctive enough to mean one thing — the packages
+whose module names carry it as a namespace component.
 -}
 hackageModuleOwners :: Text -> IO [(Text, PkgFacts)]
 hackageModuleOwners m
-    | T.null (T.strip m) = pure []
+    | T.null asked = pure []
     | otherwise = do
         facts <- loadHackageFacts
-        pure [(n, f) | (n, f) <- M.toAscList facts, T.strip m `elem` pfModules f]
+        let exact = [(n, f) | (n, f) <- M.toAscList facts, asked `elem` pfModules f]
+        pure (if null exact then componentOwners asked facts else exact)
+  where
+    asked = T.strip m
+
+{- | The packages a module fragment names, where it names few enough to be an
+answer. A common fragment owns thousands of modules, and listing a prefix of
+them states nothing about the one the caller meant.
+-}
+componentOwners :: Text -> M.Map Text PkgFacts -> [(Text, PkgFacts)]
+componentOwners asked facts
+    | T.length asked < minFragment = []
+    | length owners > maxFragmentOwners = []
+    | otherwise = owners
+  where
+    owners =
+        take
+            (maxFragmentOwners + 1)
+            [(n, f) | (n, f) <- M.toAscList facts, any (namesFragment asked) (pfModules f)]
+
+{- | Below this a fragment is too common to distinguish anything, matching the
+bound 'hackageMatching' already holds itself to.
+-}
+minFragment :: Int
+minFragment = 3
+
+{- | Above this the fragment named a namespace, not a module. The count is the
+answer then, and it is stated rather than a prefix of the matches shown.
+-}
+maxFragmentOwners :: Int
+maxFragmentOwners = 3
 
 hackageMatching :: Int -> [Text] -> IO [Text]
 hackageMatching cap tokens = do

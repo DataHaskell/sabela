@@ -81,8 +81,8 @@ spec = describe "Sabela.AI.Capabilities.CapabilitySearch" $ do
     describe "scope-gated ranking (B2)" $ do
         let inScope = Set.fromList ["sabela-notebook"]
             plotHit =
-                HoogleHit "plotPoints" "sabela-notebook" "Sabela.Notebook" "" ""
-            specimen name pkg modu = HoogleHit name pkg modu "" ""
+                HoogleHit "plotPoints" "sabela-notebook" "Sabela.Notebook" "" "" ""
+            specimen name pkg modu = HoogleHit name pkg modu "" "" ""
             winnerFor h = hhPackage <$> listToMaybe (rankHitsInScope inScope [h, plotHit])
 
         it "tidal-for-plot: an audio exact match loses to the in-scope hit" $
@@ -128,7 +128,7 @@ spec = describe "Sabela.AI.Capabilities.CapabilitySearch" $ do
 
         it "truncates docs to ~160 chars with an ellipsis" $ do
             let longDocs = T.replicate 300 "x"
-                hit = HoogleHit "f" "pkg" "Mod" "Int" longDocs
+                hit = HoogleHit "f" "pkg" "Mod" "Int" longDocs ""
                 out = capabilityOutcome "q" [hit]
             case hitsField out of
                 Array v
@@ -170,7 +170,7 @@ spec = describe "Sabela.AI.Capabilities.CapabilitySearch" $ do
     describe "helperToHoogleHits" $
         it "maps package->name+package and synopsis->docs; type/module empty" $
             helperToHoogleHits [HelperHit "geohash" "Geohash encoding" 1.0]
-                `shouldBe` [HoogleHit "geohash" "geohash" "" "" "Geohash encoding"]
+                `shouldBe` [HoogleHit "geohash" "geohash" "" "" "Geohash encoding" ""]
 
     describe "capabilityOutcome over helper hits" $
         it "shapes SHIP package hits into the {query,hits:[...]} wire shape" $ do

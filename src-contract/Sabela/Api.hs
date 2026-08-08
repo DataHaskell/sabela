@@ -141,6 +141,41 @@ data FilePreview = FilePreview
 instance ToJSON FilePreview
 instance FromJSON FilePreview
 
+{- | A column of a delimited preview. @dcName@ is 'Nothing' when the file has
+no header row, and @dcType@ is the inferred type's name, not a tag.
+-}
+data DatasetColumn = DatasetColumn
+    { dcIndex :: Int
+    , dcName :: Maybe Text
+    , dcType :: Text
+    }
+    deriving (Eq, Generic, Show)
+
+instance ToJSON DatasetColumn
+instance FromJSON DatasetColumn
+
+{- | A sampled dataset as the Data panel reads it. @dpRowCount@ counts rows in
+the sample, which is not the file's row count whenever @dpTruncated@ is set.
+A file that is not a table carries @dpReason@ and no rows.
+-}
+data DatasetPreview = DatasetPreview
+    { dpPath :: Text
+    , dpDelimited :: Bool
+    , dpReason :: Maybe Text
+    , dpDelimiter :: Maybe Text
+    , dpHasHeader :: Bool
+    , dpColumns :: [DatasetColumn]
+    , dpRows :: [[Text]]
+    , dpRowCount :: Int
+    , dpLineCount :: Int
+    , dpTruncated :: Bool
+    , dpBytes :: Integer
+    }
+    deriving (Eq, Generic, Show)
+
+instance ToJSON DatasetPreview
+instance FromJSON DatasetPreview
+
 newtype CompleteRequest = CompleteRequest
     { crPrefix :: Text
     }

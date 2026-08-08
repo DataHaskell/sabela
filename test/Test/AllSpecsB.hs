@@ -66,6 +66,7 @@ import qualified Test.OrphanSpec as OrphanSpec
 import qualified Test.OutputChokepointWireSpec as OutputChokepointWireSpec
 import qualified Test.OutputSpec as OutputSpec
 import qualified Test.PackageIndexSpec as PackageIndexSpec
+import qualified Test.ParquetSpec as ParquetSpec
 import qualified Test.ParseSpec as ParseSpec
 import qualified Test.PathFactsSpec as PathFactsSpec
 import qualified Test.PathGateSpec as PathGateSpec
@@ -147,6 +148,7 @@ allSpecsB = do
     RecordFieldDiscoverySpec.spec
     HintsSpec.spec
     StderrFailureSpec.spec
+    ParquetSpec.spec
     PeekDataSpec.spec
     PeekVerdictSpec.spec
     ArtefactViewSpec.spec

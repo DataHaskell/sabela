@@ -50,6 +50,7 @@ import qualified Test.HarnessBinderSpec as HarnessBinderSpec
 import qualified Test.HealthSpec as HealthSpec
 import qualified Test.HoleFitsSpec as HoleFitsSpec
 import qualified Test.HoleProbeSpec as HoleProbeSpec
+import qualified Test.HoogleDbSpec as HoogleDbSpec
 import qualified Test.HoogleProseSpec as HoogleProseSpec
 import qualified Test.HoogleRankSpec as HoogleRankSpec
 import qualified Test.HoogleResolveSpec as HoogleResolveSpec
@@ -202,6 +203,7 @@ allSpecsA = do
     ScratchScopeSpec.spec
     CheckTypeScopeSpec.spec
     ScratchpadKeySpec.spec
+    HoogleDbSpec.spec
     SearchCacheFreshSpec.spec
     ArgRepairSpec.spec
     RefinementFitSpec.spec

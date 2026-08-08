@@ -199,6 +199,22 @@ producerCardSpec = describe "empty miss with established target answers producer
     it "an empty catalogue yields no card (the honest miss stands)" $ do
         let sg = StandingGoal "Plot" "bars" "cumulus"
         producerCard sg [] 8 `shouldBe` Nothing
+
+    {- Hoogle holds installed haddock alone, so scraping it for an absent
+    package yields rows with a name and no type. Two of those were rendered as
+    "2 exports" over a package nothing could enumerate (live_hodatime). -}
+    it "a row with no type is not an export" $ do
+        let sg = StandingGoal "Year" "date" "chronos"
+        producerCard sg [("Chronos", ""), ("chronos", "")] 8
+            `shouldBe` Nothing
+    it "never counts a typeless row toward the exports it claims" $ do
+        let sg = StandingGoal "Year" "date" "chronos"
+            exports = [("Chronos", ""), ("mkYear", "Int -> Year")]
+        case producerCard sg exports 8 of
+            Nothing -> expectationFailure "a typed export is still an export"
+            Just v -> do
+                intField "total" v `shouldBe` 1
+                cardExports v `shouldSatisfy` all (T.isInfixOf " :: ")
     it "the wired path answers the card on an established-target miss" $ do
         installNamesFile
         let goalArg =

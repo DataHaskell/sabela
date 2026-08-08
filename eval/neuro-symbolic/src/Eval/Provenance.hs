@@ -13,6 +13,7 @@ module Eval.Provenance (
 ) where
 
 import Control.Exception (SomeException, try)
+import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, defaultTimeLocale, formatTime, getCurrentTime)

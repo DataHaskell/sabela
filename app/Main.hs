@@ -12,7 +12,11 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.Wai.Handler.Warp (run)
 import Sabela.AI.Provenance (stateBase)
-import Sabela.AI.SearchCache (adoptLocalDb, searchCacheReport)
+import Sabela.AI.SearchCache (
+    adoptHackageDb,
+    adoptLocalDb,
+    searchCacheReport,
+ )
 import Sabela.Handlers (
     buildTimeSupportDir,
     initGlobalEnv,
@@ -122,6 +126,10 @@ start port workDir globalFile pkgs = do
     roots <- searchCacheRoots
     adopted <- adoptLocalDb roots
     mapM_ (\p -> putStrLn ("  search cache: adopted local index " ++ p)) adopted
+    adoptedHackage <- adoptHackageDb roots
+    mapM_
+        (\p -> putStrLn ("  search cache: adopted Hackage index " ++ p))
+        adoptedHackage
     searchCacheReport roots >>= mapM_ (putStrLn . T.unpack)
     putStrLn $ "sabela running on http://localhost:" ++ show port ++ "/index.html"
     case mAiToken of

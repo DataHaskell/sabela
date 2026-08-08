@@ -14,16 +14,16 @@ import Sabela.AI.Search.Probe (Probe (..), expandProbes, planProbes)
 import Sabela.AI.Search.Row (RowKind (..), coverage, grounded, humps, rowKind)
 
 hit :: Text -> Text -> Text -> Text -> HoogleHit
-hit n p m ty = HoogleHit n p m ty ""
+hit n p m ty = HoogleHit n p m ty "" ""
 
 docHit :: Text -> Text -> Text -> Text -> Text -> HoogleHit
-docHit = HoogleHit
+docHit n p m ty d = HoogleHit n p m ty d ""
 
 pkgRow :: Text -> HoogleHit
-pkgRow p = HoogleHit p p "" "" ""
+pkgRow p = HoogleHit p p "" "" "" ""
 
 modRow :: Text -> Text -> HoogleHit
-modRow p m = HoogleHit m p m "" ""
+modRow p m = HoogleHit m p m "" "" ""
 
 readParquetHit :: HoogleHit
 readParquetHit =

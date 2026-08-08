@@ -2,11 +2,13 @@
 
 module Sabela.AI.SearchCache (
     SearchSource (..),
+    adoptHackageDb,
     adoptLocalDb,
     freshnessRoot,
     localIndexFreshness,
     localSearchCachePaths,
     parseMetaEpoch,
+    parseMetaPath,
     searchCacheStatus,
     searchCacheReport,
 ) where
@@ -50,8 +52,11 @@ searchCacheStatus roots = do
     found <- findExecutable bin
     mainDb <- lookupEnv "SABELA_HOOGLE_DB"
     localDb <- lookupEnv "SABELA_HOOGLE_LOCAL_DB"
+    hackageDb <- lookupEnv "SABELA_HOOGLE_HACKAGE_DB"
     mainStatus <- dbSource "SABELA_HOOGLE_DB" hoogleDefaultNote mainDb
     localStatus <- dbSource "SABELA_HOOGLE_LOCAL_DB" localUnsetNote localDb
+    hackageStatus <-
+        dbSource "SABELA_HOOGLE_HACKAGE_DB" hackageUnsetNote hackageDb
     freshness <- indexFreshnessFor localDb roots
     pure
         ( [ SearchSource
@@ -60,12 +65,16 @@ searchCacheStatus roots = do
                 (not (null found))
           , mainStatus
           , localStatus
+          , hackageStatus
           ]
             <> freshness
         )
   where
     hoogleDefaultNote = "unset — using hoogle's own default database"
     localUnsetNote = "unset — installed-package symbols are unindexed"
+    hackageUnsetNote =
+        "unset — only Stackage packages are symbol-indexed; \
+        \build the rest with `make search-cache-hackage`"
 
 dbSource :: Text -> Text -> Maybe String -> IO SearchSource
 dbSource label unsetNote mPath = case mPath of
@@ -102,6 +111,32 @@ adoptLocalDb roots = do
             found <- firstExisting [fst (localSearchCachePaths r) | r <- roots]
             mapM_ (setEnv "SABELA_HOOGLE_LOCAL_DB") found
             pure found
+
+{- | Point @SABELA_HOOGLE_HACKAGE_DB@ at the Hackage-wide index when the
+operator has not chosen one. The path comes from the meta its generator wrote,
+so this adopts the database that generator built, not a conventional location.
+-}
+adoptHackageDb :: [FilePath] -> IO (Maybe FilePath)
+adoptHackageDb roots = do
+    chosen <- lookupEnv "SABELA_HOOGLE_HACKAGE_DB"
+    case chosen of
+        Just p | not (null p) -> pure Nothing
+        _ -> do
+            metas <- mapM (readTextMaybe . snd . localSearchCachePaths) roots
+            found <-
+                firstExisting
+                    (mapMaybe (parseMetaPath "hoogle_hackage_db" =<<) metas)
+            mapM_ (setEnv "SABELA_HOOGLE_HACKAGE_DB") found
+            pure found
+
+-- | The path a machine-produced meta records under a key, if it records one.
+parseMetaPath :: Text -> Text -> Maybe FilePath
+parseMetaPath key =
+    listToMaybe
+        . map T.unpack
+        . filter (not . T.null)
+        . mapMaybe (T.stripPrefix (key <> "=") . T.strip)
+        . T.lines
 
 firstExisting :: [FilePath] -> IO (Maybe FilePath)
 firstExisting [] = pure Nothing

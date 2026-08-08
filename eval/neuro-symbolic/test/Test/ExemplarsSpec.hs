@@ -8,7 +8,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Text as T
 import Test.Hspec
 
-import Eval.Exemplars (
+import Siza.Agent.Exemplars (
     Exemplar (..),
     exemplarMessage,
     retrieveExemplars,
@@ -21,7 +21,7 @@ content (Object o) = case KM.lookup (K.fromText "content") o of
 content _ = Nothing
 
 spec :: Spec
-spec = describe "Eval.Exemplars (learning loop memory)" $ do
+spec = describe "Siza.Agent.Exemplars (learning loop memory)" $ do
     describe "retrieveExemplars" $ do
         let store =
                 [ Exemplar "total the revenue column of a dataframe csv" "A"

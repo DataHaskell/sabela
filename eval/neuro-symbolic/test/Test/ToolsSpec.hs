@@ -5,11 +5,19 @@ module Test.ToolsSpec (spec) where
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
-import Eval.Tools (unknownToolMsg, withInsertDefaults)
+import Siza.Agent.Recall (readRecall, withRecallStore)
+
+import Eval.Tools (episodeCatalogue, unknownToolMsg, withInsertDefaults)
+
+toolName :: Value -> Text
+toolName v = case field "function" v >>= field "name" of
+    Just (String n) -> n
+    _ -> ""
 
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (K.fromText k) o
@@ -17,6 +25,16 @@ field _ _ = Nothing
 
 spec :: Spec
 spec = do
+    describe "episodeCatalogue (what a fresh episode starts from)" $ do
+        it "offers the tool the harness's own elision markers name" $ do
+            cat <- episodeCatalogue
+            map toolName cat `shouldSatisfy` elem "recall_result"
+        it "starts with nothing the previous episode elided" $ do
+            withRecallStore (const ((), Map.fromList [(1, "an earlier episode")]))
+            _ <- episodeCatalogue
+            store <- readRecall
+            Map.toList store `shouldBe` []
+
     describe "withInsertDefaults (insert_cell fields hidden from the model)" $ do
         it "injects a Haskell CodeCell kind when absent" $ do
             let v = withInsertDefaults (object ["source" .= ("x = 1" :: Text)])

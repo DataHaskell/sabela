@@ -11,19 +11,19 @@ import Sabela.LLM.Ollama.Client (chat, chatSeeded)
 import Siza.Transport (Conn)
 
 import Eval.Task (Task (..), gradeVerify)
+import Eval.Tools (dispatch, episodeCatalogue)
 import Siza.Agent.Loop
-import Siza.Agent.Tools (catalogue, dispatch)
 
 runEpisode ::
     EpisodeBudget -> Manager -> Conn -> Text -> Text -> Task -> Int -> IO AgentRun
 runEpisode budget mgr conn base model task maxTurns = do
-    cat <- catalogue
+    cat <- episodeCatalogue
     let driver =
             Driver
                 { drvChat = \msgs -> chat mgr model msgs cat
                 , drvDispatch = dispatch conn base
                 , drvNow = realToFrac <$> getPOSIXTime
-                , drvVerify = gradeVerify conn base task
+                , drvVerify = const (gradeVerify conn base task)
                 }
     runEpisodeWith budget driver (taskPrompt task) maxTurns
 
@@ -38,12 +38,12 @@ runEpisodeDebug ::
     Int ->
     IO AgentRun
 runEpisodeDebug emit budget mgr conn base model task maxTurns = do
-    cat <- catalogue
+    cat <- episodeCatalogue
     let driver =
             Driver
                 { drvChat = \msgs -> chatSeeded True Nothing mgr model msgs cat
                 , drvDispatch = dispatch conn base
                 , drvNow = realToFrac <$> getPOSIXTime
-                , drvVerify = gradeVerify conn base task
+                , drvVerify = const (gradeVerify conn base task)
                 }
     runEpisodeTraced emit GrammarOn budget driver (taskPrompt task) maxTurns

@@ -33,7 +33,7 @@ import Siza.Agent.Discover.Types (
  )
 import Siza.Agent.DiscoverTool (runDiscoverCall)
 import Test.CatalogueSim (SimWorld (..), simWorldCall)
-import Test.DiscoverFixtures (SynPkg (..), field, hitText, hitsOf)
+import Test.DiscoverFixtures (SynPkg (..), argText, field, hitText, hitsOf)
 
 env0 :: NotebookEnv
 env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])

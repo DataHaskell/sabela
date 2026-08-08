@@ -6,20 +6,27 @@ NAMES_OUT="$REPO_ROOT/data/hackage-packages.txt"
 FACTS_OUT="$REPO_ROOT/data/hackage-facts.tsv"
 META_OUT="$REPO_ROOT/data/search-cache.meta"
 INDEX_TAR="${CABAL_INDEX_TAR:-$HOME/.cabal/packages/hackage.haskell.org/01-index.tar}"
+XDG_DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+HOOGLE_INPUT_TAR="${HOOGLE_INPUT_TAR:-$XDG_DATA/hoogle/input-haskell-hoogle.tar.gz}"
+HACKAGE_DOCS_DIR="${SABELA_HACKAGE_DOCS_DIR:-$XDG_DATA/sabela/hackage-docs}"
+HACKAGE_DB="${SABELA_HOOGLE_HACKAGE_DB:-$XDG_DATA/sabela/hoogle-hackage.hoo}"
 
 DO_NAMES=1
 DO_HOOGLE=1
 DO_CAPABILITY=0
 DO_LOCAL=0
 DO_FACTS=0
+DO_HACKAGE=0
 
 LOCAL_UNIVERSES=""
 LOCAL_DIRS=0
+HACKAGE_DIRS=0
 case "${1:-}" in
     --names-only) DO_HOOGLE=0 ;;
     --facts-only) DO_NAMES=0; DO_HOOGLE=0; DO_FACTS=1 ;;
     --hoogle-only) DO_NAMES=0 ;;
     --local-hoogle-only) DO_NAMES=0; DO_HOOGLE=0; DO_LOCAL=1 ;;
+    --hackage-hoogle-only) DO_NAMES=0; DO_HOOGLE=0; DO_HACKAGE=1 ;;
     --capability-index) DO_NAMES=0; DO_HOOGLE=0; DO_CAPABILITY=1 ;;
     "") ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
@@ -65,10 +72,13 @@ ensure_hoogle() {
     }
 }
 
+# Without --download, `hoogle generate` silently rebuilds from whatever inputs
+# it cached last, so a refresh reproduces the old snapshot. This path already
+# goes to the network for `cabal update`; the corpus is fetched with it.
 generate_hoogle() {
     ensure_hoogle
-    echo "==> hoogle generate (download + build local DB of all Hackage)" >&2
-    hoogle generate >&2
+    echo "==> hoogle generate --download (fetch + build local DB of all Hackage)" >&2
+    hoogle generate --download >&2
     echo "==> smoke query (local DB): runConduit" >&2
     hoogle search --count=2 --jsonl runConduit >&2 2>/dev/null \
         || hoogle search --count=2 runConduit >&2
@@ -168,10 +178,64 @@ local_db_answers() {
     hoogle search --database="$1" --count=1 "$sym" 2>/dev/null | grep -q "$sym"
 }
 
+# Modification time in epoch seconds, spelled for both BSD and GNU stat.
+file_epoch() {
+    stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+# Hoogle's own generate only symbol-indexes Stackage members, so the ~12.7k
+# Hackage packages that ship haddock but are not on Stackage answer nothing.
+# Their doc files are already in the input tarball; index them directly.
+extract_hackage_docs() {
+    [ -f "$HOOGLE_INPUT_TAR" ] || {
+        echo "   no haddock input at $HOOGLE_INPUT_TAR — run \`hoogle generate\` once to download it" >&2
+        return 1
+    }
+    if [ -d "$HACKAGE_DOCS_DIR" ] && [ "$HACKAGE_DOCS_DIR" -nt "$HOOGLE_INPUT_TAR" ]; then
+        echo "   reusing extracted docs in $HACKAGE_DOCS_DIR" >&2
+        return 0
+    fi
+    echo "   extracting $HOOGLE_INPUT_TAR -> $HACKAGE_DOCS_DIR" >&2
+    rm -rf "$HACKAGE_DOCS_DIR"
+    mkdir -p "$HACKAGE_DOCS_DIR"
+    tar xzf "$HOOGLE_INPUT_TAR" -C "$HACKAGE_DOCS_DIR"
+    touch "$HACKAGE_DOCS_DIR"
+}
+
+# One --local per package against 16k absolute paths overruns ARG_MAX, so the
+# generate runs from inside the doc root and names the dirs relatively.
+generate_hackage_hoogle() {
+    ensure_hoogle
+    echo "==> hoogle generate (all Hackage packages that ship haddock)" >&2
+    extract_hackage_docs || return 0
+    mkdir -p "$(dirname "$HACKAGE_DB")"
+    args=()
+    probe_dir=""
+    while read -r d; do
+        [ -n "$d" ] || continue
+        args+=("--local=$d")
+        [ -n "$probe_dir" ] || probe_dir="$HACKAGE_DOCS_DIR/$d"
+    done <<EOF
+$(cd "$HACKAGE_DOCS_DIR" && hoogle_dirs_under .)
+EOF
+    echo "   ${#args[@]} package doc dirs; this takes ~15 minutes and ~1.4 GB" >&2
+    if [ "${#args[@]}" -gt 0 ] \
+        && (cd "$HACKAGE_DOCS_DIR" && hoogle generate ${args[@]+"${args[@]}"} --database="$HACKAGE_DB" >&2) \
+        && local_db_answers "$HACKAGE_DB" "$probe_dir"; then
+        HACKAGE_DIRS="${#args[@]}"
+        echo "   wrote Hackage index -> $HACKAGE_DB" >&2
+        echo "   set SABELA_HOOGLE_HACKAGE_DB=$HACKAGE_DB so queries union it in" >&2
+    else
+        rm -f "$HACKAGE_DB"
+        echo "   Hackage generation failed; non-Stackage packages stay unindexed" >&2
+    fi
+}
+
 [ "$DO_NAMES" = 1 ] && { refresh_index; write_names; write_facts; }
 [ "$DO_HOOGLE" = 1 ] && generate_hoogle
 [ "$DO_FACTS" = 1 ] && write_facts
 [ "$DO_LOCAL" = 1 ] && { ensure_hoogle; generate_local_hoogle; }
+if [ "$DO_HACKAGE" = 1 ]; then generate_hackage_hoogle; fi
 [ "$DO_CAPABILITY" = 1 ] && { build_capability_index; exit 0; }
 
 carried_universes() {
@@ -179,7 +243,15 @@ carried_universes() {
     grep -E '^hoogle_local_(universes|dirs)=' "$META_OUT" || true
 }
 
+# The Hackage index is built by its own opt-in target, so every other run must
+# carry its recorded provenance forward rather than dropping it from the meta.
+carried_hackage() {
+    [ -f "$META_OUT" ] || return 0
+    grep -E '^hoogle_hackage_(db|dirs|input_epoch)=' "$META_OUT" || true
+}
+
 CARRIED="$(carried_universes)"
+CARRIED_HACKAGE="$(carried_hackage)"
 
 {
     echo "# machine-produced by tools/update-search-cache.sh — do not hand-edit"
@@ -189,6 +261,8 @@ CARRIED="$(carried_universes)"
     [ -f "$FACTS_OUT" ] && echo "hackage_facts=$FACTS_OUT"
     [ -f "$FACTS_OUT" ] && echo "hackage_facts_packages=$(wc -l < "$FACTS_OUT" | tr -d ' ')"
     command -v hoogle >/dev/null 2>&1 && echo "hoogle=$(command -v hoogle)"
+    [ -f "$HOOGLE_INPUT_TAR" ] \
+        && echo "hoogle_input_epoch=$(file_epoch "$HOOGLE_INPUT_TAR")"
     if [ -f "$REPO_ROOT/data/hoogle-local.hoo" ]; then
         echo "hoogle_local_db=$REPO_ROOT/data/hoogle-local.hoo"
         if [ -n "$LOCAL_UNIVERSES" ]; then
@@ -197,6 +271,13 @@ CARRIED="$(carried_universes)"
         elif [ -n "$CARRIED" ]; then
             echo "$CARRIED"
         fi
+    fi
+    if [ "$HACKAGE_DIRS" -gt 0 ] && [ -f "$HACKAGE_DB" ]; then
+        echo "hoogle_hackage_db=$HACKAGE_DB"
+        echo "hoogle_hackage_dirs=$HACKAGE_DIRS"
+        echo "hoogle_hackage_input_epoch=$(file_epoch "$HOOGLE_INPUT_TAR")"
+    elif [ -n "$CARRIED_HACKAGE" ]; then
+        echo "$CARRIED_HACKAGE"
     fi
 } > "$META_OUT"
 echo "==> search cache updated; meta -> $META_OUT" >&2

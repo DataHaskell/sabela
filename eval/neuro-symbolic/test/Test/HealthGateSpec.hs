@@ -2,7 +2,7 @@
 
 module Test.HealthGateSpec (spec) where
 
-import Data.Aeson (object, (.=))
+import Data.Aeson (Value, object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -22,10 +22,10 @@ import Eval.Agent (
     runEpisodeWith,
     stopDecision,
  )
-import Eval.Messages (reenterMessage)
 import Eval.Ollama (ToolCall (..), Turn (..))
-import Eval.Owned (OwnedCell (..), noProgressStep, redSignature)
 import Eval.Task (Grader (..), Task (..))
+import Siza.Agent.Messages (reenterMessage)
+import Siza.Agent.Owned (OwnedCell (..), noProgressStep, redSignature)
 
 insertOf :: ToolCall
 insertOf = ToolCall "insert_cell" (object ["source" .= ("x = 1" :: Text)])
@@ -81,8 +81,8 @@ spec = describe "B2 health gate" $ do
     describe "redSignature (reenter no-progress detector)" $ do
         let owned =
                 Map.fromList
-                    [ (2, OwnedCell False "ambiguous take" "src")
-                    , (1, OwnedCell False "not in scope foo" "src")
+                    [ (2, OwnedCell False "ambiguous take" "src" False)
+                    , (1, OwnedCell False "not in scope foo" "src" False)
                     ]
         it "is stable and sorted by cell id regardless of the red list order" $
             redSignature [2, 1] owned
@@ -91,7 +91,7 @@ spec = describe "B2 health gate" $ do
             redSignature [1, 2] owned `shouldBe` redSignature [2, 1] owned
         it "changes when a cell's diagnostic changes (real progress)" $
             ( redSignature [1] owned
-                == redSignature [1] (Map.insert 1 (OwnedCell False "different" "src") owned)
+                == redSignature [1] (Map.insert 1 (OwnedCell False "different" "src" False) owned)
             )
                 `shouldBe` False
         it "ignores cells absent from the red list" $
@@ -100,8 +100,8 @@ spec = describe "B2 health gate" $ do
     describe "noProgressStep (oscillation-aware reenter guard)" $ do
         let owned =
                 Map.fromList
-                    [ (1, OwnedCell False "not in scope foo" "src")
-                    , (2, OwnedCell False "ambiguous take" "src")
+                    [ (1, OwnedCell False "not in scope foo" "src" False)
+                    , (2, OwnedCell False "ambiguous take" "src" False)
                     ]
             sigA = redSignature [1] owned
             sigB = redSignature [2] owned
@@ -173,11 +173,30 @@ callTurn name =
     Turn
         (object ["role" .= ("assistant" :: Text)])
         "```haskell\nx = 1\n```"
-        [ToolCall name (object [])]
+        [ToolCall name (args name)]
+  where
+    args = writeArgs
+
+{- | A write carries the source the loop reads back off it. A committed cell
+with no source is not an artifact, so an episode scripted without one can
+never reach a stop.
+-}
+writeArgs :: Text -> Value
+writeArgs "insert_cell" = object ["source" .= scriptedSource]
+writeArgs "replace_cell_source" =
+    object ["cell_id" .= (1 :: Int), "new_source" .= scriptedSource]
+writeArgs _ = object []
+
+scriptedSource :: Text
+scriptedSource = "x = 1"
 
 doneTurn :: Turn
 doneTurn = Turn (object ["role" .= ("assistant" :: Text)]) "done" []
 
+{- | A driver reading a fixed script. Past its end it repeats the last turn:
+the loop decides when to stop, and a fixture that crashed on one extra prompt
+would report an exception where the stop tag is the thing under test.
+-}
 scriptedDriver ::
     (ToolCall -> IO (Either Text ToolOutcome)) -> [Turn] -> IO Driver
 scriptedDriver disp script = do
@@ -185,13 +204,13 @@ scriptedDriver disp script = do
     let nextTurn _msgs = do
             i <- readIORef cursor
             modifyIORef' cursor (+ 1)
-            pure (Right (script !! i))
+            pure (Right (script !! min i (length script - 1)))
     pure
         Driver
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = pure (CheckPassed, Nothing)
+            , drvVerify = const (pure (CheckPassed, Nothing))
             }
 
 scriptedDriverV ::
@@ -201,7 +220,7 @@ scriptedDriverV disp script verdict = do
     pure
         d
             { drvVerify =
-                pure (if verdict then CheckPassed else CheckFailed, Nothing)
+                const (pure (if verdict then CheckPassed else CheckFailed, Nothing))
             }
 
 redInsertHealthyReplace :: ToolCall -> IO (Either Text ToolOutcome)
