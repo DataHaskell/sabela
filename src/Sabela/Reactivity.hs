@@ -139,8 +139,8 @@ computeStaleExecutionPlanIn env mods allCode =
         allCode
 
 {- | Replacing the kernel invalidates every binding it held, so a stale
-environment makes every code cell a root. That is the whole of the reactive rule
-applied to the environment: nothing has to remember to mark cells afterwards.
+environment makes every code cell a root. Explicit roots that reach no code
+(a prose edit) open no door: nothing runs and nothing rebuilds.
 -}
 computePlanCore ::
     EnvState ->
@@ -159,14 +159,22 @@ computePlanCore env mods mRoots allCode nb =
                 (Topo.buildDepGraph defMap allCode)
         revDeps = Topo.reverseDeps deps
         allIds = S.fromList (map cellId allCode)
-        affected = case (env, mods, mRoots) of
-            (EnvStale, _, _) -> allIds
-            (_, ModulesWiped, _) -> allIds
-            (_, _, Nothing) -> allIds
-            (_, _, Just roots) ->
-                let affected0 = Topo.reachableFrom roots revDeps
-                    roots' = roots `S.union` compiledRootExpansion cplan affected0
-                 in Topo.reachableFrom roots' revDeps
+        reachOf roots =
+            let affected0 = Topo.reachableFrom roots revDeps
+                roots' = roots `S.union` compiledRootExpansion cplan affected0
+             in Topo.reachableFrom roots' revDeps
+        deadRooted = case mRoots of
+            Just roots ->
+                not (S.null roots)
+                    && S.null (reachOf roots `S.intersection` allIds)
+            Nothing -> False
+        affected
+            | deadRooted = S.empty
+            | otherwise = case (env, mods, mRoots) of
+                (EnvStale, _, _) -> allIds
+                (_, ModulesWiped, _) -> allIds
+                (_, _, Nothing) -> allIds
+                (_, _, Just roots) -> reachOf roots
         toSort = filter (\c -> S.member (cellId c) affected) allCode
         topoResult = Topo.topoSort toSort deps
         skipIds =
@@ -188,7 +196,7 @@ computePlanCore env mods mRoots allCode nb =
             , keep c
             ]
      in ExecutionPlan
-            { epRunEnv = env == EnvStale
+            { epRunEnv = env == EnvStale && not deadRooted
             , epCellsToRun = interp
             , epCompileCells = compiledCells
             , epCompilePlan = cplan

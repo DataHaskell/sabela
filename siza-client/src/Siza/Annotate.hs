@@ -19,12 +19,18 @@ import GHC.Types.Name.Occurrence (occNameString)
 import GHC.Types.Name.Reader (RdrName, rdrNameOcc)
 import GHC.Types.SrcLoc (unLoc)
 
+import Sabela.AI.Capabilities.Edit.CompileGate.Render (isGeneratedBinder)
 import Siza.Lang.Haskell (parseModuleE)
 import Siza.Language (Diagnostic, renderDiagnostic)
 
 unsignedTopLevelBinds :: Hs.HsModule Hs.GhcPs -> [Text]
 unsignedTopLevelBinds m =
-    dedup [n | n <- valBinds, not (n `S.member` signed)]
+    dedup
+        [ n
+        | n <- valBinds
+        , not (n `S.member` signed)
+        , not (isGeneratedBinder n)
+        ]
   where
     decls = map unLoc (Hs.hsmodDecls m)
     valBinds = concatMap funBindName decls

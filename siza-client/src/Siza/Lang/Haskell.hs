@@ -40,6 +40,7 @@ import GHC.Parser.Errors.Ppr ()
 import qualified Language.Haskell.GhclibParserEx.GHC.Parser as P
 import Language.Haskell.GhclibParserEx.GHC.Settings.Config (fakeSettings)
 
+import Sabela.AI.Capabilities.Edit.CompileGate.Render (renderForParsing)
 import Siza.Language (
     Diagnostic (..),
     Language (..),
@@ -62,8 +63,11 @@ parseModuleE src =
         POk _ m -> Right (unLoc m)
         PFailed pst -> Left (parseErrors pst)
 
+{- | Cell source as a compilation unit. The body is normalised the same way the
+server's compile gate normalises it, so both sides accept the same cells.
+-}
 moduleSrc :: Text -> String
-moduleSrc src = "module SabelaCell where\n" <> T.unpack src
+moduleSrc src = "module SabelaCell where\n" <> T.unpack (renderForParsing src)
 
 parseErrors :: PState -> [Diagnostic]
 parseErrors pst =
@@ -81,9 +85,12 @@ toDiagnostic env =
             , dgMessage = renderEnvelope env
             }
 
+{- | Positions come back in the cell's own coordinates: 'renderForParsing' emits
+@LINE@ pragmas, so no offset correction for the injected module header is needed.
+-}
 cellSpanPos :: SrcSpan -> (Maybe Int, Maybe Int)
 cellSpanPos = \case
-    RealSrcSpan s _ -> (Just (srcSpanStartLine s - 1), Just (srcSpanStartCol s))
+    RealSrcSpan s _ -> (Just (srcSpanStartLine s), Just (srcSpanStartCol s))
     UnhelpfulSpan _ -> (Nothing, Nothing)
 
 renderEnvelope :: MsgEnvelope PsMessage -> Text

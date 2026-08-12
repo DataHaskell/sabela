@@ -134,12 +134,15 @@ subjectOf (AtArgument b) = abExpr b
 
 {- | The single rewrite a rejection earns, chosen once and purely: a hole over
 an unresolved head, else a hole around the argument whose type was rejected.
-Deciding before any compile is what holds the cost to one probe.
+An unresolved head is a question the caller's own answered hole did not ask, so
+only the wrapping plan stands down for one.
 -}
 holeRewritePlan :: Text -> Text -> Maybe HolePlan
-holeRewritePlan diagnostic src
-    | foreignHoleAsked diagnostic = Nothing
-    | otherwise = headPlan diagnostic src <|> argumentPlan diagnostic src
+holeRewritePlan diagnostic src = headPlan diagnostic src <|> wrapPlan
+  where
+    wrapPlan
+        | foreignHoleAsked diagnostic = Nothing
+        | otherwise = argumentPlan diagnostic src
 
 headPlan :: Text -> Text -> Maybe HolePlan
 headPlan diagnostic src = do

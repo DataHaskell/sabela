@@ -25,8 +25,34 @@ realBlob =
     \                            IO String -> IO String', namely\\n\
     \  `((\\\\ _sabelaCandidate -> ...) (length \"abc\" + True))'"
 
+{- | What GHC 9.6 actually emits: bulleted, with continuation frames indented
+under the bullet. The escaped fixture above lost the indentation, so the
+scrubber passed its own tests while never firing on a real diagnostic.
+-}
+bulletedBlob :: Text
+bulletedBlob =
+    "<interactive>:1:574: error: [GHC-83865]\n\
+    \    \8226 Couldn't match expected type \8216Int\8217 with actual type \8216Bool\8217\n\
+    \    \8226 In the second argument of \8216(+)\8217, namely \8216True\8217\n\
+    \      In the first argument of \8216\\ _sabelaCandidate\n\
+    \                                  -> if (==)\n\
+    \                                          (Data.Typeable.typeRepTyCon\n\
+    \                                             (Data.Typeable.typeOf _sabelaCandidate))\8217, namely\n\
+    \        \8216(length \"abc\" + True)\8217\n\
+    \      In the first argument of \8216GHC.GHCi.ghciStepIO ::\n\
+    \                                  IO String -> IO String\8217, namely\n\
+    \        \8216((\\ _sabelaCandidate -> ...) (length \"abc\" + True))\8217"
+
 spec :: Spec
 spec = describe "the harness's own stack frames never reach the model" $ do
+    it "fires on GHC's bulleted, indented frames" $ do
+        let scrubbed = scrubHarnessFrames bulletedBlob
+        scrubbed `shouldSatisfy` T.isInfixOf "Couldn't match expected type"
+        scrubbed `shouldSatisfy` T.isInfixOf "In the second argument"
+        scrubbed `shouldNotSatisfy` T.isInfixOf "_sabelaCandidate"
+        scrubbed `shouldNotSatisfy` T.isInfixOf "ghciStepIO"
+        scrubbed `shouldNotSatisfy` T.isInfixOf "Data.Typeable"
+
     it "keeps every frame about the candidate's own code" $
         scrubHarnessFrames realBlob
             `shouldBe` "In the second argument of `(+)', namely `True'"

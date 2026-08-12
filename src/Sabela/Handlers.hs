@@ -58,6 +58,7 @@ import Sabela.Model (
     SessionStatus (..),
     cellLangOf,
  )
+import Sabela.Parse.Change (significantCodeChange)
 import Sabela.Reactivity (
     RestartMode (..),
     applyRestart,
@@ -68,6 +69,7 @@ import Sabela.Reactivity (
     runAllNeedsRun,
  )
 import Sabela.Session.Project (ReplSupport (..), buildTimeSupportDir)
+import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), broadcastNotebookState, getAIStore)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import ScriptHs.Parser (CabalMeta (..))
@@ -111,25 +113,39 @@ handleCellEdit :: App -> Int -> Text -> IO ()
 handleCellEdit app cid src = do
     debugLog app $ "[handler] handleCellEdit: cell " <> T.pack (show cid)
     before <- readNotebook (appNotebook app)
-    let changed = case find (\c -> cellId c == cid) (nbCells before) of
-            Just c -> cellSource c /= src
+    let significant = case find (\c -> cellId c == cid) (nbCells before) of
+            Just c -> editRequiresRun c src
             Nothing -> False
     modifyNotebook (appNotebook app) $ updateCellSource cid src
     broadcastNotebookState app
-    when changed $ do
+    when significant $ do
         nb <- readNotebook (appNotebook app)
         gen <- bumpGeneration app
         dispatchByLang app gen cid (cellLangOf cid nb) (executeAffected app gen cid)
 
+{- | Does this edit change what the kernel would run? Prose never does; a
+Haskell cell only when its tokens or directives change ('significantCodeChange');
+any other cell on any textual change.
+-}
+editRequiresRun :: Cell -> Text -> Bool
+editRequiresRun c src = case (cellType c, cellLang c) of
+    (ProseCell, _) -> False
+    (CodeCell, ST.Haskell) -> significantCodeChange (cellSource c) src
+    _ -> cellSource c /= src
+
 updateCellSource :: Int -> Text -> Notebook -> Notebook
 updateCellSource cid src nb
     | not changed = nb
-    | otherwise = markDependentsDirty cid nb{nbCells = map upd (nbCells nb)}
+    | not significant = nb{nbCells = map keepSource (nbCells nb)}
+    | otherwise = markDependentsDirty cid nb{nbCells = map invalidate (nbCells nb)}
   where
-    changed = case find (\c -> cellId c == cid) (nbCells nb) of
-        Just c -> cellSource c /= src
-        Nothing -> False
-    upd c
+    (changed, significant) = case find (\c -> cellId c == cid) (nbCells nb) of
+        Just c -> (cellSource c /= src, editRequiresRun c src)
+        Nothing -> (False, False)
+    keepSource c
+        | cellId c == cid = c{cellSource = src}
+        | otherwise = c
+    invalidate c
         | cellId c == cid = c{cellSource = src, cellDirty = True}
         | otherwise = c
 

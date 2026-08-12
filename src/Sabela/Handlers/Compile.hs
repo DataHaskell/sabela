@@ -32,6 +32,7 @@ import Sabela.Model (
     NotebookEvent (..),
     OutputItem (..),
  )
+import Sabela.Parse.Change (significantCodeChange)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (
     App (..),
@@ -73,6 +74,7 @@ runCompilePhase app gen cplan affectedCells = do
 {- | What a @:load@ would change: modules whose source moved, plus orphans the
 kernel still holds. Shared with the planner, which needs the same answer
 /before/ running to know the interpreted namespace is about to be wiped.
+Comment-and-layout drift is not a move: the kernel holds the same code.
 -}
 moduleDiff ::
     M.Map Text Text -> CompilePlan -> (M.Map Text Text, S.Set Text)
@@ -81,7 +83,8 @@ moduleDiff loaded cplan =
     , M.keysSet loaded `S.difference` M.keysSet (cpModules cplan)
     )
   where
-    keepChanged new old = if new == old then Nothing else Just new
+    keepChanged new old =
+        if significantCodeChange old new then Just new else Nothing
 
 -- | Will the next compile @:load@, and so wipe every interpreted binding?
 moduleReloadPending :: M.Map Text Text -> CompilePlan -> Bool

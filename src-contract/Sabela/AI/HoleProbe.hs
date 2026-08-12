@@ -12,6 +12,7 @@ module Sabela.AI.HoleProbe (
 ) where
 
 import Data.Aeson (Value, object, (.=))
+import Data.Char (isAlphaNum, isLower)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -49,7 +50,41 @@ goalTypeOf :: Text -> Text
 goalTypeOf = T.strip . T.takeWhile (/= '\n')
 
 producersOf :: Text -> [Text]
-producersOf chunk = nubText [hfWrite f | f <- parseHoleFits chunk, not (hfRefined f)]
+producersOf chunk =
+    nubText
+        [ hfWrite f
+        | f <- parseHoleFits chunk
+        , not (hfRefined f)
+        , not (isBottom (hfType f))
+        ]
+
+{- | Whether a fit inhabits every type rather than producing this one. GHC
+offers @undefined@ and the arithmetic bottoms for any goal, and listing them as
+producers reports an uninhabited type as a solved one.
+-}
+isBottom :: Text -> Bool
+isBottom ty = not (constrained ty) && typeVarish (resultOf ty)
+  where
+    constrained = T.isInfixOf "=>"
+    typeVarish t = case T.uncons (T.strip t) of
+        Just (c, rest) -> isLower c && T.all (\x -> isAlphaNum x || x == '\'') rest
+        Nothing -> False
+
+{- | The type a fit yields once every argument is supplied. Splitting on the
+top-level arrow is enough here: a fit whose result is parenthesised or higher
+rank is not a bottom, and reads as a producer either way.
+-}
+resultOf :: Text -> Text
+resultOf ty = case reverse (T.splitOn "->" (stripForall ty)) of
+    (r : _) -> T.strip r
+    [] -> T.strip ty
+  where
+    stripForall t = case T.breakOn "." (T.strip t) of
+        (before, rest)
+            | "forall" `T.isPrefixOf` T.strip before
+            , not (T.null rest) ->
+                T.drop 1 rest
+        _ -> t
 
 dedupOnGoal :: [HoleProbeAnswer] -> [HoleProbeAnswer]
 dedupOnGoal = go []

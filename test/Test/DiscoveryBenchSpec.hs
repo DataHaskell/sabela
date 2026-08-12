@@ -15,7 +15,7 @@ changes; a recorder executable is still owed (see the pending note below).
 -}
 module Test.DiscoveryBenchSpec (spec) where
 
-import Control.Monad (forM_, unless)
+import Control.Monad (filterM, forM_, unless)
 import Data.Aeson (
     FromJSON (..),
     eitherDecodeFileStrict,
@@ -30,6 +30,7 @@ import Data.Maybe (isJust)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
+import System.Directory (doesFileExist)
 import Test.Hspec
 
 import Sabela.AI.HoogleClient (HoogleHit (..))
@@ -69,15 +70,25 @@ corpusPath, fixturePath :: FilePath
 corpusPath = "data/eval/discovery-corpus.json"
 fixturePath = "data/eval/hoogle-fixture.json"
 
+{- | Nothing under @data\/@ is tracked, so a fresh checkout has no recording and
+the bench reports itself absent. Reading it at construction time would otherwise
+throw and take the whole suite down before a single example runs.
+-}
 spec :: Spec
 spec = describe "discovery benchmark (replayed)" $ do
-    loaded <- runIO (eitherDecodeFileStrict corpusPath)
-    recorded <- runIO (eitherDecodeFileStrict fixturePath)
-    case (loaded, recorded) of
-        (Right tasks, Right fixture) -> benchSpec tasks (Map.map (map unRow) fixture)
-        (l, f) ->
-            it "corpus and fixture load" $
-                expectationFailure (either id (const "") l ++ either id (const "") f)
+    absent <- runIO (filterM (fmap not . doesFileExist) [corpusPath, fixturePath])
+    if not (null absent)
+        then it "the recording is present" $ pendingWith (unwords ("absent:" : absent))
+        else do
+            loaded <- runIO (eitherDecodeFileStrict corpusPath)
+            recorded <- runIO (eitherDecodeFileStrict fixturePath)
+            case (loaded, recorded) of
+                (Right tasks, Right fixture) ->
+                    benchSpec tasks (Map.map (map unRow) fixture)
+                (l, f) ->
+                    it "corpus and fixture load" $
+                        expectationFailure
+                            (either id (const "") l ++ either id (const "") f)
 
 benchSpec :: [Task] -> Map Text [HoogleHit] -> Spec
 benchSpec tasks fixture = do

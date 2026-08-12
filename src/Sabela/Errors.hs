@@ -2,7 +2,7 @@
 
 module Sabela.Errors where
 
-import Data.Char (isDigit)
+import Data.Char (isDigit, isSpace)
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -163,29 +163,35 @@ entries stand alone, so they are pruned rather than dropped whole.
 listingHeads :: [Text]
 listingHeads = ["Relevant bindings", "Valid hole fits", "Valid refinement"]
 
-{- | Splits a diagnostic at each top-level section marker, keeping the marker's
-own separator on the section it introduces so the text rejoins unchanged.
+{- | Splits a diagnostic into sections, each carrying the separator that
+introduced it so the text rejoins unchanged. GHC bullets and indents its
+frames, so a section is recognised by line content, not by a fixed marker.
 -}
 sections :: Text -> [Text]
-sections body = case earliestMarker body of
-    Nothing -> [body]
-    Just i -> case T.splitAt i body of
-        (before, rest) -> before : go rest
+sections body = case [s | s <- frameSeparators, s `T.isInfixOf` body] of
+    [] -> [body]
+    (sep : _) ->
+        zipWith (rejoin sep) [0 :: Int ..] (groupLines (T.splitOn sep body))
   where
-    go chunk = case earliestMarker (T.drop 1 chunk) of
-        Nothing -> [chunk]
-        Just i -> case T.splitAt (i + 1) chunk of
-            (here, rest) -> here : go rest
+    rejoin sep i g = (if i == 0 then "" else sep) <> T.intercalate sep g
 
-earliestMarker :: Text -> Maybe Int
-earliestMarker t = case [i | m <- markers, Just i <- [offsetOf m]] of
-    [] -> Nothing
-    is -> Just (minimum is)
+{- | Groups lines into sections, starting one at each line that opens a frame
+or a listing. The first group holds the headline, which opens neither.
+-}
+groupLines :: [Text] -> [[Text]]
+groupLines [] = []
+groupLines (l : ls) = go [l] ls
   where
-    offsetOf m = case T.breakOn m t of
-        (before, r) | not (T.null r) -> Just (T.length before)
-        _ -> Nothing
-    markers = [sep <> h | sep <- frameSeparators, h <- sectionHeads]
+    go acc [] = [reverse acc]
+    go acc (x : xs)
+        | headsSection x = reverse acc : go [x] xs
+        | otherwise = go (x : acc) xs
+
+-- | Whether a line opens a section, ignoring GHC's indentation and bullet.
+headsSection :: Text -> Bool
+headsSection l = any (`T.isPrefixOf` bare) sectionHeads
+  where
+    bare = T.dropWhile (\c -> isSpace c || c == '\8226') l
 
 sectionHeads :: [Text]
 sectionHeads = ["In ", "Relevant bindings", "Valid hole fits", "Valid refinement"]

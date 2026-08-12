@@ -209,6 +209,7 @@ executeRestartOnly app gen = do
         _ <- runEnvNode app gen nb
         broadcast app EvExecutionDone
 
+executeNonHaskellCells :: App -> Int -> IO ()
 executeNonHaskellCells app gen = do
     debugLog app "[handler] executeNonHaskellCells: starting"
     whenCurrentGen app gen $ do
@@ -234,11 +235,19 @@ executeAffected app gen editedCid = do
     executePlan app gen nb plan
     whenCurrentGen app gen $ broadcast app EvExecutionDone
 
+{- | The compile phase runs even with no compile cells in the plan: a kernel
+still holding orphaned modules needs the reconciling unload, or ModulesWiped
+reports a pending wipe forever and every edit re-runs the whole notebook.
+-}
 runPlanPhases :: App -> Int -> ExecutionPlan -> IO ()
 runPlanPhases app gen plan = do
     broadcastPlanErrors app plan Nothing
     outcome <-
-        if null (epCompileCells plan)
-            then pure CompileNoChange
-            else runCompilePhase app gen (epCompilePlan plan) (epCompileCells plan)
+        if epRunsAnything plan
+            then runCompilePhase app gen (epCompilePlan plan) (epCompileCells plan)
+            else pure CompileNoChange
     runPostCompile app gen plan outcome (epCellsToRun plan)
+
+epRunsAnything :: ExecutionPlan -> Bool
+epRunsAnything plan =
+    not (null (epCellsToRun plan)) || not (null (epCompileCells plan))

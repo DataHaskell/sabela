@@ -43,6 +43,7 @@ import Test.HoleRewriteGen (
     genHeadSource,
     genIdent,
     holeBlob,
+    namedHoleBlob,
     scopeDiag,
     twoHoleDiag,
     weakHoleDiag,
@@ -104,6 +105,16 @@ provenanceSpec = describe "provenance" $ do
 
 selectionSpec :: Spec
 selectionSpec = describe "selecting the harness's own hole" $ do
+    prop "still asks about an unresolved head when the caller's hole was answered" $
+        forAll (genDistinct 2) $ \[headName, ownHole] ->
+            let diagnostic =
+                    namedHoleBlob ownHole "Int" [("maxBound", "Int")]
+                        <> "\n\n"
+                        <> scopeDiag 88464 headName
+                src = "x = _\ny = " <> headName <> " 1\n"
+             in fmap (\(nm, _, _) -> nm) (holeRewriteSource diagnostic src)
+                    === Just headName
+
     prop "reads the hole it wrote, not one the candidate already carried" $
         forAll (genDistinct 4) $ \[headName, ownBinder, theirs, ours] ->
             let prov = provenanceOf headName (twoHoleDiag ownBinder theirs ours)

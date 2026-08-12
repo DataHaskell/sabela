@@ -33,6 +33,10 @@ data CellSymbols = CellSymbols
     , csUses :: Set Text
     , csProvides :: Set Text
     , csClassMethods :: Set Text
+    , csMutates :: Set Text
+    -- ^ Bindings this cell passes to a known mutator ('writeIORef' & co).
+    , csInstanceTypes :: Set Text
+    -- ^ Type names this cell defines instances for.
     }
     deriving (Eq, Show)
 
@@ -43,13 +47,85 @@ extractFromModule m =
         defs = S.unions (map topLevelDefsFromDecl topDecls)
         rawUses = S.unions (map declFreeVars topDecls)
         instUses = S.unions (map instanceTypeUses insts)
-        uses = (rawUses `S.union` instUses) `S.difference` defs
+        conUses = patternConUses m
+        tyUses = typeNameUses m
+        uses =
+            S.unions [rawUses, instUses, conUses, tyUses]
+                `S.difference` defs
      in CellSymbols
             { csDefs = defs
             , csUses = uses
             , csProvides = S.unions (map instanceMethodNames insts)
             , csClassMethods = S.unions (map classMethodNames topDecls)
+            , csMutates = mutatedNames m
+            , csInstanceTypes = S.unions (map instanceTypeUses insts)
             }
+
+-- | Constructors matched in patterns: @case c of Red -> …@ depends on @Red@.
+patternConUses :: Hs.HsModule Hs.GhcPs -> Set Text
+patternConUses m =
+    S.fromList
+        [ rdrText (unLoc lcon)
+        | Hs.ConPat _ lcon _ <- universeBi m :: [Hs.Pat Hs.GhcPs]
+        ]
+
+-- | Type-level names anywhere: signatures, annotations, deriving clauses.
+typeNameUses :: Hs.HsModule Hs.GhcPs -> Set Text
+typeNameUses m =
+    S.fromList
+        [ name
+        | Hs.HsTyVar _ _ ln <- universeBi m :: [Hs.HsType Hs.GhcPs]
+        , let name = rdrText (unLoc ln)
+        , isUpperName name
+        ]
+
+{- | Names passed as the target of a known in-place mutator, e.g.
+@writeIORef ref 5@ or @ref \`modifyMVar_\` step@. The reactive graph treats a
+mutation as an input to every reader of that binding.
+-}
+mutatedNames :: Hs.HsModule Hs.GhcPs -> Set Text
+mutatedNames m =
+    S.fromList
+        [ target
+        | e <- universeBi m :: [Hs.HsExpr Hs.GhcPs]
+        , Just target <- [mutationTarget e]
+        ]
+
+mutationTarget :: Hs.HsExpr Hs.GhcPs -> Maybe Text
+mutationTarget e = case e of
+    Hs.HsApp _ f a
+        | Just fn <- varName (unLoc f)
+        , S.member fn mutators ->
+            varName (unLoc a)
+    Hs.OpApp _ a op _
+        | Just fn <- varName (unLoc op)
+        , S.member fn mutators ->
+            varName (unLoc a)
+    _ -> Nothing
+  where
+    varName (Hs.HsVar _ ln) = Just (rdrText (unLoc ln))
+    varName _ = Nothing
+
+mutators :: Set Text
+mutators =
+    S.fromList $
+        map
+            T.pack
+            [ "writeIORef"
+            , "modifyIORef"
+            , "modifyIORef'"
+            , "atomicWriteIORef"
+            , "atomicModifyIORef"
+            , "atomicModifyIORef'"
+            , "putMVar"
+            , "takeMVar"
+            , "swapMVar"
+            , "modifyMVar"
+            , "modifyMVar_"
+            , "writeTVar"
+            , "modifyTVar"
+            , "modifyTVar'"
+            ]
 
 instanceDecls :: Hs.HsModule Hs.GhcPs -> [Hs.InstDecl Hs.GhcPs]
 instanceDecls m = [inst | Hs.InstD _ inst <- map unLoc (Hs.hsmodDecls m)]

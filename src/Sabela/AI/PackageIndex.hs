@@ -12,6 +12,7 @@ module Sabela.AI.PackageIndex (
     modulesMatching,
     packagesMatchingSynopsis,
     storePackageDb,
+    storeDirForCompiler,
     installedPackages,
 ) where
 
@@ -163,7 +164,7 @@ storePackageDb = do
         Nothing -> do
             home <- getHomeDirectory
             let root = home </> ".cabal" </> "store"
-                prefix = "ghc-" ++ showVersion fullCompilerVersion ++ "-"
+                ver = showVersion fullCompilerVersion
             ok <- doesDirectoryExist root
             if not ok
                 then pure Nothing
@@ -173,7 +174,7 @@ storePackageDb = do
                         filterExisting
                             [ root </> e </> "package.db"
                             | e <- entries
-                            , prefix `isPrefixOf` e
+                            , storeDirForCompiler ver e
                             ]
                     pure (listToMaybe dbs)
   where
@@ -183,6 +184,15 @@ storePackageDb = do
         go (p : ps) = do
             ok <- doesDirectoryExist p
             if ok then (p :) <$> go ps else go ps
+
+{- | Whether a @~\/.cabal\/store@ entry holds this compiler's packages. Cabal
+writes @ghc-\<version\>@, and @ghc-\<version\>-\<abi\>@ since it began
+disambiguating ABIs; both layouts coexist in one store.
+-}
+storeDirForCompiler :: String -> FilePath -> Bool
+storeDirForCompiler ver e = e == base || (base ++ "-") `isPrefixOf` e
+  where
+    base = "ghc-" ++ ver
 
 safeList :: FilePath -> IO [FilePath]
 safeList dir = do

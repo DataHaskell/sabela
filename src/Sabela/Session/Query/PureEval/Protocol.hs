@@ -23,20 +23,31 @@ import Sabela.Output (
     pureValueMarker,
  )
 
+{- | Brackets a probe with extended defaulting. @typeOf@ needs a concrete type,
+and a defaultable candidate carries @Typeable a@ beside @Num a@, which standard
+defaulting refuses. The setting is restored so cells keep defaulting as before.
+-}
+withExtendedDefaulting :: Text -> Text
+withExtendedDefaulting probe =
+    ":set -XExtendedDefaultRules\n"
+        <> probe
+        <> "\n:set -XNoExtendedDefaultRules"
+
 admissionCommand :: Text -> Text
 admissionCommand expr =
-    ":cmd ((\\_sabelaCandidate -> if (Prelude.==) "
-        <> "(Data.Typeable.typeRepTyCon (Data.Typeable.typeOf _sabelaCandidate)) "
-        <> "(Data.Typeable.typeRepTyCon (Data.Typeable.typeRep "
-        <> "(Data.Proxy.Proxy :: Data.Proxy.Proxy (Prelude.IO ())))) "
-        <> "then (Prelude.>>) (Prelude.putStrLn "
-        <> quoted pureIOMarker
-        <> ") ((Prelude.>>) (Prelude.putStrLn (Prelude.show (Data.Typeable.typeOf _sabelaCandidate))) (Prelude.pure \"\")) "
-        <> "else (Prelude.>>) (Prelude.putStrLn "
-        <> quoted pureAdmittedMarker
-        <> ") ((Prelude.>>) (Prelude.putStrLn (Prelude.show (Data.Typeable.typeOf _sabelaCandidate))) (Prelude.pure \"\"))) ("
-        <> expr
-        <> "))"
+    withExtendedDefaulting $
+        ":cmd ((\\_sabelaCandidate -> if (Prelude.==) "
+            <> "(Data.Typeable.typeRepTyCon (Data.Typeable.typeOf _sabelaCandidate)) "
+            <> "(Data.Typeable.typeRepTyCon (Data.Typeable.typeRep "
+            <> "(Data.Proxy.Proxy :: Data.Proxy.Proxy (Prelude.IO ())))) "
+            <> "then (Prelude.>>) (Prelude.putStrLn "
+            <> quoted pureIOMarker
+            <> ") ((Prelude.>>) (Prelude.putStrLn (Prelude.show (Data.Typeable.typeOf _sabelaCandidate))) (Prelude.pure \"\")) "
+            <> "else (Prelude.>>) (Prelude.putStrLn "
+            <> quoted pureAdmittedMarker
+            <> ") ((Prelude.>>) (Prelude.putStrLn (Prelude.show (Data.Typeable.typeOf _sabelaCandidate))) (Prelude.pure \"\"))) ("
+            <> expr
+            <> "))"
 
 evalCommand :: Text -> Text
 evalCommand expr =

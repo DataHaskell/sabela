@@ -82,6 +82,7 @@ import qualified Test.ProseRoundTripSpec as ProseRoundTripSpec
 import qualified Test.ProvenanceWireSpec as ProvenanceWireSpec
 import qualified Test.ProviderAdapterSpec as ProviderAdapterSpec
 import qualified Test.ProviderSelectSpec as ProviderSelectSpec
+import qualified Test.PureEvalProtocolSpec as PureEvalProtocolSpec
 import qualified Test.QualifiedSeamSpec as QualifiedSeamSpec
 import qualified Test.QueryConcurrencySpec as QueryConcurrencySpec
 import qualified Test.QueryDistillSpec as QueryDistillSpec
@@ -139,6 +140,7 @@ allSpecsB = do
     GateCandidatesSpec.spec
     UnshowableValueSpec.spec
     HarnessFrameSpec.spec
+    PureEvalProtocolSpec.spec
     HoleFitsJsonSpec.spec
     FitRuleSpec.spec
     ReadCellFitsSpec.spec

@@ -185,6 +185,8 @@ jobs:
         run: |
           touch cabal.project
           echo "packages: $GITHUB_WORKSPACE/source/." >> cabal.project
+          echo "packages: $GITHUB_WORKSPACE/source/siza-client/" >> cabal.project
+          echo "packages: $GITHUB_WORKSPACE/source/sabela-notebook/" >> cabal.project
           cat cabal.project
       - name: sdist
         run: |
@@ -199,10 +201,18 @@ jobs:
           PKGDIR_sabela="$(find "$GITHUB_WORKSPACE/unpacked" -maxdepth 1 -type d -regex '.*/sabela-[0-9.]*')"
           test -n "$PKGDIR_sabela" || { echo "sdist unpack produced no sabela-<version> directory"; exit 1; }
           echo "PKGDIR_sabela=${PKGDIR_sabela}" >> "$GITHUB_ENV"
+          PKGDIR_siza_client="$(find "$GITHUB_WORKSPACE/unpacked" -maxdepth 1 -type d -regex '.*/siza-client-[0-9.]*')"
+          test -n "$PKGDIR_siza_client" || { echo "sdist unpack produced no siza-client-<version> directory"; exit 1; }
+          echo "PKGDIR_siza_client=${PKGDIR_siza_client}" >> "$GITHUB_ENV"
+          PKGDIR_sabela_notebook="$(find "$GITHUB_WORKSPACE/unpacked" -maxdepth 1 -type d -regex '.*/sabela-notebook-[0-9.]*')"
+          test -n "$PKGDIR_sabela_notebook" || { echo "sdist unpack produced no sabela-notebook-<version> directory"; exit 1; }
+          echo "PKGDIR_sabela_notebook=${PKGDIR_sabela_notebook}" >> "$GITHUB_ENV"
           rm -f cabal.project cabal.project.local
           touch cabal.project
           touch cabal.project.local
           echo "packages: ${PKGDIR_sabela}" >> cabal.project
+          echo "packages: ${PKGDIR_siza_client}" >> cabal.project
+          echo "packages: ${PKGDIR_sabela_notebook}" >> cabal.project
           echo "package sabela" >> cabal.project
           echo "    ghc-options: -Werror=missing-methods -Werror=missing-fields" >> cabal.project
           echo "package sabela" >> cabal.project
@@ -214,7 +224,7 @@ jobs:
           echo "    ghc-options: -Werror=incomplete-patterns" >> cabal.project
           cat >> cabal.project <<EOF
           EOF
-          $HCPKG list --simple-output --names-only | perl -ne 'for (split /\s+/) { print "constraints: any.$_ installed\n" unless /^(sabela)$/; }' >> cabal.project.local
+          $HCPKG list --simple-output --names-only | perl -ne 'for (split /\s+/) { print "constraints: any.$_ installed\n" unless /^(sabela|siza-client|sabela-notebook)$/; }' >> cabal.project.local
           cat cabal.project
           cat cabal.project.local
       - name: dump install plan
@@ -240,6 +250,7 @@ jobs:
       - name: tests
         run: |
           $CABAL v2-test $ARG_COMPILER $ARG_TESTS $ARG_BENCH sabela:sabela-test --test-show-details=direct
+          $CABAL v2-test $ARG_COMPILER $ARG_TESTS $ARG_BENCH siza-client:siza-client-test --test-show-details=direct
       - name: cabal check
         run: |
           cd ${PKGDIR_sabela} || false

@@ -37,10 +37,15 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal', 'cabal.project', 'cabal.project.freeze') }}
           restore-keys: ${{ runner.os }}-${{ matrix.ghc }}-
       - name: Build dependencies
-        run: cabal build sabela:sabela-test --only-dependencies
+        run: cabal build sabela:sabela-test siza-client:siza-client-test --only-dependencies
       - name: Build test suite
-        run: cabal build sabela:sabela-test
+        run: cabal build sabela:sabela-test siza-client:siza-client-test
       # Runs the full suite; Test.RenderSpec specifically pins UTF-8 /
       # newline / on-disk rendering correctness on the Windows codepage.
       - name: Run tests
         run: cabal test sabela:sabela-test
+      # The client suite has never run on Windows. It holds the path handling
+      # and cache logic that a standalone `cabal install siza` depends on, so
+      # the codepage and separator assumptions need the same guard.
+      - name: Run siza-client tests
+        run: cabal test siza-client:siza-client-test

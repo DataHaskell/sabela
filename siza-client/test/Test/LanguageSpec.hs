@@ -56,6 +56,16 @@ parseSpec = describe "pre-flight parse (the Vetted seam)" $ do
     it "langParse accepts a well-formed binding" $
         parseHaskell "x = 1 + 2" `shouldBe` Right ()
 
+    it "langParse accepts a well-formed I/O binding" $
+        parseHaskell "x <- pure (1 + 2)" `shouldBe` Right ()
+
+    it "locates an error below a bind at its own cell line" $ do
+        res <- preflight advisoryPolicy "x <- pure 1\ny = 2\nf q = "
+        case res of
+            Right _ -> expectationFailure "broken cell should not vet"
+            Left [] -> expectationFailure "expected at least one diagnostic"
+            Left (d : _) -> dgLine d `shouldBe` Just 3
+
 securitySpec :: Spec
 securitySpec = describe "security capability scan (over the AST)" $ do
     it "flags System.Process imports (qualified and aliased too)" $ do
@@ -85,6 +95,8 @@ securitySpec = describe "security capability scan (over the AST)" $ do
 
     it "flags raw handle IO (openFile/withFile/hGetContents/hPutStr)" $ do
         foundCaps "main = openFile \"/etc/passwd\" ReadMode >>= hGetContents"
+            `shouldContain` [RawFileIO]
+        foundCaps "h <- openFile \"/etc/passwd\" ReadMode\nc <- hGetContents h\nprint c"
             `shouldContain` [RawFileIO]
         foundCaps "go = do { h <- openFile \"/x\" WriteMode; hPutStr h \"z\" }"
             `shouldContain` [RawFileIO]
@@ -144,6 +156,24 @@ securitySpec = describe "security capability scan (over the AST)" $ do
                 any (("UnsafeIO" `isInfixOf`) . T.unpack . dgMessage) ds
                     `shouldBe` True
 
+    it "--strict vets regular binding" $ do
+        res <- preflight strictPolicy "x <- pure 1"
+        case res of
+            Right _ -> pure ()
+            Left ds -> expectationFailure ("strict should vet a plain IO bind: " <> show ds)
+
+    it "--strict blocks RawFileIO" $ do
+        res <-
+            preflight
+                strictPolicy
+                "h <- openFile \"/etc/passwd\" ReadMode\nc <- hGetContents h\nprint c"
+        case res of
+            Right _ -> expectationFailure "strict should block openFile"
+            Left ds -> do
+                map dgSeverity ds `shouldSatisfy` all (== Error)
+                any (("RawFileIO" `isInfixOf`) . T.unpack . dgMessage) ds
+                    `shouldBe` True
+
     it "--strict still vets clean code" $ do
         res <- preflight strictPolicy "g :: Int -> Int\ng = (+ 1)"
         either (const False) (const True) res `shouldBe` True
@@ -170,6 +200,9 @@ annotateSpec = describe "annotate (inferred-type pull)" $ do
 
     it "ignores data/class decls (no value bind to annotate)" $
         unsigned "data T = T\nclass C a where m :: a" `shouldBe` []
+
+    it "ignores the binder generated to hold a statement run" $
+        unsigned "x <- pure 1\nprint x" `shouldBe` []
 
     it "assembles inferred types from a stubbed query" $ do
         report <-

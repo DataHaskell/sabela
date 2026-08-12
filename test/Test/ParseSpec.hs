@@ -25,17 +25,17 @@ spec = describe "Sabela.Parse.cellNames" $ do
             cellNames "data Foo = Bar | Baz"
                 `shouldBe` (S.fromList ["Foo", "Bar", "Baz"], S.empty)
 
-        it "newtype: defs={Wrapper, Wrap}, uses={}" $
+        it "newtype: defs={Wrapper, Wrap}, uses={Int}" $
             cellNames "newtype Wrapper = Wrap Int"
-                `shouldBe` (S.fromList ["Wrapper", "Wrap"], S.empty)
+                `shouldBe` (S.fromList ["Wrapper", "Wrap"], S.fromList ["Int"])
 
-        it "type synonym: defs={Name}, uses={}" $
+        it "type synonym: defs={Name}, uses={String}" $
             cellNames "type Name = String"
-                `shouldBe` (S.fromList ["Name"], S.empty)
+                `shouldBe` (S.fromList ["Name"], S.fromList ["String"])
 
-        it "class with methods: defs={MyShow, myShow}, uses={}" $
+        it "class with methods: defs={MyShow, myShow}, uses={String}" $
             cellNames "class MyShow a where\n  myShow :: a -> String"
-                `shouldBe` (S.fromList ["MyShow", "myShow"], S.empty)
+                `shouldBe` (S.fromList ["MyShow", "myShow"], S.fromList ["String"])
 
     describe "typeclass instances feed the reactivity DAG" $ do
         it "instance: no defs, but uses the class name" $ do

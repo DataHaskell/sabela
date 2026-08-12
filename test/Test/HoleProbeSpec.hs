@@ -64,6 +64,27 @@ noProducerBlob =
         , "        x :: Picture (bound at <interactive>:5:1)"
         ]
 
+{- | What GHC really offers for an uninhabited goal: unconstrained bottoms,
+which typecheck at any type and produce nothing. The blob above omitted the
+fits section, so the empty answer was asserted against an easier diagnostic.
+-}
+bottomFitBlob :: Text
+bottomFitBlob =
+    T.unlines
+        [ "<interactive>:5:11: error: [GHC-88464]"
+        , "    • Found hole: _ :: Point"
+        , "    • In the first argument of `line', namely `(_ :: Point)'"
+        , "    • Valid hole fits include"
+        , "        SabelaBase.overflowError :: forall a. a"
+        , "          with SabelaBase.overflowError @Point"
+        , "          (imported from `GHC.Real')"
+        , "        SabelaBase.divZeroError :: forall a. a"
+        , "          with SabelaBase.divZeroError @Point"
+        , "        SabelaBase.underflowError :: a"
+        , "        undefined :: forall a. a"
+        , "        SabelaBase.error :: forall a. [Char] -> a"
+        ]
+
 field :: Text -> Value -> Maybe Value
 field k (Object o) = KM.lookup (Key.fromText k) o
 field _ _ = Nothing
@@ -80,6 +101,13 @@ spec = describe "G3 hole-probe conclusions" $ do
 
     it "an unproducible goal type is a real answer, not a missing one" $
         holeProbeAnswers noProducerBlob `shouldBe` [HoleProbeAnswer "Point" []]
+
+    it "a bottom is not a producer: it inhabits every type and builds none" $
+        holeProbeAnswers bottomFitBlob `shouldBe` [HoleProbeAnswer "Point" []]
+
+    it "a constrained polymorphic fit is still a producer" $
+        holeProbeAnswers twoHoleBlob
+            `shouldBe` [HoleProbeAnswer "Int" ["maxBound", "minBound"]]
 
     it "a diagnostic with no hole yields no answers" $
         holeProbeAnswers "error: Variable not in scope: foo" `shouldBe` []

@@ -28,6 +28,8 @@ import qualified Test.DiscoverToolSpec as DiscoverToolSpec
 import qualified Test.DiscoveryBenchSpec as DiscoveryBenchSpec
 import qualified Test.DisposableAttributionSpec as DisposableAttributionSpec
 import qualified Test.EditDispatchSpec as EditDispatchSpec
+import qualified Test.EditNoOpSpec as EditNoOpSpec
+import qualified Test.EditSignificanceSpec as EditSignificanceSpec
 import qualified Test.EnvStaleSpec as EnvStaleSpec
 import qualified Test.EnvironmentFaultSpec as EnvironmentFaultSpec
 import qualified Test.ErrorIndexSpec as ErrorIndexSpec
@@ -46,6 +48,7 @@ import qualified Test.GatePartialRepairSpec as GatePartialRepairSpec
 import qualified Test.GateSourceTruthSpec as GateSourceTruthSpec
 import qualified Test.GateStageWireSpec as GateStageWireSpec
 import qualified Test.GrammarRouteSpec as GrammarRouteSpec
+import qualified Test.GraphEdgesSpec as GraphEdgesSpec
 import qualified Test.HarnessBinderSpec as HarnessBinderSpec
 import qualified Test.HealthSpec as HealthSpec
 import qualified Test.HoleFitsSpec as HoleFitsSpec
@@ -74,12 +77,14 @@ import qualified Test.NotebookEditSpec as NotebookEditSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.NotebookViolationSpec as NotebookViolationSpec
+import qualified Test.OrphanModuleReconcileSpec as OrphanModuleReconcileSpec
 import qualified Test.OwnedSpec as OwnedSpec
 import qualified Test.PreludeGhciSpec as PreludeGhciSpec
 import qualified Test.PreludeScopeSpec as PreludeScopeSpec
 import qualified Test.PromptUnifySpec as PromptUnifySpec
 import qualified Test.PureEvalLiveSpec as PureEvalLiveSpec
 import qualified Test.QualifiedNameSpec as QualifiedNameSpec
+import qualified Test.ReactivityDoorSpec as ReactivityDoorSpec
 import qualified Test.RefinementFitSpec as RefinementFitSpec
 import qualified Test.RepairEngineSpec as RepairEngineSpec
 import qualified Test.RepairGateSpec as RepairGateSpec
@@ -225,6 +230,11 @@ allSpecsA = do
     SessionResetSpec.spec
     EnvStaleSpec.spec
     EditDispatchSpec.spec
+    EditSignificanceSpec.spec
+    EditNoOpSpec.spec
+    GraphEdgesSpec.spec
+    OrphanModuleReconcileSpec.spec
+    ReactivityDoorSpec.spec
     BridgeGraphSpec.spec
     SkipFeedbackSpec.spec
     TypecheckClassifySpec.spec

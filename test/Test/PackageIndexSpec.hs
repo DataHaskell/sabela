@@ -17,6 +17,7 @@ import Sabela.AI.PackageIndex (
     modulesOfPackage,
     packagesExposingModule,
     parsePackageDump,
+    storeDirForCompiler,
  )
 
 dump :: Text
@@ -50,6 +51,22 @@ spec = do
     nearSpellingSpec
     componentSpec
     indexSpec
+    storeDirSpec
+
+{- | Cabal names a store directory @ghc-\<version\>@, and @ghc-\<version\>-\<abi\>@
+since it began disambiguating ABIs. Matching only the second form silently loses
+the store, and every store-backed answer degrades to the global package db.
+-}
+storeDirSpec :: Spec
+storeDirSpec = describe "the cabal store directory for this compiler" $ do
+    it "matches the bare ghc-<version> layout" $
+        storeDirForCompiler "9.6.7" "ghc-9.6.7" `shouldBe` True
+    it "matches the ghc-<version>-<abi> layout" $
+        storeDirForCompiler "9.10.3" "ghc-9.10.3-fe9c" `shouldBe` True
+    it "rejects another compiler whose version shares a prefix" $
+        storeDirForCompiler "9.6.7" "ghc-9.6.70" `shouldBe` False
+    it "rejects a different compiler entirely" $
+        storeDirForCompiler "9.6.7" "ghc-9.12.2-ea3d" `shouldBe` False
 
 componentSpec :: Spec
 componentSpec = describe "a module component resolves to its module" $ do

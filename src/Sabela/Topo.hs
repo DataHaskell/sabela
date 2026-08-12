@@ -41,6 +41,10 @@ buildDefMap = foldl step (M.empty, M.empty)
                      in (defMap', redefMap)
                 else (defMap, M.insert cid redefs redefMap)
 
+{- | Edges: def\/use ownership, notebook-class method providers, instance
+providers for a used type, and mutators of a used binding. Providers of a kind
+never depend on fellow providers of the same name, or they would form cycles.
+-}
 buildDepGraph :: M.Map Text Int -> [Cell] -> M.Map Int (S.Set Int)
 buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
   where
@@ -53,6 +57,20 @@ buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
             | (cid, s) <- M.toList symsById
             , name <- S.toList (csProvides s `S.intersection` notebookMethods)
             ]
+    mutatorMap =
+        M.fromListWith
+            S.union
+            [ (name, S.singleton cid)
+            | (cid, s) <- M.toList symsById
+            , name <- S.toList (csMutates s)
+            ]
+    instanceMap =
+        M.fromListWith
+            S.union
+            [ (name, S.singleton cid)
+            | (cid, s) <- M.toList symsById
+            , name <- S.toList (csInstanceTypes s)
+            ]
     depsOf c =
         let s = symsById M.! cellId c
             cid = cellId c
@@ -63,7 +81,22 @@ buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
                 | name <- S.toList (csUses s)
                 , pc <- S.toList (M.findWithDefault S.empty name providerMap)
                 ]
-         in S.delete cid $ S.fromList (ownerDeps ++ instanceDeps)
+            mutationDeps =
+                providersOf mutatorMap (csMutates s) (csUses s)
+            typeInstanceDeps =
+                providersOf instanceMap (csInstanceTypes s) (csUses s)
+         in S.delete cid $
+                S.fromList
+                    (ownerDeps ++ instanceDeps ++ mutationDeps ++ typeInstanceDeps)
+
+-- | Cells providing @name@ for each used name, unless this cell provides it too.
+providersOf :: M.Map Text (S.Set Int) -> S.Set Text -> S.Set Text -> [Int]
+providersOf providers ownProvides uses =
+    [ pc
+    | name <- S.toList uses
+    , not (S.member name ownProvides)
+    , pc <- S.toList (M.findWithDefault S.empty name providers)
+    ]
 
 data TopoState = TopoState
     { tsFilteredDeps :: M.Map Int (S.Set Int)

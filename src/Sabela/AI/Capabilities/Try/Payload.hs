@@ -43,6 +43,7 @@ import Sabela.AI.ToolDoc (
     refusalUnsafeSyntax,
  )
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
+import Sabela.Errors (scrubHarnessFrames)
 import Sabela.Session.Materialize (
     CandidateSpec (..),
     DisposableResult (..),
@@ -99,7 +100,7 @@ purePayload result =
                , "outcome" .= pureOutcomeText (ST.pureEvalVerdict result)
                , "type" .= ST.pureEvalInferredType result
                , "stdout" .= ST.pureEvalOutput result
-               , "stderr" .= ST.pureEvalError result
+               , "stderr" .= scrubHarnessFrames (ST.pureEvalError result)
                , "purityAssurance" .= ("type_only" :: Text)
                , "pollutionContract" .= ("semantic_read_only" :: Text)
                , "generation" .= ST.pureEvalGeneration result

@@ -27,6 +27,7 @@ hit =
         , hhPackage = "dataframe"
         , hhType = "FilePath -> IO DataFrame"
         , hhDocs = ""
+        , hhVersion = ""
         }
 
 sources :: ApiRefSources

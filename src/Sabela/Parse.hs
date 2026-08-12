@@ -7,6 +7,7 @@ module Sabela.Parse (
     cellNames,
     cellSymbols,
     parseCellModule,
+    parserDynFlags,
     staleBindings,
     unparseableChunks,
     validateCellShape,
@@ -61,6 +62,8 @@ cellSymbols src =
                     , csUses = uses
                     , csProvides = S.empty
                     , csClassMethods = S.empty
+                    , csMutates = S.empty
+                    , csInstanceTypes = S.empty
                     }
 
 parseCellModule :: Text -> Maybe (Hs.HsModule Hs.GhcPs)
@@ -68,7 +71,7 @@ parseCellModule src =
     let moduleSrc =
             "module SabelaCell where\n"
                 ++ T.unpack (T.unlines (preprocess src))
-     in case P.parseModule moduleSrc dynFlags of
+     in case P.parseModule moduleSrc parserDynFlags of
             POk _ (L _ hsMod) -> Just hsMod
             PFailed _ -> Nothing
 
@@ -83,7 +86,7 @@ unparseableChunks src =
     commentLine l =
         let t = T.stripStart l
          in "--" `T.isPrefixOf` t || "{-#" `T.isPrefixOf` t
-    moduleLevel chunk = case P.parseModule (T.unpack chunk) dynFlags of
+    moduleLevel chunk = case P.parseModule (T.unpack chunk) parserDynFlags of
         POk _ _ -> True
         PFailed _ -> False
 
@@ -123,11 +126,11 @@ analyseChunkRobust chunk =
 
 tryParseChunk :: Text -> Maybe (Set Text, Set Text)
 tryParseChunk chunk =
-    case P.parseDeclaration (T.unpack chunk) dynFlags of
+    case P.parseDeclaration (T.unpack chunk) parserDynFlags of
         POk _ ldecl ->
             let d = unLoc ldecl
              in Just (topLevelDefsFromDecl d, declFreeVars d)
-        PFailed _ -> case P.parseExpression (T.unpack chunk) dynFlags of
+        PFailed _ -> case P.parseExpression (T.unpack chunk) parserDynFlags of
             POk _ lexpr ->
                 let allRefs = collectUses lexpr
                     localBinders = collectBinders lexpr
@@ -151,8 +154,8 @@ splitChunks = go []
         Just (c, _) -> c /= ' ' && c /= '\t'
         Nothing -> False
 
-dynFlags :: DynFlags
-dynFlags =
+parserDynFlags :: DynFlags
+parserDynFlags =
     let base = defaultDynFlags fakeSettings
      in foldl xopt_set base extensions
 
