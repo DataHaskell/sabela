@@ -48,6 +48,8 @@ data ToolName
     | ListFiles
     | ReadFile
     | EvalLive
+    | SetRunMode
+    | RunPending
     deriving (Eq, Show)
 
 parseToolName :: Text -> Maybe ToolName
@@ -81,6 +83,8 @@ parseToolName = \case
     "list_files" -> Just ListFiles
     "read_file" -> Just ReadFile
     "eval_live" -> Just EvalLive
+    "set_run_mode" -> Just SetRunMode
+    "run_pending" -> Just RunPending
     _ -> Nothing
 
 resolveToolCall :: Text -> Value -> Maybe (ToolName, Value)
@@ -151,6 +155,8 @@ toolWireName = \case
     ListFiles -> "list_files"
     ReadFile -> "read_file"
     EvalLive -> "eval_live"
+    SetRunMode -> "set_run_mode"
+    RunPending -> "run_pending"
 
 mkTool :: ToolName -> Text -> Value -> ToolDef
 mkTool name desc schema = ToolDef (toolWireName name) desc schema Nothing

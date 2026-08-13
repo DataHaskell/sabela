@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: miss-advice ladder [Discovery].
+Guarantee: a miss returns graded advice, never an overstated hit.
+Entry: 'missAdvice'. Next: Siza.Agent.Discover.Goal.
+-}
 module Siza.Agent.Discover.MissLadder (
     MissOutcome (..),
     missAdvice,

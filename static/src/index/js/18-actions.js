@@ -5,6 +5,17 @@ async function runCell(cellId) {
   api('POST', `run/${cellId}`).catch(console.error);
 }
 
+async function toggleRunMode() {
+  const next = runMode === 'deferred' ? 'reactive' : 'deferred';
+  try {
+    const res = await api('PUT', 'mode', { mode: next });
+    applyRunMode(res.mode);
+    if (next === 'reactive') setStatus('Reactive: draining stale cells...', 'running');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 async function runAll() {
   // Save all editor content without triggering execution
   for (const [id, cm] of Object.entries(editors))

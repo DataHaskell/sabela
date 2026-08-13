@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: locating repair inputs: modules and renames [Gating/Repair].
+Guarantee: the policy spine (DiagClass, tiersFor, acceptRepair) is ../src-contract Sabela.AI.RepairDispatch.
+Entry: 'discoverModules'. Next: Siza.Agent.Repair.
+-}
 module Siza.Agent.RepairLocate (
     discoverModules,
     discoverRenames,

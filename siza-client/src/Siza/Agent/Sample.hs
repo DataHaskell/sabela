@@ -1,3 +1,8 @@
+{- |
+Technique: sample-and-verify worker [Episode].
+Guarantee: dark unless SIZA_SAMPLE_K > 1; the default of 1 keeps it off.
+Entry: 'sampleVerifyOne'. Next: Siza.Agent.Loop.Sampling.
+-}
 module Siza.Agent.Sample (
     SampleVerify (..),
     SampleResult (..),

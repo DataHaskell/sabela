@@ -422,6 +422,8 @@ test-suite sabela-test
                       Test.NotebookFrpSpec,
                       Test.NotebookPictureSpec,
                       Test.BridgeGraphSpec,
+                      Test.DeferredModeSpec,
+                      Test.RunModeWireSpec,
                       Test.EditDispatchSpec,
                       Test.EditNoOpSpec,
                       Test.EditSignificanceSpec,

@@ -12,8 +12,9 @@ module Sabela.AI.Capabilities.Try.Payload.Checked (
     runRecordNote,
 ) where
 
-import Data.Aeson (Value (..))
+import Data.Aeson (Result (..), Value (..), fromJSON)
 import Data.Text (Text)
+import Sabela.AI.CellResult (CellOutcome (..), CellResult (..))
 
 import Sabela.AI.Capabilities.Try.Tier (disposableEvaluated)
 import Sabela.Session.Materialize (CandidateSpec, DisposableResult)
@@ -43,12 +44,14 @@ candidate. Computed from that payload, never assumed by the gate.
 data RunRecord = RunNotAttempted | RunUnderway | RunRecorded
     deriving (Eq, Show)
 
-{- | A payload's execution field, read as a run record: a null field is a cell
-nothing ran, anything else is the record of a run.
+{- | A payload's execution field, read as a run record: null and a Deferred
+summary are both a cell nothing ran; anything else is the record of a run.
 -}
 runRecordOf :: Value -> RunRecord
 runRecordOf Null = RunNotAttempted
-runRecordOf _ = RunRecorded
+runRecordOf v = case fromJSON v of
+    Success cr | crOutcome cr == Deferred -> RunNotAttempted
+    _ -> RunRecorded
 
 {- | What is left open once the gate's finding is scoped to the gate. Each
 answer is a different sentence, so no payload can be read as claiming the

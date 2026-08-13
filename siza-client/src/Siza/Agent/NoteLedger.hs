@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: note consistency ledger [Context Economy].
+Guarantee: exercised only by specs; the live loop does not call it.
+Entry: 'noteLedgerOk'.
+-}
 module Siza.Agent.NoteLedger (
     askConsistent,
     assertedLive,

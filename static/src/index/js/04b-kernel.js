@@ -4,6 +4,7 @@
 
 let kernelEpoch = null;
 let staleCellIds = new Set();
+let runMode = 'reactive';
 const kernelLog = [];
 
 const KERNEL_CHIP_LABELS = {
@@ -28,9 +29,32 @@ async function refreshKernelState() {
   try {
     const status = await api('GET', 'kernel');
     renderKernelChip(status.state);
+    if (status.runMode) applyRunMode(status.runMode);
   } catch (_e) {
     /* leave the chip showing its last known value */
   }
+}
+
+function applyRunMode(mode) {
+  runMode = mode;
+  const btn = document.getElementById('btn-run-mode');
+  if (btn) {
+    btn.classList.toggle('deferred', mode === 'deferred');
+    btn.title =
+      mode === 'deferred'
+        ? 'Deferred: edits only mark cells stale. Click to resume reactive runs.'
+        : 'Reactive: edits run automatically. Click to defer runs.';
+  }
+  paintRunAllLabel();
+}
+
+// In deferred mode the Run All button doubles as the drain, so its label
+// carries the size of the pending set.
+function paintRunAllLabel() {
+  const label = document.getElementById('run-all-label');
+  if (!label) return;
+  const n = staleCellIds.size;
+  label.textContent = runMode === 'deferred' && n > 0 ? 'Run ' + n + ' stale' : 'Run all';
 }
 
 function applyNotebookState(epoch, staleIds) {
@@ -47,6 +71,7 @@ function paintStaleCells() {
     const id = parseInt(el.dataset.id, 10);
     el.classList.toggle('stale', staleCellIds.has(id));
   });
+  paintRunAllLabel();
 }
 
 function showEpochBanner() {

@@ -17,6 +17,7 @@ import qualified Test.CompileGateSpec as CompileGateSpec
 import qualified Test.CompileGateWireSpec as CompileGateWireSpec
 import qualified Test.CompiledPlanSpec as CompiledPlanSpec
 import qualified Test.DefaultExtsSpec as DefaultExtsSpec
+import qualified Test.DeferredModeSpec as DeferredModeSpec
 import qualified Test.DepRepairSpec as DepRepairSpec
 import qualified Test.DiagnoseAdviceSpec as DiagnoseAdviceSpec
 import qualified Test.DiagnoseSpec as DiagnoseSpec
@@ -90,6 +91,7 @@ import qualified Test.RepairEngineSpec as RepairEngineSpec
 import qualified Test.RepairGateSpec as RepairGateSpec
 import qualified Test.RepairGuardSpec as RepairGuardSpec
 import qualified Test.RepairTraceWireSpec as RepairTraceWireSpec
+import qualified Test.RunModeWireSpec as RunModeWireSpec
 import qualified Test.ScratchScopeSpec as ScratchScopeSpec
 import qualified Test.ScratchVetSpec as ScratchVetSpec
 import qualified Test.ScratchpadKeySpec as ScratchpadKeySpec
@@ -230,6 +232,8 @@ allSpecsA = do
     SessionResetSpec.spec
     EnvStaleSpec.spec
     EditDispatchSpec.spec
+    DeferredModeSpec.spec
+    RunModeWireSpec.spec
     EditSignificanceSpec.spec
     EditNoOpSpec.spec
     GraphEdgesSpec.spec

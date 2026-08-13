@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: the discover search pipeline entry [Discovery].
+Guarantee: the search tool lives here; Siza.Agent.GrammarCards (card surfacing) and Siza.Discover (server locator) are unrelated.
+Entry: 'runDiscoverGoal'. Next: Siza.Agent.Discover.Merge.
+-}
 module Siza.Agent.DiscoverTool (
     blankPayload,
     discoverArgs,

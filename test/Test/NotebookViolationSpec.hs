@@ -4,10 +4,12 @@ module Test.NotebookViolationSpec (spec) where
 
 import Data.Either (isRight)
 import Data.Text (Text)
+import Sabela.Api (InsertAt (..))
 import Sabela.Handlers.Shared (
     DefConflict (..),
     NotebookViolation (..),
     checkedAppend,
+    checkedInsertAt,
     pendingError,
  )
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
@@ -49,3 +51,24 @@ spec = describe "Sabela.Handlers.Shared — AI insert invariants" $ do
         case checkedAppend (hsCell 9 "x = 2") (nb [redCell 5 "boom", hsCell 1 "x = 1"]) of
             Left (VPendingError cid _) -> cid `shouldBe` 5
             other -> expectationFailure ("expected VPendingError, got " <> show other)
+
+    it "checkedInsertAt lands the cell directly after its anchor" $
+        case checkedInsertAt
+            (After 1)
+            (hsCell 9 "y = 2")
+            (nb [hsCell 1 "x = 1", hsCell 2 "z = 3"]) of
+            Right nb' -> map cellId (nbCells nb') `shouldBe` [1, 9, 2]
+            Left v -> expectationFailure ("unexpectedly rejected: " <> show v)
+
+    it "checkedInsertAt AtBeginning prepends" $
+        case checkedInsertAt AtBeginning (hsCell 9 "y = 2") (nb [hsCell 1 "x = 1"]) of
+            Right nb' -> map cellId (nbCells nb') `shouldBe` [9, 1]
+            Left v -> expectationFailure ("unexpectedly rejected: " <> show v)
+
+    it "checkedInsertAt keeps the pending-error and duplicate gates" $ do
+        case checkedInsertAt (After 1) (hsCell 9 "y = 2") (nb [redCell 1 "boom"]) of
+            Left (VPendingError cid _) -> cid `shouldBe` 1
+            other -> expectationFailure ("expected VPendingError, got " <> show other)
+        case checkedInsertAt (After 1) (hsCell 9 "x = 2") (nb [hsCell 1 "x = 1"]) of
+            Left (VDuplicateDef dc) -> dcName dc `shouldBe` "x"
+            other -> expectationFailure ("expected VDuplicateDef, got " <> show other)

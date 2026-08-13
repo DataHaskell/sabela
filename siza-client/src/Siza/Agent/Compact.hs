@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The elision contract, shared by every path that drops bytes: which
-results may never be dropped, the index a dropped result is read back by, and
-the stub that names both.
+{- |
+Technique: transcript elision [Context Economy].
+Guarantee: 'mustKeep' (shared with Siza.Agent.EmitLedger): no elision drops a diagnostic, verdict, or failure.
+Entry: 'compactWith'. Next: Siza.Agent.Recall.
 -}
 module Siza.Agent.Compact (
     compactSeed,

@@ -62,6 +62,7 @@ spec = describe "CellResult typed carving (R2-2)" $ do
             roundTrips (Aborted Interrupted)
             roundTrips (Aborted Superseded)
             roundTrips (Aborted TimedOut)
+            roundTrips Deferred
         it "round-trips a full CellResult" $
             roundTrips
                 ( CellResult
@@ -84,6 +85,8 @@ spec = describe "CellResult typed carving (R2-2)" $ do
         it "Aborted tags as Aborted" $
             tagOf (toJSON (Aborted TimedOut))
                 `shouldBe` Just (String "Aborted")
+        it "Deferred tags as Deferred" $
+            tagOf (toJSON Deferred) `shouldBe` Just (String "Deferred")
 
     describe "the ok == Succeeded law" $ do
         it "ok is true exactly for Succeeded" $ do
@@ -91,6 +94,7 @@ spec = describe "CellResult typed carving (R2-2)" $ do
             okCellResult (CellResult (Raised "e") [] []) `shouldBe` False
             okCellResult (CellResult (Rejected [cerr]) [] []) `shouldBe` False
             okCellResult (CellResult (Aborted Interrupted) [] []) `shouldBe` False
+            okCellResult deferredCellResult `shouldBe` False
         it "the wire ok field agrees with okCellResult" $ do
             let wireOk cr = case toJSON cr of
                     Object o -> KM.lookup "ok" o

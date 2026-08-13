@@ -54,9 +54,10 @@ spec = describe "significantCodeChange (does an edit change what the kernel sees
         it "a removed binding is a change" $
             significantCodeChange "x = 1\ny = 2" "x = 1" `shouldBe` True
 
-        it "an edit inside a string literal is a change, even one that looks\
-           \ like a comment" $
-            significantCodeChange "s = \"a\"" "s = \"a -- b\"" `shouldBe` True
+        it
+            "an edit inside a string literal is a change, even one that looks\
+            \ like a comment"
+            $ significantCodeChange "s = \"a\"" "s = \"a -- b\"" `shouldBe` True
 
         it "a bare-expression edit is a change" $
             significantCodeChange "df |> D.take 5" "df |> D.take 6" `shouldBe` True

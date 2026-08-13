@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: turn wrap-up [Episode]: budget nudges, unconfirmed writes, final stop line.
+Guarantee: 'WriteEcho' counts unconfirmed writes by parsing sabela's 'AckEnvelope'.
+Entry: 'budgetView'. Next: Siza.Agent.Loop.Verdict.
+-}
 module Siza.Agent.Loop.WrapUp (
     BudgetView (..),
     budgetView,
@@ -28,7 +31,7 @@ import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.AI.WriteAck (AckEnvelope (..), parseAckEnvelope)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (isOwningTool)
+import Siza.Agent.GrammarCards (isOwningTool)
 import Siza.Agent.Loop.Support (factsBlock, nudgeFloor, nudgeK)
 import Siza.Agent.Owned (
     OwnedCell (..),

@@ -20,12 +20,13 @@ module Sabela.AI.Capabilities.Edit (
     executeCell,
 ) where
 
-import Data.Aeson (Value, object, (.=))
+import Control.Monad (when)
+import Data.Aeson (Value (..), object, toJSON, (.=))
 import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Sabela.AI.Capabilities.Edit.Ack (ackWriteAndRun, withNote)
+import Sabela.AI.Capabilities.Edit.Ack (WriteRun (..), ackWriteAndRun, withNote)
 import Sabela.AI.Capabilities.Edit.Admission (
     Admission (..),
     admissionNotes,
@@ -67,18 +68,22 @@ import Sabela.AI.Capabilities.Util (
     parseCellLang,
     parseCellType,
  )
+import Sabela.AI.CellResult (deferredCellResult)
 import Sabela.AI.Store
 import Sabela.AI.Types
+import Sabela.AI.WriteAck (deferredNote)
 import Sabela.Anthropic.Types (CancelToken)
-import Sabela.Api (errorJson)
+import Sabela.Api (InsertAt (..), errorJson)
 import Sabela.Handlers (
     NotebookViolation (..),
     ReactiveNotebook (..),
     checkedAppend,
+    checkedInsertAt,
     pendingError,
  )
 import Sabela.Model
 import Sabela.Parse (validateCellShape)
+import Sabela.Reactivity (markRootedDirty)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
 
@@ -142,9 +147,25 @@ execInsertCell app store rn cancelTok input = do
                     | Just prop <- sigBodyProposalFor lang cellTp src' ->
                         pure (errOutcome prop)
                 _ -> do
-                    nid <- freshCellId (appNotebook app)
-                    let cell = Cell nid cellTp lang src' [] Nothing True
-                    routeInsert app store rn cancelTok input cell sub insertRetryFuel
+                    nb <- readNotebook (appNotebook app)
+                    case placementOf (fieldInt "after_cell_id" input) nb of
+                        Left err -> pure (errOutcome (errorJson err))
+                        Right mAt -> do
+                            nid <- freshCellId (appNotebook app)
+                            let cell = Cell nid cellTp lang src' [] Nothing True
+                            routeInsert app store rn cancelTok input cell sub mAt insertRetryFuel
+
+{- | Where an insert lands: absent means append, -1 the top, otherwise after
+the named cell — refused up front when that anchor does not exist. An anchor
+deleted mid-flight degrades to append rather than failing the write.
+-}
+placementOf :: Maybe Int -> Notebook -> Either Text (Maybe InsertAt)
+placementOf Nothing _ = Right Nothing
+placementOf (Just (-1)) _ = Right (Just AtBeginning)
+placementOf (Just n) nb
+    | Just _ <- lookupCell n nb = Right (Just (After n))
+    | otherwise =
+        Left ("after_cell_id " <> T.pack (show n) <> " does not name a cell.")
 
 {- | Sends the write down the one route its notebook state allows. A red
 notebook never reaches the plain append, so no branch can land a cell that
@@ -158,9 +179,10 @@ routeInsert ::
     Value ->
     Cell ->
     Submission ->
+    Maybe InsertAt ->
     Int ->
     IO ToolOutcome
-routeInsert app store rn cancelTok input cell sub fuel = do
+routeInsert app store rn cancelTok input cell sub mAt fuel = do
     peek <- readNotebook (appNotebook app)
     let redWithSource = do
             (cid, _) <- pendingError peek
@@ -193,6 +215,7 @@ routeInsert app store rn cancelTok input cell sub fuel = do
                         cell{cellSource = admittedSource admission}
                         sub
                         (`admissionNotes` admission)
+                        mAt
                         fuel
 
 supersede ::
@@ -215,24 +238,35 @@ commitInsert ::
     Cell ->
     Submission ->
     (RunRecord -> [Text]) ->
+    Maybe InsertAt ->
     Int ->
     IO ToolOutcome
-commitInsert app store rn cancelTok input cell sub gateNotes fuel = do
+commitInsert app store rn cancelTok input cell sub gateNotes mAt fuel = do
+    let admit = maybe checkedAppend checkedInsertAt mAt
     res <- atomicEditNotebook (appNotebook app) $ \nb ->
-        case checkedAppend cell nb of
+        case admit cell nb of
             Left v -> (nb, Left v)
             Right nb' -> (nb', Right ())
     case res of
         Left v -> case nextInsertAttempt fuel v of
             RetryInsert fuel' ->
-                routeInsert app store rn cancelTok input cell sub fuel'
+                routeInsert app store rn cancelTok input cell sub mAt fuel'
             AbandonInsert v' -> pure (errOutcome (violationJson v'))
         Right () -> do
             broadcastNotebook app
+            mode <- getRunMode app
             let runnable =
                     cellType cell == CodeCell
                         && cellLang cell == Haskell
                         && not (T.null (T.strip (cellSource cell)))
+                deferred = runnable && mode == RunDeferred
+                disposition
+                    | deferred = SettleWith (toJSON deferredCellResult)
+                    | runnable = RunNow
+                    | otherwise = SettleWith Null
+            when deferred $ do
+                modifyNotebook (appNotebook app) (markRootedDirty (cellId cell))
+                broadcastNotebookState app
             ackWriteAndRun
                 app
                 store
@@ -240,8 +274,8 @@ commitInsert app store rn cancelTok input cell sub gateNotes fuel = do
                 cancelTok
                 input
                 cell
-                runnable
-                (\run -> submissionNotes sub <> gateNotes run)
+                disposition
+                (\run -> submissionNotes sub <> gateNotes run <> [deferredNote | deferred])
 
 {- | Whether a notebook that turned red between the route's read and the
 atomic append earns another pass. Bounded: the two can keep flipping, and a

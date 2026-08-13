@@ -87,6 +87,8 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "api_reference"
                     , "explore_result"
                     , "kernel_status"
+                    , "set_run_mode"
+                    , "run_pending"
                     , "interrupt"
                     , "kernel_restart"
                     , "await_idle"

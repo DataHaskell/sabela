@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: check-vetting refusals [Gating/Repair].
+Guarantee: this is NOT the compile gate; that is server-side 'gatedCandidate' in sabela.
+Entry: 'checkRefusals'. Next: Siza.Agent.Check.Vet.
+-}
 module Siza.Agent.Check.Gate (
     CheckRefusal (..),
     MutationOutcome (..),

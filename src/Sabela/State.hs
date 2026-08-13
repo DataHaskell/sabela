@@ -29,6 +29,7 @@ import System.IO.Temp (createTempDirectory, getCanonicalTemporaryDirectory)
 
 import Sabela.AI.Store (AIStore, newAIStore, setAIProvider)
 import Sabela.Anthropic.Types (AnthropicConfig (..))
+import Sabela.Model (RunMode (..))
 import Sabela.State.AIConfig
 import Sabela.State.App
 import Sabela.State.BridgeStore
@@ -89,6 +90,7 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
         <*> pure cliSessionsVar
         <*> newIORef False
         <*> newIORef Nothing
+        <*> newIORef RunReactive
         <*> newIORef numCtx0
         <*> newIORef toolLimit0
 

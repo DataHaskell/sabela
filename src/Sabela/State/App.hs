@@ -5,6 +5,8 @@ module Sabela.State.App (
     forgetLoadedModules,
     setBuilding,
     withBuilding,
+    getRunMode,
+    setRunMode,
     getAIStore,
     setAIStore,
     broadcastNotebook,
@@ -34,6 +36,7 @@ import Sabela.Model (
     Cell (..),
     Notebook (..),
     NotebookEvent (..),
+    RunMode (..),
     cellDirty,
  )
 import Sabela.State.BridgeStore
@@ -59,6 +62,7 @@ data App = App
     , appCliSessions :: MVar (M.Map Text HandleStore)
     , appBuilding :: IORef Bool
     , appBuildingSince :: IORef (Maybe Word64)
+    , appRunMode :: IORef RunMode
     , appAINumCtx :: IORef Int
     , appAIToolLimit :: IORef Int
     }
@@ -95,6 +99,12 @@ setBuilding app False = do
 
 withBuilding :: App -> IO a -> IO a
 withBuilding app = bracket_ (setBuilding app True) (setBuilding app False)
+
+getRunMode :: App -> IO RunMode
+getRunMode = readIORef . appRunMode
+
+setRunMode :: App -> RunMode -> IO ()
+setRunMode app = writeIORef (appRunMode app)
 
 getAIStore :: App -> IO (Maybe AIStore)
 getAIStore = readMVar . appAI

@@ -2793,6 +2793,12 @@ button.palette-trigger kbd {
 .kernel-log-row.error {
   color: var(--red);
 }
+
+/* Run-mode toggle: amber while deferred, matching the stale-cell accent. */
+#btn-run-mode.deferred {
+  color: var(--yellow, #ebcb8b);
+  background: color-mix(in srgb, var(--yellow, #ebcb8b) 12%, transparent);
+}
 /* ── Sidebar panes (Files | Data) ───────────────────────────── */
 /* Flat tab strip, sentence case — the Colab shape, not the 10px uppercase
    micro-label the rest of the chrome still uses. */
@@ -3393,9 +3399,18 @@ button.palette-trigger kbd {
         <span class="dirty-dot" id="dirty-dot" title="Unsaved changes"></span>
       </span>
       <span class="spacer"></span>
+      <button
+        class="icon-btn"
+        id="btn-run-mode"
+        onclick="toggleRunMode()"
+        title="Reactive: edits run automatically. Click to defer runs."
+        aria-label="Toggle run mode"
+      >
+        <svg class="icon-svg"><use href="#i-zap" /></svg>
+      </button>
       <button class="primary" id="btn-run-all" onclick="runAll()" aria-label="Run all cells">
         <svg class="icon-svg" style="vertical-align: -2px"><use href="#i-play" /></svg>
-        <span class="btn-label">Run all</span>
+        <span class="btn-label" id="run-all-label">Run all</span>
       </button>
       <button
         class="icon-btn"
@@ -3804,6 +3819,9 @@ function handleSSE(ev) {
     case 'notebookState':
       applyNotebookState(ev.epoch, ev.staleIds);
       break;
+    case 'runMode':
+      applyRunMode(ev.mode);
+      break;
     case 'installLog':
       appendBuildLog(ev.line);
       break;
@@ -4019,6 +4037,7 @@ function markBlamedCells(cellIds) {
 
 let kernelEpoch = null;
 let staleCellIds = new Set();
+let runMode = 'reactive';
 const kernelLog = [];
 
 const KERNEL_CHIP_LABELS = {
@@ -4043,9 +4062,32 @@ async function refreshKernelState() {
   try {
     const status = await api('GET', 'kernel');
     renderKernelChip(status.state);
+    if (status.runMode) applyRunMode(status.runMode);
   } catch (_e) {
     /* leave the chip showing its last known value */
   }
+}
+
+function applyRunMode(mode) {
+  runMode = mode;
+  const btn = document.getElementById('btn-run-mode');
+  if (btn) {
+    btn.classList.toggle('deferred', mode === 'deferred');
+    btn.title =
+      mode === 'deferred'
+        ? 'Deferred: edits only mark cells stale. Click to resume reactive runs.'
+        : 'Reactive: edits run automatically. Click to defer runs.';
+  }
+  paintRunAllLabel();
+}
+
+// In deferred mode the Run All button doubles as the drain, so its label
+// carries the size of the pending set.
+function paintRunAllLabel() {
+  const label = document.getElementById('run-all-label');
+  if (!label) return;
+  const n = staleCellIds.size;
+  label.textContent = runMode === 'deferred' && n > 0 ? 'Run ' + n + ' stale' : 'Run all';
 }
 
 function applyNotebookState(epoch, staleIds) {
@@ -4062,6 +4104,7 @@ function paintStaleCells() {
     const id = parseInt(el.dataset.id, 10);
     el.classList.toggle('stale', staleCellIds.has(id));
   });
+  paintRunAllLabel();
 }
 
 function showEpochBanner() {
@@ -6470,6 +6513,17 @@ async function runCell(cellId) {
   if (editors[cellId])
     await api('PUT', `cell/${cellId}`, { ucSource: editors[cellId].getValue() }).catch(() => {});
   api('POST', `run/${cellId}`).catch(console.error);
+}
+
+async function toggleRunMode() {
+  const next = runMode === 'deferred' ? 'reactive' : 'deferred';
+  try {
+    const res = await api('PUT', 'mode', { mode: next });
+    applyRunMode(res.mode);
+    if (next === 'reactive') setStatus('Reactive: draining stale cells...', 'running');
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function runAll() {

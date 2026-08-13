@@ -1,3 +1,8 @@
+{- |
+Technique: client echo of the server compile gate, plus the stop rule [Gating/Repair].
+Guarantee: only a landed (compiling) artifact counts as delivered.
+Entry: 'landedArtifact', 'stopDecision'. Siblings: Siza.Agent.Futility (dispatch) and Siza.Agent.Streak (cell) detect repetition too.
+-}
 module Siza.Agent.Owned (
     OwnedCell (..),
     StopDecision (..),
@@ -30,7 +35,7 @@ import Sabela.AI.Types (ToolOutcome (..))
 
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Check (NoVerdict (..))
-import Siza.Agent.Discover (isOwningTool, toolCallSource)
+import Siza.Agent.GrammarCards (isOwningTool, toolCallSource)
 import Siza.Agent.Render (renderOutcome)
 
 data OwnedCell = OwnedCell

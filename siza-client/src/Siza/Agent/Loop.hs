@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Running one episode: seed the transcript, then hand to the turn loop. The
-state a turn reads lives in "Siza.Agent.Loop.Episode", the turn itself in
-"Siza.Agent.Loop.Step".
+{- |
+Technique: episode facade plus transcript seeding [Episode].
+Guarantee: the model reply is repaired (recoverTurn wraps drvChat) before the loop sees it.
+Entry: 'runEpisodeSeeded'. Next: Siza.Agent.Loop.Step (the actual machine).
 -}
 module Siza.Agent.Loop (
     AgentRun (..),
@@ -34,14 +35,14 @@ import Data.IORef (IORef)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 
-import Siza.Agent.Discover (
+import Siza.Agent.Discover.HistoryGuard (seedSearchLedger)
+import Siza.Agent.EmitLedger (EmitLedger, dedupInjected, newEmitLedger)
+import Siza.Agent.Exemplars (retrieveForPrompt)
+import Siza.Agent.GrammarCards (
     GrammarMode (..),
     discoverModules,
     proactiveDiscover,
  )
-import Siza.Agent.Discover.HistoryGuard (seedSearchLedger)
-import Siza.Agent.EmitLedger (EmitLedger, dedupInjected, newEmitLedger)
-import Siza.Agent.Exemplars (retrieveForPrompt)
 import Siza.Agent.Loop.Episode (newEpisode)
 import Siza.Agent.Loop.Prompt (mcpInstructions, systemPrompt)
 import Siza.Agent.Loop.Step (runTurns)
@@ -91,7 +92,7 @@ runEpisodeSeeded ::
     Int ->
     IO AgentRun
 runEpisodeSeeded seed emit mode budget driver0 prompt maxTurns = do
-    sess <- newStackSession mode False prompt
+    sess <- newStackSession mode prompt
     emits <- newEmitLedger
     let driver =
             driver0

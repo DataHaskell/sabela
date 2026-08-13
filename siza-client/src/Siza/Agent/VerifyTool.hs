@@ -1,9 +1,7 @@
-{- | @verify@: run a boolean claim about the notebook against the live kernel
-and report a verdict.
-
-Client-side, like @discover@: it composes insert/execute/delete through
-'Siza.Agent.Check', so the server needs no new capability. The check is vetted
-first — one that cannot fail is not evidence.
+{- |
+Technique: the verify tool [Gating/Repair].
+Guarantee: exposes the vet+marker pipeline as a tool via the Call (ToolName-based) convention.
+Entry: 'runVerifyCall'. Next: Siza.Agent.Check.
 -}
 module Siza.Agent.VerifyTool (
     Call,

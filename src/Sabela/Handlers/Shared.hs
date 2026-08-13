@@ -20,6 +20,7 @@ module Sabela.Handlers.Shared (
     NotebookViolation (..),
     pendingError,
     checkedAppend,
+    checkedInsertAt,
     find,
 ) where
 
@@ -187,10 +188,21 @@ pendingError nb =
         ]
 
 checkedAppend :: Cell -> Notebook -> Either NotebookViolation Notebook
-checkedAppend cell nb =
+checkedAppend cell = checkedInsert (++ [cell]) cell
+
+{- | 'checkedAppend' at an explicit position: the same gates, the same
+refusals, only the landing spot differs.
+-}
+checkedInsertAt ::
+    InsertAt -> Cell -> Notebook -> Either NotebookViolation Notebook
+checkedInsertAt at cell = checkedInsert (insertCellAt at cell) cell
+
+checkedInsert ::
+    ([Cell] -> [Cell]) -> Cell -> Notebook -> Either NotebookViolation Notebook
+checkedInsert place cell nb =
     case pendingError nb of
         Just (cid, msg) -> Left (VPendingError cid msg)
         Nothing ->
             case defConflict nb cell of
                 Just conflict -> Left (VDuplicateDef conflict)
-                Nothing -> Right nb{nbCells = nbCells nb ++ [cell]}
+                Nothing -> Right nb{nbCells = place (nbCells nb)}

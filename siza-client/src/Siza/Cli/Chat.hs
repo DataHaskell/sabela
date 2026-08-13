@@ -18,7 +18,7 @@ import Network.HTTP.Client.TLS (newTlsManager)
 import Options.Applicative
 import Siza.Agent.Chat (ChatConfig (..), runChat)
 import Siza.Agent.Loop (EpisodeBudget (..), defaultBudget)
-import Siza.Agent.Preflight (ensureOllama)
+import Siza.Agent.ProviderCheck (ensureOllama)
 import Siza.Transport (Conn, applyUrlOverride, getHealth)
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)

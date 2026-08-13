@@ -91,6 +91,7 @@ if [ "$QUICK" -eq 0 ]; then
     else
         gate "test suite" werror_test
     fi
+    gate "siza-client specs" werror_client_test
     gate "eval agent-loop specs" werror_eval_test
 fi
 

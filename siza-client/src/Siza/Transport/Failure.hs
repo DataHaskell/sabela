@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: fault-blame taxonomy [Infrastructure].
+Guarantee: every failure is blamed infra, kernel, or payload, so payload-rework loops stop.
+Entry: 'classifyTransport'. Next: Siza.Transport.
+-}
 module Siza.Transport.Failure (
     FailureClass (..),
     ToolFailure (..),

@@ -1,8 +1,7 @@
-{- | One tool call, all the way through: dispatch, unblock, display-contract
-repair, ownership, and the repair cascade over the cells the session owns.
-
-Everything here needs a 'Dispatch' and nothing else, which is what lets the
-MCP server run the same pipeline the chat loop runs.
+{- |
+Technique: per-call repair pipeline [Episode].
+Guarantee: a blocked insert becomes a replace on the blocking red cell; display repair and healing run here.
+Entry: 'runToolCall'. Next: Siza.Agent.Stack.Route.
 -}
 module Siza.Agent.Stack.Call (
     StackNote (..),
@@ -27,8 +26,7 @@ import qualified Data.Text as T
 import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (runDiscoverOutcomes)
-import Siza.Agent.Loop.Route (blockingCell, discloseRoute, routedRetryNote)
+import Siza.Agent.GrammarCards (runDiscoverOutcomes)
 import Siza.Agent.Loop.Support (replaceCall, writeSource)
 import Siza.Agent.Owned (ocDiagnostic, ownedCellOutcome)
 import Siza.Agent.RenderContract (repairDisplayContract)
@@ -46,6 +44,7 @@ import Siza.Agent.Stack (
     sessionPolicy,
     ssHealReds,
  )
+import Siza.Agent.Stack.Route (blockingCell, discloseRoute, routedRetryNote)
 
 {- | Something the pipeline did that the caller did not ask for, and would be
 wrong to discover by reading the notebook later.

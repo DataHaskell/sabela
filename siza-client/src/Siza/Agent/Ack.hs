@@ -17,10 +17,10 @@ import Data.Text (Text)
 import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..), toolOutcomeValue)
 import Sabela.AI.WriteAck (executingAckCell)
-import Siza.Agent.Discover (declaredPackages)
 import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
 import Siza.Agent.Discover.Hackage (hackageFactsFor)
 import Siza.Agent.Discover.ModuleList (shownModules)
+import Siza.Agent.GrammarCards (declaredPackages)
 
 maxAwaitRounds :: Int
 maxAwaitRounds = 8

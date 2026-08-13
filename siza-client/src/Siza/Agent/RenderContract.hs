@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | A committed cell that produced nothing visible is offered a rendering.
-Every candidate is proposed for every value and the kernel settles it, so no
-branch here reads a type name or the caller's prose.
+{- |
+Technique: display repair for invisible results [Gating/Repair].
+Guarantee: every candidate is proposed for every value; the kernel settles it.
+Entry: 'displayCandidates'. Unrelated to Siza.Agent.Render; wired in Siza.Agent.Stack.Call.
 -}
 module Siza.Agent.RenderContract (
     displayCandidates,
@@ -22,7 +23,7 @@ import qualified Data.Text as T
 import Sabela.AI.RepairDispatch (acceptRepair)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (isOwningTool, toolCallSource)
+import Siza.Agent.GrammarCards (isOwningTool, toolCallSource)
 import Siza.Agent.Loop.Support (replaceCall)
 import Siza.Agent.Owned (ownedCellOutcome)
 import Siza.Agent.Repair (Dispatch, snapshot)

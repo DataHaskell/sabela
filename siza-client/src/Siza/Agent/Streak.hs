@@ -1,3 +1,8 @@
+{- |
+Technique: cell-layer repeat detector [Gating/Repair].
+Guarantee: a repeated red signature on one cell surfaces a contrast hint at the threshold.
+Entry: 'bumpStreak'. Sibling: 'Siza.Agent.Owned.noProgressStep' (episode layer).
+-}
 module Siza.Agent.Streak (
     bumpStreak,
     streakContrast,

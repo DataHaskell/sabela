@@ -18,7 +18,7 @@ import Test.QuickCheck
 
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
-import Siza.Agent.Discover (GrammarMode (..))
+import Siza.Agent.GrammarCards (GrammarMode (..))
 import Siza.Agent.Loop (
     AgentRun (..),
     Driver (..),
@@ -66,7 +66,7 @@ stackNoteDeliverySpec = describe "a note the shared stack computes reaches the m
                             ]
 
 chatSession :: IO StackSession
-chatSession = newStackSession GrammarOn False ""
+chatSession = newStackSession GrammarOn ""
 
 {- | A grid whose second write is blocked by a red cell, which is what makes
 the shared stack re-aim it and produce a note the caller did not ask for.

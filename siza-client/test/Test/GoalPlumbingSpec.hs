@@ -16,7 +16,7 @@ import Test.Hspec
 
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (GrammarMode (..))
+import Siza.Agent.GrammarCards (GrammarMode (..))
 import Siza.Agent.Stack (newStackSession, stackDispatch)
 import Siza.Agent.Stack.Call (runToolCall)
 import Siza.Agent.Tools (catalogueWith)
@@ -46,7 +46,7 @@ goalPlumbingSpec = describe "the optional goal on a write" $ do
 writeWith :: Maybe Text -> IO [ToolCall]
 writeWith mGoal = do
     (fake, tape) <- displayNotebook
-    ss <- newStackSession GrammarOn False ""
+    ss <- newStackSession GrammarOn ""
     _ <- runToolCall ss (stackDispatch ss fake) (writeCall mGoal)
     readIORef tape
 

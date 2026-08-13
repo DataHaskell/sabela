@@ -1,6 +1,7 @@
-{- | Rejection sampling on a write. When a tool call that writes source comes
-back red, re-ask the model up to @k-1@ times against grounded context and keep
-the first replacement that lands healthy; if none does, the original stands.
+{- |
+Technique: rejection sampling on writes [Episode].
+Guarantee: runs only when SIZA_SAMPLE_K > 1; the default of 1 keeps it off.
+Entry: 'dispatchCall'. Next: Siza.Agent.Sample.
 -}
 module Siza.Agent.Loop.Sampling (
     dispatchCall,

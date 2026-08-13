@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: loop support utilities [Episode].
+Guarantee: none; it inventories budget constants, kernel-failure counting, and streak hints.
+Entry: 'groundingMsgs' (the grounding half of rejection sampling). Next: Siza.Agent.Loop.WrapUp.
+-}
 module Siza.Agent.Loop.Support (
     nudgeK,
     nudgeFloor,

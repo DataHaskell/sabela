@@ -98,6 +98,7 @@ import Test.NoteLedgerSpec (noteLedgerSpec)
 import Test.OutcomeDistillSpec (outcomeDistillSpec)
 import Test.OutcomeShapeSpec (outcomeShapeSpec)
 import Test.PostNudgeGateSpec (postNudgeGateSpec)
+import Test.ProseGateSpec (proseGateSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
 import Test.RecallSpec (recallSpec)
@@ -254,6 +255,7 @@ main = hspec $ do
     redStreakSpec
     verifyDiagSpec
     counterexampleSpec
+    proseGateSpec
     contextCharsSpec
     chatExportSpec
     noteLedgerSpec

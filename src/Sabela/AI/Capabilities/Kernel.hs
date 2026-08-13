@@ -3,6 +3,8 @@
 module Sabela.AI.Capabilities.Kernel (
     kernelStatusValue,
     execKernelStatus,
+    execSetRunMode,
+    execRunPending,
     execInterrupt,
     execKernelRestart,
     interruptOutcome,
@@ -18,7 +20,7 @@ module Sabela.AI.Capabilities.Kernel (
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (void, when)
-import Data.Aeson (Value, object, (.=))
+import Data.Aeson (Result (..), Value, fromJSON, object, (.=))
 import Data.Aeson.Types (Pair)
 import Data.IORef (readIORef)
 import Data.Maybe (isJust)
@@ -43,12 +45,13 @@ import Sabela.AI.KernelVocab (
     tagTimedOut,
  )
 import Sabela.AI.Store (AIStore)
-import Sabela.AI.Types (ToolOutcome, okOutcome, toolOutcomeValue)
-import Sabela.Handlers (ReactiveNotebook (..))
+import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome, toolOutcomeValue)
+import Sabela.Api (RunModeUpdate (..), errorJson)
+import Sabela.Handlers (ReactiveNotebook (..), applyRunMode)
 import Sabela.Model
 import Sabela.Reactivity (RestartMode (..))
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..))
+import Sabela.State (App (..), getRunMode)
 import Sabela.State.EventBus (
     AwaitResult (..),
     EventBus (..),
@@ -70,6 +73,32 @@ haskellKernelOccupied app = do
 execKernelStatus :: App -> IO ToolOutcome
 execKernelStatus app = okOutcome <$> kernelStatusValue app
 
+execSetRunMode :: App -> ReactiveNotebook -> Value -> IO ToolOutcome
+execSetRunMode app rn input = case fromJSON input of
+    Error _ ->
+        pure (errOutcome (errorJson "mode must be \"reactive\" or \"deferred\""))
+    Success (RunModeUpdate mode) -> do
+        applyRunMode app rn mode
+        pending <- pendingCellIds app
+        pure
+            ( okOutcome
+                (object ["mode" .= runModeTag mode, "pending" .= pending])
+            )
+
+{- | Start one drain of every stale cell and return which ids it covers; the
+caller awaits idle for the results, the same contract as execute_cell.
+-}
+execRunPending :: App -> ReactiveNotebook -> IO ToolOutcome
+execRunPending app rn = do
+    pending <- pendingCellIds app
+    rnRunAll rn
+    pure (okOutcome (object ["pending" .= pending]))
+
+pendingCellIds :: App -> IO [Int]
+pendingCellIds app = do
+    nb <- readNotebook (appNotebook app)
+    pure [cellId c | c <- nbCells nb, cellDirty c]
+
 {- | The kernel's state as a value. Shared with @GET \/api\/kernel@ so the
 browser and the agent are told the same thing by the same code.
 -}
@@ -81,6 +110,7 @@ kernelStatusValue app = do
     ebGen <- readIORef (ebGeneration (appEvents app))
     mSince <- readIORef (appBuildingSince app)
     now <- getMonotonicTimeNSec
+    mode <- getRunMode app
     let compiling = isJust mSince
         buildingMs = (\t0 -> (now - t0) `div` 1000000) <$> mSince
         kstate = kernelStateOf (isJust mSess) gen busy compiling
@@ -89,6 +119,7 @@ kernelStatusValue app = do
             [ "state" .= kernelStateJSON kstate
             , "ksGen" .= gen
             , "ebGeneration" .= ebGen
+            , "runMode" .= runModeTag mode
             ]
                 ++ ["buildingMs" .= ms | Just ms <- [buildingMs]]
 

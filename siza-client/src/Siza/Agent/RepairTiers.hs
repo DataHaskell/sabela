@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: repair candidate generation per tier [Gating/Repair].
+Guarantee: the policy spine (DiagClass, tiersFor, acceptRepair) lives in ../src-contract Sabela.AI.RepairDispatch.
+Entry: 'tierCandidates'. Next: Siza.Agent.Repair.
+-}
 module Siza.Agent.RepairTiers (
     Candidate (..),
     TierInput (..),

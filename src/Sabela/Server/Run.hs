@@ -8,6 +8,8 @@ module Sabela.Server.Run (
     restartRunAllH,
     interruptKernelH,
     kernelStatusH,
+    getModeH,
+    setModeH,
     clearCellH,
     completeH,
     infoH,
@@ -39,7 +41,7 @@ import Sabela.Model
 import Sabela.Output.Examples (builtinExamples)
 import Sabela.Reactivity (RestartMode (..), clearCellResult)
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..))
+import Sabela.State (App (..), getRunMode)
 import Sabela.State.EventBus (subscribeBroadcast)
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import Sabela.State.SessionManager (getHaskellSession, getPythonSession)
@@ -102,6 +104,14 @@ from events it may have missed.
 -}
 kernelStatusH :: App -> Handler Value
 kernelStatusH = liftIO . kernelStatusValue
+
+getModeH :: App -> Handler RunModeUpdate
+getModeH app = liftIO (RunModeUpdate <$> getRunMode app)
+
+setModeH :: App -> ReactiveNotebook -> RunModeUpdate -> Handler RunModeUpdate
+setModeH app rn upd = liftIO $ do
+    applyRunMode app rn (rmuMode upd)
+    pure upd
 
 interruptKernelH :: App -> Handler NoContent
 interruptKernelH app = liftIO $ do

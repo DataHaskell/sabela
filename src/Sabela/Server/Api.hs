@@ -45,6 +45,8 @@ type JsonAPI =
         :<|> "api" :> "restart-run-all" :> Post '[JSON] NoContent
         :<|> "api" :> "interrupt" :> Post '[JSON] NoContent
         :<|> "api" :> "kernel" :> Get '[JSON] Value
+        :<|> "api" :> "mode" :> Get '[JSON] RunModeUpdate
+        :<|> "api" :> "mode" :> ReqBody '[JSON] RunModeUpdate :> Put '[JSON] RunModeUpdate
         :<|> "api" :> "clear" :> Capture "id" Int :> Post '[JSON] NoContent
         :<|> "api"
             :> "files"

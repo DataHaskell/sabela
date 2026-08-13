@@ -9,7 +9,6 @@ import Test.Hspec
 
 import Sabela.AI.Grammar (ImportStyle (Unqualified))
 import Sabela.AI.Grammar.Synth (Surface (..))
-import Siza.Agent.Discover (discoverGrammarMsg)
 import Siza.Agent.Discover.Envelope (envelopeCharBudget, envelopeChars)
 import Siza.Agent.Discover.Interpret (interpret)
 import Siza.Agent.Discover.Merge (discoverEnvelope)
@@ -22,6 +21,7 @@ import Siza.Agent.Discover.Types (
     okAnswer,
     seededBuiltins,
  )
+import Siza.Agent.GrammarCards (discoverGrammarMsg)
 import Test.DiscoverFixtures (field, hitText, hitsOf, textField)
 
 env0 :: NotebookEnv

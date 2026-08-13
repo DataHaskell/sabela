@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The retrieval half of the elision contract: the index a dropped result is
-named by, the store it is read back from, and the call that answers.
+{- |
+Technique: dropped-result escrow [Context Economy].
+Guarantee: an elided result stays readable by its stub id from a process-global store.
+Entry: 'answerRecall'. Trap: multi-episode drivers must call 'resetRecallStore'.
 -}
 module Siza.Agent.Recall (
     answerRecall,

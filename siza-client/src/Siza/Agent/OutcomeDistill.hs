@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: tool-outcome distillation [Context Economy].
+Guarantee: trimming stays under 'outcomeCharBudget'; diagnostics and verdicts survive.
+Entry: 'distillOutcome'. Next: Siza.Agent.Recall.
+-}
 module Siza.Agent.OutcomeDistill (
     distillOutcome,
     outcomeCharBudget,

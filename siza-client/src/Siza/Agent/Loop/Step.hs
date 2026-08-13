@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | One turn of the episode. 'runTurns' checks the budgets and hands to
-'step', which either dispatches the turn's tool calls or, when the model called
-nothing, decides whether the episode stops, re-enters on red cells, or salvages
-a cell out of the prose.
+{- |
+Technique: the turn machine [Episode]; "Siza.Agent.Loop" is only a facade.
+Guarantee: a no-call turn stops with a typed reason, re-enters on reds, or salvages.
+Entry: 'runTurns'. Next: Siza.Agent.Loop.Episode. Trap: 'Stepping' threads seven positional parameters.
 -}
 module Siza.Agent.Loop.Step (
     runTurns,
@@ -19,8 +19,8 @@ import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Salvage (salvageCell)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
-import Siza.Agent.Discover (runDiscoverOutcomes)
 import Siza.Agent.EmitLedger (emitTurn)
+import Siza.Agent.GrammarCards (runDiscoverOutcomes)
 import Siza.Agent.Loop.Episode (
     Episode (..),
     doneSignalProbe,

@@ -25,62 +25,53 @@ library
     hs-source-dirs:   src
     default-language: Haskell2010
     default-extensions: OverloadedStrings, LambdaCase
-    exposed-modules:  Siza.Discover
-                      Siza.Transport
-                      Siza.Transport.Failure
-                      Siza.HubToken
-                      Siza.Login
-                      Siza.Cli
-                      Siza.Mcp
-                      Siza.Mcp.Surface
-                      Siza.Mcp.Rpc
-                      Siza.Language
-                      Siza.Lang.Haskell
-                      Siza.Preflight
-                      Siza.Security
-                      Siza.Annotate
-                      Siza.Cli.Annotate
-                      Siza.Cli.Chat
-                      Siza.Cli.Await
-                      Siza.Cli.Options
-                      Siza.Cli.Provenance
-                      Siza.Cli.Retro
-                      Siza.Provenance
-                      Siza.Provenance.Event
-                      Siza.Provenance.Log
-                      Siza.Retro
-                      Siza.Retro.Episode
-                      Siza.Retro.Result
-                      Siza.Retro.Metrics
-                      Siza.Retro.Distribution
-                      Siza.Retro.Report
+    exposed-modules:
+                      -- Bounded context: Episode
                       Siza.Agent.Loop
-                      Siza.Agent.Loop.Episode
-                      Siza.Agent.Loop.Sampling
-                      Siza.Agent.Loop.Step
                       Siza.Agent.Loop.Types
+                      Siza.Agent.Loop.Step
+                      Siza.Agent.Loop.Episode
                       Siza.Agent.Loop.Support
                       Siza.Agent.Loop.WrapUp
                       Siza.Agent.Loop.Verdict
                       Siza.Agent.Loop.Prompt
-                      Siza.Agent.Loop.Route
-                      Siza.Agent.EmitLedger
+                      Siza.Agent.Loop.Sampling
+                      Siza.Agent.Sample
+                      Siza.Agent.Stack
+                      Siza.Agent.Stack.Call
+                      Siza.Agent.Stack.Route
+                      Siza.Agent.ToolRoute
+                      Siza.Agent.Tools
+                      Siza.Agent.Tools.Catalogue
                       Siza.Agent.Chat
                       Siza.Agent.Chat.Export
+                      Siza.Agent.Messages
+                      Siza.Agent.Render
+                      Siza.Agent.Ack
+                      Siza.Agent.Scaffold
+                      -- Bounded context: Gating / repair
+                      Siza.Preflight
+                      Siza.Agent.Owned
+                      Siza.Agent.Repair
+                      Siza.Agent.Repair.Blocking
+                      Siza.Agent.RepairGuard
+                      Siza.Agent.RepairLocate
+                      Siza.Agent.RepairTiers
+                      Siza.Agent.Futility
+                      Siza.Agent.Streak
                       Siza.Agent.Chat.Verify
-                      Siza.Agent.Compact
-                      Siza.Agent.Recall
                       Siza.Agent.Check
                       Siza.Agent.Check.Gate
                       Siza.Agent.Check.Vet
                       Siza.Agent.Check.Marker
                       Siza.Agent.CheckExtract
-                      Siza.Agent.Tools
-                      Siza.Agent.Tools.Catalogue
-                      Siza.Agent.OutcomeDistill
-                      Siza.Agent.Render
-                      Siza.Agent.ToolRoute
-                      Siza.Agent.Ack
+                      Siza.Agent.VerifyTool
+                      Siza.Agent.RenderContract
+                      Siza.Agent.Deliverable
+                      -- Bounded context: Discovery
+                      Siza.Agent.DiscoverTool
+                      Siza.Agent.GrammarCards
+                      -- compatibility alias for eval/neuro-symbolic
                       Siza.Agent.Discover
                       Siza.Agent.Discover.Types
                       Siza.Agent.Discover.CabalFacts
@@ -127,27 +118,49 @@ library
                       Siza.Agent.Discover.Dedup
                       Siza.Agent.Discover.HistoryGuard
                       Siza.Agent.Discover.Hackage
-                      Siza.Agent.DiscoverTool
-                      Siza.Agent.Futility
-                      Siza.Agent.Streak
-                      Siza.Agent.Deliverable
-                      Siza.Agent.NoteLedger
-                      Siza.Agent.Owned
-                      Siza.Agent.Stack
-                      Siza.Agent.Stack.Call
-                      Siza.Agent.VerifyTool
-                      Siza.Agent.Repair
-                      Siza.Agent.Repair.Blocking
-                      Siza.Agent.RepairGuard
-                      Siza.Agent.RepairLocate
-                      Siza.Agent.RepairTiers
-                      Siza.Agent.RenderContract
-                      Siza.Agent.Messages
-                      Siza.Agent.Transcript
-                      Siza.Agent.Sample
+                      -- Bounded context: Context economy
+                      Siza.Agent.Compact
+                      Siza.Agent.EmitLedger
+                      Siza.Agent.OutcomeDistill
+                      Siza.Agent.Recall
                       Siza.Agent.Exemplars
+                      Siza.Agent.NoteLedger
+                      -- Bounded context: Observation
+                      Siza.Agent.Transcript
+                      Siza.Annotate
+                      Siza.Provenance
+                      Siza.Provenance.Event
+                      Siza.Provenance.Log
+                      Siza.Retro
+                      Siza.Retro.Episode
+                      Siza.Retro.Result
+                      Siza.Retro.Metrics
+                      Siza.Retro.Distribution
+                      Siza.Retro.Report
+                      -- Infrastructure adapters
+                      Siza.Discover
+                      Siza.Transport
+                      Siza.Transport.Failure
+                      Siza.HubToken
+                      Siza.Login
+                      Siza.Security
+                      Siza.Language
+                      Siza.Lang.Haskell
+                      Siza.Agent.ProviderCheck
+                      -- compatibility alias for eval/neuro-symbolic
                       Siza.Agent.Preflight
-                      Siza.Agent.Scaffold
+                      Siza.Cli
+                      Siza.Cli.Annotate
+                      Siza.Cli.Chat
+                      Siza.Cli.Await
+                      Siza.Cli.Options
+                      Siza.Cli.Provenance
+                      Siza.Cli.Retro
+                      Siza.Mcp
+                      Siza.Mcp.Surface
+                      Siza.Mcp.Rpc
+                      -- Guides
+                      Siza.Guide
     build-depends:    base >= 4 && < 5
                       -- the contract sub-library: typed wire DTOs + AST parser
                       -- reuse, without the server's warp/servant/process drag
@@ -242,6 +255,7 @@ test-suite siza-client-test
                       Test.FitsBlobSpec
                       Test.AgentCheckSpec
                       Test.ChatExportSpec
+                      Test.ProseGateSpec
                       Test.KernelVocabClientSpec
                       Test.WriteAckClientSpec
                       Test.DiscoverToolClientSpec

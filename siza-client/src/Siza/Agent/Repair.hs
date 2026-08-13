@@ -1,5 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{- |
+Technique: repair tier cascade with verify-and-revert [Gating/Repair].
+Guarantee: a candidate is kept only if the target improves and no sibling regresses (acceptRepair).
+Entry: 'repairOne'; the policy spine DiagClass/tiersFor lives in sabela src-contract Sabela.AI.RepairDispatch.
+-}
 module Siza.Agent.Repair (
     Dispatch,
     fitsBlob,
@@ -58,6 +63,9 @@ repairRedCells ::
 repairRedCells disp =
     fmap catMaybes . mapM (uncurry (repairOne disp))
 
+{- | Repair one red cell: classify its diagnostic, build the tier inputs,
+and drive 'runCascade' over the candidates the tiers generate.
+-}
 repairOne ::
     Dispatch -> CellId -> Text -> IO (Maybe (ToolCall, Either Text ToolOutcome))
 repairOne disp cid errText = case tiersFor cls of
@@ -195,6 +203,9 @@ snapshot disp = do
         Just (Array ds) -> [d | String d <- toList ds]
         _ -> []
 
+{- | Legacy hole-fit-only sibling of the tier cascade 'repairOne' drives;
+kept exported for eval's RepairSpec, unused by the live loop.
+-}
 substituteAndVerify ::
     Dispatch -> CellId -> Text -> IO (Maybe (ToolCall, Either Text ToolOutcome))
 substituteAndVerify disp cid errText = case goalFromError errText of

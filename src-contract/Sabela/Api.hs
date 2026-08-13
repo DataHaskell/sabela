@@ -10,7 +10,14 @@ import qualified Data.Aeson.Types as A
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
-import Sabela.Model (CellError, CellType, OutputItem)
+import Sabela.Model (
+    CellError,
+    CellType,
+    OutputItem,
+    RunMode,
+    parseRunMode,
+    runModeTag,
+ )
 import Sabela.SessionTypes (CellLang)
 
 errorJson :: Text -> Value
@@ -35,6 +42,21 @@ newtype UpdateCell = UpdateCell
 
 instance ToJSON UpdateCell
 instance FromJSON UpdateCell
+
+-- | Wire shape for GET/PUT @\/api\/mode@: @{"mode":"reactive"|"deferred"}@.
+newtype RunModeUpdate = RunModeUpdate
+    {rmuMode :: RunMode}
+    deriving (Eq, Show)
+
+instance ToJSON RunModeUpdate where
+    toJSON (RunModeUpdate m) = object ["mode" .= runModeTag m]
+
+instance FromJSON RunModeUpdate where
+    parseJSON = A.withObject "RunModeUpdate" $ \o -> do
+        tag <- o A..: "mode"
+        case parseRunMode tag of
+            Just m -> pure (RunModeUpdate m)
+            Nothing -> fail ("unknown mode: " <> T.unpack tag)
 
 data InsertAt = AtBeginning | After !Int
     deriving (Eq, Generic, Show)

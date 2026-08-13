@@ -1,3 +1,8 @@
+{- |
+Technique: client parse/security gate [Gating/Repair].
+Guarantee: only a 'Vetted' (constructor unexported) can be submitted to the wire.
+Entry: 'preflight'. Trap: Siza.Agent.ProviderCheck is an unrelated Ollama reachability check.
+-}
 module Siza.Preflight (
     Vetted,
     vettedSource,

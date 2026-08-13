@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The chat loop's covering check: proposing one, vetting it against the
-names this turn defined, and running it. Split out of "Siza.Agent.Chat" so the
-gate's honesty rules read in one place.
+{- |
+Technique: verify-before-claim gate [Gating/Repair].
+Guarantee: a done claim needs a vetted, executed covering check.
+Entry: 'verifyGate'. Next: Siza.Agent.Check.Vet.
 -}
 module Siza.Agent.Chat.Verify (
     NotebookKey,

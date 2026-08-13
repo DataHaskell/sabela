@@ -1,3 +1,8 @@
+{- |
+Technique: search-ledger middleware [Discovery].
+Guarantee: a repeated search is answered from the ledger; evidence is never overstated.
+Entry: 'guardDiscover'. SearchLedger split: record in Discover.Ledger, state machine in Discover.History, middleware here.
+-}
 module Siza.Agent.Discover.HistoryGuard (
     newSearchLedger,
     closeSearchLedger,
@@ -27,14 +32,6 @@ import Sabela.AI.WriteAck (
     parseAckEnvelope,
  )
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (
-    declaredPackages,
-    declaresDepsCall,
-    executionSucceeded,
-    isOwningTool,
-    refusedSource,
-    toolCallSource,
- )
 import Siza.Agent.Discover.Dedup (ledgerShortcutStep)
 import Siza.Agent.Discover.Envelope (boundEnvelope)
 import Siza.Agent.Discover.FactSelect (factContext, selectFacts)
@@ -66,6 +63,14 @@ import Siza.Agent.Discover.Ledger (
 import Siza.Agent.Discover.Resolved (provenNames)
 import Siza.Agent.Discover.Types (NotebookEnv (..), StandingGoal)
 import Siza.Agent.DiscoverTool (discoverKey)
+import Siza.Agent.GrammarCards (
+    declaredPackages,
+    declaresDepsCall,
+    executionSucceeded,
+    isOwningTool,
+    refusedSource,
+    toolCallSource,
+ )
 
 newSearchLedger :: IO (IORef SearchLedger)
 newSearchLedger = newIORef emptyLedger

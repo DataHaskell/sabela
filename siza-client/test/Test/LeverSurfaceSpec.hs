@@ -13,7 +13,7 @@ import Test.Hspec
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
-import Siza.Agent.Discover (
+import Siza.Agent.GrammarCards (
     GrammarMode (..),
     proactiveDiscover,
     runDiscoverOutcomes,

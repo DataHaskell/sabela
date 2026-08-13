@@ -122,6 +122,30 @@ queryTools =
         "Block until the running cascade finishes (a bounded ~45s long-poll on the execution-done fence, not a running==false sample). Returns immediately when the kernel is already idle. The reply carries a `waited` tag (settled | idle | timedOut | kernelDead) and a fresh kernel `status`; re-call while `waited` is timedOut and re-check the kernel when it is kernelDead. Cheaper than spinning on kernel_status."
         noArgs
     , mkTool
+        SetRunMode
+        "Switch the notebook's run mode. In \"deferred\" mode an edit only marks its cell and dependents stale — nothing runs — so you can batch many small edits (including `-- cabal:` changes, which then cost ONE restart) and drain them together with run_pending. Switching back to \"reactive\" drains any pending set immediately. The current mode is reported by kernel_status as `runMode`."
+        ( object
+            [ "type" .= ("object" :: Text)
+            , "properties"
+                .= object
+                    [ "mode"
+                        .= object
+                            [ "type" .= ("string" :: Text)
+                            , "enum" .= (["reactive", "deferred"] :: [Text])
+                            , "description"
+                                .= ( "\"deferred\" batches edits; \"reactive\" (the default) runs each edit's affected cells immediately." ::
+                                        Text
+                                   )
+                            ]
+                    ]
+            , "required" .= (["mode"] :: [Text])
+            ]
+        )
+    , mkTool
+        RunPending
+        "Run every stale cell in one topologically-ordered drain (the deferred-mode counterpart of a per-edit run; also rebuilds the environment once if `-- cabal:` lines changed). Returns the pending cell ids and starts the drain; call await_idle to wait for it to settle. No-op when nothing is stale."
+        noArgs
+    , mkTool
         ExportNotebook
         "Return every cell's id, position, type, language, and source in one call, so a full notebook sync is a single request rather than N read_cell round-trips."
         noArgs

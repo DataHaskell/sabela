@@ -80,7 +80,9 @@ All tools accept a JSON object input; outputs below are abbreviated.
 | `replace_cell_source` | `{cell_id,new_source,expected_hash?}` | `{cellId,hash,execution}` | Auto-runs; `execution` is a typed `CellResult`. Pass `expected_hash` to detect concurrent edits. |
 | `propose_edit` | `{cell_id,new_source,expected_hash?}` | `{editId,cellId,status:"pending"}` | Does **not** apply or run. Re-proposing supersedes prior pending edit on the same cell. |
 | `execute_cell` | `{cell_id}` | `{cellId,outcome,outputs,warnings,ok}` | Reactive: downstream cells re-run automatically. ~120s timeout. |
-| `kernel_status` | `{}` | `{state:{state,ksGen,building},ksGen,ebGeneration}` | Lock-free; answers even while a cell holds the run-lock. See [Kernel discipline](#kernel-discipline). |
+| `kernel_status` | `{}` | `{state:{state,ksGen,building},ksGen,ebGeneration,runMode}` | Lock-free; answers even while a cell holds the run-lock. See [Kernel discipline](#kernel-discipline). |
+| `set_run_mode` | `{mode:"reactive"\|"deferred"}` | `{mode,pending}` | Deferred batches edits: mutations commit (gates still apply) and mark cells stale, nothing runs. Flipping back to reactive drains. A `runMode` change you did not make means a human flipped it. |
+| `run_pending` | `{}` | `{pending}` | One topologically-ordered drain of every stale cell (one env rebuild if `-- cabal:` lines changed). Returns immediately; `await_idle` for results. |
 | `interrupt` | `{}` | `{interrupted:true}` | Best-effort group SIGINT to a runaway cell. |
 | `kernel_restart` | `{}` | `{restartInitiated:true}` | Forked; returns immediately, then poll `kernel_status`. **Destructive** — wipes every binding and compiled module. |
 | `export_notebook` | `{}` | `{title, cells:[{id,position,type,lang,source,…}]}` | Every cell's source in one call — re-sync after a human edits. |
@@ -97,7 +99,7 @@ The tool surface is **sum-typed**: a cell result is one `outcome` tag and a kern
 
 **Cell result.** For Haskell code-cell mutations (`insert_cell`, `replace_cell_source`, `execute_cell`) the `execution` (or `execute_cell` result) is a `CellResult`:
 
-- `outcome: {tag, …}` — one of `Succeeded`, `Raised {message}` (runtime exception), `Rejected {errors:[{line?,col?,message}]}` (structured compile errors), or `Aborted {reason}` (`Interrupted` | `Superseded` | `TimedOut`).
+- `outcome: {tag, …}` — one of `Succeeded`, `Raised {message}` (runtime exception), `Rejected {errors:[{line?,col?,message}]}` (structured compile errors), `Aborted {reason}` (`Interrupted` | `Superseded` | `TimedOut`), or `Deferred` (deferred run mode: committed and marked stale, not run — `ok` stays false because nothing verified it; drain with `run_pending`, do NOT treat it as a failure to fix).
 - `outputs: [{mime, output}]` — rendered outputs. Individual outputs >40 lines or >4 KB become handles (`{handleId, summary, totalLines, totalBytes}`).
 - `warnings: [{line?, col?, message}]` — non-fatal diagnostics.
 - `ok: bool` — `true` iff `outcome.tag == "Succeeded"`. Match `outcome.tag` for *why* it failed; read `ok` for the quick yes/no.
@@ -144,6 +146,7 @@ Each recipe is a small composition over the primitives above.
 - **Explore:** use `check_type` and `list_bindings` for non-executing live introspection; use `try` for code. `try` can see notebook bindings and accept candidate-only `-- cabal:` dependencies while choosing its internal route. Read its closed `verdict` and detailed `outcome` before committing.
 - **Safe rename:** tracking is textual, so a rename that misses a caller surfaces only on next run. Dry-run the rename with `try` first.
 - **Add deps:** batch the `-- cabal:` edits into one change, expect one restart (one to three minutes), then fire one run and await idle. See the cost note above.
+- **Batch many small edits:** `set_run_mode {mode:"deferred"}`, make the edits (each commits and marks its downstream stale; writes ack with a deferred note and no execution), then `run_pending` once and await idle. Deferred `-- cabal:` edits also collapse into the drain's single restart. `execute_cell` still spot-runs one cell if you need a mid-batch check.
 - **Recover a wedge** (conservative, human-gated): a true wedge is a call that never returns while `kernel_status` shows `state == "idle"` with an *unchanged* `ksGen` — distinct from a long compile (`state == "building"`) or a long run (`state == "executing"`), neither of which is wedged. Do not restart on a hunch; a restart is irreversible and wipes all work. Sequence: `interrupt` first (best-effort, async — may not free a non-interruptible FFI call or a tight loop); re-check `kernel_status`; only then propose `kernel_restart` to the user; after a restart, wait for `ksGen` to strictly increase; if it is still unresponsive, tell the user to restart the server process (a fresh server also resets `SABELA_CELL_TIMEOUT_SECONDS`).
 
 ## Concurrent-edit recovery

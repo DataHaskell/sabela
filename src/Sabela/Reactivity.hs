@@ -13,6 +13,7 @@ module Sabela.Reactivity (
     runAllNeedsRun,
     computeExecutionPlan,
     markDependentsDirty,
+    markRootedDirty,
     markAllDirty,
     RestartMode (..),
     applyRestart,
@@ -257,6 +258,16 @@ and nothing it held is still current. Only 'RestartClear' discards outputs.
 applyRestart :: RestartMode -> Notebook -> Notebook
 applyRestart RestartClear nb = nb{nbCells = map clearCellResult (nbCells nb)}
 applyRestart _ nb = markAllDirty nb
+
+{- | Invalidate a cell and everything downstream of it without running: the
+deferred-mode counterpart of rooting an execution plan at the cell.
+-}
+markRootedDirty :: Int -> Notebook -> Notebook
+markRootedDirty cid nb = markDependentsDirty cid nb{nbCells = map upd (nbCells nb)}
+  where
+    upd c
+        | cellId c == cid && cellType c == CodeCell = c{cellDirty = True}
+        | otherwise = c
 
 markDependentsDirty :: Int -> Notebook -> Notebook
 markDependentsDirty cid nb =

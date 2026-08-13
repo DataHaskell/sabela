@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: shared helpers for the guard cluster [Discovery].
+Guarantee: none; this is the util module of the guard cluster.
+Entry: 'answerKey'. Next: Siza.Agent.Discover.HistoryGuard.
+-}
 module Siza.Agent.Discover.Advice (
     answerDup,
     answerKey,

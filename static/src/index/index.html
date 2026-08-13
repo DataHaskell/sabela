@@ -49,9 +49,18 @@
         <span class="dirty-dot" id="dirty-dot" title="Unsaved changes"></span>
       </span>
       <span class="spacer"></span>
+      <button
+        class="icon-btn"
+        id="btn-run-mode"
+        onclick="toggleRunMode()"
+        title="Reactive: edits run automatically. Click to defer runs."
+        aria-label="Toggle run mode"
+      >
+        <svg class="icon-svg"><use href="#i-zap" /></svg>
+      </button>
       <button class="primary" id="btn-run-all" onclick="runAll()" aria-label="Run all cells">
         <svg class="icon-svg" style="vertical-align: -2px"><use href="#i-play" /></svg>
-        <span class="btn-label">Run all</span>
+        <span class="btn-label" id="run-all-label">Run all</span>
       </button>
       <button
         class="icon-btn"

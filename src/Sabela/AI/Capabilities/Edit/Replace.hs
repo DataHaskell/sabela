@@ -7,7 +7,8 @@ module Sabela.AI.Capabilities.Edit.Replace (
     commitPayload,
 ) where
 
-import Data.Aeson (Value (..), object, (.=))
+import Control.Monad (when)
+import Data.Aeson (Value (..), object, toJSON, (.=))
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -28,14 +29,17 @@ import Sabela.AI.Capabilities.Edit.Submission (
  )
 import Sabela.AI.Capabilities.Try.Payload.Checked (runRecordOf)
 import Sabela.AI.Capabilities.Util (field, fieldInt, fieldText)
+import Sabela.AI.CellResult (deferredCellResult)
 import Sabela.AI.Doc (cellHash)
 import Sabela.AI.Store (AIStore)
 import Sabela.AI.Types (ToolOutcome, errOutcome, okOutcome)
+import Sabela.AI.WriteAck (deferredNote)
 import Sabela.Anthropic.Types (CancelToken)
 import Sabela.Api (errorJson, errorJsonWith)
 import Sabela.Handlers (ReactiveNotebook, setCellSourceChecked)
 import Sabela.Model
 import Sabela.Parse (staleBindings, validateCellShape)
+import Sabela.Reactivity (markRootedDirty)
 import Sabela.SessionTypes (CellLang (..))
 import Sabela.State
 
@@ -170,17 +174,25 @@ commitReplace app store rn cancelTok oldCell admission = do
         Left conflict -> pure (errOutcome (conflictJson conflict))
         Right newCell -> do
             broadcastNotebook app
+            mode <- getRunMode app
             let stale =
                     if cellLang newCell == Haskell
                         then staleBindings (cellSource oldCell) newSrc
                         else []
+                runnable =
+                    cellType newCell == CodeCell
+                        && cellLang newCell == Haskell
+                        && not (T.null (T.strip newSrc))
+                deferred = runnable && mode == RunDeferred
+            when deferred $ do
+                modifyNotebook (appNotebook app) (markRootedDirty cid)
+                broadcastNotebookState app
             execSummary <-
-                if cellType newCell == CodeCell
-                    && cellLang newCell == Haskell
-                    && not (T.null (T.strip newSrc))
+                if runnable && not deferred
                     then autoExecuteAfterMutation app store rn cancelTok cid
-                    else pure Null
-            pure (okOutcome (commitPayload cid newCell execSummary stale admission))
+                    else pure (if deferred then toJSON deferredCellResult else Null)
+            let out = okOutcome (commitPayload cid newCell execSummary stale admission)
+            pure (if deferred then withNote deferredNote out else out)
 
 {- | What a committed replace publishes. The gate's finding is completed
 against this payload's own execution record, so the two halves of one object

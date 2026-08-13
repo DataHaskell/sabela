@@ -70,9 +70,11 @@ spec = describe "stale-state doors stay shut for edits that reach no code" $ do
             map cellId (epCellsToRun plan) `shouldBe` [1, 2]
             epRunEnv plan `shouldBe` True
 
-        it "a stale environment with NO stale cells still rebuilds and runs\
-           \ everything: run-all reconciles, an edit does not" $ do
-            let cs = [mkCell 1 "a = 1", mkCell 2 "b = 2"]
-                plan = computeStaleExecutionPlanIn EnvStale ModulesLoaded cs (nbOf cs)
-            map cellId (epCellsToRun plan) `shouldBe` [1, 2]
-            epRunEnv plan `shouldBe` True
+        it
+            "a stale environment with NO stale cells still rebuilds and runs\
+            \ everything: run-all reconciles, an edit does not"
+            $ do
+                let cs = [mkCell 1 "a = 1", mkCell 2 "b = 2"]
+                    plan = computeStaleExecutionPlanIn EnvStale ModulesLoaded cs (nbOf cs)
+                map cellId (epCellsToRun plan) `shouldBe` [1, 2]
+                epRunEnv plan `shouldBe` True

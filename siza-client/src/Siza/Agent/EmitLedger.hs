@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: per-turn emission ledger [Context Economy].
+Guarantee: shares the 'mustKeep' never-drop contract with Siza.Agent.Compact.
+Entry: 'emitTurn'. Next: Siza.Agent.OutcomeDistill.
+-}
 module Siza.Agent.EmitLedger (
     EmitLedger,
     backRefLimit,

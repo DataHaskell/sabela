@@ -90,6 +90,7 @@ import Sabela.Server.Run (
     clearCellH,
     completeH,
     examplesH,
+    getModeH,
     infoH,
     interruptKernelH,
     kernelStatusH,
@@ -99,6 +100,7 @@ import Sabela.Server.Run (
     runAllH,
     runCellH,
     setCellLangH,
+    setModeH,
     setWidgetH,
     sseApp,
  )
@@ -177,6 +179,8 @@ server app rn =
         :<|> restartRunAllH rn
         :<|> interruptKernelH app
         :<|> kernelStatusH app
+        :<|> getModeH app
+        :<|> setModeH app rn
         :<|> clearCellH app
         :<|> listFilesH app
         :<|> readFileH app

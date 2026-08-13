@@ -1,9 +1,7 @@
-{- | The per-call machinery both entry points share: the chat agent loop and
-the stdio MCP server. Everything here works from a 'Dispatch' alone, so a
-layer added to it lands on both paths rather than on whichever one was edited.
-
-The loop keeps what needs the model or the transcript — sampling, the emit
-ledger, wrap-up, compaction. Those cannot cross, and do not live here.
+{- |
+Technique: shared surface stack, chat/MCP parity [Episode].
+Guarantee: 'SurfacePolicy' derives per-surface behaviour from the 'Surface' enum, so a new layer lands on both paths.
+Entry: 'stackDispatch'. Next: Siza.Agent.Stack.Call.
 -}
 module Siza.Agent.Stack (
     Dispatch,
@@ -49,7 +47,6 @@ import qualified Data.Text as T
 import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (GrammarMode (..))
 import Siza.Agent.Discover.History (SearchLedger)
 import Siza.Agent.Discover.HistoryGuard (guardDiscover, newSearchLedger)
 import Siza.Agent.Futility (
@@ -58,6 +55,7 @@ import Siza.Agent.Futility (
     newFutilityGuard,
     rejectionRepeats,
  )
+import Siza.Agent.GrammarCards (GrammarMode (..))
 import Siza.Agent.Owned (OwnedCell (..), recordOwned)
 import Siza.Agent.ToolRoute (normalizeToolCall)
 
@@ -134,11 +132,9 @@ newSessionFor surface grammar goal =
         <*> pure grammar
         <*> pure surface
 
-{- | The chat loop's constructor. The Bool it still passes is ignored: repair
-beats belong to the surface, not to the caller.
--}
-newStackSession :: GrammarMode -> Bool -> Text -> IO StackSession
-newStackSession grammar _ = newSessionFor ChatSurface grammar
+-- | The chat loop's constructor: repair beats belong to the surface.
+newStackSession :: GrammarMode -> Text -> IO StackSession
+newStackSession = newSessionFor ChatSurface
 
 {- | The pre-dispatch stack, outermost first. 'takeGoal' sits outside the
 futility guard so the guard's key stays goal-insensitive: two byte-identical

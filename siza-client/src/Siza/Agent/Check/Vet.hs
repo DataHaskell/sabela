@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: mutation-testing proposed checks [Gating/Repair].
+Guarantee: a check no typed perturbation can falsify is refused ('Unperturbable'), never passed.
+Entry: 'vetVerdictAgainst'. Next: Siza.Agent.Check.Marker.
+-}
 module Siza.Agent.Check.Vet (
     CheckScope (..),
     checkScopeFor,

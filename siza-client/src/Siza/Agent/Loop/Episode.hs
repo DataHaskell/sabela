@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The state one episode carries between turns, and the operations that read
-or advance it: printing the transcript, ending the run, and the per-turn wrap-up
-the budget injects.
+{- |
+Technique: mutable episode state [Episode].
+Guarantee: transcript printing, run ending, and per-turn wrap-up advance one record between turns.
+Entry: 'Episode'. Next: Siza.Agent.Loop.Step.
 -}
 module Siza.Agent.Loop.Episode (
     Episode (..),
@@ -32,13 +33,13 @@ import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Types (ToolOutcome)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
-import Siza.Agent.Discover (seamDiscover)
 import Siza.Agent.Discover.HistoryGuard (
     closeSearchLedgerRanked,
     setSearchPressure,
  )
 import Siza.Agent.EmitLedger (EmitLedger, dedupInjected)
 import Siza.Agent.Exemplars (saveVerified)
+import Siza.Agent.GrammarCards (seamDiscover)
 import Siza.Agent.Loop.Types (
     AgentRun (..),
     Driver (..),

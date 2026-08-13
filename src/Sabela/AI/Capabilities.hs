@@ -7,6 +7,7 @@ module Sabela.AI.Capabilities (
     executeTool,
     needsKernel,
     acceptEdit,
+    commitAcceptedEdit,
     revertEdit,
 ) where
 
@@ -40,6 +41,8 @@ import Sabela.AI.Capabilities.Kernel (
     execInterrupt,
     execKernelRestart,
     execKernelStatus,
+    execRunPending,
+    execSetRunMode,
     haskellKernelOccupied,
  )
 import Sabela.AI.Capabilities.KernelHealth (busyEvidenceNow, cellOwner)
@@ -75,6 +78,7 @@ import Sabela.Api (errorJson, errorJsonWith)
 import Sabela.Handlers (ReactiveNotebook (..), setCellSourceChecked)
 import Sabela.Handlers.Lifecycle (ensureSessionAlive)
 import Sabela.Model
+import Sabela.Reactivity (markRootedDirty)
 import Sabela.Session.Admission (Admission (..))
 import Sabela.State
 import ScriptHs.Parser (CabalMeta (..))
@@ -162,6 +166,8 @@ executeTool app store rn cancelTok toolName rawInput =
         ApiReference -> execApiReference app input
         ExploreResult -> execExploreResult store input
         KernelStatus -> execKernelStatus app
+        SetRunMode -> execSetRunMode app rn input
+        RunPending -> execRunPending app rn
         Interrupt -> execInterrupt app store
         KernelRestart -> execKernelRestart app rn
         AwaitIdle -> execAwaitIdle app store
@@ -224,6 +230,12 @@ lookupParseError v = case field "_parseError" v of
     Just (String s) -> Just s
     _ -> Nothing
 
+-- | The rejection's own error text, bounded; a patch refusal must say why.
+gateRejectionSummary :: Value -> Text
+gateRejectionSummary v = case field "error" v of
+    Just (String s) -> T.take 400 s
+    _ -> T.take 400 (T.pack (show v))
+
 acceptEdit :: App -> AIStore -> ReactiveNotebook -> EditId -> IO (Maybe Cell)
 acceptEdit app store rn eid = do
     mEdit <- lookupEdit store eid
@@ -242,7 +254,18 @@ acceptEdit app store rn eid = do
                             (cellType c)
                             (aeNewSource edit)
                     case gate of
-                        Left _ -> pure Nothing
+                        Left rejection -> do
+                            broadcast
+                                (appEvents app)
+                                ( EvChatError
+                                    Nothing
+                                    ( "Accepting the patch for cell "
+                                        <> T.pack (show (aeCellId edit))
+                                        <> " was refused by the compile gate: "
+                                        <> gateRejectionSummary rejection
+                                    )
+                                )
+                            pure Nothing
                         Right () -> commitAcceptedEdit app store rn edit
 
 commitAcceptedEdit ::
@@ -259,8 +282,17 @@ commitAcceptedEdit app store rn edit = do
         else do
             updateEditStatus store (aeEditId edit) Accepted
             broadcastNotebook app
-            ct <- newCancelToken
-            _ <- executeCell app rn (aeCellId edit) ct
+            mode <- getRunMode app
+            case mode of
+                RunDeferred -> do
+                    modifyNotebook
+                        (appNotebook app)
+                        (markRootedDirty (aeCellId edit))
+                    broadcastNotebookState app
+                RunReactive -> do
+                    ct <- newCancelToken
+                    _ <- executeCell app rn (aeCellId edit) ct
+                    pure ()
             nb <- readNotebook (appNotebook app)
             pure (lookupCell (aeCellId edit) nb)
 

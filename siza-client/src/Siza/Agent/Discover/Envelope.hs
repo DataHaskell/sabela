@@ -1,3 +1,4 @@
+-- | Technique: bounded discover reply [Discovery]. Guarantee: every reply fits the 2000-char 'envelopeCharBudget'. Entry: 'boundEnvelope'; Siza.Agent.Discover.Evict holds the disclosure law.
 module Siza.Agent.Discover.Envelope (
     badRequest,
     envelopeCharBudget,

@@ -3,6 +3,7 @@
 
 module Sabela.AI.Capabilities.Edit.Ack (
     ackWriteAndRun,
+    WriteRun (..),
     writeGate,
     writeAckDeadlineUs,
     writeSettleGraceUs,
@@ -47,6 +48,12 @@ writeAckDeadlineUs = do
 writeSettleGraceUs :: Int
 writeSettleGraceUs = 15000000
 
+{- | What a committed write does next: run now, or settle immediately with the
+given execution summary (Null for prose; a Deferred 'CellResult' in deferred
+run mode, so the client sees why nothing ran).
+-}
+data WriteRun = RunNow | SettleWith !Value
+
 {- | Notes are asked for rather than given: what a write may claim about its
 cell depends on whether this acknowledgement ends up carrying a run of it, and
 that is only known here.
@@ -58,20 +65,26 @@ ackWriteAndRun ::
     CancelToken ->
     Value ->
     Cell ->
-    Bool ->
+    WriteRun ->
     (RunRecord -> [Text]) ->
     IO ToolOutcome
-ackWriteAndRun app store rn cancelTok input cell runnable notesFor = do
+ackWriteAndRun app store rn cancelTok input cell disposition notesFor = do
     pw <- registerWrite (aiWriteReg store) (writeIdentity input) (cellId cell)
-    if not runnable
-        then do
-            settleWrite pw Null
+    case disposition of
+        SettleWith summary -> do
+            settleWrite pw summary
             markDelivered pw
             pure
                 ( okOutcome
-                    (ackJson cell AckCompleted (Just Null) False (notesFor RunNotAttempted))
+                    ( ackJson
+                        cell
+                        AckCompleted
+                        (Just summary)
+                        False
+                        (notesFor RunNotAttempted)
+                    )
                 )
-        else do
+        RunNow -> do
             void . forkIO $ do
                 r <-
                     try

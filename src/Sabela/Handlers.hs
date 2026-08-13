@@ -3,6 +3,7 @@
 module Sabela.Handlers (
     ReactiveNotebook (..),
     setupReactive,
+    applyRunMode,
     cellRunnable,
     initGlobalEnv,
     initPreinstalledPackages,
@@ -55,6 +56,7 @@ import Sabela.Model (
     CellType (..),
     Notebook (..),
     NotebookEvent (..),
+    RunMode (..),
     SessionStatus (..),
     cellLangOf,
  )
@@ -66,11 +68,18 @@ import Sabela.Reactivity (
     clearCellResult,
     haskellCodeCells,
     markDependentsDirty,
+    markRootedDirty,
     runAllNeedsRun,
  )
 import Sabela.Session.Project (ReplSupport (..), buildTimeSupportDir)
 import qualified Sabela.SessionTypes as ST
-import Sabela.State (App (..), broadcastNotebookState, getAIStore)
+import Sabela.State (
+    App (..),
+    broadcastNotebookState,
+    getAIStore,
+    getRunMode,
+    setRunMode,
+ )
 import Sabela.State.NotebookStore (modifyNotebook, readNotebook)
 import ScriptHs.Parser (CabalMeta (..))
 import System.Directory (doesFileExist)
@@ -87,6 +96,16 @@ initGlobalEnv path = do
 initPreinstalledPackages :: FilePath -> [String] -> IO (Set Text)
 initPreinstalledPackages _ [] = pure S.empty
 initPreinstalledPackages _ pkgs = pure (S.fromList (map T.pack pkgs))
+
+{- | Switch run mode. Flipping back to reactive drains whatever deferral
+accumulated, so no stale set silently survives the mode change.
+-}
+applyRunMode :: App -> ReactiveNotebook -> RunMode -> IO ()
+applyRunMode app rn mode = do
+    prev <- getRunMode app
+    setRunMode app mode
+    broadcast app (EvRunMode mode)
+    when (prev == RunDeferred && mode == RunReactive) $ rnRunAll rn
 
 data ReactiveNotebook = ReactiveNotebook
     { rnCellEdit :: Int -> Text -> IO ()
@@ -118,7 +137,8 @@ handleCellEdit app cid src = do
             Nothing -> False
     modifyNotebook (appNotebook app) $ updateCellSource cid src
     broadcastNotebookState app
-    when significant $ do
+    mode <- getRunMode app
+    when (significant && mode == RunReactive) $ do
         nb <- readNotebook (appNotebook app)
         gen <- bumpGeneration app
         dispatchByLang app gen cid (cellLangOf cid nb) (executeAffected app gen cid)
@@ -149,11 +169,20 @@ updateCellSource cid src nb
         | cellId c == cid = c{cellSource = src, cellDirty = True}
         | otherwise = c
 
+{- | A widget move re-runs its cell and consumers, or in deferred mode only
+marks them stale; the drain picks the whole rooted set up later.
+-}
 handleWidgetCell :: App -> Int -> IO ()
 handleWidgetCell app cid = do
     debugLog app $ "[handler] handleWidgetCell: cell " <> T.pack (show cid)
-    gen <- bumpGeneration app
-    void $ forkIO $ executeAffected app gen cid
+    mode <- getRunMode app
+    case mode of
+        RunDeferred -> do
+            modifyNotebook (appNotebook app) (markRootedDirty cid)
+            broadcastNotebookState app
+        RunReactive -> do
+            gen <- bumpGeneration app
+            void $ forkIO $ executeAffected app gen cid
 
 handleRunCell :: App -> Int -> IO ()
 handleRunCell = handleRunCellWith False

@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: check execution and verdict extraction [Gating/Repair].
+Guarantee: a verdict is read only from an executed marker cell; otherwise 'NoVerdict'.
+Entry: 'checkVerdict3With'. Next: Siza.Agent.Loop.Verdict.
+-}
 module Siza.Agent.Check (
     CheckResult (..),
     MarkerRun (..),
@@ -223,6 +226,7 @@ uncheckableNote check run = noVerdictNote (CheckDidNotRun check) <> because
         MarkerRefused why -> "; the notebook refused its scratch cell: " <> why
         MarkerRan _ -> "; it named no value the cells make observable"
 
+-- | Two-way variant kept for the specs; 'checkVerdict3With' is the live entry.
 checkVerdictWith ::
     (ToolName -> Value -> IO (Either Text ToolOutcome)) ->
     Text ->

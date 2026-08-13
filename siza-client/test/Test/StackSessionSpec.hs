@@ -15,8 +15,8 @@ import Test.QuickCheck
 
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (GrammarMode (..))
 import Siza.Agent.Futility (normaliseDiagnostic)
+import Siza.Agent.GrammarCards (GrammarMode (..))
 import Siza.Agent.Loop (episodeStack)
 import Siza.Agent.Owned (OwnedCell (..))
 import Siza.Agent.Stack (
@@ -43,7 +43,7 @@ stackSessionSpec = describe "the shared dispatch stack session" $ do
 
     it "takes the goal off the call before it reaches the wire" $ do
         (fake, tape) <- recordingNotebook
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         _ <-
             stackDispatch ss fake $
                 ToolCall
@@ -55,14 +55,14 @@ stackSessionSpec = describe "the shared dispatch stack session" $ do
 
     it "remembers the goal for a later call that carries none" $ do
         (fake, _) <- recordingNotebook
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         _ <- stackDispatch ss fake (writeWithGoal "x = 1" chartGoal)
         _ <- stackDispatch ss fake (write "y = 2")
         sessionGoal ss `shouldReturn` chartGoal
 
     it "unwraps an enveloped argument object" $ do
         (fake, tape) <- recordingNotebook
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         _ <-
             stackDispatch ss fake $
                 ToolCall
@@ -73,14 +73,14 @@ stackSessionSpec = describe "the shared dispatch stack session" $ do
 
     it "keys futility past the goal, so a re-goaled retry is still a retry" $ do
         (fake, _) <- recordingNotebook
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         _ <- stackDispatch ss fake (writeWithGoal "boom" "first try")
         second <- stackDispatch ss fake (writeWithGoal "boom" "second try")
         futilityNoted second `shouldBe` True
 
     it "records the cells it writes and forgets the ones it deletes" $ do
         (fake, _) <- recordingNotebook
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         callThrough ss fake (write "x = 1")
         owned <- ownedCells ss
         Map.keys owned `shouldBe` [101]
@@ -92,7 +92,7 @@ stackSessionSpec = describe "the shared dispatch stack session" $ do
 
     it "lists the reds it owns, and only those" $ do
         (fake, _) <- recordingNotebook
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         callThrough ss fake (write "x = 1")
         callThrough ss fake (write "red = 2")
         reds <- ownedReds ss
@@ -100,7 +100,7 @@ stackSessionSpec = describe "the shared dispatch stack session" $ do
 
     it "does not own a cell a rejected write never created" $ do
         (fake, _) <- recordingNotebook
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         callThrough ss fake (write "boom")
         ownedCells ss >>= \m -> Map.keys m `shouldBe` []
 
@@ -156,7 +156,7 @@ runOnBoth :: [(Text, Text)] -> IO [Map.Map Text Int]
 runOnBoth steps = sequence [viaChat, viaMcp]
   where
     viaChat = do
-        ss <- newStackSession GrammarOn False ""
+        ss <- newStackSession GrammarOn ""
         drive ss episodeStack
     viaMcp = do
         ss <- mcpSession

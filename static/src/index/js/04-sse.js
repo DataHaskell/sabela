@@ -95,6 +95,9 @@ function handleSSE(ev) {
     case 'notebookState':
       applyNotebookState(ev.epoch, ev.staleIds);
       break;
+    case 'runMode':
+      applyRunMode(ev.mode);
+      break;
     case 'installLog':
       appendBuildLog(ev.line);
       break;

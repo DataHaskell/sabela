@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Running a covering check in a scratch cell. A verdict may only be read
-from the channel that computed it: the executed cell's output. A refused cell
-produced none, and its rejection echoes the source back — which for a marker
-cell contains the marker's own pass token.
+{- |
+Technique: scratch-cell check runner [Gating/Repair].
+Guarantee: a verdict is read only from the channel that computed it: the executed cell's output.
+Entry: 'runMarkerWith'. Bracket-shaped cell lifetime: insert, read GRADE_PASS/GRADE_FAIL, always delete.
 -}
 module Siza.Agent.Check.Marker (
     MarkerRun (..),

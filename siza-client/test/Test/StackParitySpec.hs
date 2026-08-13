@@ -19,7 +19,7 @@ import Test.QuickCheck
 
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (GrammarMode (..))
+import Siza.Agent.GrammarCards (GrammarMode (..))
 import Siza.Agent.Loop (episodeStack)
 import Siza.Agent.Stack (
     Dispatch,
@@ -60,14 +60,13 @@ stackParitySpec = describe "chat and MCP drive the same stack" $ do
                 all (`elem` ns) ["insert_cell", "discover", "delete_cell"]
         stackLayers `shouldBe` ["normalize", "goal", "discover-ledger", "futility"]
 
-    it "does not let a caller pick the chat surface's repair beat (C3-3)" $
-        property $ \flag -> ioProperty $ do
-            ss <- newStackSession GrammarOn flag ""
-            pure (ssHealReds ss === spHealsReds (surfacePolicy ChatSurface))
+    it "does not let a caller pick the chat surface's repair beat (C3-3)" $ do
+        ss <- newStackSession GrammarOn ""
+        ssHealReds ss `shouldBe` spHealsReds (surfacePolicy ChatSurface)
 
     it "gives each entry point the policy its surface declares (C3-3)" $ do
         mcp <- mcpSession
-        chat <- newStackSession GrammarOn False ""
+        chat <- newStackSession GrammarOn ""
         map ssSurface [chat, mcp] `shouldBe` [ChatSurface, McpSurface]
         surfacePolicy McpSurface `shouldNotBe` surfacePolicy ChatSurface
 
@@ -106,7 +105,7 @@ stackParitySpec = describe "chat and MCP drive the same stack" $ do
 -- | The two entry points' own result renderings, as JSON field maps.
 chatFields :: ToolCall -> IO (KM.KeyMap Value)
 chatFields call = do
-    ss <- newStackSession GrammarOn False ""
+    ss <- newStackSession GrammarOn ""
     cr <- runToolCall ss (episodeStack ss serverLike) call
     pure (jsonFields (renderOutcome (crOutcome cr)))
 
@@ -246,7 +245,7 @@ sessionKinds :: [(String, IO StackSession)]
 sessionKinds = [("chat session", chatSession), ("mcp session", mcpSession)]
 
 chatSession :: IO StackSession
-chatSession = newStackSession GrammarOn False ""
+chatSession = newStackSession GrammarOn ""
 
 {- | The note kinds a dep-declaring write that lands red comes back with, on
 the session whose policy folds discovery into the call.

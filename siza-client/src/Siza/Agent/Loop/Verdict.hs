@@ -1,6 +1,7 @@
-{- | Which channel a turn's verdict goes out on, and what it may say there.
-Split out of "Siza.Agent.Loop" so every claim the loop makes about a check is
-decided in one place.
+{- |
+Technique: verdict channel routing [Episode].
+Guarantee: only a check that ran and failed may carry a counterexample.
+Entry: 'verdictMsg'. Next: Siza.Agent.Messages. Trap: "health_gate" is a synthetic tool name.
 -}
 module Siza.Agent.Loop.Verdict (
     verdictMsg,

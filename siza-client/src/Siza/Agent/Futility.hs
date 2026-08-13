@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The repeat guard both surfaces dispatch through: what a call already
-tried, and what its diagnostic already said. Two different repeats, because
-they have two different remedies.
+{- |
+Technique: dispatch-layer repeat guard [Gating/Repair].
+Guarantee: a repeated call or repeated diagnostic is answered, never silently re-run.
+Entry: 'guardDispatch'. Siblings: 'Siza.Agent.Owned.noProgressStep' (episode layer), Siza.Agent.Streak (cell layer).
 -}
 module Siza.Agent.Futility (
     FutilityGuard,

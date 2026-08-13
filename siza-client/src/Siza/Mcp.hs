@@ -28,7 +28,7 @@ import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.AI.WriteAck (refusalAck)
 import Sabela.Api (errorJsonWith)
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (GrammarMode (..))
+import Siza.Agent.GrammarCards (GrammarMode (..))
 import qualified Siza.Agent.Loop as AgentLoop
 import Siza.Agent.OutcomeDistill (distillOutcome)
 import Siza.Agent.Stack (

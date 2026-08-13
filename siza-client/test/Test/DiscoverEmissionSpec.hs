@@ -10,13 +10,13 @@ import Test.Hspec
 
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (
+import Siza.Agent.Discover.Envelope (envelopeCharBudget)
+import Siza.Agent.GrammarCards (
     GrammarMode (..),
     declaresDepsCall,
     runDiscoverOutcomes,
     seamDiscover,
  )
-import Siza.Agent.Discover.Envelope (envelopeCharBudget)
 import Test.DiscoverFixtures (textField)
 
 depsSrc :: Text

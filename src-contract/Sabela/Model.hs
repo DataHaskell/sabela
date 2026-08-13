@@ -11,6 +11,9 @@ module Sabela.Model (
     Notebook (..),
     Cell (..),
     CellType (..),
+    RunMode (..),
+    runModeTag,
+    parseRunMode,
     lookupCell,
     cellLangOf,
     NotebookEvent (..),
@@ -110,6 +113,21 @@ data Cell = Cell
 data CellType = CodeCell | ProseCell
     deriving (Eq, Generic, Show)
 
+{- | Whether an edit runs its affected cells now or only marks them stale,
+leaving one explicit drain (run-all) to execute the accumulated set.
+-}
+data RunMode = RunReactive | RunDeferred
+    deriving (Eq, Generic, Show)
+
+runModeTag :: RunMode -> Text
+runModeTag RunReactive = "reactive"
+runModeTag RunDeferred = "deferred"
+
+parseRunMode :: Text -> Maybe RunMode
+parseRunMode "reactive" = Just RunReactive
+parseRunMode "deferred" = Just RunDeferred
+parseRunMode _ = Nothing
+
 instance ToJSON Cell
 instance FromJSON Cell
 instance ToJSON CellType
@@ -133,6 +151,7 @@ data NotebookEvent
     | EvChatError (Maybe TurnId) Text
     | EvNotebookChanged Notebook
     | EvNotebookState Int [Int]
+    | EvRunMode RunMode
     | EvKernelError KernelPhase Text [Int]
     | EvChatUsageUpdate TurnId Value
     deriving (Show)
@@ -231,6 +250,11 @@ instance ToJSON NotebookEvent where
             [ "type" .= ("notebookState" :: Text)
             , "epoch" .= epoch
             , "staleIds" .= staleIds
+            ]
+    toJSON (EvRunMode mode) =
+        object
+            [ "type" .= ("runMode" :: Text)
+            , "mode" .= runModeTag mode
             ]
     toJSON (EvChatUsageUpdate tid payload) =
         object

@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: standing search goal [Discovery].
+Guarantee: a goal persists across calls until something produces its type.
+Entry: 'standingGoal'. Next: Siza.Agent.Discover.GoalEscalate.
+-}
 module Siza.Agent.Discover.Goal (
     argTypesOf,
     genuineGaps,

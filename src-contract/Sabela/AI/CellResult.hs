@@ -8,6 +8,7 @@ module Sabela.AI.CellResult (
     CellId,
     OwnedCells,
     okCellResult,
+    deferredCellResult,
     notebookHealthy,
     toCellResult,
     toToolOutcome,
@@ -47,6 +48,7 @@ data CellOutcome
     | Raised !Text
     | Rejected ![Diagnostic]
     | Aborted !AbortReason
+    | Deferred
     deriving (Eq, Show)
 
 data CellResult = CellResult
@@ -58,6 +60,12 @@ data CellResult = CellResult
 
 okCellResult :: CellResult -> Bool
 okCellResult cr = crOutcome cr == Succeeded
+
+{- | The summary of a write committed in deferred run mode: gated, marked
+stale, not run. @ok@ stays False — only a kernel-verified run earns it.
+-}
+deferredCellResult :: CellResult
+deferredCellResult = CellResult Deferred [] []
 
 type CellId = Int
 
@@ -113,6 +121,7 @@ instance ToJSON CellOutcome where
         object ["tag" .= ("Rejected" :: Text), "errors" .= ds]
     toJSON (Aborted r) =
         object ["tag" .= ("Aborted" :: Text), "reason" .= r]
+    toJSON Deferred = object ["tag" .= ("Deferred" :: Text)]
 
 instance FromJSON CellOutcome where
     parseJSON = withObject "CellOutcome" $ \o -> do
@@ -122,6 +131,7 @@ instance FromJSON CellOutcome where
             "Raised" -> Raised <$> o .: "message"
             "Rejected" -> Rejected . fromMaybe [] <$> o .:? "errors"
             "Aborted" -> Aborted <$> o .: "reason"
+            "Deferred" -> pure Deferred
             _ -> fail ("unknown outcome tag: " <> show tag)
 
 instance ToJSON CellResult where

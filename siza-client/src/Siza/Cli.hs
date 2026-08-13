@@ -2,11 +2,13 @@ module Siza.Cli (
     Command (..),
     parseCommand,
     runCommand,
+    haskellCodePayload,
     main,
 ) where
 
 import Data.Aeson (Value)
 import qualified Data.Aeson as A
+import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy.Char8 as LBS8
 import Data.Maybe (fromMaybe, listToMaybe)
@@ -110,6 +112,7 @@ guardHubAuth env
 gateMutation :: Policy -> ToolName -> Value -> IO (Maybe Preflight)
 gateMutation policy name input
     | name `elem` [ReplaceCellSource, InsertCell, ProposeEdit]
+    , haskellCodePayload input
     , Just src <- sourceField input = do
         res <- preflight policy src
         case res of
@@ -128,6 +131,22 @@ gateMutation policy name input
 sourceField :: Value -> Maybe Text
 sourceField = \case
     A.Object o -> case KM.lookup "source" o of
+        Just (A.String s) -> Just s
+        _ -> Nothing
+    _ -> Nothing
+
+{- | Only a Haskell code payload faces the Haskell parser: the wire carries
+the cell's declared type, and parsing prose or Python as Haskell blocks
+every valid insert. Absent fields default to code, the server's default.
+-}
+haskellCodePayload :: Value -> Bool
+haskellCodePayload v =
+    stringField "cell_type" v /= Just "ProseCell"
+        && maybe True (== "Haskell") (stringField "language" v)
+
+stringField :: Text -> Value -> Maybe Text
+stringField k = \case
+    A.Object o -> case KM.lookup (Key.fromText k) o of
         Just (A.String s) -> Just s
         _ -> Nothing
     _ -> Nothing

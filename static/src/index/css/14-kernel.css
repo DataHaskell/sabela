@@ -90,3 +90,9 @@
 .kernel-log-row.error {
   color: var(--red);
 }
+
+/* Run-mode toggle: amber while deferred, matching the stale-cell accent. */
+#btn-run-mode.deferred {
+  color: var(--yellow, #ebcb8b);
+  background: color-mix(in srgb, var(--yellow, #ebcb8b) 12%, transparent);
+}

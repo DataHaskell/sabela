@@ -15,6 +15,7 @@ module Sabela.AI.WriteAck (
     parseAckEnvelope,
     executingAckCell,
     landedNote,
+    deferredNote,
     dupRunningNote,
     dupSettledNote,
     ownWriteHint,
@@ -187,6 +188,11 @@ landedNote cid =
         <> tshow cid
         <> ") and is still executing. Call await_idle to collect the result; \
            \do NOT re-send this write."
+
+deferredNote :: Text
+deferredNote =
+    "Deferred run mode: the cell is committed and marked stale but has NOT \
+    \run. Batch further edits, then drain them all with run_pending."
 
 dupRunningNote :: Int -> Text
 dupRunningNote cid =

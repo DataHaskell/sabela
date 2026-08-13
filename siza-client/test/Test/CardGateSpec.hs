@@ -12,7 +12,7 @@ import Sabela.AI.Grammar.Card (cardHasBody, cardSigNames, emittableCard)
 import Sabela.AI.Grammar.Synth (exclusivityViolations)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-import Siza.Agent.Discover (GrammarMode (..), runDiscoverOutcomes)
+import Siza.Agent.GrammarCards (GrammarMode (..), runDiscoverOutcomes)
 import Test.DiscoverFixtures (textField)
 
 header :: Text

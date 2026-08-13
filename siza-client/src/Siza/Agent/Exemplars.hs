@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+{- |
+Technique: exemplar memory [Context Economy].
+Guarantee: dark unless SIZA_EXEMPLAR_STORE is set; off by default.
+Entry: 'retrieveForPrompt'.
+-}
 module Siza.Agent.Exemplars (
     Exemplar (..),
     exemplarStorePath,
