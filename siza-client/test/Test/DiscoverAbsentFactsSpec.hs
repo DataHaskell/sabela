@@ -41,7 +41,7 @@ installFactsFile = do
             [ "vapour\thttps://example.invalid/vapour\tCondensation tooling\t\
               \Data.Vapour.Internal Data.Vapour Data.Vapour.Cloud \
               \Data.Vapour.Cloud.Layer Data.Vapour.Droplet \
-              \Data.Vapour.Droplet.Size Data.Vapour.Mist"
+              \Data.Vapour.Droplet.Size Data.Vapour.Mist\t1.2.3"
             , "nimbus\t\tRain\tNimbus.Sky"
             , "hodograph\thttps://example.invalid/hodograph\tWind shear plots\t\
               \Data.Hodograph.Internal.Raw Data.Hodograph Data.Hodograph.Plot \
@@ -99,6 +99,9 @@ discoverAbsentFactsSpec =
                     v <- runCat "vapour"
                     firstHit v "homepage"
                         `shouldBe` "https://example.invalid/vapour"
+                it "states the release the index documented" $ do
+                    v <- runCat "vapour"
+                    firstHit v "version" `shouldBe` "1.2.3"
                 it "bounds the module list and says how to see the rest" $ do
                     v <- runCat "vapour"
                     length (modulesOf v) `shouldSatisfy` (<= 6)

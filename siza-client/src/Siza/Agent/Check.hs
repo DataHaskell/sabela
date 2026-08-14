@@ -95,7 +95,7 @@ noVerdicts =
     [ NoCellCommitted
     , NoExecutableCell 2
     , NoCheckProposed
-    , CheckDiscarded "it references nothing this task defined"
+    , CheckDiscarded "it references nothing this task committed"
     , CheckReadsNothing "True"
     , CheckDidNotRun "x == 1"
     ]

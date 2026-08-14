@@ -18,22 +18,13 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 
-{- | Where to read about a package, what it is for, and what a dependent may
-import from it.
--}
-data PkgFacts = PkgFacts
-    { pfHomepage :: !Text
-    , pfSynopsis :: !Text
-    , pfModules :: ![Text]
-    }
-    deriving (Eq, Show)
-
-emptyFacts :: PkgFacts
-emptyFacts = PkgFacts "" "" []
-
--- | Whether a row carries anything beyond the package's own name.
-hasFacts :: PkgFacts -> Bool
-hasFacts f = f /= emptyFacts
+import Sabela.AI.FactsRow (
+    PkgFacts (..),
+    emptyFacts,
+    hasFacts,
+    parseFactsRow,
+    renderFactsRow,
+ )
 
 -- | The synopsis is a card row, not prose; a long one is cut to fit.
 synopsisCap :: Int
@@ -45,6 +36,7 @@ parseCabalFacts src =
         { pfHomepage = firstBlock "homepage" topLines
         , pfSynopsis = T.take synopsisCap (firstBlock "synopsis" topLines)
         , pfModules = dedup (concatMap moduleNames exposedBlocks)
+        , pfVersion = ""
         }
   where
     sectioned = sections (T.lines src)
@@ -187,31 +179,6 @@ dedup = go S.empty
     go seen (x : xs)
         | x `S.member` seen = go seen xs
         | otherwise = x : go (S.insert x seen) xs
-
--- --- cache rows -------------------------------------------------------------
-
-{- | One package per line: name, homepage, synopsis, space-separated modules.
-Every value is whitespace-normalised at parse, so a row is always one line.
--}
-renderFactsRow :: Text -> PkgFacts -> Text
-renderFactsRow name f =
-    T.intercalate
-        "\t"
-        [name, pfHomepage f, pfSynopsis f, T.unwords (pfModules f)]
-
-parseFactsRow :: Text -> Maybe (Text, PkgFacts)
-parseFactsRow row = case T.splitOn "\t" row of
-    (n : rest)
-        | not (T.null (T.strip n)) ->
-            Just
-                ( T.strip n
-                , PkgFacts (col 0 rest) (col 1 rest) (T.words (col 2 rest))
-                )
-    _ -> Nothing
-  where
-    col i cols = case drop i cols of
-        (c : _) -> c
-        [] -> ""
 
 -- --- character predicates ---------------------------------------------------
 

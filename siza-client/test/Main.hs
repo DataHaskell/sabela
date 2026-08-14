@@ -101,6 +101,7 @@ import Test.PostNudgeGateSpec (postNudgeGateSpec)
 import Test.ProseGateSpec (proseGateSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
 import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
+import Test.ReadSourceHandoffSpec (readSourceHandoffSpec)
 import Test.RecallSpec (recallSpec)
 import Test.RecallSurfaceSpec (recallSurfaceSpec)
 import Test.RecordFieldUseSpec (recordFieldUseSpec)
@@ -137,6 +138,7 @@ import Test.VerdictStopSpec (verdictStopSpec)
 import Test.VerdictSurfaceSpec (verdictSurfaceSpec)
 import Test.VerifierSurfaceSpec (verifierSurfaceSpec)
 import Test.VerifyDiagSpec (verifyDiagSpec)
+import Test.VerifyMemoSpec (verifyMemoSpec)
 import Test.VerifyToolSpec (verifyToolSpec)
 import Test.VetSilenceSpec (vetSilenceSpec)
 import Test.WorldCardSpec (worldCardSpec)
@@ -177,6 +179,7 @@ main = hspec $ do
     declaredModulesSpec
     discoverAbsentFactsSpec
     discoverAdviceLegalSpec
+    readSourceHandoffSpec
     discoverRepoSlugSpec
     discoverScopeReachSpec
     discoverInstalledScopeSpec
@@ -292,5 +295,6 @@ main = hspec $ do
     leverSurfaceSpec
     retroTranscriptSpec
     verdictSurfaceSpec
+    verifyMemoSpec
     trySurfaceSpec
     scaffoldChatSpec

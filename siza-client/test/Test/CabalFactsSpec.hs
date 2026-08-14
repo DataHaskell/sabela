@@ -170,7 +170,7 @@ cabalFactsSpec = describe "Hackage .cabal facts" $ do
         it "is one tab-separated line per package" $ do
             let row = renderFactsRow "hodatime" (parseCabalFacts hodatimeCabal)
             T.count "\n" row `shouldBe` 0
-            length (T.splitOn "\t" row) `shouldBe` 4
+            length (T.splitOn "\t" row) `shouldBe` 5
         it "round-trips a package with no facts at all" $ do
             let f = parseCabalFacts "name: bare\n"
             parseFactsRow (renderFactsRow "bare" f) `shouldBe` Just ("bare", f)
@@ -181,4 +181,21 @@ cabalFactsSpec = describe "Hackage .cabal facts" $ do
             let f = parseCabalFacts "name: x\nsynopsis: a\tb\n"
                 row = renderFactsRow "x" f
             T.count "\n" row `shouldBe` 0
-            length (T.splitOn "\t" row) `shouldBe` 4
+            length (T.splitOn "\t" row) `shouldBe` 5
+        it "round-trips a tab-bearing value as one normalised row" $ do
+            let f =
+                    (parseCabalFacts hodatimeCabal)
+                        { pfSynopsis = "tabbed\tand\nsplit"
+                        }
+                row = renderFactsRow "hodatime" f
+            T.count "\n" row `shouldBe` 0
+            length (T.splitOn "\t" row) `shouldBe` 5
+            parseFactsRow row
+                `shouldBe` Just ("hodatime", f{pfSynopsis = "tabbed and split"})
+        it "round-trips the version the index stated" $ do
+            let f = (parseCabalFacts hodatimeCabal){pfVersion = "0.2.2.1"}
+            parseFactsRow (renderFactsRow "hodatime" f)
+                `shouldBe` Just ("hodatime", f)
+        it "reads a pre-version row as stating no version" $ do
+            let row = "cassava\thttps://example.invalid\tCSV\tData.Csv"
+            fmap (pfVersion . snd) (parseFactsRow row) `shouldBe` Just ""

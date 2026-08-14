@@ -159,10 +159,14 @@ data StandingGoal = StandingGoal
     }
     deriving (Eq, Show)
 
+{- | 'hiChecked' holds the paths the names cache was looked for at, filled
+only when it was found at none of them, so the miss can say where it looked.
+-}
 data HackageInfo = HackageInfo
     { hiAvailable :: Bool
     , hiKnown :: [Text]
     , hiFacts :: [(Text, PkgFacts)]
+    , hiChecked :: [Text]
     }
     deriving (Eq, Show)
 

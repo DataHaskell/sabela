@@ -26,8 +26,8 @@ import Siza.Agent.Check (
     degenerateNote,
  )
 import Siza.Agent.Check.Vet (
-    checkScopeFor,
     notebookBindingNames,
+    scopeForCheck,
     vetVerdictAgainst,
  )
 
@@ -38,13 +38,14 @@ verifyToolName = "verify"
 
 verifyDescription :: Text
 verifyDescription =
-    "Check a claim about the notebook against the live kernel. Pass one \
-    \boolean Haskell expression over bindings the notebook already defines \
-    \(`total == 42 && length rows == 3`). Runs it in a scratch cell that is \
-    \deleted afterwards, and answers pass | fail | uncheckable | \
-    \not_applicable. A failing check comes back with the conjunct that failed \
-    \and the value your code actually computed. Use it to confirm work is \
-    \done rather than asserting it."
+    "Check a claim about work THIS TASK committed, against the live kernel. \
+    \Pass one boolean Haskell expression over bindings your own committed \
+    \cells define (`total == 42 && length rows == 3`). Runs it in a scratch \
+    \cell that is deleted afterwards, and answers pass | fail | uncheckable \
+    \| not_applicable. A failing check comes back with the conjunct that \
+    \failed and the value your code actually computed. A check over names no \
+    \cell of yours defines is uncheckable: insert_cell first, then verify. \
+    \Use it to confirm work is done rather than asserting it."
 
 verifyProperties :: [(Text, Value)]
 verifyProperties =
@@ -53,8 +54,8 @@ verifyProperties =
         , object
             [ "type" .= ("string" :: Text)
             , "description"
-                .= ( "A boolean Haskell expression over the notebook's own \
-                     \bindings." ::
+                .= ( "A boolean Haskell expression over bindings this task's \
+                     \committed cells define." ::
                         Text
                    )
             ]
@@ -77,7 +78,7 @@ runVerifyCall call check
     | degenerateCheck check =
         pure (notApplicable check degenerateNote)
     | otherwise = do
-        scope <- checkScopeFor call =<< notebookBindingNames call
+        scope <- scopeForCheck call check =<< notebookBindingNames call
         vetted <- vetVerdictAgainst call scope check
         case vetted of
             Left why -> pure (discarded check why)

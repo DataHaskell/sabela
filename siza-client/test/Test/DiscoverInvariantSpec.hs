@@ -34,7 +34,7 @@ nameInterp :: Text -> Interpreted
 nameInterp = interpret env0
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True [] []
+hk0 = HackageInfo True [] [] []
 
 discoverInvariantSpec :: Spec
 discoverInvariantSpec =

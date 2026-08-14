@@ -9,6 +9,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
+import Sabela.AI.Capabilities.ToolName (ToolName (ReadSource))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.ToolRoute (
     Route (..),
@@ -79,6 +80,12 @@ toolRouteSpec = describe "tool-call routing boundary (R1.7/M8 class)" $ do
             let route = routeCall (ToolCall "discover" (object []))
             isUnknown route `shouldBe` False
             route `shouldBe` RouteDiscover "" (object [])
+
+    describe "read_source is a plain server tool" $
+        it "routes to the ReadSource ToolName" $ do
+            let args = object ["module" .= ("Data.Time.Clock" :: Text)]
+            routeCall (ToolCall "read_source" args)
+                `shouldBe` RouteTool ReadSource args
 
     describe "a still-wrong shape yields ONE hint naming the wrapper" $ do
         it "a non-object 'input' wrapper is a bad-args hint naming input" $ do

@@ -40,6 +40,23 @@ sabela-hub/dist-newstyle/
 # investigation; large and machine-generated, never committed.
 eval-runs/
 
+# Local scratch: session transcripts, critiques, one-off notebooks and probe
+# output. Nothing here is read by the build — move a file out to keep it.
+.scratch/
+
+# The local Hoogle + Hackage caches the resolver queries at run time. Built by
+# `make search-cache`; read from data/ by path, so they are ignored where they
+# sit rather than moved.
+data/hoogle-local.hoo
+data/hoogle-local.warn
+data/hackage-facts.tsv
+data/hackage-popularity.json
+data/search-cache.meta
+data/eval/
+
+# Downloaded competition archives that back an example notebook.
+examples/data/*.zip
+
 __pycache__/
 *.pyc
 

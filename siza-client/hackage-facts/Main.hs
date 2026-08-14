@@ -12,7 +12,6 @@ import Control.Monad (unless)
 import qualified Data.ByteString.Lazy as BL
 import Data.List (foldl', isSuffixOf, sortOn)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -28,6 +27,7 @@ import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
 
+import Sabela.AI.VersionKey (versionKey)
 import Siza.Agent.Discover.CabalFacts (
     PkgFacts (..),
     parseCabalFacts,
@@ -92,10 +92,11 @@ latestFacts tarPath = do
     step acc e = case cabalParts e of
         Nothing -> acc
         Just (pkg, ver) ->
-            let v = parseVer ver
+            let v = versionKey ver
+                facts = (parseCabalFacts (entryText e)){pfVersion = ver}
              in case M.lookup pkg acc of
                     Just (cur, _) | v < cur -> acc
-                    _ -> M.insert pkg (v, parseCabalFacts (entryText e)) acc
+                    _ -> M.insert pkg (v, facts) acc
 
 -- | Read all entries; a trailing format error truncates the list.
 readEntries :: FilePath -> IO [Tar.Entry]
@@ -111,13 +112,6 @@ entryText :: Tar.Entry -> Text
 entryText e = case TarE.entryContent e of
     TarE.NormalFile bs _ -> TE.decodeUtf8With TEE.lenientDecode (BL.toStrict bs)
     _ -> ""
-
-parseVer :: Text -> [Int]
-parseVer = map (fromMaybe 0 . readMaybeInt) . T.splitOn "."
-  where
-    readMaybeInt t = case reads (T.unpack t) of
-        [(n, "")] -> Just n
-        _ -> Nothing
 
 splitSlash :: FilePath -> [String]
 splitSlash = foldr f [[]]

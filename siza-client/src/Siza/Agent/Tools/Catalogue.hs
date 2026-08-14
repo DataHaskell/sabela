@@ -7,6 +7,11 @@ import Sabela.AI.ToolDoc (
     checkTypeImportsDoc,
     readFileDescription,
     readFilePathArg,
+    readSourceDescription,
+    readSourceModuleArg,
+    readSourceNameArg,
+    readSourcePackageArg,
+    readSourceVersionArg,
     tryDescription,
  )
 import Siza.Agent.Discover.Request (requestProperties, requestRequired)
@@ -148,6 +153,17 @@ baseCatalogue =
             , ("ref", prop "Branch, tag, or commit. Omit for the default branch.")
             ]
             ["path"]
+        )
+    , fn
+        "read_source"
+        readSourceDescription
+        ( props
+            [ ("module", prop readSourceModuleArg)
+            , ("name", prop readSourceNameArg)
+            , ("package", prop readSourcePackageArg)
+            , ("version", prop readSourceVersionArg)
+            ]
+            ["module"]
         )
     , fn
         "try"

@@ -17,36 +17,43 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 
+import Data.Either (isRight)
+import Sabela.AI.ReadSourceArgs (parseReadSourceArgs)
 import Siza.Agent.Discover.Request (
     effectiveQuery,
     parseRequest,
  )
 import Test.DiscoverFixtures (
-    installNamesFile,
+    installFactsRows,
+    installNamesFileWith,
     runCatArgs,
+    synHackageNames,
     textField,
  )
+import Test.LadderFixtures (hodatimeFactsRow)
 
-{- | Every call the advice names, as the caller would have to type it. Reads
-@discover {k="v", …}@ out of the prose; advice that names no call yields none.
+{- | Every call the advice names for one tool, as the caller would have to
+type it. Reads @tool {k: "v", …}@ (and the older @k="v"@) out of the prose;
+advice that names no call yields none.
 -}
-callsNamedIn :: Text -> [[(Text, Text)]]
-callsNamedIn = map pairsOf . braceBodies
+callsNamedIn :: Text -> Text -> [[(Text, Text)]]
+callsNamedIn tool = map pairsOf . braceBodies
   where
-    braceBodies t = case T.breakOn "discover {" t of
+    opener = tool <> " {"
+    braceBodies t = case T.breakOn opener t of
         (_, rest)
             | T.null rest -> []
             | otherwise ->
-                let body = T.drop (T.length "discover {") rest
+                let body = T.drop (T.length opener) rest
                     (inside, after) = T.breakOn "}" body
                  in inside : braceBodies after
     pairsOf = map pairOf . T.splitOn ","
     pairOf kv =
-        let (k, v) = T.breakOn "=" kv
+        let (k, v) = T.break (\c -> c == '=' || c == ':') kv
          in (T.strip k, unquote (T.strip (T.drop 1 v)))
     unquote = T.dropAround (\c -> c == '"' || c == '\'')
 
--- | Whether the tool would accept the call, by the guard the tool applies.
+-- | Whether discover would accept the call, by the guard the tool applies.
 accepts :: [(Text, Text)] -> Bool
 accepts kvs = case parseRequest (queryIn kvs) (object fields) of
     Left _ -> False
@@ -54,12 +61,22 @@ accepts kvs = case parseRequest (queryIn kvs) (object fields) of
   where
     fields = [K.fromText k .= v | (k, v) <- kvs, not (T.null k)]
 
+-- | Whether read_source would accept the call, by its own shared grammar.
+acceptsReadSource :: [(Text, Text)] -> Bool
+acceptsReadSource kvs =
+    isRight (parseReadSourceArgs (object [K.fromText k .= v | (k, v) <- kvs]))
+
 queryIn :: [(Text, Text)] -> Text
 queryIn kvs = fromMaybe "" (lookup "query" kvs)
 
+installWorld :: IO ()
+installWorld = do
+    installNamesFileWith (synHackageNames ++ ["hodatime"])
+    installFactsRows [hodatimeFactsRow]
+
 discoverAdviceLegalSpec :: Spec
 discoverAdviceLegalSpec =
-    before_ installNamesFile $
+    before_ installWorld $
         describe "advice names a call the tool accepts (live 20260807)" $ do
             it "never advises a call the entry guard would reject" $
                 mapM_ assertLegal probes
@@ -89,21 +106,26 @@ nextOf args = textField "next" <$> runCatArgs (queryOf args) args
 assertLegal :: (Text, Value) -> Expectation
 assertLegal (label, args) = do
     v <- runCatArgs (queryOf args) args
-    let next = textField "next" v
+    let advice = textField "next" v <> " " <> textField "narrow" v
+        illegal tool ok =
+            [kvs | kvs <- callsNamedIn tool advice, not (ok kvs)]
     mapM_
-        ( \kvs ->
-            if accepts kvs
-                then pure ()
-                else
+        ( \(tool, ok) ->
+            mapM_
+                ( \kvs ->
                     expectationFailure
                         ( T.unpack label
-                            <> " advises a rejected call: "
+                            <> " advises a rejected "
+                            <> T.unpack tool
+                            <> " call: "
                             <> show kvs
                             <> " in: "
-                            <> T.unpack next
+                            <> T.unpack advice
                         )
+                )
+                (illegal tool ok)
         )
-        (callsNamedIn next)
+        [("discover", accepts), ("read_source", acceptsReadSource)]
 
 assertNoBareInventory :: (Text, Value) -> Expectation
 assertNoBareInventory (label, args) = do
@@ -143,4 +165,18 @@ probes =
         )
     , ("a bare module scope", object ["module" .= ("Zephyr.Core" :: Text)])
     , ("a bare package scope", object ["package" .= ("zephyr" :: Text)])
+    ,
+        ( "a scope on an absent-known module"
+        , object
+            [ "query" .= ("zzznotathing" :: Text)
+            , "module" .= ("Data.HodaTime" :: Text)
+            ]
+        )
+    ,
+        ( "a scope on an absent-known package"
+        , object
+            [ "query" .= ("zzznotathing" :: Text)
+            , "package" .= ("hodatime" :: Text)
+            ]
+        )
     ]

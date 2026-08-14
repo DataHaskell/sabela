@@ -42,27 +42,27 @@ discoverMissSpec = describe "package-aware discover miss (union merge)" $ do
 
     describe "a package known upstream is a firm absent-known answer (R5.4)" $ do
         it "surfaces the package hit with its exact build-depends line" $ do
-            let v = emptyAll "megaparsec" (HackageInfo True ["megaparsec"] [])
+            let v = emptyAll "megaparsec" (HackageInfo True ["megaparsec"] [] [])
             stateOf v `shouldBe` "found"
             map (hitText "install") (hitsOf v)
                 `shouldSatisfy` elem "absent-known"
             map (hitText "cabal") (hitsOf v)
                 `shouldSatisfy` elem "-- cabal: build-depends: megaparsec"
         it "the next step names the install action" $ do
-            let v = emptyAll "megaparsec" (HackageInfo True ["megaparsec"] [])
+            let v = emptyAll "megaparsec" (HackageInfo True ["megaparsec"] [] [])
             textField "next" v
                 `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: megaparsec"
 
     describe "a genuine miss is clean and consulted-scoped (R1.2, R5.8)" $ do
         it "stays not_found for a name nothing holds" $ do
-            let v = emptyAll "frobwizzle" (HackageInfo True [] [])
+            let v = emptyAll "frobwizzle" (HackageInfo True [] [] [])
             stateOf v `shouldBe` "not_found"
         it "never emits the retry boilerplate or the invent ban" $ do
-            let v = emptyAll "frobwizzle" (HackageInfo True [] [])
+            let v = emptyAll "frobwizzle" (HackageInfo True [] [] [])
                 nxt = textField "next" v
             nxt `shouldSatisfy` (not . T.isInfixOf "retry discover")
             nxt `shouldSatisfy` (not . T.isInfixOf "Do not invent")
         it "does not suggest installing a name hackage does not know" $ do
-            let v = emptyAll "frobwizzle" (HackageInfo True [] [])
+            let v = emptyAll "frobwizzle" (HackageInfo True [] [] [])
             textField "next" v
                 `shouldSatisfy` (not . T.isInfixOf "build-depends: frobwizzle")

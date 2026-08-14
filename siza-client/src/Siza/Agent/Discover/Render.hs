@@ -65,6 +65,16 @@ hackageJson hk =
         [ "source" .= ("hackage" :: Text)
         , "status" .= (if hiAvailable hk then "ok" else "unavailable" :: Text)
         ]
-            <> [ "note" .= ("names cache missing — run make search-cache" :: Text)
-               | not (hiAvailable hk)
-               ]
+            <> ["note" .= missingNote (hiChecked hk) | not (hiAvailable hk)]
+
+{- | An unavailability that cannot say where it looked cannot be repaired, so
+the note names the checked paths before it names the remedy.
+-}
+missingNote :: [Text] -> Text
+missingNote checked =
+    "names cache missing"
+        <> ( if null checked
+                then ""
+                else " — not at " <> T.intercalate " or " checked
+           )
+        <> "; run make search-cache"

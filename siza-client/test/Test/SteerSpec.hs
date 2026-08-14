@@ -39,7 +39,7 @@ envP :: NotebookEnv
 envP = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True [] []
+hk0 = HackageInfo True [] [] []
 
 missEnvOf :: Text -> Value
 missEnvOf q =
@@ -57,7 +57,7 @@ foundHidden =
         (interpret envP "cumulus")
         8
         [okAnswer "session" [hiddenHit]]
-        (HackageInfo True ["cumulus"] [])
+        (HackageInfo True ["cumulus"] [] [])
   where
     hiddenHit =
         (mkHit "bars" "Cumulus.Plot" "cumulus")

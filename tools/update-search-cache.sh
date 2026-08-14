@@ -43,6 +43,16 @@ refresh_index() {
     cabal update >&2 || echo "   cabal update failed; using existing index" >&2
 }
 
+# A client launched outside the repo cannot see data/, so the names and facts
+# also land in the XDG mirror the in-process ladder falls back to.
+MIRROR_DIR="$XDG_DATA/sabela"
+
+mirror_data_file() {
+    mkdir -p "$MIRROR_DIR"
+    cp "$1" "$MIRROR_DIR/$(basename "$1")"
+    echo "   mirrored -> $MIRROR_DIR/$(basename "$1")" >&2
+}
+
 write_names() {
     [ -f "$INDEX_TAR" ] || { echo "no Hackage index at $INDEX_TAR — run cabal update" >&2; exit 1; }
     echo "==> extracting package names from $INDEX_TAR" >&2
@@ -50,6 +60,7 @@ write_names() {
         | awk -F/ 'NF>=2 && $1 != "" {print $1}' \
         | sort -u > "$NAMES_OUT"
     echo "   wrote $(wc -l < "$NAMES_OUT" | tr -d ' ') package names -> $NAMES_OUT" >&2
+    mirror_data_file "$NAMES_OUT"
 }
 
 write_facts() {
@@ -57,6 +68,7 @@ write_facts() {
     echo "==> extracting package facts from $INDEX_TAR" >&2
     CABAL_INDEX_TAR="$INDEX_TAR" cabal run -v0 siza-hackage-facts -- \
         --tar "$INDEX_TAR" --out "$FACTS_OUT" >&2
+    mirror_data_file "$FACTS_OUT"
 }
 
 ensure_hoogle() {
@@ -260,6 +272,10 @@ CARRIED_HACKAGE="$(carried_hackage)"
     [ -f "$NAMES_OUT" ] && echo "hackage_packages=$(wc -l < "$NAMES_OUT" | tr -d ' ')"
     [ -f "$FACTS_OUT" ] && echo "hackage_facts=$FACTS_OUT"
     [ -f "$FACTS_OUT" ] && echo "hackage_facts_packages=$(wc -l < "$FACTS_OUT" | tr -d ' ')"
+    [ -f "$MIRROR_DIR/hackage-packages.txt" ] \
+        && echo "names_mirror=$MIRROR_DIR/hackage-packages.txt"
+    [ -f "$MIRROR_DIR/hackage-facts.tsv" ] \
+        && echo "facts_mirror=$MIRROR_DIR/hackage-facts.tsv"
     command -v hoogle >/dev/null 2>&1 && echo "hoogle=$(command -v hoogle)"
     [ -f "$HOOGLE_INPUT_TAR" ] \
         && echo "hoogle_input_epoch=$(file_epoch "$HOOGLE_INPUT_TAR")"

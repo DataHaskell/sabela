@@ -37,7 +37,11 @@ mcpSurfaceSpec = describe "what the MCP server advertises" $ do
         readOnlyOf "discover" `shouldBe` Just (Bool True)
         readOnlyOf "list_cells" `shouldBe` Just (Bool True)
         readOnlyOf "check_type" `shouldBe` Just (Bool True)
+        readOnlyOf "read_source" `shouldBe` Just (Bool True)
         readOnlyOf "insert_cell" `shouldBe` Just (Bool False)
+
+    it "marks read_source as reaching outside the notebook" $
+        annotationOf "openWorldHint" "read_source" `shouldBe` Just (Bool True)
 
     it "marks what destroys work, and only that" $ do
         destructiveOf "delete_cell" `shouldBe` Just (Bool True)

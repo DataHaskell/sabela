@@ -6,7 +6,15 @@ module Sabela.AI.Capabilities.Tools.World (worldTools) where
 import Data.Aeson (Value, object, (.=))
 import Data.Text (Text)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), mkTool)
-import Sabela.AI.ToolDoc (readFileDescription, readFilePathArg)
+import Sabela.AI.ToolDoc (
+    readFileDescription,
+    readFilePathArg,
+    readSourceDescription,
+    readSourceModuleArg,
+    readSourceNameArg,
+    readSourcePackageArg,
+    readSourceVersionArg,
+ )
 import Sabela.Anthropic.Types (ToolDef)
 
 worldTools :: [ToolDef]
@@ -19,7 +27,22 @@ worldTools =
         ReadFile
         readFileDescription
         (fileArgs readFilePathArg)
+    , mkTool ReadSource readSourceDescription readSourceArgs
     ]
+
+readSourceArgs :: Value
+readSourceArgs =
+    object
+        [ "type" .= ("object" :: Text)
+        , "properties"
+            .= object
+                [ "module" .= stringArg readSourceModuleArg
+                , "name" .= stringArg readSourceNameArg
+                , "package" .= stringArg readSourcePackageArg
+                , "version" .= stringArg readSourceVersionArg
+                ]
+        , "required" .= (["module"] :: [Text])
+        ]
 
 fileArgs :: Text -> Value
 fileArgs pathDesc =

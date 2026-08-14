@@ -44,6 +44,8 @@ examplesBlock =
         , "* \"what is in that file?\""
             <> " -> read_file {path: \"...\"}, so the names you write are names you have seen"
         , "* \"what arguments does mapAccumL take?\" -> check_type {expr: \"mapAccumL\"}"
+        , "* \"how is foldl' implemented?\""
+            <> " -> read_source {module: \"Data.List\", name: \"foldl'\"}"
         , "* \"will this compile?\" -> try {code: \"...\"}, then insert_cell once it runs"
         , "* \"is it really done?\" -> verify {check: \"...\"}, before saying so"
         , "* \"the kernel says busy\" -> await_idle"

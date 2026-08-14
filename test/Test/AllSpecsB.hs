@@ -33,6 +33,7 @@ import qualified Test.DepsRepairSpec as DepsRepairSpec
 import qualified Test.DiscoveryToolsPreSessionSpec as DiscoveryToolsPreSessionSpec
 import qualified Test.EvCellResultWireSpec as EvCellResultWireSpec
 import qualified Test.ExportGoldenSpec as ExportGoldenSpec
+import qualified Test.FetchSpec as FetchSpec
 import qualified Test.FilesSpec as FilesSpec
 import qualified Test.FitRuleSpec as FitRuleSpec
 import qualified Test.GateCandidatesSpec as GateCandidatesSpec
@@ -42,6 +43,7 @@ import qualified Test.GateLocaliseSpec as GateLocaliseSpec
 import qualified Test.GateRepairSpec as GateRepairSpec
 import qualified Test.GenerationSpec as GenerationSpec
 import qualified Test.GitHubSpec as GitHubSpec
+import qualified Test.HackageFactsSpec as HackageFactsSpec
 import qualified Test.HarnessFrameSpec as HarnessFrameSpec
 import qualified Test.HarnessHonestyLiveSpec as HarnessHonestyLiveSpec
 import qualified Test.HintsSpec as HintsSpec
@@ -56,6 +58,7 @@ import qualified Test.KernelState.HolderSpec as KernelStateHolderSpec
 import qualified Test.KernelStateIntegritySpec as KernelStateIntegritySpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
 import qualified Test.KernelVocabSpec as KernelVocabSpec
+import qualified Test.KnockOnSpec as KnockOnSpec
 import Test.Live (liveSpecs)
 import qualified Test.MarkerSpec as MarkerSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
@@ -89,6 +92,10 @@ import qualified Test.QueryDistillSpec as QueryDistillSpec
 import qualified Test.QueryGuidanceSpec as QueryGuidanceSpec
 import qualified Test.ReadCellFitsSpec as ReadCellFitsSpec
 import qualified Test.ReadMissSpec as ReadMissSpec
+import qualified Test.ReadSourceArgsSpec as ReadSourceArgsSpec
+import qualified Test.ReadSourceLiveSpec as ReadSourceLiveSpec
+import qualified Test.ReadSourceMissSpec as ReadSourceMissSpec
+import qualified Test.ReadSourceWireSpec as ReadSourceWireSpec
 import qualified Test.ReadSurfaceSpec as ReadSurfaceSpec
 import qualified Test.RecordFieldDiscoverySpec as RecordFieldDiscoverySpec
 import qualified Test.RenderSpec as RenderSpec
@@ -101,9 +108,12 @@ import qualified Test.RestartModeSpec as RestartModeSpec
 import qualified Test.RtsGhcOptionsSpec as RtsGhcOptionsSpec
 import qualified Test.ScratchpadRenderSpec as ScratchpadRenderSpec
 import qualified Test.ScratchpadSilenceSpec as ScratchpadSilenceSpec
+import qualified Test.SdistLocateSpec as SdistLocateSpec
+import qualified Test.SdistSpec as SdistSpec
 import qualified Test.SessionFactsSpec as SessionFactsSpec
 import qualified Test.SessionGenSpec as SessionGenSpec
 import qualified Test.SizaContractWireSpec as SizaContractWireSpec
+import qualified Test.SourceLocateSpec as SourceLocateSpec
 import qualified Test.SourceNormalizeSpec as SourceNormalizeSpec
 import qualified Test.StderrFailureSpec as StderrFailureSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
@@ -133,7 +143,17 @@ allSpecsB = do
     PathRepairSpec.spec
     PathGateSpec.spec
     FilesSpec.spec
+    FetchSpec.spec
     GitHubSpec.spec
+    ReadSourceArgsSpec.spec
+    ReadSourceLiveSpec.spec
+    ReadSourceMissSpec.spec
+    ReadSourceWireSpec.spec
+    SdistLocateSpec.spec
+    SdistSpec.spec
+    SourceLocateSpec.spec
+    HackageFactsSpec.spec
+    KnockOnSpec.knockOnSpec
     GateRepairSpec.spec
     GateFrontierSpec.spec
     GateLocaliseSpec.spec

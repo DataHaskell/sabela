@@ -156,7 +156,7 @@ groups =
         )
     ,
         ( "Finding things"
-        , ["discover", "check_type", "list_bindings"]
+        , ["discover", "check_type", "list_bindings", "read_source"]
         )
     ,
         ( "Files and data"

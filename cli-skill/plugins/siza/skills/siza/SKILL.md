@@ -61,7 +61,7 @@ Each `siza tool` call is recorded to an append-only JSONL provenance log under `
 | Edit a cell **the user wrote** | `propose_edit` — pending patch they accept/reject in the UI. Always pass `expected_hash`. |
 | Edit a cell **you just inserted** | `replace_cell_source` — applied + auto-run immediately. Iterate on your own scaffolding. Pass `expected_hash`. |
 | Add a new cell | `insert_cell`. `after_cell_id: -1` puts it at the top. |
-| Remove a cell | `delete_cell` — immediate, no undo. Widgets disappear from the rendered page. |
+| Remove a cell | `delete_cell` — no undo. Refused when it would orphan another cell's imports (this cell holds the only `-- cabal:` declaration of a package a survivor imports); move the declaration first. |
 
 Never `delete_cell` + `insert_cell` to "edit" — use `replace_cell_source` (yours) or `propose_edit` (theirs).
 
@@ -76,7 +76,7 @@ All tools accept a JSON object input; outputs below are abbreviated.
 | `read_cell_output` | `{cell_id}` | `{id,outputs,error}` | Cheaper than `read_cell` when you already know the source. |
 | `find_cells_by_content` | `{pattern}` | `{matches:[{id,lang,matchingLines:[{line,text}]}]}` | Case-sensitive substring. Up to 5 matching lines per cell, 120 chars each. |
 | `insert_cell` | `{after_cell_id,source,cell_type,language?}` | `{cellId,hash,execution}` | Auto-runs Haskell code cells; `execution` is a typed `CellResult` (`{outcome,outputs,warnings,ok}`), `null` for Python or prose. **Pass `cell_type` AND `language` on _every_ insert — prose cells included.** Omitting `cell_type` fails with `Unknown cell_type: .` and omitting `language` fails with `Unknown language: .` even for a `ProseCell` (use `"Haskell"` if there's no real language to give). |
-| `delete_cell` | `{cell_id}` | `{deleted:true,cellId}` | Irreversible. |
+| `delete_cell` | `{cell_id}` | `{deleted:true,cellId}` | Irreversible. Refused when a surviving cell imports modules only this cell's `-- cabal:` line provides. |
 | `replace_cell_source` | `{cell_id,new_source,expected_hash?}` | `{cellId,hash,execution}` | Auto-runs; `execution` is a typed `CellResult`. Pass `expected_hash` to detect concurrent edits. |
 | `propose_edit` | `{cell_id,new_source,expected_hash?}` | `{editId,cellId,status:"pending"}` | Does **not** apply or run. Re-proposing supersedes prior pending edit on the same cell. |
 | `execute_cell` | `{cell_id}` | `{cellId,outcome,outputs,warnings,ok}` | Reactive: downstream cells re-run automatically. ~120s timeout. |
@@ -87,11 +87,21 @@ All tools accept a JSON object input; outputs below are abbreviated.
 | `kernel_restart` | `{}` | `{restartInitiated:true}` | Forked; returns immediately, then poll `kernel_status`. **Destructive** — wipes every binding and compiled module. |
 | `export_notebook` | `{}` | `{title, cells:[{id,position,type,lang,source,…}]}` | Every cell's source in one call — re-sync after a human edits. |
 | `try` | `{code,language?}` | `{verdict,outcome,route,stdout,stderr,…}` | The one non-committing experiment interface; Sabela selects a pure-live or disposable contextful route and fails unrestricted effects closed. |
-| `ghci_query` | `{op:"type"\|"info"\|"kind"\|"browse"\|"doc",arg}` | `{op,arg,result}` | Cheap introspection of the live Haskell session. No side effects. Requires at least one cell already executed. |
+| `list_bindings` | `{}` | `{verdict,result}` | Everything already defined in the session, with types. Check before recomputing a dataset, model, or helper; `find_function` searches library APIs, not your bindings. |
+| `check_type` | `{expr,imports?}` | `{expr,result,…}` | A name answers from the local index (definition site, package, signature, what the notebook shows); an expression asks the compiler. A record type also returns its constructors and field names. No side effects. |
+| `find_function` | `{query}` | ranked matches with module + signature | Name or keyword search over installed packages; a module name lists its exports. |
+| `find_by_type` | `{goal}` | `{goal,fits,shown,probe}` | Hole-fit search by goal type, e.g. `"[Int] -> Int"`. Typecheck-only; nothing is committed. |
+| `search_capability` | `{query}` | ranked candidate packages | Searches all of Hackage by description, type, or name; each hit carries its `-- cabal:` line, modules to import, and key functions. |
+| `read_source` | `{module,name?,package?,version?}` | definition source or module outline | Reads a package's released sdist on Hackage — nothing need be installed. States which release it read; a newer one may differ. |
+| `describe_function` | `{name}` | haddock prose | What a known name does, beyond its type. For the type alone use `check_type`. |
 | `api_reference` | `{module?}` | `{module,reference}` | The embedded card. See [reference/dataframe-granite.md](reference/dataframe-granite.md). |
 | `explore_result` | `{handle_id,op:"head"\|"tail"\|"slice"\|"grep",n?,from?,to?,pattern?}` | `{lines,totalLines}` or `{hits,totalLines}` | Drill into a stashed large payload. **Handles expire at turn end** — drill or extract the same turn. `slice` is 1-based inclusive. |
 
 You can fetch the authoritative schemas at any time with `curl -s "$base/api/ai/tools" | jq`.
+
+**`siza mcp` serves a different surface.** The MCP server exposes siza-client's agent layer, not this table's wire names: it adds two tools defined only in siza-client — `discover` (one ranked search that fans out to `find_function`/`find_by_type`/`search_capability` and unions their answers) and `verify` — and it omits those three folded tools and `describe_function` as individual entries. `read_source` is served on both surfaces, and is the follow-up discover's miss advice names for a package it reports as absent. No server endpoint lists that surface; its authoritative catalogue is a live `tools/list` handshake against `siza mcp`.
+
+`verify` checks a boolean expression over bindings the task's own committed cells define — a check over draft-only names is uncheckable until an `insert_cell` commits them. A literal repeat of a check that already passed is answered from session memory when no cell hash and no kernel generation changed; the payload then carries an `unchanged` field stating that basis, and no scratch cell runs.
 
 ## Cell-result and kernel-status semantics
 

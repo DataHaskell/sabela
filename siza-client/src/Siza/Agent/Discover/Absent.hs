@@ -20,7 +20,7 @@ import Sabela.AI.ModuleResolve (namesFragment)
 import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
 import Siza.Agent.Discover.Guidance (absentScopePackage, cabalLine)
 import Siza.Agent.Discover.Interpret (stripVersion)
-import Siza.Agent.Discover.ModuleList (shownModules)
+import Siza.Agent.Discover.ModuleList (entryModule, shownModules)
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
@@ -74,7 +74,7 @@ absentHit pkg mMod kind facts =
         , dhType = ""
         , dhModule = fromMaybe "" mMod
         , dhPackage = pkg
-        , dhVersion = ""
+        , dhVersion = maybe "" pfVersion facts
         , dhInstall = InstAbsentKnown
         , dhKind = kind
         , dhOrigin = "hackage"
@@ -104,17 +104,6 @@ withEntryModule (Just m) h
     | T.null (dhModule h) =
         h{dhModule = m, dhUse = dhUse h <|> Just ("import " <> m)}
 withEntryModule _ h = h
-
-{- | The module a caller reaches for first, when the package states one that
-stands above the rest. A package with several roots names no entry point, so
-none is invented for it.
--}
-entryModule :: Maybe PkgFacts -> Maybe Text
-entryModule facts = case facts of
-    Nothing -> Nothing
-    Just f -> case shownModules f of
-        (m : rest) | all (T.isPrefixOf (m <> ".")) rest -> Just m
-        _ -> Nothing
 
 {- | What a scope on a package no local index covers states. The session and
 Hoogle databases hold installed packages, so their silence about one that is

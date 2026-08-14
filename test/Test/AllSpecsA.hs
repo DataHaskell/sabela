@@ -2,6 +2,7 @@ module Test.AllSpecsA (allSpecsA) where
 
 import qualified Test.AdviceTruthSpec as AdviceTruthSpec
 import qualified Test.ArgRepairSpec as ArgRepairSpec
+import qualified Test.BindSpec as BindSpec
 import qualified Test.BridgeGraphSpec as BridgeGraphSpec
 import qualified Test.BrowseCardParseSpec as BrowseCardParseSpec
 import qualified Test.BrowseCardSanitizeSpec as BrowseCardSanitizeSpec
@@ -78,6 +79,8 @@ import qualified Test.NotebookEditSpec as NotebookEditSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.NotebookViolationSpec as NotebookViolationSpec
+import qualified Test.OrphanGateSpec as OrphanGateSpec
+import qualified Test.OrphanGateWireSpec as OrphanGateWireSpec
 import qualified Test.OrphanModuleReconcileSpec as OrphanModuleReconcileSpec
 import qualified Test.OwnedSpec as OwnedSpec
 import qualified Test.PreludeGhciSpec as PreludeGhciSpec
@@ -111,12 +114,14 @@ import qualified Test.ToolInputRewriteSpec as ToolInputRewriteSpec
 import qualified Test.TopoSpec as TopoSpec
 import qualified Test.TriageSpec as TriageSpec
 import qualified Test.TrialWarningSpec as TrialWarningSpec
+import qualified Test.TryBindLiveSpec as TryBindLiveSpec
 import qualified Test.TryCacheSpec as TryCacheSpec
 import qualified Test.TryContainedSeamSpec as TryContainedSeamSpec
 import qualified Test.TryFrontierSpec as TryFrontierSpec
 import qualified Test.TryHoleProbeSpec as TryHoleProbeSpec
 import qualified Test.TryLiveRouteSpec as TryLiveRouteSpec
 import qualified Test.TryOutcomeWireSpec as TryOutcomeWireSpec
+import qualified Test.TryOwnersRouteSpec as TryOwnersRouteSpec
 import qualified Test.TryPlanSpec as TryPlanSpec
 import qualified Test.TrySpec as TrySpec
 import qualified Test.TypeDirectedResolveSpec as TypeDirectedResolveSpec
@@ -133,6 +138,8 @@ allSpecsA :: Spec
 allSpecsA = do
     NotebookFrpSpec.spec
     NotebookEditSpec.spec
+    OrphanGateSpec.orphanGateSpec
+    OrphanGateWireSpec.spec
     NotebookPictureSpec.spec
     NotebookAnimSpec.spec
     NotebookCheckSpec.spec
@@ -141,6 +148,7 @@ allSpecsA = do
     TopoSpec.spec
     CompiledPlanSpec.spec
     CompileGateRenderSpec.spec
+    BindSpec.bindSpec
     CompileGateWireSpec.spec
     GateStageWireSpec.spec
     GateBinderGuardSpec.spec
@@ -194,6 +202,7 @@ allSpecsA = do
     TryFrontierSpec.spec
     TryLiveRouteSpec.spec
     TryContainedSeamSpec.spec
+    TryOwnersRouteSpec.spec
     TryCacheSpec.spec
     ThrowawayExecuteSpec.spec
     NonThreadedForkSpec.spec
@@ -256,5 +265,6 @@ allSpecsA = do
         RepairGateSpec.spec
         TypecheckPrimitiveSpec.spec
         TrySpec.spec
+        TryBindLiveSpec.spec
         TryOutcomeWireSpec.spec
         TryHoleProbeSpec.spec

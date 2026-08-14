@@ -47,6 +47,7 @@ data ToolName
     | SearchCapability
     | ListFiles
     | ReadFile
+    | ReadSource
     | EvalLive
     | SetRunMode
     | RunPending
@@ -82,6 +83,7 @@ parseToolName = \case
     "search_capability" -> Just SearchCapability
     "list_files" -> Just ListFiles
     "read_file" -> Just ReadFile
+    "read_source" -> Just ReadSource
     "eval_live" -> Just EvalLive
     "set_run_mode" -> Just SetRunMode
     "run_pending" -> Just RunPending
@@ -120,6 +122,7 @@ primaryArgKey = \case
     ApiReference -> Just "module"
     ListFiles -> Just "path"
     ReadFile -> Just "path"
+    ReadSource -> Just "module"
     Try -> Just "code"
     EvalLive -> Just "expression"
     _ -> Nothing
@@ -154,6 +157,7 @@ toolWireName = \case
     SearchCapability -> "search_capability"
     ListFiles -> "list_files"
     ReadFile -> "read_file"
+    ReadSource -> "read_source"
     EvalLive -> "eval_live"
     SetRunMode -> "set_run_mode"
     RunPending -> "run_pending"

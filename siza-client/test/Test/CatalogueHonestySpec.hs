@@ -18,7 +18,15 @@ import Test.Hspec
 import Test.QuickCheck
 
 import Sabela.AI.Capabilities.ToolName (parseToolName)
-import Sabela.AI.ToolDoc (readFileDescription, readFilePathArg)
+import Sabela.AI.ToolDoc (
+    readFileDescription,
+    readFilePathArg,
+    readSourceDescription,
+    readSourceModuleArg,
+    readSourceNameArg,
+    readSourcePackageArg,
+    readSourceVersionArg,
+ )
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Compact (compactSeed)
 import Siza.Agent.Stack (Surface (..), SurfacePolicy (..), surfacePolicy)
@@ -46,10 +54,19 @@ catalogueHonestySpec = describe "the tool catalogue's own claims" $ do
     it "leads with the tools that orient a caller who knows nothing" $
         take 2 (map fst descriptions) `shouldMatchList` ["list_cells", "discover"]
 
-    it "serves the shared file-read text, which names no other tool (C1-14b)" $ do
-        lookup "read_file" descriptions `shouldBe` Just readFileDescription
-        argDoc "read_file" "path" `shouldBe` Just readFilePathArg
-        toolsNamedIn "read_file" readFileDescription `shouldBe` []
+    it
+        "serves the shared file-read text; its one cross-pointer is read_source (C1-14b)"
+        $ do
+            lookup "read_file" descriptions `shouldBe` Just readFileDescription
+            argDoc "read_file" "path" `shouldBe` Just readFilePathArg
+            toolsNamedIn "read_file" readFileDescription `shouldBe` ["read_source"]
+
+    it "serves the shared source-read text on both surfaces" $ do
+        lookup "read_source" descriptions `shouldBe` Just readSourceDescription
+        argDoc "read_source" "module" `shouldBe` Just readSourceModuleArg
+        argDoc "read_source" "name" `shouldBe` Just readSourceNameArg
+        argDoc "read_source" "package" `shouldBe` Just readSourcePackageArg
+        argDoc "read_source" "version" `shouldBe` Just readSourceVersionArg
 
     it "says where the notebook's own library can be found" $
         lookup "discover" descriptions

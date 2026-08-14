@@ -10,12 +10,15 @@ import Data.Aeson (Value (..), object, (.=))
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Data.List (nub)
 import Sabela.AI.Capabilities.ModuleCard (resolveInstalledModules)
 import Sabela.AI.Capabilities.Query (execCheckType)
 import Sabela.AI.Capabilities.Try.Autofix (
     autofixNote,
     hiddenPackageOf,
+    missingDepNote,
     notFoundModuleOf,
+    ownerCandidateCap,
     renameCandidateCap,
     renameNote,
     scopedCandidateCap,
@@ -47,6 +50,7 @@ import Sabela.AI.Capabilities.Try.Snapshot (AppSnapshot (..), snapshotApp)
 import Sabela.AI.Capabilities.TryPlan
 import Sabela.AI.Capabilities.Util (fieldText, parseCellLang)
 import Sabela.AI.DepRepair (addBuildDepend)
+import Sabela.AI.HackageFacts (moduleOwners)
 import Sabela.AI.ImportRepair (renameModule)
 import Sabela.AI.NormalizeGate (gatedRewrite)
 import Sabela.AI.PackageIndex (PackageEntry (..))
@@ -138,29 +142,30 @@ runTrialWithDepAutofix contained app code plan = do
             Nothing -> pure outcome
             Just wrong -> do
                 scoped <- scopedModuleCandidates scopedCandidateCap code wrong
-                cands <-
+                installed <-
                     if null scoped
                         then resolveInstalledModules renameCandidateCap wrong
-                        else pure scoped
-                tryRenames outcome wrong cands
+                        else pure []
+                owners <- take ownerCandidateCap <$> moduleOwners wrong
+                let named =
+                        map (fmap peName) (scoped <> installed)
+                            <> [(wrong, pkgName) | (pkgName, _) <- owners]
+                tryRenames outcome wrong (nub named)
   where
     tryRenames failed _ [] = pure failed
     tryRenames failed wrong ((right, pkg) : rest)
-        | right == wrong = tryRenames failed wrong rest
-        | repairedCode <-
-            addBuildDepend (peName pkg) (renameModule wrong right code)
-        , Right repaired <- planTrial repairedCode = do
+        | repairedCode == code = tryRenames failed wrong rest
+        | Right repaired <- planTrial repairedCode = do
             retried <- runHaskellTrial contained app repaired
             case retried of
-                ToolOk _ ->
-                    pure
-                        ( withField
-                            "autofix"
-                            (String (renameNote wrong right (peName pkg) repairedCode))
-                            retried
-                        )
+                ToolOk _ -> pure (withField "autofix" (String note) retried)
                 ToolErr _ -> tryRenames failed wrong rest
         | otherwise = tryRenames failed wrong rest
+      where
+        repairedCode = addBuildDepend pkg (renameModule wrong right code)
+        note
+            | right == wrong = missingDepNote pkg wrong repairedCode
+            | otherwise = renameNote wrong right pkg repairedCode
 
 runHaskellTrial :: ContainedRun -> App -> TrialPlan -> IO ToolOutcome
 runHaskellTrial contained app plan =

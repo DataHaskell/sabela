@@ -9,6 +9,7 @@ module Siza.Agent.Check.Vet (
     emptyScope,
     notebookBindingNames,
     ownedDefines,
+    scopeForCheck,
     typedScope,
     vetCheckWith,
     vetProposal,
@@ -71,8 +72,19 @@ vetCheckWith call check
 
 vetProposal :: Call -> [Text] -> Text -> IO Text
 vetProposal call names proposed = do
-    scope <- checkScopeFor call names
+    scope <- scopeForCheck call proposed names
     vetProposalAgainst call scope proposed
+
+{- | The scope for a named check: every name reaches the reference gate, and
+the typing budget is spent only on the names the check itself mentions —
+capping the names instead made verifiability depend on cell position.
+-}
+scopeForCheck :: Call -> Text -> [Text] -> IO CheckScope
+scopeForCheck call proposed names = do
+    typed <- checkScopeFor call (filter mentioned names)
+    pure typed{csNames = names}
+  where
+    mentioned n = mentionsAny [n] proposed
 
 -- | Type the names in scope. Only names the kernel can type can be perturbed.
 checkScopeFor :: Call -> [Text] -> IO CheckScope

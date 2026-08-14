@@ -8,6 +8,7 @@ module Sabela.AI.ImportRepair (
     addQualifiedImport,
     dropImportList,
     widenImportList,
+    importedModules,
     qualifiedAliases,
     qualifiedImports,
     importedAliasMisses,

@@ -16,6 +16,7 @@ import qualified Data.Text as T
 
 import Data.Text (Text)
 import Sabela.Bridge (bridgePreamble)
+import Sabela.Diagnose.KnockOn (dropImportKnockOns)
 import Sabela.Model (Cell (..))
 import Sabela.Output (displayPrelude)
 import Sabela.Reactivity (ExecutionPlan (..))
@@ -136,7 +137,14 @@ runCandidate backend spec base = do
             then pure (Right ("", ""))
             else runChecked backend (candidateSetup spec)
     case setupResult of
-        Left msg -> pure (failed base StageCandidateSetup Nothing msg)
+        Left msg ->
+            pure
+                ( failed
+                    base
+                    StageCandidateSetup
+                    Nothing
+                    (dropImportKnockOns (candidateSetup spec) msg)
+                )
         Right (setupOut, setupErr) -> case candidateExpression spec of
             Nothing ->
                 pure

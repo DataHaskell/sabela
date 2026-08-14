@@ -4,6 +4,7 @@ module Test.CheckGateSpec (checkGateSpec) where
 
 import Control.Monad (forM_)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Test.Hspec
 
 import Siza.Agent.Check.Gate (
@@ -95,7 +96,11 @@ checkGateSpec = describe "check gate: reference and mutation (C2)" $ do
             perturbCheck "q" (Perturbation "l" "q") "f (q) && g q"
                 `shouldBe` "f (q) && g q"
 
-    describe "refusals are disclosed, never silent" $
+    describe "refusals are disclosed, never silent" $ do
         it "every refusal has a reason the user can read" $
             forM_ [NoReference, Indiscriminate] $ \r ->
                 refusalNote r `shouldNotBe` ""
+
+        it "a scope refusal states the precondition: commit, then verify" $
+            forM_ [NoReference, Ungrounded] $ \r ->
+                refusalNote r `shouldSatisfy` T.isInfixOf "insert_cell"

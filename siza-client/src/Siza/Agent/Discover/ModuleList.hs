@@ -6,6 +6,7 @@ emitted under a name the declared schema does not know.
 -}
 module Siza.Agent.Discover.ModuleList (
     ModuleView (..),
+    entryModule,
     factKeys,
     factRows,
     repoSlugOf,
@@ -43,6 +44,17 @@ factRows view (Just f) =
     ["homepage" .= pfHomepage f | not (T.null (pfHomepage f))]
         <> ["repo" .= r | Just r <- [repoSlugOf (pfHomepage f)]]
         <> ["modules" .= viewModules view f | not (null (pfModules f))]
+
+{- | The module a caller reaches for first, when the package states one that
+stands above the rest. A package with several roots names no entry point, so
+none is invented for it.
+-}
+entryModule :: Maybe PkgFacts -> Maybe Text
+entryModule facts = case facts of
+    Nothing -> Nothing
+    Just f -> case shownModules f of
+        (m : rest) | all (T.isPrefixOf (m <> ".")) rest -> Just m
+        _ -> Nothing
 
 {- | The @owner\/name@ a GitHub homepage states, in the form @list_files@ and
 @read_file@ take. Nothing for any other host, and nothing for a path deeper

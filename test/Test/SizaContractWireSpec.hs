@@ -79,6 +79,7 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "execute_cell"
                     , "list_files"
                     , "read_file"
+                    , "read_source"
                     , "try"
                     , "list_bindings"
                     , "check_type"

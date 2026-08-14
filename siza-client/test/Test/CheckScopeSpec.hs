@@ -11,6 +11,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Either (isLeft, isRight)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Test.Hspec
 import Test.QuickCheck
 
@@ -27,6 +28,7 @@ import Siza.Agent.Check.Vet (
     checkScopeFor,
     emptyScope,
     ownedDefines,
+    scopeForCheck,
     typedScope,
     vetVerdictAgainst,
  )
@@ -65,6 +67,21 @@ checkScopeSpec = describe "the covering check's scope (C1-1, C1-1b)" $ do
                 scope <- scopeFor (kernel (users <> tasks) check) tasks
                 v <- vetVerdictAgainst (kernel (users <> tasks) check) scope check
                 pure (v `shouldSatisfy` isLeft)
+
+    it "admits a check about a binding past the typing cap (join-fanout regression)" $ do
+        let names = ["binding" <> tshow i | i <- [1 .. 12 :: Int]]
+            check = "binding12 == 1"
+            call = kernel names check
+        scope <- scopeForCheck call check names
+        v <- vetVerdictAgainst call scope check
+        v `shouldSatisfy` isRight
+
+    it "the reference gate still sees every name, however many are typed" $ do
+        let names = ["binding" <> tshow i | i <- [1 .. 12 :: Int]]
+            check = "binding12 == 1"
+        scope <- scopeForCheck (kernel names check) check names
+        csNames scope `shouldBe` names
+        map fst (csTypes scope) `shouldBe` ["binding12"]
 
     it "refuses every check when the harness typed nothing at all" $
         property $
@@ -248,6 +265,9 @@ kernel names check tn args =
                     )
                 )
         _ -> Right (ToolOk (object []))
+
+tshow :: Int -> Text
+tshow = T.pack . show
 
 argOf :: Text -> Value -> Text
 argOf k (Object o) = case KM.lookup (K.fromText k) o of

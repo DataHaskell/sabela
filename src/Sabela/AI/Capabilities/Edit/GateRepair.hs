@@ -38,6 +38,7 @@ import Sabela.AI.Capabilities.Edit.GateFrontier (
  )
 import Sabela.AI.Capabilities.Edit.GateRepair.Candidates (gateCandidates)
 import Sabela.AI.Capabilities.Edit.HoleNudge (attachPairs)
+import Sabela.AI.Capabilities.Edit.OrphanGate (undeclaredImportPairs)
 import Sabela.AI.Capabilities.Edit.Submission (
     Submission,
     compiledText,
@@ -210,7 +211,15 @@ frontierRejection app mReplaces frontier = do
     prevDefined <- prevDefinedNames app mReplaces
     nudge <- gateHoleNudge app mReplaces verdict diagnostic (frontierSrc frontier)
     exposedBy <- exposingPackage diagnostic
-    pure (frontierRejectionJson exposedBy mReplaces prevDefined nudge frontier)
+    diverge <- undeclaredImportPairs app (frontierResult frontier)
+    pure
+        ( frontierRejectionJson
+            exposedBy
+            mReplaces
+            prevDefined
+            (nudge <> diverge)
+            frontier
+        )
   where
     verdict = disposableVerdict (frontierResult frontier)
     diagnostic = disposableDiagnostic (frontierResult frontier)

@@ -5,6 +5,7 @@ module Sabela.AI.Capabilities.Edit.CompileGate.Render (
     renderForDiagnostics,
     renderForParsing,
     isGeneratedBinder,
+    bindParts,
 ) where
 
 import Data.Char (isAlpha, isAlphaNum)
@@ -12,6 +13,11 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.Capabilities.Edit.CompileGate.Bind (
+    bindBlock,
+    bindParts,
+    withBoundProxy,
+ )
 import ScriptHs.Parser (Line, parseScriptNumbered, scriptLines)
 import ScriptHs.Render (
     Kind (..),
@@ -26,7 +32,10 @@ import ScriptHs.Render (
 
 renderNonExecuting :: Text -> Text
 renderNonExecuting src =
-    T.unlines (concat (zipWith renderGroup [0 :: Int ..] (groupStatements pieces)))
+    T.unlines
+        ( withBoundProxy
+            (concat (zipWith renderGroup [0 :: Int ..] (groupStatements pieces)))
+        )
   where
     pieces =
         mergePieces (toPieces (scriptLines (fst (parseScriptNumbered src))))
@@ -55,19 +64,45 @@ groupStatements (p : ps)
     | otherwise = GOther p : groupStatements ps
 
 renderGroup :: Int -> RenderGroup -> [Text]
-renderGroup i (GStatements ps) = doBlock i (map statementBody ps)
+renderGroup i (GStatements ps) =
+    concat (zipWith (renderRun i) [0 :: Int ..] (splitRuns ps))
 renderGroup i (GOther p) = pieceLines i p
+
+{- | A statement run split at its binds: each @pat <- act@ stands alone as a
+redeclaration of its pattern, and the actions between them stay grouped.
+-}
+data StmtRun = RunBind Text Text | RunActions [Piece]
+
+splitRuns :: [Piece] -> [StmtRun]
+splitRuns = foldr step []
+  where
+    step p runs
+        | Just (pat, body) <- bindOf p = RunBind pat body : runs
+        | otherwise = case runs of
+            RunActions ps : rest -> RunActions (p : ps) : rest
+            _ -> RunActions [p] : runs
+
+bindOf :: Piece -> Maybe (Text, Text)
+bindOf (PUnit KIOBind ls) = bindParts (bodyOf ls)
+bindOf _ = Nothing
+
+renderRun :: Int -> Int -> StmtRun -> [Text]
+renderRun _ _ (RunBind pat body) = bindBlock pat body
+renderRun i j (RunActions ps) = doBlock i j (map statementBody ps)
 
 statementBody :: Piece -> Text
 statementBody (PUnit _ ls) = bodyOf ls
 statementBody _ = ""
 
-doBlock :: Int -> [Text] -> [Text]
-doBlock i stmts =
-    [":{"] ++ doBinding ("_sabelaGateStmts" <> T.pack (show i)) stmts ++ [":}"]
+doBlock :: Int -> Int -> [Text] -> [Text]
+doBlock i j stmts =
+    [":{"] ++ doBinding ("_sabelaGateStmts" <> tag) stmts ++ [":}"]
+  where
+    tag = T.pack (show i) <> "_" <> T.pack (show j)
 
-{- | A run of statements as one @name = do@ binding, with @pure ()@ appended
-when the run ends in a bind so the block still closes on an expression.
+{- | A run of statements as one @name = do@ binding. Only 'renderForParsing'
+keeps binds inside a run, so only its runs can end in a bind and need the
+@pure ()@ tail that closes the block on an expression.
 -}
 doBinding :: Text -> [Text] -> [Text]
 doBinding name stmts =
@@ -83,9 +118,9 @@ doBinding name stmts =
     lastLine = fromMaybe "" . lastOf . T.lines
     lastOf xs = if null xs then Nothing else Just (last xs)
 
-{- | Cell source as a parseable module body: each run of statements (actions and
-@\<-@ binds) becomes one generated @do@ binding, everything else passes through.
-A @LINE@ pragma per group keeps diagnostics in the cell's own coordinates.
+{- | Cell source as a parseable module body: each statement run becomes one
+generated @do@ binding, with a @LINE@ pragma per group. Binds stay inside the
+@do@ here; the gate renders turn them into @_sabelaGateBound@ declarations.
 -}
 renderForParsing :: Text -> Text
 renderForParsing src =
@@ -151,7 +186,8 @@ pieceLen _ = 1
 
 renderForDiagnostics :: Text -> Text
 renderForDiagnostics src =
-    T.unlines (concat (zipWith pieceLines [0 :: Int ..] pieces))
+    T.unlines
+        (withBoundProxy (concat (zipWith pieceLines [0 :: Int ..] pieces)))
   where
     pieces =
         regroupByBinder
@@ -219,7 +255,9 @@ pieceLines _ (PUnit KComment ls) = wrapDecl (bodyOf ls)
 pieceLines _ (PUnit KDeclaration ls) = wrapDecl (bodyOf ls)
 pieceLines _ (PUnit KTHSplice ls) = wrapDecl (unRewriteSplice (bodyOf ls))
 pieceLines i (PUnit KAction ls) = probeDecl i (bodyOf ls)
-pieceLines i (PUnit KIOBind ls) = probeDecl i (dropBindPattern (bodyOf ls))
+pieceLines i (PUnit KIOBind ls) = case bindParts (bodyOf ls) of
+    Just (pat, body) -> bindBlock pat body
+    Nothing -> probeDecl i (dropBindPattern (bodyOf ls))
 
 bodyOf :: [Line] -> Text
 bodyOf = T.intercalate "\n" . map lineText

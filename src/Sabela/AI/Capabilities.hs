@@ -13,9 +13,8 @@ module Sabela.AI.Capabilities (
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, try)
-import Control.Monad (unless, void)
+import Control.Monad (unless)
 import Data.Aeson (Value (..), (.=))
-import Data.IORef (readIORef)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -60,10 +59,12 @@ import Sabela.AI.Capabilities.Query (
     execFindByType,
     execPeekData,
  )
+import Sabela.AI.Capabilities.ReadSource (execReadSource)
 import Sabela.AI.Capabilities.ToolName (ToolName (..), resolveToolCall)
 import Sabela.AI.Capabilities.Tools (chatTools)
 import Sabela.AI.Capabilities.Try (execTry)
 import Sabela.AI.Capabilities.Util (field, fieldInt)
+import Sabela.AI.Capabilities.Warm (warmKernel)
 import Sabela.AI.KernelVocab (
     BusyVerdict (..),
     Holding (..),
@@ -76,12 +77,10 @@ import Sabela.AI.Types
 import Sabela.Anthropic.Types (CancelToken, newCancelToken)
 import Sabela.Api (errorJson, errorJsonWith)
 import Sabela.Handlers (ReactiveNotebook (..), setCellSourceChecked)
-import Sabela.Handlers.Lifecycle (ensureSessionAlive)
 import Sabela.Model
 import Sabela.Reactivity (markRootedDirty)
 import Sabela.Session.Admission (Admission (..))
 import Sabela.State
-import ScriptHs.Parser (CabalMeta (..))
 
 executeTool ::
     App ->
@@ -179,27 +178,7 @@ executeTool app store rn cancelTok toolName rawInput =
         SearchCapability -> execSearchCapability app input
         ListFiles -> execListFiles app input
         ReadFile -> execReadFile app input
-
-warmKernel :: App -> IO ()
-warmKernel app = do
-    mSess <- getHaskellSession (appSessions app)
-    case mSess of
-        Just _ -> pure ()
-        Nothing -> do
-            gen <- readIORef (ebGeneration (appEvents app))
-            void (ensureSessionAlive app gen emptyMeta)
-  where
-    emptyMeta =
-        CabalMeta
-            { metaDeps = []
-            , metaExts = []
-            , metaGhcOptions = []
-            , metaExtraLibDirs = []
-            , metaExtraIncludeDirs = []
-            , metaPackages = []
-            , metaSourceRepos = []
-            , metaUnknownKeys = []
-            }
+        ReadSource -> execReadSource app input
 
 admissionCandidate :: Value -> Int
 admissionCandidate input = fromMaybe 0 (fieldInt "cell_id" input)

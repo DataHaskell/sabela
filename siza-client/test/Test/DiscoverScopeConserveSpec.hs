@@ -35,7 +35,7 @@ env0 :: NotebookEnv
 env0 = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hk0 :: HackageInfo
-hk0 = HackageInfo True [] []
+hk0 = HackageInfo True [] [] []
 
 {- | One entity two sources describe: the same package, and a record whose
 module the harness did not compute. The filter must speak for that record.

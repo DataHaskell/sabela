@@ -6,6 +6,7 @@ module Siza.Agent.Discover.Guidance (
     nearestNames,
     editDistance,
     cabalLine,
+    readSourceCall,
 ) where
 
 import Control.Applicative ((<|>))
@@ -14,8 +15,9 @@ import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.ReadSourceArgs (readSourceCallText)
 import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
-import Siza.Agent.Discover.ModuleList (shownModules)
+import Siza.Agent.Discover.ModuleList (entryModule, shownModules)
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
@@ -29,6 +31,22 @@ import Siza.Agent.Discover.Types (
 
 tShow :: Int -> Text
 tShow = T.pack . show
+
+-- | The call that shows a module's released source, as the caller types it.
+readSourceCall :: Text -> Text
+readSourceCall m = readSourceCallText [("module", m)]
+
+{- | The peek names a module, not the package, because read_source takes a
+module; a package with several roots gets no minted module name.
+-}
+sourcePeek :: Scope -> HackageInfo -> Text -> Text
+sourcePeek scope hk p =
+    case scModule scope <|> entryModule (lookup p (hiFacts hk)) of
+        Just m ->
+            " "
+                <> readSourceCall m
+                <> " shows its released source without installing."
+        Nothing -> ""
 
 {- | The package a scope names that no local index covers, by package or by
 module. The indexes hold installed packages, so their silence about an absent
@@ -151,6 +169,7 @@ missNext env interp scope answers hk =
                 <> "'. "
                 <> cabalLine p
                 <> " installs it, after which the session answers for it."
+                <> sourcePeek scope hk p
         Nothing ->
             "No match for '"
                 <> iName interp

@@ -3,6 +3,7 @@
 module Test.DiscoverHackageSpec (discoverHackageSpec) where
 
 import Control.Exception (bracket)
+import Control.Monad (when)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import System.Directory (
@@ -26,6 +27,7 @@ import Siza.Agent.Discover.Hackage (
     hackageModuleOwners,
  )
 import Siza.Agent.Discover.Interpret (interpret)
+import Siza.Agent.Discover.Render (hackageJson)
 import Siza.Agent.Discover.Types (
     DHit (..),
     HackageInfo (..),
@@ -34,6 +36,7 @@ import Siza.Agent.Discover.Types (
     SourceAnswer (..),
  )
 import Siza.Agent.Tools (catalogueWith)
+import Test.LadderFixtures (hodatimeFactsRow)
 
 withNames :: IO a -> IO a
 withNames act = bracket acquire release (const act)
@@ -59,9 +62,7 @@ withFacts act = bracket acquire release (const act)
         TIO.writeFile
             path
             ( T.unlines
-                [ "hodatime\thttps://example.invalid/hodatime\tA date/time \
-                  \library\tData.HodaTime Data.HodaTime.Duration \
-                  \Data.HodaTime.Calendar.Gregorian"
+                [ hodatimeFactsRow
                 , "cassava\t\tCSV parsing\tData.Csv Data.Csv.Streaming"
                 , "bare\t\t\t"
                 , "widgets-a\t\tWidgets\tWeb.Widget.Types"
@@ -80,6 +81,85 @@ discoverHackageSpec = do
     notebookSourceSpec
     hackageNameSpec
     hackageFactsSpec
+    namesLadderSpec
+
+{- | A temporary XDG data home, optionally holding the names mirror the cache
+refresh writes. Guards the rung 'loadHackageNames' reaches when no operator
+override is set and the CWD has no @data/@ directory.
+-}
+withXdgData :: Bool -> (FilePath -> IO a) -> IO a
+withXdgData mirror act = bracket acquire release body
+  where
+    acquire = do
+        tmp <- getTemporaryDirectory
+        let dir = tmp </> "siza-xdg-data-spec"
+        createDirectoryIfMissing True (dir </> "sabela")
+        when mirror $
+            TIO.writeFile
+                (dir </> "sabela" </> "hackage-packages.txt")
+                "cassava\nhodatime\n"
+        unsetEnv "SABELA_HACKAGE_NAMES"
+        setEnv "SABELA_DATA_DIR" (dir </> "nodata")
+        setEnv "XDG_DATA_HOME" dir
+        pure dir
+    release dir = do
+        unsetEnv "XDG_DATA_HOME"
+        unsetEnv "SABELA_DATA_DIR"
+        removeDirectoryRecursive dir
+    body dir = act (dir </> "sabela" </> "hackage-packages.txt")
+
+namesLadderSpec :: Spec
+namesLadderSpec = describe "where the names cache is looked for" $ do
+    it "reaches the machine-local mirror when no override is set" $
+        withXdgData True $ \_ -> do
+            info <- hackageInfoFor ["cassava"]
+            hiAvailable info `shouldBe` True
+            hiKnown info `shouldBe` ["cassava"]
+
+    it "an operator override wins even when it names a missing file" $
+        withXdgData True $ \_ -> do
+            setEnv "SABELA_HACKAGE_NAMES" "/nonexistent/names.txt"
+            info <- hackageInfoFor ["cassava"]
+            unsetEnv "SABELA_HACKAGE_NAMES"
+            hiAvailable info `shouldBe` False
+            hiChecked info `shouldBe` ["/nonexistent/names.txt"]
+
+    it "a miss reports every path it checked" $
+        withXdgData False $ \mirrorPath -> do
+            tmp <- getTemporaryDirectory
+            let dataDir = tmp </> "siza-xdg-data-spec" </> "nodata"
+            info <- hackageInfoFor ["cassava"]
+            hiAvailable info `shouldBe` False
+            hiChecked info
+                `shouldBe` [ T.pack (dataDir </> "hackage-packages.txt")
+                           , T.pack mirrorPath
+                           ]
+
+    it "the facts cache reads the mirror through the same ladder" $
+        withXdgData False $ \_ -> do
+            tmp <- getTemporaryDirectory
+            let dir = tmp </> "siza-xdg-data-spec" </> "sabela"
+            TIO.writeFile
+                (dir </> "hackage-facts.tsv")
+                "cassava\t\tCSV parsing\tData.Csv\n"
+            unsetEnv "SABELA_HACKAGE_FACTS"
+            fs <- hackageFactsFor ["cassava"]
+            map (pfModules . snd) fs `shouldBe` [["Data.Csv"]]
+
+    describe "the unavailable note" $ do
+        it "names the paths that were checked" $ do
+            let v = hackageJson (HackageInfo False [] [] ["/a/n.txt", "/b/n.txt"])
+            noteOf v `shouldSatisfy` T.isInfixOf "/a/n.txt"
+            noteOf v `shouldSatisfy` T.isInfixOf "/b/n.txt"
+            noteOf v `shouldSatisfy` T.isInfixOf "make search-cache"
+        it "an available index carries no note" $
+            case hackageJson (HackageInfo True [] [] []) of
+                Object o -> KM.lookup "note" o `shouldBe` Nothing
+                v -> expectationFailure ("not an object: " <> show v)
+  where
+    noteOf v = case v of
+        Object o | Just (String n) <- KM.lookup "note" o -> n
+        _ -> ""
 
 hackageFactsSpec :: Spec
 hackageFactsSpec = describe "the hackage facts source" $ do
@@ -89,7 +169,9 @@ hackageFactsSpec = describe "the hackage facts source" $ do
             map (pfModules . snd) fs
                 `shouldBe` [
                                [ "Data.HodaTime"
+                               , "Data.HodaTime.Instant"
                                , "Data.HodaTime.Duration"
+                               , "Data.HodaTime.Compat"
                                , "Data.HodaTime.Calendar.Gregorian"
                                ]
                            ]

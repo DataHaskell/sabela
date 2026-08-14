@@ -19,7 +19,12 @@ import Sabela.AI.Capabilities.Try.Payload.Checked (
  )
 import Sabela.AI.CellResult (deferredCellResult)
 import qualified Sabela.AI.Store as AIStore
-import Sabela.AI.Types (AiEdit (..), EditStatus (..), ToolOutcome (..), toolOutcomeValue)
+import Sabela.AI.Types (
+    AiEdit (..),
+    EditStatus (..),
+    ToolOutcome (..),
+    toolOutcomeValue,
+ )
 import Sabela.Deps (collectMetadata)
 import Sabela.Handlers (ReactiveNotebook (..), applyRunMode, setupReactive)
 import Sabela.Handlers.Lifecycle (neededEnvSig)

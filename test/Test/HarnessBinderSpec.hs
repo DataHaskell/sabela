@@ -65,7 +65,8 @@ genDefiningSource = do
     pure (src <> binding <> "\n")
 
 {- | Top-level binders of a rendered script: the leading token of an
-unindented line that binds it, with or without arguments.
+unindented line that binds it, by @=@ or by a @<-@ statement — a bind
+pattern is a binder the model wrote, and the renderer redeclares it.
 -}
 topLevelBinders :: Text -> [Text]
 topLevelBinders src =
@@ -82,7 +83,9 @@ topLevelBinders src =
   where
     identChar ch = isAlphaNum ch || ch == '_' || ch == '\''
     keywords = ["data", "type", "newtype", "class", "instance", "import", "module"]
-    binds rest = " = " `T.isInfixOf` T.takeWhile (/= ':') (" " <> T.stripStart rest)
+    binds rest =
+        " = " `T.isInfixOf` T.takeWhile (/= ':') (" " <> T.stripStart rest)
+            || "<- " `T.isPrefixOf` T.stripStart rest
 
 -- | Names the renderer invents: present after rendering, absent before it.
 inventedBinders :: (Text -> Text) -> Text -> [Text]

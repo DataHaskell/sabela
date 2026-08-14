@@ -21,7 +21,7 @@ module Sabela.AI.Capabilities.Edit (
 ) where
 
 import Control.Monad (when)
-import Data.Aeson (Value (..), object, toJSON, (.=))
+import Data.Aeson (Value (..), toJSON)
 import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -39,7 +39,13 @@ import Sabela.AI.Capabilities.Edit.Admit (
     supersedesRedCell,
     violationJson,
  )
+import Sabela.AI.Capabilities.Edit.Delete (execDeleteCell)
 import Sabela.AI.Capabilities.Edit.GateRepair (gatedCandidate)
+import Sabela.AI.Capabilities.Edit.InsertRetry (
+    InsertAttempt (..),
+    insertRetryFuel,
+    nextInsertAttempt,
+ )
 import Sabela.AI.Capabilities.Edit.Propose (
     execProposeEdit,
     proceedProposeEdit,
@@ -276,28 +282,3 @@ commitInsert app store rn cancelTok input cell sub gateNotes mAt fuel = do
                 cell
                 disposition
                 (\run -> submissionNotes sub <> gateNotes run <> [deferredNote | deferred])
-
-{- | Whether a notebook that turned red between the route's read and the
-atomic append earns another pass. Bounded: the two can keep flipping, and a
-retry costs a full disposable build.
--}
-data InsertAttempt = RetryInsert Int | AbandonInsert NotebookViolation
-
-nextInsertAttempt :: Int -> NotebookViolation -> InsertAttempt
-nextInsertAttempt fuel v = case v of
-    VPendingError _ _ | fuel > 0 -> RetryInsert (fuel - 1)
-    _ -> AbandonInsert v
-
-insertRetryFuel :: Int
-insertRetryFuel = 2
-
-execDeleteCell :: App -> Value -> IO ToolOutcome
-execDeleteCell app input = do
-    let mcid = fieldInt "cell_id" input
-    case mcid of
-        Nothing -> pure (errOutcome (errorJson "cell_id required"))
-        Just cid -> do
-            modifyNotebook (appNotebook app) $ \nb ->
-                nb{nbCells = filter (\c -> cellId c /= cid) (nbCells nb)}
-            broadcastNotebook app
-            pure (okOutcome (object ["deleted" .= True, "cellId" .= cid]))

@@ -2533,6 +2533,7 @@ backward-state
 bacteria
 bag
 baikai
+baikai-agent
 baikai-claude
 baikai-effectful
 baikai-kit
@@ -3227,6 +3228,8 @@ bzlib-conduit
 bzlib-conduit-jappie
 c-dsl
 c-enum
+c-expr-dsl
+c-expr-runtime
 c-io
 c-mosquitto
 c-storable
@@ -3639,6 +3642,7 @@ cipher-rc4
 cipher-rc5
 ciphersaber2
 circ
+circe
 circle
 circle-packing
 circlehs
@@ -3701,6 +3705,7 @@ classy-prelude-conduit
 classy-prelude-yesod
 classyplate
 claude
+claude-gate
 clay
 clckwrks
 clckwrks-cli
@@ -4408,6 +4413,7 @@ crypton-box
 crypton-conduit
 crypton-connection
 crypton-pem
+crypton-pubkey-types
 crypton-socks
 crypton-x509
 crypton-x509-store
@@ -4497,6 +4503,7 @@ cusparse
 custom-interpolation
 custom-prelude
 cut-the-crap
+cutesetup
 cutter
 cv-combinators
 cve
@@ -5549,6 +5556,7 @@ emoji
 emojis
 empty
 empty-monad
+encapsule
 enchant
 enclosed-exceptions
 encode-string
@@ -6270,6 +6278,7 @@ fractaltext
 fraction
 fractionizer
 frag
+fragr
 frame
 frame-markdown
 franchise
@@ -6450,6 +6459,8 @@ futun
 future
 future-resource
 futures
+fuyu-gpio
+fuyu-gpio-direct
 fuzzcheck
 fuzzily
 fuzzy
@@ -6993,6 +7004,7 @@ glazier-react
 glazier-react-examples
 glazier-react-widget
 glean
+glean-hs
 glean-lsp
 glfw-group
 gli
@@ -7666,6 +7678,14 @@ hamusic
 han2zen
 hanabi-dealer
 hanalyze
+hanalyze-bayes
+hanalyze-cli
+hanalyze-core
+hanalyze-design
+hanalyze-frame
+hanalyze-models
+hanalyze-plot
+hanalyze-viz
 handa-data
 handa-gdata
 handa-geodata
@@ -8331,6 +8351,7 @@ hgg-3d
 hgg-analyze-bridge
 hgg-core
 hgg-custom
+hgg-dataframe
 hgg-frame
 hgg-ihaskell
 hgg-latex
@@ -9096,6 +9117,10 @@ hstidy
 hstorchat
 hstox
 hstradeking
+hstratus
+hstratus-auth
+hstratus-drive
+hstratus-notes
 hstyle
 hstzaar
 hsubconvert
@@ -9555,6 +9580,7 @@ immortal-queue
 immortal-worker
 immutaball-core
 imp
+imp-ppl
 imparse
 imperative-edsl
 imperative-edsl-vhdl
@@ -10582,6 +10608,7 @@ libarchive
 libarchive-clib
 libarchive-conduit
 libasterix
+libclang-bindings
 libconfig
 libcspm
 libexpect
@@ -11104,6 +11131,7 @@ mandulia
 mangle
 mangopay
 mangrove
+mangrove-cli
 manifold-random
 manifolds
 manifolds-core
@@ -11428,6 +11456,7 @@ minst-idx
 mintty
 mios
 mirror-tweet
+mischief-ecs
 misfortune
 mismi-core
 mismi-kernel
@@ -11685,6 +11714,10 @@ monus-weighted-search
 monzo
 moo
 moo-nad
+moonlight-algebra
+moonlight-core
+moonlight-delta
+moonlight-triangulation
 moonshine
 more-containers
 more-extensible-effects
@@ -12092,6 +12125,7 @@ network-house
 network-info
 network-interfacerequest
 network-ip
+network-light
 network-manager-tui
 network-messagepack-rpc
 network-messagepack-rpc-websocket
@@ -12330,6 +12364,7 @@ numeric-tools
 numerical
 numerical-integration
 numericpeano
+numerus-closus
 numhask
 numhask-array
 numhask-free
@@ -13168,6 +13203,7 @@ ping-parser-attoparsec
 ping-wrapper
 pinned-warnings
 pinpon
+pinterest-url-normalizer
 pipe-enumerator
 pipeclip
 piped
@@ -13731,6 +13767,7 @@ pro-source
 prob
 prob-fx
 probability
+probability-dist
 probability-polynomial
 probable
 proc
@@ -13989,6 +14026,7 @@ quack
 quadratic-irrational
 qualified-imports-plugin
 quandl-api
+quantex
 quantfin
 quantification
 quantification-aeson
@@ -14025,6 +14063,7 @@ quickcheck-classes
 quickcheck-classes-base
 quickcheck-combinators
 quickcheck-dynamic
+quickcheck-effectful
 quickcheck-enum-instances
 quickcheck-extras
 quickcheck-groups
@@ -14043,6 +14082,7 @@ quickcheck-relaxng
 quickcheck-rematch
 quickcheck-report
 quickcheck-script
+quickcheck-silent
 quickcheck-simple
 quickcheck-special
 quickcheck-state-machine
@@ -14165,6 +14205,7 @@ rank1dynamic
 rank2classes
 rapid
 rapid-term
+rapidhash
 rasa
 rasa-example-config
 rasa-ext-bufs
@@ -14274,6 +14315,7 @@ rebound
 rec-def
 rec-smallarray
 recaptcha
+recollections
 recommender-als
 record
 record-aeson
@@ -14833,6 +14875,8 @@ safe-coloured-text
 safe-coloured-text-gen
 safe-coloured-text-layout
 safe-coloured-text-layout-gen
+safe-coloured-text-parsing
+safe-coloured-text-parsing-gen
 safe-coloured-text-terminfo
 safe-coupling
 safe-decimal
@@ -15038,6 +15082,7 @@ sdl2-image
 sdl2-mixer
 sdl2-sprite
 sdl2-ttf
+sdl3-bindgen-sys
 sdnv
 sdp
 sdp-binary
@@ -15198,6 +15243,7 @@ servant-dhall
 servant-docs
 servant-docs-simple
 servant-ede
+servant-effectful
 servant-ekg
 servant-elm
 servant-errors
@@ -15215,6 +15261,7 @@ servant-github
 servant-github-webhook
 servant-hateoas
 servant-haxl-client
+servant-health
 servant-hmac-auth
 servant-htmx
 servant-http-streams
@@ -15863,6 +15910,7 @@ soegtk
 sofetch
 sofetch-otel
 softfloat-hs
+solana-haskell-sdk
 solana-staking-csvs
 solar
 solga
@@ -16761,12 +16809,19 @@ sydtest-hedgehog
 sydtest-hedis
 sydtest-hspec
 sydtest-mongo
+sydtest-mutation
+sydtest-mutation-driver
+sydtest-mutation-driver-gen
+sydtest-mutation-plugin
+sydtest-mutation-runtime
 sydtest-persistent
 sydtest-persistent-postgresql
 sydtest-persistent-sqlite
 sydtest-process
 sydtest-rabbitmq
 sydtest-servant
+sydtest-sqitch-postgres
+sydtest-sqitch-postgres-persistent
 sydtest-typed-process
 sydtest-wai
 sydtest-webdriver
@@ -18449,6 +18504,7 @@ wai-csrf
 wai-devel
 wai-digestive-functors
 wai-dispatch
+wai-effectful
 wai-enforce-https
 wai-env
 wai-eventsource
@@ -18553,6 +18609,7 @@ warc
 warlock
 warp
 warp-dynamic
+warp-effectful
 warp-grpc
 warp-quic
 warp-s2n-tls

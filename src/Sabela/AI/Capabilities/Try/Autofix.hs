@@ -2,6 +2,8 @@
 
 module Sabela.AI.Capabilities.Try.Autofix (
     autofixNote,
+    missingDepNote,
+    ownerCandidateCap,
     renameCandidateCap,
     scopedCandidateCap,
     renameNote,
@@ -23,6 +25,19 @@ autofixNote pkg repairedCode =
     "Declared build-depends: "
         <> pkg
         <> " for this trial (the module was in a hidden package). Commit this \
+           \CURRENT source, which carries the dependency line:\n"
+        <> repairedCode
+
+{- | The repair for a module that exists on Hackage under exactly its own
+name: the dependency line alone, no rename.
+-}
+missingDepNote :: Text -> Text -> Text -> Text
+missingDepNote pkg modName repairedCode =
+    "Declared build-depends: "
+        <> pkg
+        <> " for this trial (\8216"
+        <> modName
+        <> "\8217 is in no package the notebook depends on). Commit this \
            \CURRENT source, which carries the dependency line:\n"
         <> repairedCode
 
@@ -65,6 +80,12 @@ lookupField _ _ = Nothing
 
 renameCandidateCap :: Int
 renameCandidateCap = 3
+
+{- | Candidates the Hackage facts name for the exact module. Uninstalled, so
+each costs a fresh disposable build; the cap keeps a contested module cheap.
+-}
+ownerCandidateCap :: Int
+ownerCandidateCap = 3
 
 {- | Candidates drawn from the packages the cell declares. Higher than the
 global cap because a scoped pool needs no similarity floor: every candidate is

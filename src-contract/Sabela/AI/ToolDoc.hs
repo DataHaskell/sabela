@@ -7,6 +7,11 @@ or from the capability it describes.
 module Sabela.AI.ToolDoc (
     readFileDescription,
     readFilePathArg,
+    readSourceDescription,
+    readSourceModuleArg,
+    readSourceNameArg,
+    readSourcePackageArg,
+    readSourceVersionArg,
     tryDescription,
     tierEvaluatePure,
     tierTypecheckOnly,
@@ -39,7 +44,41 @@ readFileDescription =
     \before writing a cell against it, so the names in the cell are names you have \
     \seen. A file larger than the sample is read at both ends, and the result \
     \says which bytes it read. With `repo` set to \"owner/name\", reads that \
-    \file's text out of the GitHub repository instead."
+    \file's text out of the GitHub repository instead. For a Haskell \
+    \package's released source, prefer read_source over guessing its \
+    \repository."
+
+{- | Read against the released sdist so the answer never depends on what the
+session has installed; the version disclosure below is load-bearing, since
+the release shown can lag Hackage's latest.
+-}
+readSourceDescription :: Text
+readSourceDescription =
+    "Show the source of a definition from a package's released sdist on \
+    \Hackage — the package need not be installed. With `name`, returns that \
+    \top-level definition's source and line span; without it, the module's \
+    \header and an index of its definitions. The result states which release \
+    \it read (a newer one may differ). Use this for a package that discover \
+    \reports as absent, instead of guessing a GitHub repository."
+
+readSourceModuleArg :: Text
+readSourceModuleArg =
+    "The module to read, like \"Data.Time.Clock\". The owning package is \
+    \resolved from the Hackage index; pass `package` only when several \
+    \packages expose the module."
+
+readSourceNameArg :: Text
+readSourceNameArg =
+    "A top-level definition in the module. Omit it to see the module's \
+    \definition index first."
+
+readSourcePackageArg :: Text
+readSourcePackageArg =
+    "The owning package, only when several expose the module."
+
+readSourceVersionArg :: Text
+readSourceVersionArg =
+    "A release like \"0.2.2.1\". Omit for the release the index states."
 
 {- | States where a path is resolved from and nothing else. An example naming
 a real file would be a name the model had not read, offered on the surface

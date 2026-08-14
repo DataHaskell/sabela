@@ -24,9 +24,13 @@ import Sabela.Session.Materialize (
     CandidateSpec (..),
     DisposableResult (..),
     DisposableVerdict (..),
+    MaterializeFailure (..),
+    MaterializeStage (..),
     emptyResult,
     evalCandidate,
  )
+import Sabela.Session.Materialize.Pipeline (runCandidate)
+import qualified Sabela.SessionTypes as ST
 import Test.TryFrontierGen
 import Test.TrySeamFixtures
 
@@ -156,6 +160,41 @@ spec = describe "the seam try's contained backend is reached through" $ do
             (specs, v) <- tryWith live (const green) "readFile \"notes.txt\""
             map candidateExpression specs `shouldBe` [Just "readFile \"notes.txt\""]
             textField "verdict" v `shouldBe` Just "ok"
+
+    describe "a red setup's import knock-ons are scrubbed at the seam" $
+        it "surfaces only the import failure the setup earned" $ do
+            ran <- newIORef []
+            backend <- recordingBackend ran (ioRejection "IO ()" "")
+            let src =
+                    "import Data.List.Split (splitOn)\n\
+                    \rows = map (splitOn \",\") [\"a,b\"]" ::
+                        T.Text
+                blob =
+                    "<no location info>: error:\n\
+                    \    Could not find module \8216Data.List.Split\8217\n\
+                    \\n\
+                    \<interactive>:792:19: error: [GHC-88464]\n\
+                    \    Variable not in scope: \
+                    \splitOn :: t0 -> String -> [a0]"
+                submitted =
+                    CandidateSpec
+                        { candidateMetadataSource = src
+                        , candidateSetup = src
+                        , candidateExpression = Nothing
+                        , candidateReplacesCellId = Nothing
+                        , candidateDeliberate = False
+                        }
+            result <-
+                runCandidate
+                    backend{ST.sbRunBlock = \_ -> pure ("", blob)}
+                    submitted
+                    (emptyResult [])
+            disposableVerdict result `shouldBe` DisposableCompileError
+            fmap failureStage (disposableFailure result)
+                `shouldBe` Just StageCandidateSetup
+            let message = maybe "" failureMessage (disposableFailure result)
+            message `shouldSatisfy` T.isInfixOf "Could not find module"
+            message `shouldSatisfy` (not . T.isInfixOf "Variable not in scope")
 
     describe "C1-18: a rejected trial carries its localisation" $
         prop "the rejection names the component that stopped compiling" $

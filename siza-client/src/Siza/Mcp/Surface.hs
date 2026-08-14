@@ -67,6 +67,7 @@ readOnlyTools =
     , "discover"
     , "list_files"
     , "read_file"
+    , "read_source"
     , "try"
     , "kernel_status"
     , "await_idle"
@@ -80,7 +81,7 @@ destructiveTools = ["delete_cell", "kernel_restart", "interrupt"]
 
 -- | Tools whose answers come from outside the notebook.
 openWorldTools :: [Text]
-openWorldTools = ["discover", "read_file", "list_files"]
+openWorldTools = ["discover", "read_file", "list_files", "read_source"]
 
 titleFor :: Text -> Text
 titleFor n = fromMaybe (defaultTitle n) (lookup n titleTable)
@@ -101,6 +102,7 @@ titleTable =
     , ("discover", "Search Haskell APIs and this notebook")
     , ("list_files", "List files beside the notebook")
     , ("read_file", "Read a file beside the notebook")
+    , ("read_source", "Read a package's released source")
     , ("try", "Run code without touching the notebook")
     , ("verify", "Check a claim against the live kernel")
     , ("kernel_status", "Ask whether the kernel is busy")

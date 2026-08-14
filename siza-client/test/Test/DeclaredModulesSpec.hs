@@ -20,6 +20,7 @@ import Test.Hspec
 
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Agent.Ack (withDeclaredModules)
+import Test.LadderFixtures (hodatimeFactsRow)
 
 installFacts :: IO ()
 installFacts = do
@@ -28,8 +29,7 @@ installFacts = do
     TIO.writeFile
         path
         ( T.unlines
-            [ "hodatime\thttps://example.invalid/hodatime\tDates\t\
-              \Data.HodaTime Data.HodaTime.Instant Data.HodaTime.Duration"
+            [ hodatimeFactsRow
             , "nomodules\t\tNothing exposed\t"
             ]
         )

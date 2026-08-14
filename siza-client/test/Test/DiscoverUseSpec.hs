@@ -49,7 +49,7 @@ discoverUseSpec = describe "every hit says how to call it (C2-7)" $ do
     cardClashSpec
 
 hkT :: HackageInfo
-hkT = HackageInfo True [] []
+hkT = HackageInfo True [] [] []
 
 envelopeOf :: NotebookEnv -> Text -> [DHit] -> Value
 envelopeOf env q hs =

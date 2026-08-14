@@ -29,12 +29,14 @@ data CheckRefusal
 
 refusalNote :: CheckRefusal -> Text
 refusalNote NoReference =
-    "it references nothing this task defined, so it cannot be about the \
-    \deliverable"
+    "it references nothing this task committed, so it cannot be about the \
+    \deliverable. verify reads committed notebook state: insert_cell the \
+    \binding first, then check it"
 refusalNote Indiscriminate =
     "it still passes when the value is perturbed, so it cannot fail"
 refusalNote Ungrounded =
-    "this turn defined no binding the check could be about"
+    "this task has committed no binding the check could be about; commit \
+    \the work with insert_cell before verifying it"
 refusalNote Unperturbable =
     "no perturbation of the values it names exists, so a pass proves nothing"
 

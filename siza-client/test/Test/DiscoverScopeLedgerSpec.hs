@@ -46,7 +46,7 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True [] []
+hkT = HackageInfo True [] [] []
 
 args :: [(Text, Value)] -> Value
 args kvs = object [(K.fromText k, v) | (k, v) <- kvs]
@@ -190,7 +190,7 @@ factWith pkg inst =
         (interpret envT "bars")
         8
         [okAnswer "session" [hit]]
-        (HackageInfo True [pkg] [])
+        (HackageInfo True [pkg] [] [])
   where
     hit =
         (mkHit "bars" "Cumulus.Plot" pkg)

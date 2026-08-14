@@ -41,6 +41,7 @@ import Sabela.AI.Capabilities.Edit.HoleRewrite.Repair (
     repairDiagnostic,
     repairPairs,
  )
+import Sabela.AI.Capabilities.Edit.OrphanGate (undeclaredImportPairs)
 import Sabela.AI.Health (scopeSubject)
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.AI.WriteAck (refusalAck)
@@ -88,7 +89,8 @@ compileGateCheck app mReplaces lang ty src
                 repair <-
                     gateHoleNudge app mReplaces verdict (rawDiagnostic result) src
                 exposedBy <- exposingPackage (rawDiagnostic result)
-                pure . Left . attachPairs repair $
+                diverge <- undeclaredImportPairs app result
+                pure . Left . attachPairs (repair <> diverge) $
                     rejectionJson exposedBy mReplaces gsrc prevDefined result
 
 {- | Everything a rejection earns, for the cost of one extra compile: the

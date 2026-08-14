@@ -58,6 +58,7 @@ import Siza.Agent.Futility (
 import Siza.Agent.GrammarCards (GrammarMode (..))
 import Siza.Agent.Owned (OwnedCell (..), recordOwned)
 import Siza.Agent.ToolRoute (normalizeToolCall)
+import Siza.Agent.VerifyMemo (VerifyMemo, newVerifyMemo)
 
 type Dispatch = ToolCall -> IO (Either Text ToolOutcome)
 
@@ -109,6 +110,7 @@ data StackSession = StackSession
     , ssSeenNotes :: IORef (Set Text)
     , ssGrammar :: GrammarMode
     , ssSurface :: Surface
+    , ssVerified :: VerifyMemo
     }
 
 sessionPolicy :: StackSession -> SurfacePolicy
@@ -131,6 +133,7 @@ newSessionFor surface grammar goal =
         <*> newIORef Set.empty
         <*> pure grammar
         <*> pure surface
+        <*> newVerifyMemo
 
 -- | The chat loop's constructor: repair beats belong to the surface.
 newStackSession :: GrammarMode -> Text -> IO StackSession

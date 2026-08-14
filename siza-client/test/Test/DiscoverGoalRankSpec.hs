@@ -78,7 +78,7 @@ crossPackageDemoteSpec =
                         emptyScope
                         8
                         (answers p)
-                        (HackageInfo True [] [])
+                        (HackageInfo True [] [] [])
         it "the target package's non-producer leads the tail once a goal is held" $
             rankBefore
                 (rankedWith (Just (StandingGoal "Plot" "bars" "targetpkg")) "targetpkg")
@@ -111,7 +111,7 @@ rankedNames mSG (cPkg, fPkg) = names v
             emptyScope
             8
             answers
-            (HackageInfo True [] [])
+            (HackageInfo True [] [] [])
 
 rankBefore :: [Text] -> Text -> Text -> Expectation
 rankBefore ns a b = do

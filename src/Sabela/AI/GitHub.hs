@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 {- | Reads a GitHub repository as a file tree: one recursive listing call
 against the trees API, and raw fetches for blob contents.
@@ -12,9 +11,9 @@ module Sabela.AI.GitHub (
     parseTree,
     fetchTree,
     fetchBlob,
+    githubStatus,
 ) where
 
-import Control.Exception (SomeException, try)
 import Data.Aeson (Value (..), decode, (.:), (.:?))
 import Data.Aeson.Types (parseEither, withObject)
 import qualified Data.ByteString as BS
@@ -24,17 +23,15 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Text.Encoding.Error (lenientDecode)
-import Network.HTTP.Client (
-    Manager,
-    Request,
-    parseRequest,
-    requestHeaders,
-    responseBody,
-    responseStatus,
-    withResponse,
- )
-import Network.HTTP.Types (statusCode)
+import Network.HTTP.Client (Manager)
 import System.Environment (lookupEnv)
+
+import Sabela.AI.Fetch (
+    FetchSpec (..),
+    OverCap (..),
+    fetchBounded,
+    statusError,
+ )
 
 data GhEntry = GhEntry
     { ghPath :: Text
@@ -111,16 +108,16 @@ maxFetchBytes = 512 * 1024
 fetchText :: Manager -> Text -> IO (Either Text BS.ByteString)
 fetchText mgr url = do
     token <- lookupEnv "SABELA_GITHUB_TOKEN"
-    eReq <- try (parseRequest (T.unpack url)) :: IO (Either SomeException Request)
-    case eReq of
-        Left _ -> pure (Left "could not parse the GitHub URL")
-        Right req0 -> do
-            let req = req0{requestHeaders = headers token}
-            eRes <-
-                try (withResponse req mgr readCapped) ::
-                    IO (Either SomeException (Either Text BS.ByteString))
-            pure (either (Left . transportError) id eRes)
+    fmap LBS.toStrict <$> fetchBounded (fs token) mgr url
   where
+    fs token =
+        FetchSpec
+            { fsService = "GitHub"
+            , fsHeaders = headers token
+            , fsCap = maxFetchBytes
+            , fsOverCap = TruncateAtCap
+            , fsStatus = githubStatus
+            }
     headers token =
         [ ("User-Agent", "sabela")
         , ("Accept", "application/vnd.github+json")
@@ -128,29 +125,17 @@ fetchText mgr url = do
             <> [ ("Authorization", "Bearer " <> TE.encodeUtf8 (T.pack t))
                | Just t <- [token]
                ]
-    readCapped resp = case statusCode (responseStatus resp) of
-        404 -> pure (Left "GitHub has no such repository, ref, or path")
-        403 -> pure (Left rateLimited)
-        429 -> pure (Left rateLimited)
-        sc
-            | sc < 200 || sc >= 300 ->
-                pure (Left ("GitHub returned HTTP " <> T.pack (show sc)))
-            | otherwise -> Right <$> drainCapped (responseBody resp)
+
+-- | The GitHub status ladder, pure so its branches test.
+githubStatus :: Int -> Maybe Text
+githubStatus =
+    statusError
+        "GitHub"
+        [ (404, "GitHub has no such repository, ref, or path")
+        , (403, rateLimited)
+        , (429, rateLimited)
+        ]
+  where
     rateLimited =
         "GitHub rate-limited this request. Unauthenticated access allows 60 \
         \requests an hour; set SABELA_GITHUB_TOKEN to raise it."
-    transportError e = "GitHub request failed: " <> firstLine (T.pack (show e))
-
-drainCapped :: IO BS.ByteString -> IO BS.ByteString
-drainCapped readChunk = go [] 0
-  where
-    go acc n = do
-        chunk <- readChunk
-        if BS.null chunk || n >= maxFetchBytes
-            then pure (BS.concat (reverse acc))
-            else go (chunk : acc) (n + BS.length chunk)
-
-firstLine :: Text -> Text
-firstLine t = case T.lines t of
-    (l : _) -> l
-    [] -> t

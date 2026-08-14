@@ -9,6 +9,7 @@ module Test.LadderFixtures (
     exactHit,
     foundOver,
     hkT,
+    hodatimeFactsRow,
     missOver,
     projected,
     runLadder,
@@ -21,6 +22,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Text (Text)
 import qualified Data.Text.Encoding as TE
 
+import Siza.Agent.Discover.CabalFacts (PkgFacts (..), renderFactsRow)
 import Siza.Agent.Discover.Dedup (ledgerShortcutStep)
 import Siza.Agent.Discover.Envelope (requiredHitKeys)
 import Siza.Agent.Discover.History (SearchLedger, ledgerRecord)
@@ -43,7 +45,27 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True [] []
+hkT = HackageInfo True [] [] []
+
+{- | The canonical hodatime facts row, rendered through the codec so the
+fixture and the wire shape cannot drift apart.
+-}
+hodatimeFactsRow :: Text
+hodatimeFactsRow =
+    renderFactsRow
+        "hodatime"
+        PkgFacts
+            { pfHomepage = "https://example.invalid/hodatime"
+            , pfSynopsis = "A date/time library"
+            , pfModules =
+                [ "Data.HodaTime"
+                , "Data.HodaTime.Instant"
+                , "Data.HodaTime.Duration"
+                , "Data.HodaTime.Compat"
+                , "Data.HodaTime.Calendar.Gregorian"
+                ]
+            , pfVersion = "0.2.2.1"
+            }
 
 foundOver :: Text -> [DHit] -> Value
 foundOver q hs =

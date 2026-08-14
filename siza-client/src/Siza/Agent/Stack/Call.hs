@@ -24,7 +24,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.CellResult (CellId)
-import Sabela.AI.Types (ToolOutcome)
+import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.GrammarCards (runDiscoverOutcomes)
 import Siza.Agent.Loop.Support (replaceCall, writeSource)
@@ -45,6 +45,12 @@ import Siza.Agent.Stack (
     ssHealReds,
  )
 import Siza.Agent.Stack.Route (blockingCell, discloseRoute, routedRetryNote)
+import Siza.Agent.VerifyMemo (
+    currentSeal,
+    memoHit,
+    memoRecord,
+    verifyCheckOf,
+ )
 
 {- | Something the pipeline did that the caller did not ask for, and would be
 wrong to discover by reading the notebook later.
@@ -65,7 +71,25 @@ data CallResult = CallResult
 already be wrapped in 'Siza.Agent.Stack.stackDispatch'.
 -}
 runToolCall :: StackSession -> Dispatch -> ToolCall -> IO CallResult
-runToolCall ss disp call = do
+runToolCall ss disp call
+    | Just check <- verifyCheckOf call = do
+        seal <- currentSeal disp
+        hit <- maybe (pure Nothing) (memoHit (ssVerified ss) check) seal
+        case hit of
+            Just payload -> do
+                let out = Right (ToolOk payload)
+                recordCall ss (call, out)
+                pure (CallResult call out [])
+            Nothing -> do
+                result <- plainRun ss disp call
+                mapM_
+                    (\s -> memoRecord (ssVerified ss) check s (crOutcome result))
+                    seal
+                pure result
+    | otherwise = plainRun ss disp call
+
+plainRun :: StackSession -> Dispatch -> ToolCall -> IO CallResult
+plainRun ss disp call = do
     outcome <- disp call
     (call', out', routeNotes) <- unblock ss disp call outcome
     (call'', out'') <- surfaceDisplay ss disp call' out'

@@ -57,8 +57,8 @@ spec = describe "what read_file says about itself (C1-14b)" $ do
                             counterexample (show (textOf (field "view" v), readFileDoc)) $
                                 textOf (field "view" v) `T.isInfixOf` readFileDoc
 
-    it "sends the caller to no other tool" $
-        toolsNamedIn (surfaceTextOf "read_file") `shouldBe` []
+    it "sends the caller only to read_source (the deliberate pointer)" $
+        toolsNamedIn (surfaceTextOf "read_file") `shouldBe` ["read_source"]
 
     it "offers no example that names a particular file" $ do
         root <- repoRoot

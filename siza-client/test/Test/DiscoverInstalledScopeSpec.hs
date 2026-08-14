@@ -39,8 +39,10 @@ facts =
                 "https://github.com/jason-johnson/hodatime"
                 "A date/time library"
                 ["Data.HodaTime", "Data.HodaTime.CalendarDate"]
+                ""
             )
         ]
+        []
 
 -- | What the session answers with once the notebook has declared the package.
 sessionHit :: InstallState -> DHit

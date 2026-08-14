@@ -110,6 +110,16 @@ The system has three layers: a Haskell backend (Servant/Warp), a static frontend
 | `Sabela.Errors` | Parses GHCi stderr to extract structured error locations |
 | `Sabela.LeanLsp` | LSP wire protocol types and helpers for Lean integration |
 
+### AI tool layer (`Sabela.AI.*`)
+
+Agent-facing tools (discover, `read_source`, try, the edit gates) live under
+`Sabela.AI.*`; their wire contracts are shared with siza-client through the
+`sabela-contract` sub-library in `src-contract/`. `read_source` serves package
+source through a ladder: local cabal cache → XDG sdist mirror
+(`~/.local/share/sabela/sdists`) → Hackage fetch. The local search indexes it
+and discover consult (package names, `hackage-facts.tsv`, hoogle databases)
+are built by `tools/update-search-cache.sh` (`make search-cache`).
+
 ### Key Data Flow
 
 1. User edits a cell → `PUT /api/cell/{id}`

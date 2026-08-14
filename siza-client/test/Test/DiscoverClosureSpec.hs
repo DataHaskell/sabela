@@ -65,7 +65,7 @@ envT :: NotebookEnv
 envT = seededBuiltins (NotebookEnv [] [] [] [] [] [])
 
 hkT :: HackageInfo
-hkT = HackageInfo True [] []
+hkT = HackageInfo True [] [] []
 
 args :: [(Text, Value)] -> Value
 args kvs = object [(K.fromText k, v) | (k, v) <- kvs]

@@ -1,11 +1,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Siza.Agent.Discover.Hackage (
-    hackageNamesPath,
     loadHackageNames,
     hackageInfoFor,
     hackageMatching,
-    hackageFactsPath,
     hackageFactsFor,
     hackageModuleOwners,
     withModuleOwners,
@@ -13,40 +11,32 @@ module Siza.Agent.Discover.Hackage (
 ) where
 
 import Control.Exception (SomeException, try)
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Data.Time.Clock (UTCTime)
-import System.Directory (doesFileExist, getModificationTime)
-import System.Environment (lookupEnv)
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 
+import Sabela.AI.DataFiles (resolveDataFile)
+import Sabela.AI.FactsCache (exactModuleOwners, loadHackageFacts)
 import Sabela.AI.ModuleResolve (namesFragment)
-import Siza.Agent.Discover.CabalFacts (PkgFacts (..), parseFactsRow)
+import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
 import Siza.Agent.Discover.Types (HackageInfo (..))
 
-hackageNamesPath :: IO FilePath
-hackageNamesPath =
-    fromMaybe ("data" </> "hackage-packages.txt")
-        <$> lookupEnv "SABELA_HACKAGE_NAMES"
-
-loadHackageNames :: IO (Maybe (S.Set Text))
+{- | The names cache, or the paths that were checked for it, so an
+unavailability note can state where it looked.
+-}
+loadHackageNames :: IO (Either [FilePath] (S.Set Text))
 loadHackageNames = do
-    path <- hackageNamesPath
-    exists <- doesFileExist path
-    if not exists
-        then pure Nothing
-        else do
+    resolved <- resolveDataFile "SABELA_HACKAGE_NAMES" "hackage-packages.txt"
+    case resolved of
+        Left checked -> pure (Left checked)
+        Right path -> do
             r <- try (TIO.readFile path)
             pure $ case r of
-                Left (_ :: SomeException) -> Nothing
+                Left (_ :: SomeException) -> Left [path]
                 Right t ->
-                    Just
+                    Right
                         ( S.fromList
                             (filter (not . T.null) (map T.strip (T.lines t)))
                         )
@@ -55,10 +45,11 @@ hackageInfoFor :: [Text] -> IO HackageInfo
 hackageInfoFor candidates = do
     mNames <- loadHackageNames
     case mNames of
-        Nothing -> pure (HackageInfo False [] [])
-        Just names -> do
+        Left checked -> pure (HackageInfo False [] [] (map T.pack checked))
+        Right names -> do
             let known = concatMap (canonical names) candidates
-            HackageInfo True known <$> hackageFactsFor known
+            facts <- hackageFactsFor known
+            pure (HackageInfo True known facts [])
   where
     canonical names c = case [n | n <- S.toAscList names, eqIgnoreCase n c] of
         (n : _) -> [n]
@@ -66,46 +57,6 @@ hackageInfoFor candidates = do
     eqIgnoreCase a b = T.toLower a == T.toLower b
 
 -- --- package facts ---------------------------------------------------------
-
-hackageFactsPath :: IO FilePath
-hackageFactsPath =
-    fromMaybe ("data" </> "hackage-facts.tsv")
-        <$> lookupEnv "SABELA_HACKAGE_FACTS"
-
-{- | The facts cache, read once per revision of the file. It is several
-megabytes, so re-reading it per query would cost more than the query.
--}
-factsCache :: IORef (Maybe (FilePath, UTCTime, M.Map Text PkgFacts))
-factsCache = unsafePerformIO (newIORef Nothing)
-{-# NOINLINE factsCache #-}
-
-loadHackageFacts :: IO (M.Map Text PkgFacts)
-loadHackageFacts = do
-    path <- hackageFactsPath
-    exists <- doesFileExist path
-    if not exists
-        then pure M.empty
-        else do
-            stamp <- try (getModificationTime path)
-            case stamp of
-                Left (_ :: SomeException) -> pure M.empty
-                Right t -> cachedOrRead path t
-
-cachedOrRead :: FilePath -> UTCTime -> IO (M.Map Text PkgFacts)
-cachedOrRead path stamp = do
-    cached <- readIORef factsCache
-    case cached of
-        Just (p, t, m) | p == path && t == stamp -> pure m
-        _ -> do
-            r <- try (TIO.readFile path)
-            case r of
-                Left (_ :: SomeException) -> pure M.empty
-                Right txt -> do
-                    let m = M.fromList (mapMaybe parseFactsRow (T.lines txt))
-                    atomicModifyIORef'
-                        factsCache
-                        (const (Just (path, stamp, m), ()))
-                    pure m
 
 -- | What the index states about each named package it holds.
 hackageFactsFor :: [Text] -> IO [(Text, PkgFacts)]
@@ -147,7 +98,7 @@ hackageModuleOwners m
     | T.null asked = pure []
     | otherwise = do
         facts <- loadHackageFacts
-        let exact = [(n, f) | (n, f) <- M.toAscList facts, asked `elem` pfModules f]
+        let exact = exactModuleOwners asked facts
         pure (if null exact then componentOwners asked facts else exact)
   where
     asked = T.strip m
@@ -183,8 +134,8 @@ hackageMatching :: Int -> [Text] -> IO [Text]
 hackageMatching cap tokens = do
     mNames <- loadHackageNames
     pure $ case mNames of
-        Nothing -> []
-        Just names ->
+        Left _ -> []
+        Right names ->
             take
                 cap
                 [n | n <- S.toAscList names, any (`T.isInfixOf` T.toLower n) usable]
