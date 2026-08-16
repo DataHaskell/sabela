@@ -44,6 +44,7 @@ import Sabela.AI.Store
 import Sabela.AI.Types
 import Sabela.AI.Verdict (VerdictClass (..))
 import Sabela.Api (errorJson)
+import Sabela.Session.GhcProbe (resolvedGhcVersion)
 
 import Sabela.Deps (collectMetadata, collectMetadataFromContent)
 import Sabela.Diagnose (hiddenPackage, packageNeedsFlag)
@@ -239,9 +240,18 @@ ensureScratchpad :: App -> AIStore -> CellLang -> [Text] -> IO SessionBackend
 ensureScratchpad app store lang deps = do
     nb <- readNotebook (appNotebook app)
     mSp <- getScratchpad store
-    case scratchpadPlan lang (envGlobalDeps (appEnv app)) nb deps mSp of
+    ghcVersion <- resolvedGhcVersion
+    case scratchpadPlan
+        ghcVersion
+        (envWorkDir (appEnv app))
+        (envLocalPackages (appEnv app))
+        lang
+        (envGlobalDeps (appEnv app))
+        nb
+        deps
+        mSp of
         ReuseScratchpad backend -> pure backend
-        FreshScratchpad meta key -> do
+        FreshScratchpad meta localPkgs key -> do
             mapM_ (sbClose . spBackend) mSp
             spDir <-
                 createTempDirectory (envTmpDir (appEnv app)) "sabela-scratch"
@@ -250,7 +260,7 @@ ensureScratchpad app store lang deps = do
                     let projDir = envTmpDir (appEnv app) </> "scratch-project"
                     setupReplProject
                         WithNotebookSupport
-                        (envLocalPackages (appEnv app))
+                        localPkgs
                         projDir
                         meta
                     cfg <- (\c -> c{scJsonDiagnostics = False}) <$> mkSessionConfig projDir spDir

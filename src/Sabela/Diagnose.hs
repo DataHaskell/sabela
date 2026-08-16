@@ -14,6 +14,10 @@ module Sabela.Diagnose (
     holeFitGoal,
     hiddenPackage,
     hiddenPackages,
+    hiddenPackagesV,
+    depName,
+    pinnedDep,
+    splitPkgVersion,
     neededExtension,
     misnamedModule,
     couldNotFindModule,
@@ -45,16 +49,20 @@ import Sabela.Diagnose.Parse (
     couldNotFindModule,
     couldNotFindModules,
     declaredPackages,
+    depName,
     hiddenPackage,
     hiddenPackages,
+    hiddenPackagesV,
     holeFitGoal,
     lineContaining,
     misnamedModule,
     neededExtension,
     notInScopeName,
     packageNeedsFlag,
+    pinnedDep,
     quotedToken,
     routeFailure,
+    splitPkgVersion,
  )
 import Sabela.Model (CellError (..))
 import Sabela.Parse.Preprocess (hasTopLevelLet)
@@ -148,7 +156,7 @@ withGuidance gs cr = case (toJSON cr, gs) of
 
 missingModule :: Reading -> [Text]
 missingModule r
-    | Just pkg <- hiddenPackage err = [declareMessage r pkg]
+    | ((n, v) : _) <- hiddenPackagesV err = [declareMessage r (pinnedDep n v)]
     | any (`T.isInfixOf` err) findMarkers
     , Just m <- quotedToken err =
         case resolvePackageToken m of
@@ -171,7 +179,8 @@ whole notebook — so the report half says only that it is declared, not where.
 -}
 declareMessage :: Reading -> Text -> Text
 declareMessage r pkg
-    | pkg `elem` declaredPackages (readSource r) = alreadyDeclared
+    | depName pkg `elem` map depName (declaredPackages (readSource r)) =
+        alreadyDeclared
     | otherwise = imperative
   where
     subject = maybe "That module" ("Module " <>) (couldNotFindModule (readError r))

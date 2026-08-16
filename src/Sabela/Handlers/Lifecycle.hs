@@ -41,6 +41,7 @@ import Sabela.Deps (
  )
 import Sabela.Handlers.Shared
 import Sabela.Model (KernelPhase (..), NotebookEvent (..), SessionStatus (..))
+import Sabela.Session.EnvKey (resolveLocalPackages)
 import Sabela.Session.Proc (killLeftoverSessions)
 import Sabela.Session.Timeout (
     buildTimedOutMessage,
@@ -202,11 +203,3 @@ broadcastDepsStatus app metas = do
         broadcast app $
             EvSessionStatus $
                 if S.null newDeps then SDepsUpToDate else SUpdateDeps (S.toList newDeps)
-
-resolveLocalPackages :: FilePath -> [FilePath] -> CabalMeta -> [FilePath]
-resolveLocalPackages workDir envLocals meta =
-    nub (envLocals ++ map resolve (metaPackages meta))
-  where
-    resolve t =
-        let p = T.unpack t
-         in if isAbsolute p then p else workDir </> p

@@ -10,6 +10,7 @@ import Sabela.AI.Capabilities.Edit.GateRepair.Candidates (
     costOrdered,
     exactMatchOnly,
     missingModuleCandidates,
+    repairCandidates,
     roundRobin,
  )
 import Sabela.AI.PackageIndex (PackageEntry (..))
@@ -78,6 +79,15 @@ costSpec = describe "a dependency candidate never spends the budget the cheap on
 
 missingModuleSpec :: Spec
 missingModuleSpec = describe "a missing module is repaired only when verified, not guessed" $ do
+    describe "hidden packages are declared pinned to the version GHC named" $
+        it "the fix candidate carries text ==2.0.2, never a solver-free name" $ do
+            let diag =
+                    "Could not load module \8216Data.Text\8217\n\
+                    \It is a member of the hidden package \8216text-2.0.2\8217."
+                fixes = concatMap snd (repairCandidates diag "import Data.Text\nx = T.length")
+            fixes `shouldSatisfy` elem "declared build-depends: text ==2.0.2"
+            fixes `shouldNotSatisfy` elem "declared build-depends: text"
+
     describe "exactMatchOnly (the G2 safety boundary)" $ do
         it "accepts a resolution whose name matches verbatim" $
             exactMatchOnly "DataFrame" (Just ("DataFrame", fakeEntry))
@@ -105,8 +115,13 @@ missingModuleSpec = describe "a missing module is repaired only when verified, n
                             "import Data.Text\nmain = print (1 :: Int)"
                     case cs of
                         ((c, fixes) : _) -> do
-                            c `shouldSatisfy` T.isInfixOf "build-depends: text"
-                            fixes `shouldBe` ["declared build-depends: text"]
+                            c `shouldSatisfy` T.isInfixOf "build-depends: text =="
+                            case fixes of
+                                [fix] ->
+                                    fix
+                                        `shouldSatisfy` T.isPrefixOf
+                                            "declared build-depends: text =="
+                                _ -> expectationFailure (show fixes)
                         [] -> expectationFailure "text is a project dependency; must resolve"
 
         it "never invents a package for a module that does not exist anywhere" $ do

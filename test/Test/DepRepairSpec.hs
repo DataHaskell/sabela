@@ -4,7 +4,13 @@ module Test.DepRepairSpec (spec) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Sabela.AI.DepRepair (addBuildDepend, depFromResult, newDependencies)
+import Sabela.AI.DepRepair (
+    addBuildDepend,
+    depFromResult,
+    depName,
+    newDependencies,
+    pinnedDep,
+ )
 import Sabela.AI.Types (ExecutionResult (..))
 import Test.Hspec
 
@@ -47,6 +53,30 @@ spec = describe "Sabela.AI.DepRepair" $ do
             addBuildDepend "vector" "-- cabal: build-depends: dataframe, vector\nimport X"
                 `shouldBe` "-- cabal: build-depends: dataframe, vector\nimport X"
 
+        it "appends a pinned entry verbatim" $
+            ( "build-depends: dataframe, text ==2.0.2"
+                `T.isInfixOf` addBuildDepend
+                    "text ==2.0.2"
+                    "-- cabal: build-depends: dataframe\nimport X"
+            )
+                `shouldBe` True
+
+        it "never re-pins a package the cell already declares, bare or pinned" $ do
+            addBuildDepend "text ==2.0.2" "-- cabal: build-depends: text\nimport X"
+                `shouldBe` "-- cabal: build-depends: text\nimport X"
+            addBuildDepend "text" "-- cabal: build-depends: text ==2.1.4\nimport X"
+                `shouldBe` "-- cabal: build-depends: text ==2.1.4\nimport X"
+
+    describe "pinnedDep / depName" $ do
+        it "renders the version its evidence names, bare without one" $ do
+            pinnedDep "text" (Just "2.0.2") `shouldBe` "text ==2.0.2"
+            pinnedDep "text" Nothing `shouldBe` "text"
+        it "reads the name back from any constraint spelling" $ do
+            depName "text ==2.0.2" `shouldBe` "text"
+            depName "dataframe==2.3.0.0" `shouldBe` "dataframe"
+            depName "text >= 1.2 && < 5" `shouldBe` "text"
+            depName "base16-bytestring" `shouldBe` "base16-bytestring"
+
     describe "depFromResult" $ do
         it "extracts the package GHC named in a hidden-package failure" $
             depFromResult (raising hiddenPkgErr) `shouldBe` Just "http-conduit"
@@ -78,3 +108,8 @@ spec = describe "Sabela.AI.DepRepair" $ do
                 "-- cabal: build-depends: dataframe\nimport X"
                 "-- cabal: build-depends: dataframe, vector\nimport X"
                 `shouldBe` ["vector"]
+        it "a pin on an already-declared package is not a new dependency" $
+            newDependencies
+                "-- cabal: build-depends: text\nimport X"
+                "-- cabal: build-depends: text ==2.0.2\nimport X"
+                `shouldBe` []

@@ -11,8 +11,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.ModuleResolve (isNoiseModule)
-import Siza.Agent.Discover.CabalFacts (PkgFacts)
-import Siza.Agent.Discover.Guidance (cabalLine)
+import Siza.Agent.Discover.CabalFacts (PkgFacts, pfVersion)
+import Siza.Agent.Discover.Guidance (cabalLine, cabalLineV)
 import Siza.Agent.Discover.Merge (envelopeFrom, mergedHits)
 import Siza.Agent.Discover.Types (
     DHit (..),
@@ -80,7 +80,7 @@ inventoryRows pkgMods merged interp lexical facts =
             , dhInstall = InstAbsentKnown
             , dhKind = matchOf n
             , dhOrigin = "hackage"
-            , dhCabal = Just (cabalLine n)
+            , dhCabal = Just (cabalLineV n (pfVersion <$> lookup n facts))
             , dhUse = Nothing
             , dhClash = Nothing
             , dhFacts = lookup n facts

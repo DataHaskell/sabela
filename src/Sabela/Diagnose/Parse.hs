@@ -5,8 +5,12 @@ not found, the hidden package, the extension it asked for, the ambiguous
 occurrence and its candidates.
 -}
 module Sabela.Diagnose.Parse (
+    depName,
     hiddenPackage,
     hiddenPackages,
+    hiddenPackagesV,
+    pinnedDep,
+    splitPkgVersion,
     neededExtension,
     misnamedModule,
     couldNotFindModule,
@@ -32,17 +36,22 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Hints (knownExtensions)
+import Sabela.AI.RepairDispatch (depName, pinnedDep, splitPkgVersion)
 
 hiddenPackages :: Text -> [Text]
-hiddenPackages err =
-    nub
-        [ packageFromHidden pkg
-        | seg <- drop 1 (T.splitOn "hidden package " err)
-        , Just pkg <- [quotedToken seg]
-        ]
+hiddenPackages = map fst . hiddenPackagesV
 
 hiddenPackage :: Text -> Maybe Text
 hiddenPackage = listToMaybe . hiddenPackages
+
+-- | Hidden packages with the version GHC's unit token named, when it did.
+hiddenPackagesV :: Text -> [(Text, Maybe Text)]
+hiddenPackagesV err =
+    nub
+        [ splitPkgVersion pkg
+        | seg <- drop 1 (T.splitOn "hidden package " err)
+        , Just pkg <- [quotedToken seg]
+        ]
 
 neededExtension :: Text -> Maybe Text
 neededExtension err = firstJust (concatMap fromLine (T.lines err))

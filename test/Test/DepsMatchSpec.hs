@@ -3,8 +3,10 @@
 module Test.DepsMatchSpec (spec) where
 
 import qualified Data.Set as S
+import Data.Text (Text)
 import Sabela.Deps (
     ProjectSig (..),
+    collectMetadataFromContent,
     emptyProjectSig,
     envSig,
     projectSig,
@@ -72,3 +74,15 @@ spec = do
         it "keeps ghc-options order significant" $
             projectSig [] emptyMeta{metaGhcOptions = ["-a", "-b"]}
                 `shouldNotBe` projectSig [] emptyMeta{metaGhcOptions = ["-b", "-a"]}
+
+    describe "collectMetadataFromContent" $ do
+        it "harvests -- cabal: metadata from a tagged fence" $
+            metaDeps (collectMetadataFromContent taggedDoc) `shouldBe` ["text"]
+        it "ignores -- cabal: metadata inside an untagged fence" $
+            metaDeps (collectMetadataFromContent untaggedDoc) `shouldBe` []
+
+taggedDoc :: Text
+taggedDoc = "```haskell\n-- cabal: build-depends: text\nmain = pure ()\n```\n"
+
+untaggedDoc :: Text
+untaggedDoc = "```\n-- cabal: build-depends: text\nmain = pure ()\n```\n"

@@ -8,7 +8,6 @@ module Sabela.AI.Capabilities.BrowseCard (
 
 import Data.Aeson (Value, object, (.=))
 import Data.Aeson.Types (Pair)
-import Data.Char (isDigit)
 import Data.List (nub)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
@@ -24,6 +23,7 @@ import Sabela.AI.Search.Export (
     rankExportsBy,
  )
 import Sabela.AI.Search.Need (parseNeed)
+import Sabela.Diagnose (pinnedDep, splitPkgVersion)
 import Sabela.Errors.Json (parseJsonInteractive)
 import Sabela.Model (CellError (..))
 
@@ -130,13 +130,13 @@ suggestionOf l = case T.words (T.strip l) of
     (m : rest)
         | "(needs" `elem` rest
         , (u : _) <- reverse rest ->
-            Just (m, Just (packageOfUnit (T.dropWhileEnd (== ')') u)))
+            Just (m, Just (T.dropWhileEnd (== ')') u))
     _ -> Nothing
 
 hiddenPackage :: [Text] -> Maybe Text
 hiddenPackage ls =
     listToMaybe
-        [ packageOfUnit (T.takeWhile (/= '\'') (T.drop (T.length marker) r))
+        [ T.takeWhile (/= '\'') (T.drop (T.length marker) r)
         | l <- ls
         , let (_, r) = T.breakOn marker l
         , not (T.null r)
@@ -144,15 +144,15 @@ hiddenPackage ls =
   where
     marker = "hidden package `" :: Text
 
-cabalPairs :: Text -> [Pair]
-cabalPairs pkg =
-    ["package" .= pkg, "cabal" .= ("-- cabal: build-depends: " <> pkg)]
-
+-- | A versioned unit id reduced to its package name.
 packageOfUnit :: Text -> Text
-packageOfUnit u
-    | null kept = u
-    | otherwise = T.intercalate "-" kept
+packageOfUnit = fst . splitPkgVersion
+
+-- | The card names the package; the minted line pins the version GHC named.
+cabalPairs :: Text -> [Pair]
+cabalPairs unitToken =
+    [ "package" .= name
+    , "cabal" .= ("-- cabal: build-depends: " <> pinnedDep name version)
+    ]
   where
-    parts = T.splitOn "-" u
-    kept = reverse (dropWhile isVer (reverse parts))
-    isVer p = not (T.null p) && T.all (\c -> isDigit c || c == '.') p
+    (name, version) = splitPkgVersion unitToken

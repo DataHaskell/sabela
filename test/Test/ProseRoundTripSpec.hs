@@ -62,6 +62,19 @@ spec = describe "markdown + MIME round trip" $ do
                        , CodeBlock "haskell" "y = 2\n" Nothing
                        ]
 
+    it "keeps an untagged fence in a loaded file out of the code cells" $ do
+        let md = "Intro.\n\n```\nplain text, not code\n```\n"
+            segs = splitProseSegments (parseMarkdown md)
+        [() | CodeBlock{} <- segs] `shouldBe` []
+        T.isInfixOf "```\nplain text, not code\n```" (T.concat (proseTexts segs))
+            `shouldBe` True
+
+    it "keeps a prose cell containing an untagged fence prose across save/reopen" $ do
+        let segs = roundTrip [prose "```\nplain\n```", code "x = 1"]
+        length [() | CodeBlock{} <- segs] `shouldBe` 1
+        T.isInfixOf "```\nplain\n```" (T.concat (proseTexts segs))
+            `shouldBe` True
+
     it "preserves an empty cell between two prose cells" $
         proseTexts (roundTrip [prose "A", prose "", prose "B"])
             `shouldBe` ["A", "", "B"]

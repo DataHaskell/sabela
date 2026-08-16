@@ -199,8 +199,8 @@ gateRepairSpec = describe "gate-side repair candidates" $ do
         c `shouldSatisfy` T.isInfixOf "bytestring"
         c `shouldSatisfy` T.isInfixOf "text"
         fixes
-            `shouldBe` [ "declared build-depends: bytestring"
-                       , "declared build-depends: text"
+            `shouldBe` [ "declared build-depends: bytestring ==0.12.2.0"
+                       , "declared build-depends: text ==2.1.2"
                        ]
 
     it "applies a rename whose names are module-qualified" $ do

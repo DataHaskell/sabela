@@ -31,6 +31,7 @@ import qualified Test.DeclaredSpec as DeclaredSpec
 import qualified Test.DepsMatchSpec as DepsMatchSpec
 import qualified Test.DepsRepairSpec as DepsRepairSpec
 import qualified Test.DiscoveryToolsPreSessionSpec as DiscoveryToolsPreSessionSpec
+import qualified Test.EnvKeySpec as EnvKeySpec
 import qualified Test.EvCellResultWireSpec as EvCellResultWireSpec
 import qualified Test.ExportGoldenSpec as ExportGoldenSpec
 import qualified Test.FetchSpec as FetchSpec
@@ -59,6 +60,7 @@ import qualified Test.KernelStateIntegritySpec as KernelStateIntegritySpec
 import qualified Test.KernelStateWireSpec as KernelStateWireSpec
 import qualified Test.KernelVocabSpec as KernelVocabSpec
 import qualified Test.KnockOnSpec as KnockOnSpec
+import qualified Test.LeaseSpec as LeaseSpec
 import Test.Live (liveSpecs)
 import qualified Test.MarkerSpec as MarkerSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
@@ -119,6 +121,9 @@ import qualified Test.StderrFailureSpec as StderrFailureSpec
 import qualified Test.TimeoutEscalationSpec as TimeoutEscalationSpec
 import qualified Test.ToolOutcomeWireSpec as ToolOutcomeWireSpec
 import qualified Test.ToolParseSpec as ToolParseSpec
+import qualified Test.TypeOriginProbeSpec as TypeOriginProbeSpec
+import qualified Test.TypeOriginSpec as TypeOriginSpec
+import qualified Test.TypeOriginWireSpec as TypeOriginWireSpec
 import qualified Test.UnshowableValueSpec as UnshowableValueSpec
 import qualified Test.UploadSpec as UploadSpec
 import qualified Test.UrlSpec as UrlSpec
@@ -152,6 +157,11 @@ allSpecsB = do
     SdistLocateSpec.spec
     SdistSpec.spec
     SourceLocateSpec.spec
+    TypeOriginSpec.spec
+    EnvKeySpec.spec
+    LeaseSpec.spec
+    TypeOriginProbeSpec.spec
+    TypeOriginWireSpec.spec
     HackageFactsSpec.spec
     KnockOnSpec.knockOnSpec
     GateRepairSpec.spec

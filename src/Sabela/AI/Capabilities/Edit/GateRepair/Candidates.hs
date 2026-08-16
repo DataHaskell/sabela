@@ -43,7 +43,8 @@ import Sabela.AI.PackageIndex (PackageEntry (..))
 import Sabela.Diagnose (
     ambiguousOccurrences,
     couldNotFindModules,
-    hiddenPackages,
+    hiddenPackagesV,
+    pinnedDep,
  )
 import Sabela.State (App)
 
@@ -95,8 +96,12 @@ missingModuleCandidates diagnostic src = do
     pure [(repaired, fixes) | repaired /= src, not (null fixes)]
   where
     verifiedPackage modName =
-        maybe [] ((: []) . peName) . exactMatchOnly modName
+        maybe [] ((: []) . pinnedEntry) . exactMatchOnly modName
             <$> resolveInstalledModule modName
+    pinnedEntry e =
+        pinnedDep
+            (peName e)
+            (if T.null (peVersion e) then Nothing else Just (peVersion e))
 
 -- | Rejects a near-spelling fallback: only the asked-for name, verbatim.
 exactMatchOnly :: Text -> Maybe (Text, PackageEntry) -> Maybe PackageEntry
@@ -173,7 +178,7 @@ repairCandidates diagnostic src =
         [ (nm, [RenameCandidate c "" "" | c <- cands])
         | (nm, cands) <- ambiguousOccurrences diagnostic
         ]
-    hiddenPkgs = hiddenPackages diagnostic
+    hiddenPkgs = map (uncurry pinnedDep) (hiddenPackagesV diagnostic)
 
     renamesFor prune
         | prune = filter (\(w, _) -> not (w `Set.member` defined)) allRenames

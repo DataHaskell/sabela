@@ -89,8 +89,10 @@ spec = describe "model-facing error triage (intention)" $ do
         let triaged = triageErrorText cellSrc hiddenBlob
         it "drops every :set -package suggestion" $
             triaged `shouldSatisfy` (not . T.isInfixOf ":set -package")
-        it "steers to the cabal line, naming the package" $
-            triaged `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: megaparsec"
+        it "steers to the cabal line, pinning the version GHC named" $
+            triaged
+                `shouldSatisfy` T.isInfixOf
+                    "-- cabal: build-depends: megaparsec ==9.8.1"
         it "shrinks the blob substantially" $
             (T.length triaged < T.length hiddenBlob `div` 2) `shouldBe` True
 
@@ -107,11 +109,11 @@ spec = describe "model-facing error triage (intention)" $ do
                 triaged = triageErrorText dfSrc dfBlob
             triaged `shouldSatisfy` T.isInfixOf "readCsv"
             triaged `shouldSatisfy` (not . T.isInfixOf "not in scope: loadDf")
-        it "hidden-package rewrite names whatever package GHC names" $
+        it "hidden-package rewrite names whatever package GHC names, pinned" $
             triageErrorText
                 ""
                 "cell 1: Could not load module `Data.Aeson'.\nIt is a member of the hidden package `aeson-2.2.3.0'.\nYou can run `:set -package aeson' to expose it."
-                `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: aeson"
+                `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: aeson ==2.2.3.0"
 
     describe "passthrough" $
         it "a single clean diagnostic is unchanged" $ do

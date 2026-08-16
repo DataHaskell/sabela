@@ -3,7 +3,9 @@
 module Sabela.AI.DepRepair (
     addBuildDepend,
     depFromResult,
+    depName,
     newDependencies,
+    pinnedDep,
 ) where
 
 import Control.Applicative ((<|>))
@@ -12,16 +14,20 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.Types (ExecutionResult (..))
-import Sabela.Diagnose (hiddenPackage, packageNeedsFlag)
+import Sabela.Diagnose (depName, hiddenPackage, packageNeedsFlag, pinnedDep)
 import Sabela.Model (CellError (..))
 
+{- | Adds a dependency entry (possibly version-pinned). A package the line
+already names, under any constraint spelling, is never added again — the
+cell's own pin always wins.
+-}
 addBuildDepend :: Text -> Text -> Text
-addBuildDepend pkg src =
+addBuildDepend entry src =
     case break (T.isInfixOf "build-depends:") ls of
         (before, depLine : after)
-            | pkg `elem` declaredDeps depLine -> src
-            | otherwise -> T.unlines (before ++ [depLine <> ", " <> pkg] ++ after)
-        (_, []) -> T.unlines (("-- cabal: build-depends: " <> pkg) : ls)
+            | depName entry `elem` map depName (declaredDeps depLine) -> src
+            | otherwise -> T.unlines (before ++ [depLine <> ", " <> entry] ++ after)
+        (_, []) -> T.unlines (("-- cabal: build-depends: " <> entry) : ls)
   where
     ls = T.lines src
 
@@ -36,9 +42,12 @@ sourceDeps src = case break (T.isInfixOf "build-depends:") (T.lines src) of
     (_, depLine : _) -> filter (not . T.null) (declaredDeps depLine)
     (_, []) -> []
 
+-- | The entries whose package NAME the prior source did not already declare.
 newDependencies :: Text -> Text -> [Text]
 newDependencies priorSrc candidate =
-    filter (`notElem` sourceDeps priorSrc) (sourceDeps candidate)
+    filter
+        ((`notElem` map depName (sourceDeps priorSrc)) . depName)
+        (sourceDeps candidate)
 
 depFromResult :: Either Text ExecutionResult -> Maybe Text
 depFromResult (Left _) = Nothing

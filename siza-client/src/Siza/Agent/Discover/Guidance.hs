@@ -6,16 +6,19 @@ module Siza.Agent.Discover.Guidance (
     nearestNames,
     editDistance,
     cabalLine,
+    cabalLineV,
     readSourceCall,
 ) where
 
 import Control.Applicative ((<|>))
+import Control.Monad (mfilter)
 import Data.List (nub, sortOn)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Sabela.AI.ReadSourceArgs (readSourceCallText)
+import Sabela.AI.RepairDispatch (pinnedDep)
 import Siza.Agent.Discover.CabalFacts (PkgFacts (..))
 import Siza.Agent.Discover.ModuleList (entryModule, shownModules)
 import Siza.Agent.Discover.Types (
@@ -234,3 +237,7 @@ editDistance a b = last (foldl row [0 .. length sa] (T.unpack b))
 
 cabalLine :: Text -> Text
 cabalLine pkg = "-- cabal: build-depends: " <> pkg
+
+-- | The minted line pinned to the version the index documented, when known.
+cabalLineV :: Text -> Maybe Text -> Text
+cabalLineV pkg v = cabalLine (pinnedDep pkg (mfilter (not . T.null) v))

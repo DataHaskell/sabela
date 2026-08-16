@@ -33,10 +33,12 @@ import Sabela.AI.HoleRepair (
 import Sabela.AI.RepairDispatch (
     RepairTier (..),
     ambiguousFromDiag,
-    hiddenPackageFromDiag,
+    depName,
+    hiddenPackageFromDiagV,
     missingModuleFromDiag,
     neededExtensionFromDiag,
     notInScopeFromDiag,
+    pinnedDep,
  )
 import Sabela.AI.SelfHeal (plausibleRename)
 import Sabela.AI.Unshowable (
@@ -67,9 +69,10 @@ candidatesFor tiers input =
 tierCandidates :: RepairTier -> TierInput -> [Candidate]
 tierCandidates tier input = case tier of
     TierDepAdd ->
-        [ Candidate TierDepAdd src' [p]
-        | Just p <- [hiddenPackageFromDiag diag]
-        , let src' = addDepLine p src
+        [ Candidate TierDepAdd src' [entry]
+        | Just (p, v) <- [hiddenPackageFromDiagV diag]
+        , let entry = pinnedDep p v
+        , let src' = addDepLine entry src
         , src' /= src
         ]
     TierExtensionAdd ->
@@ -217,15 +220,20 @@ maxPermutations :: Int
 maxPermutations = 6
 
 addDepLine :: Text -> Text -> Text
-addDepLine pkg src = case break ("build-depends:" `T.isInfixOf`) ls of
+addDepLine entry src = case break ("build-depends:" `T.isInfixOf`) ls of
     (before, depLine : after)
-        | pkg `elem` declared depLine -> src
-        | otherwise -> T.unlines (before ++ [depLine <> ", " <> pkg] ++ after)
-    _ -> T.unlines (("-- cabal: build-depends: " <> pkg) : ls)
+        | depName entry `elem` map depName (declared depLine) -> src
+        | otherwise -> T.unlines (before ++ [depLine <> ", " <> entry] ++ after)
+    _ -> T.unlines (("-- cabal: build-depends: " <> entry) : ls)
   where
     ls = T.lines src
     declared line =
-        map T.strip (T.splitOn "," (snd (T.breakOn "build-depends:" line)))
+        map
+            T.strip
+            ( T.splitOn
+                ","
+                (T.drop (T.length "build-depends:") (snd (T.breakOn "build-depends:" line)))
+            )
 
 addPragmaLine :: Text -> Text -> Text
 addPragmaLine ext src

@@ -2,7 +2,7 @@
 
 module Test.JsonDiagSpec (jsonDiagSpec) where
 
-import Sabela.Session (parseVersion, versionAtLeast)
+import Sabela.Session.GhcProbe (parseVersion, versionAtLeast)
 import Test.Hspec
 
 jsonDiagSpec :: Spec

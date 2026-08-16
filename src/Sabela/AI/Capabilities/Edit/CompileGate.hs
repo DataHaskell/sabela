@@ -43,6 +43,11 @@ import Sabela.AI.Capabilities.Edit.HoleRewrite.Repair (
  )
 import Sabela.AI.Capabilities.Edit.OrphanGate (undeclaredImportPairs)
 import Sabela.AI.Health (scopeSubject)
+import Sabela.AI.TypeOriginProbe (
+    annotateDisposableWith,
+    exportedByPairs,
+    facadeClaims,
+ )
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.AI.WriteAck (refusalAck)
 import Sabela.Api (errorJsonWith)
@@ -90,8 +95,20 @@ compileGateCheck app mReplaces lang ty src
                     gateHoleNudge app mReplaces verdict (rawDiagnostic result) src
                 exposedBy <- exposingPackage (rawDiagnostic result)
                 diverge <- undeclaredImportPairs app result
-                pure . Left . attachPairs (repair <> diverge) $
-                    rejectionJson exposedBy mReplaces gsrc prevDefined result
+                claims <-
+                    facadeClaims
+                        app
+                        (disposableDependencies result)
+                        (rawDiagnostic result)
+                pure
+                    . Left
+                    . attachPairs (repair <> diverge <> exportedByPairs claims)
+                    $ rejectionJson
+                        exposedBy
+                        mReplaces
+                        gsrc
+                        prevDefined
+                        (annotateDisposableWith claims result)
 
 {- | Everything a rejection earns, for the cost of one extra compile: the
 rewrite when a hole can be placed, the standing nudge only when it cannot, and

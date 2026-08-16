@@ -23,6 +23,7 @@ import qualified Data.Text as T
 import Network.HTTP.Client (Manager)
 
 import Sabela.AI.Capabilities.CapabilityApi (hoogleFor)
+import Sabela.AI.Capabilities.ReadSource.Miss (missJson, severalOwners)
 import Sabela.AI.HackageFacts (factsVersion, moduleOwners)
 import Sabela.AI.HoogleClient (HoogleHit (..))
 import Sabela.AI.ReadSourceArgs (
@@ -32,6 +33,8 @@ import Sabela.AI.ReadSourceArgs (
  )
 import Sabela.AI.Sdist (acquireSdist, cachedVersions)
 import Sabela.AI.Sdist.Locate (LocateMiss (..), locateModuleFile)
+import Sabela.AI.SourceLocate.Imports (aliasesJson)
+
 import Sabela.AI.SourceLocate (
     DeclSlice (..),
     Located (..),
@@ -116,20 +119,6 @@ resolvePackage req = case rsPackage req of
                         <> "\"}"
             pkgs -> Left (severalOwners (rsModule req) pkgs)
 
-severalOwners :: Text -> [Text] -> Value
-severalOwners m pkgs =
-    errorJsonWith
-        ( "`"
-            <> m
-            <> "` is exposed by "
-            <> T.pack (show (length pkgs))
-            <> " packages; call one of: "
-            <> T.intercalate ", " (map call (take 4 pkgs))
-        )
-        ["owners" .= pkgs]
-  where
-    call p = readSourceCallText [("module", m), ("package", p)]
-
 versionFor ::
     ReadSourceReq -> Text -> IO (Either Value (Text, VersionSource))
 versionFor req pkg = do
@@ -175,19 +164,6 @@ answer mMgr req pkg (ver, vsrc) = do
             Right (path, src) ->
                 render req pkg ver vsrc (stripSdistDir pkg ver path) src
 
-missJson :: ReadSourceReq -> Text -> Text -> LocateMiss -> Value
-missJson req pkg ver = \case
-    BadArchive e ->
-        errorJson (pv <> " did not read as an sdist archive: " <> e)
-    NoSuchModule present ->
-        errorJsonWith
-            (pv <> " contains no file for `" <> rsModule req <> "`")
-            [ "candidates" .= nearest (rsModule req) present
-            , "modules" .= take 20 present
-            ]
-  where
-    pv = pkg <> "-" <> ver
-
 render ::
     ReadSourceReq -> Text -> Text -> VersionSource -> Text -> Text -> ToolOutcome
 render req pkg ver vsrc path src = case rsName req of
@@ -232,6 +208,7 @@ render req pkg ver vsrc path src = case rsName req of
                             .= object ["from" .= dsFrom s, "to" .= dsTo s]
                        ]
                     <> capped (dsText s)
+                    <> aliasPairs (dsText s)
     Nothing ->
         okOutcome . object $
             common (oHow outline)
@@ -240,9 +217,13 @@ render req pkg ver vsrc path src = case rsName req of
                    , "shown" .= length shown
                    , "count" .= length (oDecls outline)
                    ]
+                <> aliasPairs
+                    (oHeader outline <> T.unlines [t | (_, _, Just t) <- shown])
   where
     outline = moduleOutline src
     shown = take outlineDeclCap (oDecls outline)
+    aliasPairs shownText =
+        maybe [] (\v -> ["aliases" .= v]) (aliasesJson src shownText)
     declJson (n, l, mSig) =
         object $
             ["name" .= n, "line" .= l] <> ["type" .= s | Just s <- [mSig]]

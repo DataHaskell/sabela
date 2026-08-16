@@ -121,6 +121,24 @@ repairDispatchSpec = describe "repair cascade dispatch (R3-T5)" $ do
             [t | t <- [minBound .. maxBound], tierRequiresRestart t]
                 `shouldBe` [TierDepAdd]
 
+    describe "dep-add tier pins the version GHC named" $ do
+        let input d s = TierInput d s "" (const []) (const [])
+            hiddenDiag =
+                "Could not load module \8216Data.Text\8217.\n\
+                \It is a member of the hidden package \8216text-2.0.2\8217."
+        it "the candidate declares text ==2.0.2, never a solver-free name" $ do
+            let cands = candidatesFor [TierDepAdd] (input hiddenDiag "x = 1")
+            map cdProposes cands `shouldBe` [["text ==2.0.2"]]
+            forM_ cands $ \c ->
+                cdSource c
+                    `shouldSatisfy` T.isInfixOf
+                        "-- cabal: build-depends: text ==2.0.2"
+        it "never re-pins a package the cell already declares" $
+            candidatesFor
+                [TierDepAdd]
+                (input hiddenDiag "-- cabal: build-depends: text\nx = 1")
+                `shouldBe` []
+
     describe "render-wrap tier (unshowable-display)" $ do
         let input d s = TierInput d s "" (const []) (const [])
             showDiag =

@@ -62,13 +62,13 @@ cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
             field "status" card `shouldBe` Just (String "installed-not-loaded")
             field "package" card `shouldBe` Just (String "http-client")
             field "cabal" card
-                `shouldBe` Just (String "-- cabal: build-depends: http-client")
+                `shouldBe` Just (String "-- cabal: build-depends: http-client ==0.7.19")
             T.isInfixOf "ghcVersion" (T.pack (show card)) `shouldBe` False
         it "generalises to any package (same shape, different subject)" $ do
             let card = browseCard "Text.Pretty.Simple" hiddenBlobOther
             field "package" card `shouldBe` Just (String "pretty-simple")
             field "cabal" card
-                `shouldBe` Just (String "-- cabal: build-depends: pretty-simple")
+                `shouldBe` Just (String "-- cabal: build-depends: pretty-simple ==4.1.2.3")
 
     describe "did-you-mean diagnostics distil to suggestions" $ do
         it "the verbatim Data.Frame fixture names module + package once" $ do
@@ -78,7 +78,7 @@ cardSpec = describe "Sabela.AI.Capabilities.BrowseCard" $ do
                 `shouldBe` Just (Array (pure (String "DataFrame")))
             field "package" card `shouldBe` Just (String "dataframe")
             field "cabal" card
-                `shouldBe` Just (String "-- cabal: build-depends: dataframe")
+                `shouldBe` Just (String "-- cabal: build-depends: dataframe ==0.7.0.0")
 
     describe "a successful browse is a ranked, small-capped listing (R3.4)" $ do
         it "exports ride as a small capped array with shown/more/total disclosed" $ do

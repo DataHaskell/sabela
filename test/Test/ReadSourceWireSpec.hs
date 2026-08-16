@@ -113,6 +113,54 @@ spec = describe "read_source wire shape" $ do
                     `shouldBe` Just (object ["from" .= (3 :: Int), "to" .= (4 :: Int)])
                 textAt km "content" `shouldSatisfy` T.isInfixOf "difference a b"
                 textAt km "located" `shouldBe` "parsed"
+        it "carries the aliases the returned decl uses" $
+            withWorld $ do
+                (isErr, km) <-
+                    run
+                        ( object
+                            [ "module" .= ("Data.HodaTime.Compat" :: Text)
+                            , "name" .= ("compatOnly" :: Text)
+                            ]
+                        )
+                isErr `shouldBe` False
+                KM.lookup "aliases" km
+                    `shouldBe` Just (object ["L" .= ("Data.List" :: Text)])
+                sort (map K.toText (KM.keys km))
+                    `shouldBe` [ "aliases"
+                               , "content"
+                               , "lines"
+                               , "located"
+                               , "module"
+                               , "name"
+                               , "note"
+                               , "package"
+                               , "path"
+                               , "source"
+                               , "version"
+                               , "versionSource"
+                               ]
+        it "omits aliases when the returned decl uses none" $
+            withWorld $ do
+                (_, km) <-
+                    run
+                        ( object
+                            [ "module" .= ("Data.HodaTime.Instant" :: Text)
+                            , "name" .= ("difference" :: Text)
+                            ]
+                        )
+                KM.member "aliases" km `shouldBe` False
+        it "restricts aliases to the qualifiers the slice uses" $
+            withWorld $ do
+                (_, km) <-
+                    run
+                        ( object
+                            [ "module" .= ("Data.HodaTime.Compat" :: Text)
+                            , "name" .= ("compatDur" :: Text)
+                            ]
+                        )
+                KM.lookup "aliases" km
+                    `shouldBe` Just
+                        (object ["I" .= ("Data.HodaTime.Instant" :: Text)])
         it "cuts an over-cap decl at a line and says so" $
             withWorld $ do
                 (isErr, km) <-
@@ -142,6 +190,14 @@ spec = describe "read_source wire shape" $ do
                 T.length (textAt km "content") `shouldSatisfy` (<= 8000)
 
     describe "overview mode" $ do
+        it "carries the aliases the shown header and sigs use" $
+            withWorld $ do
+                (isErr, km) <-
+                    run (object ["module" .= ("Data.HodaTime.Compat" :: Text)])
+                isErr `shouldBe` False
+                KM.lookup "aliases" km
+                    `shouldBe` Just
+                        (object ["I" .= ("Data.HodaTime.Instant" :: Text)])
         it "answers with exactly the pinned keys" $
             withWorld $ do
                 (isErr, km) <-

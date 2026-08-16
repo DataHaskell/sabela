@@ -1,5 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{- | Live materialization contract. These tests build against the developer's
+real global cabal store by design (trials share it since the notebook-envs
+change), so first runs on a fresh machine pay real compiles once.
+-}
 module Test.MaterializeSpec (spec) where
 
 import Control.Exception (bracket_)
@@ -10,6 +14,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import GHC.Clock (getMonotonicTimeNSec)
 import ScriptHs.Parser (CabalMeta (..))
+import System.Directory (doesFileExist)
 import System.Environment (setEnv, unsetEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -35,6 +40,7 @@ import Test.Materialize.Helpers (
     listCacheBuckets,
     newPackageCandidate,
     nsToSeconds,
+    packagesCandidate,
     requireCompleted,
     requireLiveIntegration,
     requireSnapshot,
@@ -46,6 +52,13 @@ recorded against it at spawn.
 -}
 liveDeps :: App -> IO (Set.Set T.Text)
 liveDeps app = maybe Set.empty (esDeps . snd) <$> haskellEnvOf (appSessions app)
+
+-- | A file a bucket HIT must preserve: a miss resets the project tree.
+plantWitness :: FilePath -> FilePath -> IO FilePath
+plantWitness root bucket = do
+    let w = root </> bucket </> "project" </> "hit-witness.txt"
+    writeFile w "planted between runs"
+    pure w
 
 spec :: Spec
 spec = describe "disposable notebook materialization" $ do
@@ -208,18 +221,20 @@ spec = describe "disposable notebook materialization" $ do
             scratchDirectories (envTmpDir (appEnv app)) `shouldReturn` scratchDirsBefore
 
     it
-        "reuses a cached package environment so an identical retry skips the cabal build"
+        "reuses a cached package environment: an identical retry is a bucket hit"
         $ withSystemTempDirectory "sabela-materialize-cache-hit"
         $ \workDir -> do
             requireLiveIntegration
             app <- newApp workDir Set.empty Nothing Nothing [buildTimeSupportDir]
             let candidate = newPackageCandidate "split"
 
-            firstStart <- getMonotonicTimeNSec
             first <- requireCompleted (runDisposableTry app candidate)
-            firstEnd <- getMonotonicTimeNSec
             disposableFailure first `shouldBe` Nothing
             first `shouldSatisfy` ((== DisposableOk) . disposableVerdict)
+
+            let cacheRootBefore = tryCacheRoot (envTmpDir (appEnv app))
+            bucketsBefore <- listCacheBuckets cacheRootBefore
+            witnesses <- mapM (plantWitness cacheRootBefore) bucketsBefore
 
             secondStart <- getMonotonicTimeNSec
             second <- requireCompleted (runDisposableTry app candidate)
@@ -227,10 +242,14 @@ spec = describe "disposable notebook materialization" $ do
             disposableFailure second `shouldBe` Nothing
             second `shouldSatisfy` ((== DisposableOk) . disposableVerdict)
 
-            let firstSeconds = nsToSeconds (firstEnd - firstStart)
-                secondSeconds = nsToSeconds (secondEnd - secondStart)
-            secondSeconds `shouldSatisfy` (< 10)
-            secondSeconds `shouldSatisfy` (< firstSeconds)
+            let cacheRoot = tryCacheRoot (envTmpDir (appEnv app))
+            buckets <- listCacheBuckets cacheRoot
+            length buckets `shouldBe` 1
+            mapM_
+                (\b -> hasCompleteMarker cacheRoot b `shouldReturn` True)
+                buckets
+            mapM_ (\w -> doesFileExist w `shouldReturn` True) witnesses
+            nsToSeconds (secondEnd - secondStart) `shouldSatisfy` (< 30)
 
     it
         "breaches its build budget with actionable guidance, SHELVING the cache"

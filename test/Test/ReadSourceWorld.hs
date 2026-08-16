@@ -50,10 +50,14 @@ compatSource =
         [ "module Data.HodaTime.Compat (difference) where"
         , ""
         , "import Data.HodaTime.Instant"
+        , "import qualified Data.HodaTime.Instant as I"
         , "import qualified Data.List as L"
         , ""
         , "compatOnly :: Int"
-        , "compatOnly = 1"
+        , "compatOnly = L.length (L.sort [2, 1])"
+        , ""
+        , "compatDur :: I.Duration -> Int"
+        , "compatDur _ = 0"
         ]
 
 -- | More definitions than one outline shows, so the cap and count differ.

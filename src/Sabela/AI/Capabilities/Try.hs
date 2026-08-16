@@ -50,14 +50,22 @@ import Sabela.AI.Capabilities.Try.Snapshot (AppSnapshot (..), snapshotApp)
 import Sabela.AI.Capabilities.TryPlan
 import Sabela.AI.Capabilities.Util (fieldText, parseCellLang)
 import Sabela.AI.DepRepair (addBuildDepend)
+import Sabela.AI.FactsRow (PkgFacts (..))
 import Sabela.AI.HackageFacts (moduleOwners)
 import Sabela.AI.ImportRepair (renameModule)
 import Sabela.AI.NormalizeGate (gatedRewrite)
 import Sabela.AI.PackageIndex (PackageEntry (..))
+import Sabela.AI.TypeOriginProbe (
+    annotateDisposableWith,
+    annotatePureEvalWith,
+    exportedByPairs,
+    facadeClaims,
+ )
 import Sabela.AI.TypedHole (containsTypedHole)
 import Sabela.AI.Types (ToolOutcome (..), errOutcome, okOutcome)
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Deps (collectMetadata)
+import Sabela.Diagnose (pinnedDep)
 import Sabela.Handlers.Lifecycle (sessionMetaMatches)
 import Sabela.Handlers.Plan (executeFullRestart)
 import Sabela.Reactivity (cellSettled, haskellCodeCells)
@@ -66,6 +74,7 @@ import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
+import ScriptHs.Parser (CabalMeta (..))
 
 {- | The trial the tool surface offers. Its contained backend is the disposable
 materialisation; 'execTryWith' takes another so the route a trial takes can be
@@ -147,9 +156,15 @@ runTrialWithDepAutofix contained app code plan = do
                         then resolveInstalledModules renameCandidateCap wrong
                         else pure []
                 owners <- take ownerCandidateCap <$> moduleOwners wrong
-                let named =
-                        map (fmap peName) (scoped <> installed)
-                            <> [(wrong, pkgName) | (pkgName, _) <- owners]
+                let pinEntry e =
+                        pinnedDep
+                            (peName e)
+                            (nonEmptyVersion (peVersion e))
+                    named =
+                        map (fmap pinEntry) (scoped <> installed)
+                            <> [ (wrong, pinnedDep pkgName (nonEmptyVersion (pfVersion facts)))
+                               | (pkgName, facts) <- owners
+                               ]
                 tryRenames outcome wrong (nub named)
   where
     tryRenames failed _ [] = pure failed
@@ -202,7 +217,7 @@ runPureLive :: App -> ST.SessionBackend -> Text -> IO LiveDecision
 runPureLive app backend expression = do
     before <- snapshotApp app
     expectedGeneration <- ST.sbSessionGen backend
-    result <-
+    raw <-
         ST.sbEvalPureLive
             backend
             ST.PureEvalRequest
@@ -210,6 +225,9 @@ runPureLive app backend expression = do
                 , ST.pureEvalTimeoutUs = liveTimeoutUs
                 , ST.pureEvalExpression = expression
                 }
+    liveDeps <- metaDeps . collectMetadata <$> readNotebook (appNotebook app)
+    liveClaims <- facadeClaims app liveDeps (ST.pureEvalError raw)
+    let result = annotatePureEvalWith liveClaims raw
     after <- snapshotApp app
     current <- getHaskellSession (appSessions app)
     let sameBackend =
@@ -240,13 +258,30 @@ runDisposable contained app plan = do
         else case disposableVerdict result of
             DisposableOk -> pure (disclosed result (okOutcome (disposablePayload result)))
             _ -> do
+                claims <-
+                    facadeClaims
+                        app
+                        (disposableDependencies result)
+                        (trialDiagnosticText result)
                 pairs <- localiseTrial contained plan result
                 repair <- tryRepairPairs contained (trialSource plan) result
-                pure (withPairs (pairs <> repair) (disclosed result (rejected result)))
+                let annotated = annotateDisposableWith claims result
+                pure
+                    ( withPairs
+                        (pairs <> repair <> exportedByPairs claims)
+                        (disclosed annotated (rejected annotated))
+                    )
   where
     spec = candidateSpec plan
     disclosed result = withPairs (executionPairs spec result)
     rejected = errOutcome . disposablePayload
+    trialDiagnosticText result =
+        disposableStderr result
+            <> "\n"
+            <> maybe "" failureMessage (disposableFailure result)
 
 liveTimeoutUs :: Int
 liveTimeoutUs = 30 * 1000000
+
+nonEmptyVersion :: Text -> Maybe Text
+nonEmptyVersion v = if T.null v then Nothing else Just v

@@ -4,6 +4,7 @@ module Test.Materialize.Helpers (
     requireLiveIntegration,
     scratchDirectories,
     newPackageCandidate,
+    packagesCandidate,
     requireCompleted,
     nsToSeconds,
     hasCompleteMarker,
@@ -40,12 +41,16 @@ scratchDirectories :: FilePath -> IO [FilePath]
 scratchDirectories root =
     filter ("sabela-try" `isPrefixOf`) <$> listDirectory root
 
+-- | Bucket-cold by construction; possibly store-warm since trials share it.
 newPackageCandidate :: T.Text -> CandidateSpec
-newPackageCandidate pkg =
+newPackageCandidate pkg = packagesCandidate [pkg]
+
+packagesCandidate :: [T.Text] -> CandidateSpec
+packagesCandidate pkgs =
     CandidateSpec
         { candidateMetadataSource =
             T.unlines
-                [ "-- cabal: build-depends: " <> pkg
+                [ "-- cabal: build-depends: " <> T.intercalate ", " pkgs
                 , "1 + (1 :: Int)"
                 ]
         , candidateSetup = ""
@@ -68,10 +73,13 @@ nsToSeconds ns = fromIntegral ns / 1e9
 hasCompleteMarker :: FilePath -> FilePath -> IO Bool
 hasCompleteMarker root bucket = doesFileExist (root </> bucket </> ".complete")
 
+-- | Bucket directories only; the root also holds the lease lock dir.
 listCacheBuckets :: FilePath -> IO [FilePath]
 listCacheBuckets root = do
     exists <- doesDirectoryExist root
-    if exists then listDirectory root else pure []
+    if exists
+        then filter ("env-" `isPrefixOf`) <$> listDirectory root
+        else pure []
 
 requireSnapshot :: App -> IO MaterializeSnapshot
 requireSnapshot app = do

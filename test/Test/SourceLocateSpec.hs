@@ -13,6 +13,7 @@ import Sabela.AI.SourceLocate (
     declSlice,
     moduleOutline,
  )
+import Sabela.AI.SourceLocate.Imports (moduleAliases)
 
 plain :: Text
 plain =
@@ -142,5 +143,44 @@ spec = describe "locating a definition in module source" $ do
             let o = moduleOutline withCpp
             oHow o `shouldBe` Scanned
             map fst (outlinePairs o) `shouldSatisfy` elem "gap"
+
+    describe "the import alias map" $ do
+        it "pairs a qualified alias with its module" $
+            moduleAliases (imports ["import qualified Data.List as L"])
+                `shouldBe` [("L", "Data.List")]
+        it "pairs an alias declared without qualified" $
+            moduleAliases (imports ["import DataFrame as DXD"])
+                `shouldBe` [("DXD", "DataFrame")]
+        it "honours postpositive qualified" $
+            moduleAliases
+                ( "{-# LANGUAGE ImportQualifiedPost #-}\n"
+                    <> imports ["import Data.Text qualified as T"]
+                )
+                `shouldBe` [("T", "Data.Text")]
+        it "skips an import that declares no alias" $
+            moduleAliases (imports ["import qualified Data.Map", "import Data.Char"])
+                `shouldBe` []
+        it "collects every aliased import in order" $
+            moduleAliases
+                ( imports
+                    [ "import qualified DataFrame as DXD"
+                    , "import Data.HodaTime.Instant"
+                    , "import qualified Numeric.LinearAlgebra as LA"
+                    ]
+                )
+                `shouldBe` [("DXD", "DataFrame"), ("LA", "Numeric.LinearAlgebra")]
+        it "still answers for a CPP file via the lexical rung" $
+            moduleAliases
+                ( T.unlines
+                    [ "{-# LANGUAGE CPP #-}"
+                    , "module Probe where"
+                    , "#if MIN_VERSION_base(4,18,0)"
+                    , "import qualified Data.Vector.Storable as V"
+                    , "#endif"
+                    , "probe = V.length"
+                    ]
+                )
+                `shouldBe` [("V", "Data.Vector.Storable")]
   where
     outlinePairs o = [(n, l) | (n, l, _) <- oDecls o]
+    imports ls = T.unlines ("module Probe where" : ls)

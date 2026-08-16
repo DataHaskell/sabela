@@ -15,6 +15,7 @@ import Sabela.Diagnose (
     ambiguousOccurrences,
     couldNotFindModule,
     couldNotFindModules,
+    hiddenPackagesV,
     misnamedModule,
     neededExtension,
     notInScopeName,
@@ -37,6 +38,21 @@ diagnoseSpec = describe "Sabela.Diagnose" $ do
             findModulePackage "Bluefin.State" `shouldReturn` Just "bluefin"
         it "returns Nothing for a module nothing installed exposes" $
             findModulePackage "Totally.Not.A.Module" `shouldReturn` Nothing
+
+    describe "hiddenPackagesV (name with the version GHC named)" $ do
+        it "splits the versioned unit token" $
+            hiddenPackagesV
+                "It is a member of the hidden package \8216text-2.0.2\8217."
+                `shouldBe` [("text", Just "2.0.2")]
+        it "keeps a hyphenated name whole and dedupes repeats" $
+            hiddenPackagesV
+                ( "hidden package \8216base16-bytestring-1.0.2.0\8217.\n"
+                    <> "hidden package \8216base16-bytestring-1.0.2.0\8217."
+                )
+                `shouldBe` [("base16-bytestring", Just "1.0.2.0")]
+        it "answers a version-less token honestly" $
+            hiddenPackagesV "hidden package \8216sabela-notebook\8217."
+                `shouldBe` [("sabela-notebook", Nothing)]
 
     describe "neededExtension (auto-fix detector)" $ do
         it "reads the extension from GHC's bare 'intended to use' hint" $

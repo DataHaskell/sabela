@@ -16,6 +16,7 @@ import Siza.Agent.Discover.Envelope (
     envelopeCharBudget,
     envelopeChars,
  )
+import Siza.Agent.Discover.Guidance (cabalLineV)
 import Siza.Agent.Discover.Inventory (inventoryEnvelope)
 import Siza.Agent.Discover.Request (requestKey)
 import Siza.Agent.Discover.Types (
@@ -213,6 +214,16 @@ discoverInventorySpec = describe "inventory mode (R3-T3)" $ do
             let v = genInventory 30 25
                 pkgs = map (hitText "package") (hitsOf v)
             length pkgs `shouldBe` length (foldr dedup [] pkgs)
+
+    describe "minted cabal lines pin the version the index documented" $ do
+        it "pins when the facts row states a release" $
+            cabalLineV "hanalyze" (Just "0.2.0.1")
+                `shouldBe` "-- cabal: build-depends: hanalyze ==0.2.0.1"
+        it "stays bare without version evidence" $ do
+            cabalLineV "hanalyze" Nothing
+                `shouldBe` "-- cabal: build-depends: hanalyze"
+            cabalLineV "hanalyze" (Just "")
+                `shouldBe` "-- cabal: build-depends: hanalyze"
 
     describe "the M6 counterfactual: hidden http answered in ONE call" $
         it "topic 'http' yields the hidden package with its cabal line" $ do

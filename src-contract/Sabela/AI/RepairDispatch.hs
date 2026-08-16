@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Sabela.AI.RepairDispatch (
+    depName,
+    hiddenPackageFromDiagV,
+    pinnedDep,
+    splitPkgVersion,
     DiagClass (..),
     RepairTier (..),
     classifyDiag,
@@ -137,11 +141,15 @@ quotedTokens t =
         ]
 
 hiddenPackageFromDiag :: Text -> Maybe Text
-hiddenPackageFromDiag err = do
+hiddenPackageFromDiag = fmap fst . hiddenPackageFromDiagV
+
+-- | The hidden package with the version GHC's unit token named, when it did.
+hiddenPackageFromDiagV :: Text -> Maybe (Text, Maybe Text)
+hiddenPackageFromDiagV err = do
     rest <- afterInfix "hidden package" err
     tok <- listToMaybe (quotedTokens rest ++ T.words rest)
-    let p = stripPkgVersion tok
-    if T.null p then Nothing else Just p
+    let (p, v) = splitPkgVersion tok
+    if T.null p then Nothing else Just (p, v)
 
 missingModuleFromDiag :: Text -> Maybe Text
 missingModuleFromDiag err = do
@@ -240,6 +248,24 @@ stripPkgVersion u
     parts = T.splitOn "-" u
     kept = reverse (dropWhile isVer (reverse parts))
     isVer p = not (T.null p) && T.all (\c -> isDigit c || c == '.') p
+
+-- | @text-2.0.2@ -> @("text", Just "2.0.2")@; a version-less token keeps Nothing.
+splitPkgVersion :: Text -> (Text, Maybe Text)
+splitPkgVersion tok
+    | name == tok = (tok, Nothing)
+    | otherwise = (name, Just (T.drop (T.length name + 1) tok))
+  where
+    name = stripPkgVersion tok
+
+{- | A dependency entry pinned to the version its evidence names, so the
+solver either keeps that version or fails loudly instead of downgrading.
+-}
+pinnedDep :: Text -> Maybe Text -> Text
+pinnedDep name = maybe name (\v -> name <> " ==" <> v)
+
+-- | The package name of a dependency entry, its constraint dropped.
+depName :: Text -> Text
+depName = T.strip . T.takeWhile (`notElem` (" =<>^" :: String)) . T.strip
 
 afterInfix :: Text -> Text -> Maybe Text
 afterInfix needle t = case T.breakOn needle t of

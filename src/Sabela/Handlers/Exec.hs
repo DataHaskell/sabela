@@ -21,8 +21,11 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Sabela.AI.TypeOrigin (annotateExportedLines)
+import Sabela.AI.TypeOriginProbe (facadeClaims)
 import Sabela.Api (RunResult (..))
 import Sabela.Bridge (bridgePreamble, isTemplateHaskellOutput, widgetPreamble)
+import Sabela.Deps (collectMetadata)
 import Sabela.Errors (dropWarningBlocks, parseErrors, scrubHarnessFrames)
 import Sabela.Errors.Json (annotateDefSites, parseJsonInteractive)
 import Sabela.Handlers.Lifecycle (handleKernelCrash, loadSabelaPrelude)
@@ -44,7 +47,7 @@ import Sabela.State.NotebookStore (readNotebook)
 import Sabela.State.SessionManager (getHaskellSession)
 import Sabela.State.WidgetStore (getWidgetValues)
 import ScriptHs.Compiled (linePragmaTag)
-import ScriptHs.Parser (parseScriptNumbered)
+import ScriptHs.Parser (CabalMeta (..), parseScriptNumbered)
 import ScriptHs.Render (toGhciScriptTagged)
 
 runAndBroadcast :: App -> Int -> Cell -> IO ()
@@ -146,17 +149,39 @@ parseCellResult jsonOn cid rawOut rawErr = do
 
 annotateSuggestions ::
     App -> (RunResult, [CellError]) -> IO (RunResult, [CellError])
-annotateSuggestions app res@(rr, errs)
-    | not (any (T.isInfixOf "Perhaps") msgs) = pure res
+annotateSuggestions app res = do
+    perhapsRes <- perhapsPass app res
+    originsPass app perhapsRes
+
+perhapsPass ::
+    App -> (RunResult, [CellError]) -> IO (RunResult, [CellError])
+perhapsPass app res@(rr, errs)
+    | not (any (T.isInfixOf "Perhaps") (errorTexts res)) = pure res
     | otherwise = do
         resolve <- defSiteResolver app
-        let ann = annotateDefSites resolve
-        pure
-            ( rr{rrError = ann <$> rrError rr}
-            , [e{ceMessage = ann (ceMessage e)} | e <- errs]
-            )
-  where
-    msgs = maybe [] pure (rrError rr) ++ map ceMessage errs
+        pure (mapErrorTexts (annotateDefSites resolve) (rr, errs))
+
+{- | Verified façade facts on defined-in lines, on its own trigger: the
+Perhaps guard above must not gate it (a type mismatch carries none).
+-}
+originsPass ::
+    App -> (RunResult, [CellError]) -> IO (RunResult, [CellError])
+originsPass app res
+    | null (errorTexts res) = pure res
+    | otherwise = do
+        deps <- metaDeps . collectMetadata <$> readNotebook (appNotebook app)
+        claims <- facadeClaims app deps (T.unlines (errorTexts res))
+        pure (mapErrorTexts (annotateExportedLines claims) res)
+
+errorTexts :: (RunResult, [CellError]) -> [Text]
+errorTexts (rr, errs) = maybe [] pure (rrError rr) ++ map ceMessage errs
+
+mapErrorTexts ::
+    (Text -> Text) -> (RunResult, [CellError]) -> (RunResult, [CellError])
+mapErrorTexts ann (rr, errs) =
+    ( rr{rrError = ann <$> rrError rr}
+    , [e{ceMessage = ann (ceMessage e)} | e <- errs]
+    )
 
 defSiteResolver :: App -> IO (Text -> Maybe Int)
 defSiteResolver app = do

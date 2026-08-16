@@ -32,6 +32,7 @@ import Sabela.AI.Capabilities.Util (fieldText)
 import Sabela.AI.HoogleResolve (HoogleHit (..), hoogleQueryInScope)
 import Sabela.AI.Types (ToolOutcome, okOutcome)
 import Sabela.Deps (availablePackages)
+import Sabela.Diagnose (pinnedDep)
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (readNotebook)
@@ -127,7 +128,15 @@ enrichedOutcome q hits =
         object $
             [ "package" .= paPackage h
             , "synopsis" .= truncDocs (paSynopsis h)
-            , "cabal" .= ("-- cabal: build-depends: " <> paPackage h)
+            , "cabal"
+                .= ( "-- cabal: build-depends: "
+                        <> pinnedDep
+                            (paPackage h)
+                            ( if T.null (paVersion h)
+                                then Nothing
+                                else Just (paVersion h)
+                            )
+                   )
             , "modules" .= nub (filter (not . T.null) (map afModule api))
             , "api" .= map apiJSON api
             ]

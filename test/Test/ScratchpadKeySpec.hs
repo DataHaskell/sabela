@@ -3,22 +3,23 @@
 module Test.ScratchpadKeySpec (spec) where
 
 import Control.Exception (SomeException, try)
+import Data.IORef (newIORef)
 import Data.List (sort)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Unique (newUnique)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import System.FilePath ((</>))
 import Test.Hspec
 import Test.QuickCheck
+
+import Test.ScratchScopeSpec (recordingBackend)
 
 import qualified ScriptHs.Parser as Scripths
 
 import Sabela.AI.Capabilities.Scratchpad (ensureScratchpad)
 import Sabela.AI.Capabilities.Scratchpad.Key (
     ScratchpadPlan (..),
-    metaFields,
     scratchpadIdentity,
     scratchpadKey,
     scratchpadPlan,
@@ -27,6 +28,7 @@ import Sabela.AI.Store (AIStore, newAIStore, setScratchpad)
 import Sabela.AI.Types (ScratchpadSession (..))
 import Sabela.Anthropic.Types (AnthropicConfig (..))
 import Sabela.Model (Cell (..), CellType (..), Notebook (..))
+import Sabela.Session.GhcProbe (resolvedGhcVersion)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), newApp)
 import Sabela.State.Environment (Environment (..))
@@ -56,7 +58,7 @@ emptyMeta =
         }
 
 keyOf :: [Text] -> Scripths.CabalMeta -> [Text]
-keyOf deps meta = scratchpadKey deps (metaFields meta)
+keyOf = scratchpadKey "9.6.7" []
 
 -- | A notebook whose only cell declares the directive values it is given.
 notebookWith :: [Text] -> Notebook
@@ -75,35 +77,20 @@ notebookWith vals = Notebook "spec" [cell]
             }
 
 identityOf :: Notebook -> [Text] -> (Scripths.CabalMeta, [Text])
-identityOf = scratchpadIdentity ST.Haskell Set.empty
+identityOf nb deps = let (meta, _, key) = idAt "9.6.7" nb deps in (meta, key)
+
+-- | The key ensureScratchpad itself derives: the RESOLVED compiler version.
+liveIdentityKey :: Notebook -> [Text] -> IO [Text]
+liveIdentityKey nb deps =
+    (\v -> let (_, _, key) = idAt v nb deps in key) <$> resolvedGhcVersion
+
+idAt :: Text -> Notebook -> [Text] -> (Scripths.CabalMeta, [FilePath], [Text])
+idAt v = scratchpadIdentity v "." [] ST.Haskell Set.empty
 
 fakeBackend :: IO ST.SessionBackend
 fakeBackend = do
-    uid <- newUnique
-    let backend =
-            ST.SessionBackend
-                { ST.sbSessionId = uid
-                , ST.sbJsonDiagnostics = False
-                , ST.sbRunBlock = \_ -> pure ("", "")
-                , ST.sbRunBlockStreaming = \_ _ -> pure ("", "")
-                , ST.sbClose = pure ()
-                , ST.sbReset = pure backend
-                , ST.sbInterrupt = pure ()
-                , ST.sbBusy = pure False
-                , ST.sbSessionGen = pure 0
-                , ST.sbRequestStale = \_ -> pure False
-                , ST.sbQueryComplete = \_ -> pure []
-                , ST.sbQueryType = \_ -> pure ""
-                , ST.sbQueryInfo = \_ -> pure ""
-                , ST.sbQueryKind = \_ -> pure ""
-                , ST.sbQueryBrowse = \_ -> pure ""
-                , ST.sbQueryBindings = pure ""
-                , ST.sbQueryDoc = \_ -> pure ""
-                , ST.sbQueryHoleFits = \_ -> pure ""
-                , ST.sbEvalPureLive =
-                    \req -> pure (ST.pureEvalUnavailableResult req "fake backend")
-                }
-    pure backend
+    ran <- newIORef []
+    recordingBackend ran (const ("", ""))
 
 liveSession :: [Text] -> IO ScratchpadSession
 liveSession key = do
@@ -220,13 +207,13 @@ spec = describe "scratchpad reuse key (intention)" $ do
                 forAll ((,) <$> genTokens <*> genTokens) $ \(vals, deps) ->
                     ioProperty $ do
                         let nb = notebookWith vals
-                        case scratchpadPlan ST.Haskell Set.empty nb deps Nothing of
+                        case scratchpadPlan "9.6.7" "." [] ST.Haskell Set.empty nb deps Nothing of
                             ReuseScratchpad _ -> pure False
-                            FreshScratchpad _ key -> do
+                            FreshScratchpad _ _ key -> do
                                 sp <- liveSession key
                                 pure
                                     ( isReuse
-                                        (scratchpadPlan ST.Haskell Set.empty nb deps (Just sp))
+                                        (scratchpadPlan "9.6.7" "." [] ST.Haskell Set.empty nb deps (Just sp))
                                     )
 
         it "does not reuse a session stored under the caller's dep list alone" $
@@ -238,6 +225,9 @@ spec = describe "scratchpad reuse key (intention)" $ do
                             ( not
                                 ( isReuse
                                     ( scratchpadPlan
+                                        "9.6.7"
+                                        "."
+                                        []
                                         ST.Haskell
                                         Set.empty
                                         (notebookWith vals)
@@ -258,6 +248,9 @@ spec = describe "scratchpad reuse key (intention)" $ do
                                 ( not
                                     ( isReuse
                                         ( scratchpadPlan
+                                            "9.6.7"
+                                            "."
+                                            []
                                             ST.Haskell
                                             Set.empty
                                             (notebookWith (v : vals))
@@ -277,7 +270,7 @@ spec = describe "scratchpad reuse key (intention)" $ do
                         let (app, store) = fixture
                             nb = notebookWith vals
                         modifyNotebook (appNotebook app) (const nb)
-                        sp <- liveSession (snd (identityOf nb deps))
+                        sp <- liveSession =<< liveIdentityKey nb deps
                         reuses app store sp deps
 
         it "evicts a session identified only by the caller's dep list" $

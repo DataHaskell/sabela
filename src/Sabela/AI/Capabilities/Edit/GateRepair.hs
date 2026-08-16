@@ -20,25 +20,23 @@ import Sabela.AI.Capabilities.Edit.Admission (
 import Sabela.AI.Capabilities.Edit.CompileGate (
     GateSource (..),
     compileGateSpec,
-    exposingPackage,
     gateDefaultingRejection,
-    gateHoleNudge,
-    prevDefinedNames,
-    rejectionJson,
  )
 import Sabela.AI.Capabilities.Edit.GateFrontier (
     Frontier (..),
     Step (..),
     disposableDiagnostic,
-    frontierPairs,
     probeBudget,
     repairRounds,
     startFrontier,
     stepFrontier,
  )
 import Sabela.AI.Capabilities.Edit.GateRepair.Candidates (gateCandidates)
-import Sabela.AI.Capabilities.Edit.HoleNudge (attachPairs)
-import Sabela.AI.Capabilities.Edit.OrphanGate (undeclaredImportPairs)
+import Sabela.AI.Capabilities.Edit.GateRepair.Reject (
+    frontierRejection,
+    frontierRejectionJson,
+    frontierSource,
+ )
 import Sabela.AI.Capabilities.Edit.Submission (
     Submission,
     compiledText,
@@ -61,7 +59,6 @@ import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (readNotebook)
 
 import Data.Aeson (Value)
-import Data.Aeson.Types (Pair)
 
 {- | The gate stack a programmatic write passes before it may commit:
 compile first (with repair), then the paths the surviving source names.
@@ -157,13 +154,6 @@ submissionSource sub =
         , gateCompiled = compiledText sub
         }
 
-frontierSource :: Frontier -> GateSource
-frontierSource frontier =
-    GateSource
-        { gateSubmitted = frontierSubmitted frontier
-        , gateCompiled = frontierSrc frontier
-        }
-
 {- | A green candidate is admitted only once the defaulting check clears it.
 The property the gate proved is read off the spec the trial was run against,
 never off one rebuilt from the admitted text.
@@ -201,43 +191,6 @@ disclosure frontier =
     "Applied GHC's suggested fix before committing: "
         <> T.intercalate "; " (frontierFixes frontier)
         <> "."
-
-{- | Rejects on the frontier rather than on the submission: the errors the
-model still has to answer are the ones left after every proven fix, not the
-first one that stopped the compiler.
--}
-frontierRejection :: App -> Maybe Int -> Frontier -> IO Value
-frontierRejection app mReplaces frontier = do
-    prevDefined <- prevDefinedNames app mReplaces
-    nudge <- gateHoleNudge app mReplaces verdict diagnostic (frontierSrc frontier)
-    exposedBy <- exposingPackage diagnostic
-    diverge <- undeclaredImportPairs app (frontierResult frontier)
-    pure
-        ( frontierRejectionJson
-            exposedBy
-            mReplaces
-            prevDefined
-            (nudge <> diverge)
-            frontier
-        )
-  where
-    verdict = disposableVerdict (frontierResult frontier)
-    diagnostic = disposableDiagnostic (frontierResult frontier)
-
-{- | The rejection a frontier produces, given the facts the IO around it went
-and fetched. Pure, so the payload the model reads can be pinned without a
-session standing behind it.
--}
-frontierRejectionJson ::
-    Maybe Text -> Maybe Int -> [Text] -> [Pair] -> Frontier -> Value
-frontierRejectionJson exposedBy mReplaces prevDefined nudge frontier =
-    attachPairs (nudge <> frontierPairs frontier) $
-        rejectionJson
-            exposedBy
-            mReplaces
-            (frontierSource frontier)
-            prevDefined
-            (frontierResult frontier)
 
 {- | Walks the frontier forward one proven fix at a time, re-reading the
 diagnostic each round. @Right@ commits, carrying the spec its winning probe

@@ -27,6 +27,8 @@ import Sabela.AI.Store (newAIStore, setScratchpad)
 import Sabela.AI.Types (ScratchpadSession (..))
 import Sabela.AI.Verdict (VerdictClass (..), verdictTag)
 import Sabela.Anthropic.Types (AnthropicConfig (..))
+import Sabela.Session.GhcProbe (resolvedGhcVersion)
+import Sabela.Session.Project (buildTimeSupportDir)
 import Sabela.State (App (..), newApp, setAIStore)
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (readNotebook)
@@ -81,11 +83,23 @@ reuses it and no compiler is started.
 scratchedApp :: ST.SessionBackend -> IO App
 scratchedApp backend = do
     mgr <- newManager defaultManagerSettings
-    app <- newApp "." Set.empty (Just mgr) Nothing []
+    app <- newApp "." Set.empty (Just mgr) Nothing [buildTimeSupportDir]
     store <-
         newAIStore (AnthropicConfig "" "placeholder" "https://api.anthropic.com") mgr
     nb <- readNotebook (appNotebook app)
-    let key = snd (scratchpadIdentity ST.Haskell (envGlobalDeps (appEnv app)) nb [])
+    ghcV <- resolvedGhcVersion
+    let key =
+            ( let (_, _, k) =
+                    scratchpadIdentity
+                        ghcV
+                        (envWorkDir (appEnv app))
+                        (envLocalPackages (appEnv app))
+                        ST.Haskell
+                        (envGlobalDeps (appEnv app))
+                        nb
+                        []
+               in k
+            )
     setScratchpad store (Just (ScratchpadSession backend "" ST.Haskell key))
     setAIStore app (Just store)
     pure app

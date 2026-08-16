@@ -5,7 +5,6 @@ module Sabela.AI.Triage (
     triageResult,
 ) where
 
-import Data.Char (isDigit)
 import Data.Maybe (mapMaybe, maybeToList)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -13,7 +12,7 @@ import qualified Data.Text as T
 
 import Sabela.AI.HoleRepair (goalFromError)
 import Sabela.AI.Types (ExecutionResult (..))
-import Sabela.Diagnose (notInScopeName)
+import Sabela.Diagnose (notInScopeName, pinnedDep, splitPkgVersion)
 import Sabela.Parse (cellNames)
 
 triageResult ::
@@ -74,13 +73,11 @@ hiddenRewrite chunk
     | otherwise = chunk
   where
     pkgNames t =
-        [ stripVersion (T.takeWhile (/= '\'') rest)
+        [ uncurry pinnedDep (splitPkgVersion (T.takeWhile (/= '\'') rest))
         | (_, r) <- [T.breakOn "hidden package `" t]
         , not (T.null r)
         , let rest = T.drop (T.length "hidden package `") r
         ]
-    stripVersion =
-        T.dropWhileEnd (== '-') . T.dropWhileEnd (\c -> isDigit c || c == '.')
 
 dedupChunks :: [Text] -> [(Text, Int)]
 dedupChunks = go []

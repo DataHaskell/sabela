@@ -66,6 +66,7 @@ import qualified Test.InsertGateRouteSpec as InsertGateRouteSpec
 import qualified Test.InsertSupersedeSpec as InsertSupersedeSpec
 import qualified Test.JsonDiagSpec as JsonDiagSpec
 import Test.Live (liveSpecs)
+import qualified Test.MaterializeEnvSpec as MaterializeEnvSpec
 import qualified Test.MaterializeSpec as MaterializeSpec
 import qualified Test.ModuleCardRankSpec as ModuleCardRankSpec
 import qualified Test.ModuleCardTruthSpec as ModuleCardTruthSpec
@@ -257,6 +258,7 @@ allSpecsA = do
         SessionLiveSpec.spec
         PureEvalLiveSpec.spec
         MaterializeSpec.spec
+        MaterializeEnvSpec.spec
         SwitchNotebookSpec.spec
         CompileEscalationSpec.spec
         CompileGateSpec.spec

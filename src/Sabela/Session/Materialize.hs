@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {- | Running a candidate in a throwaway project: snapshot the live notebook,
@@ -29,16 +30,18 @@ module Sabela.Session.Materialize (
 ) where
 
 import Control.Exception (
+    SomeAsyncException (..),
     SomeException,
     bracket,
     displayException,
+    fromException,
+    throwIO,
     try,
  )
 import Control.Monad (void)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import System.FilePath (isAbsolute, (</>))
 import System.Timeout (timeout)
 
 import Sabela.Reactivity (
@@ -47,6 +50,7 @@ import Sabela.Reactivity (
     haskellCodeCells,
  )
 import Sabela.Session (SessionConfig (..), mkSessionConfig)
+import Sabela.Session.EnvKey (resolveLocalPackages)
 import Sabela.Session.Materialize.Candidate (
     CandidateSpec (..),
     buildBudgetFor,
@@ -81,6 +85,7 @@ import Sabela.Session.Timeout (readTimeoutConfig, tryBuildTimedOutMessage)
 import Sabela.Session.TryCache (
     CacheEntry (..),
     acquireCacheEntry,
+    cacheKeyRaw,
     cacheKeyText,
     commitCacheEntry,
     discardCacheEntry,
@@ -89,6 +94,7 @@ import Sabela.Session.TryCache (
     tryCacheMaxEntries,
     tryCacheRoot,
  )
+import Sabela.Session.TryCache.Lease (Lease, withBucketLease)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
@@ -114,39 +120,74 @@ runDisposableTry app spec = do
                             }
                 Nothing -> do
                     ghcVersion <- resolvedGhcVersion
+                    tryBuildBudget <- buildBudgetFor spec <$> readTimeoutConfig
                     let cacheRoot = tryCacheRoot (envTmpDir env)
-                        key = cacheKeyText meta ghcVersion
-                    entry <- acquireCacheEntry cacheRoot key
-                    outcome <-
-                        try
-                            ( runInDisposableRoot
-                                app
-                                snapshot
-                                plan
+                        localPackages =
+                            resolveLocalPackages
+                                (envWorkDir env)
+                                (envLocalPackages env)
                                 meta
-                                spec
-                                entry
-                                cacheRoot
-                                deps
-                            ) ::
-                            IO (Either SomeException DisposableResult)
-                    case outcome of
-                        Right result -> pure result
-                        Left e -> do
-                            discardCacheEntry (ceBucketDir entry)
+                        key = cacheKeyText localPackages meta ghcVersion
+                    withBucketLease cacheRoot (cacheKeyRaw key) tryBuildBudget $ \case
+                        Nothing ->
                             pure
                                 base
                                     { disposableVerdict = DisposableUnavailable
                                     , disposableFailure =
                                         Just
                                             ( MaterializeFailure
-                                                StageProject
+                                                StageSession
                                                 Nothing
-                                                (T.pack (displayException e))
+                                                envBusyMessage
                                             )
                                     }
+                        Just lease -> do
+                            entry <- acquireCacheEntry lease
+                            outcome <-
+                                try
+                                    ( runInDisposableRoot
+                                        app
+                                        snapshot
+                                        plan
+                                        meta
+                                        spec
+                                        lease
+                                        entry
+                                        localPackages
+                                        tryBuildBudget
+                                        deps
+                                    ) ::
+                                    IO (Either SomeException DisposableResult)
+                            case outcome of
+                                Right result -> pure result
+                                Left e -> do
+                                    discardCacheEntry lease
+                                    pure
+                                        base
+                                            { disposableVerdict = DisposableUnavailable
+                                            , disposableFailure =
+                                                Just
+                                                    ( MaterializeFailure
+                                                        StageProject
+                                                        Nothing
+                                                        (T.pack (displayException e))
+                                                    )
+                                            }
   where
     env = appEnv app
+
+-- | Like 'try', but an asynchronous exception (cancellation) propagates.
+trySync :: IO a -> IO (Either SomeException a)
+trySync act = do
+    r <- try act
+    case r of
+        Left e
+            | Just (SomeAsyncException _) <- fromException e -> throwIO e
+        _ -> pure r
+
+envBusyMessage :: Text
+envBusyMessage =
+    T.pack "an identical environment trial is already in progress; retry shortly"
 
 runInDisposableRoot ::
     App ->
@@ -154,33 +195,29 @@ runInDisposableRoot ::
     ExecutionPlan ->
     CabalMeta ->
     CandidateSpec ->
+    Lease ->
     CacheEntry ->
-    FilePath ->
+    [FilePath] ->
+    Int ->
     [Text] ->
     IO DisposableResult
-runInDisposableRoot app snapshot plan meta spec entry cacheRoot deps = do
+runInDisposableRoot app snapshot plan meta spec lease entry localPackages tryBuildBudget deps = do
     let env = appEnv app
         projectDir = ceProjectDir entry
-        localPackages = resolveLocalPackages env meta
         base = emptyResult deps
     projectResult <-
         try (setupReplProject WithNotebookSupport localPackages projectDir meta)
     case projectResult of
         Left (e :: SomeException) -> do
-            discardCacheEntry (ceBucketDir entry)
+            discardCacheEntry lease
             pure (failed base StageProject Nothing (T.pack (displayException e)))
         Right () -> do
             cfg0 <- mkSessionConfig projectDir (envWorkDir env)
-            let cfg =
-                    cfg0
-                        { scJsonDiagnostics = False
-                        , scCabalStoreDir = Just (ceStoreDir entry)
-                        }
-            tryBuildBudget <- buildBudgetFor spec <$> readTimeoutConfig
+            let cfg = cfg0{scJsonDiagnostics = False}
             spawned <- timeout tryBuildBudget (newSession cfg)
             case spawned of
                 Nothing -> do
-                    shelveCacheEntry (ceBucketDir entry)
+                    shelveCacheEntry lease
                     pure
                         base
                             { disposableVerdict = DisposableTimedOut
@@ -192,36 +229,22 @@ runInDisposableRoot app snapshot plan meta spec entry cacheRoot deps = do
                                         (tryBuildTimedOutMessage deps tryBuildBudget)
                                     )
                             }
-                Just sess -> do
-                    commitCacheEntry cacheRoot (ceBucketDir entry) tryCacheMaxEntries
+                Just sess ->
                     bracket
                         (pure (ghciBackend sess))
                         (closeQuietly . ST.sbClose)
-                        ( runMaterialized
-                            app
-                            snapshot
-                            projectDir
-                            plan
-                            spec
-                            base
-                            (captureBindingsBaseline sess)
+                        ( \backend -> do
+                            commitCacheEntry lease tryCacheMaxEntries
+                            runMaterialized
+                                app
+                                snapshot
+                                projectDir
+                                plan
+                                spec
+                                base
+                                (captureBindingsBaseline sess)
+                                backend
                         )
-
-resolveLocalPackages :: Environment -> CabalMeta -> [FilePath]
-resolveLocalPackages env meta =
-    stableNub (envLocalPackages env <> map resolve (metaPackages meta))
-  where
-    resolve raw =
-        let path = T.unpack raw
-         in if isAbsolute path then path else envWorkDir env </> path
-
-stableNub :: (Ord a) => [a] -> [a]
-stableNub = go S.empty
-  where
-    go _ [] = []
-    go seen (x : xs)
-        | x `S.member` seen = go seen xs
-        | otherwise = x : go (S.insert x seen) xs
 
 closeQuietly :: IO () -> IO ()
 closeQuietly action = void (try action :: IO (Either SomeException ()))

@@ -4,9 +4,8 @@ module Sabela.Session where
 
 import Control.Concurrent (MVar, withMVar)
 import Control.Concurrent.STM (TVar, atomically, readTVarIO, writeTVar)
-import Control.Exception (SomeException, bracket_, try)
+import Control.Exception (bracket_)
 import Control.Monad (when)
-import Data.Char (isDigit)
 import Data.IORef (
     IORef,
     atomicModifyIORef',
@@ -14,16 +13,15 @@ import Data.IORef (
     readIORef,
     writeIORef,
  )
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Read as TR
 import Data.Time (UTCTime, getCurrentTime)
 import Sabela.Session.Drain (
     DrainResult (..),
     discardUntilMarker,
     drainUntilMarker,
  )
+import Sabela.Session.GhcProbe (jsonDiagnosticsSupported)
 import Sabela.Session.Proc (
     ProcSession (..),
     destroySession,
@@ -38,13 +36,10 @@ import Sabela.Session.Timeout (
     timedOutKilledMessage,
     timedOutMessage,
  )
-import System.Environment (lookupEnv)
-import System.Exit (ExitCode (..))
 import System.IO (Handle, hFlush, hPutStrLn)
 import System.Process (
     ProcessHandle,
     getProcessExitCode,
-    readProcessWithExitCode,
  )
 import System.Timeout (timeout)
 
@@ -99,24 +94,7 @@ mkSessionConfig projDir workDir = do
             }
 
 detectJsonDiagnostics :: IO Bool
-detectJsonDiagnostics = do
-    ghc <- fromMaybe "ghc" <$> lookupEnv "GHC"
-    res <-
-        try (readProcessWithExitCode ghc ["--numeric-version"] "") ::
-            IO (Either SomeException (ExitCode, String, String))
-    pure $ case res of
-        Right (ExitSuccess, out, _) -> versionAtLeast [9, 10] (parseVersion out)
-        _ -> False
-
-parseVersion :: String -> [Int]
-parseVersion s =
-    [ n
-    | p <- T.splitOn "." (T.pack (takeWhile (\c -> isDigit c || c == '.') s))
-    , Right (n, _) <- [TR.decimal p]
-    ]
-
-versionAtLeast :: [Int] -> [Int] -> Bool
-versionAtLeast req v = take (length req) (v ++ repeat 0) >= req
+detectJsonDiagnostics = jsonDiagnosticsSupported
 
 sessStdin :: Session -> Handle
 sessStdin = psStdin . sessProcSess

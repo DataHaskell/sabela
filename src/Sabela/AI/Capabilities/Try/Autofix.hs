@@ -18,7 +18,7 @@ import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text (Text)
 
 import Sabela.AI.Types (ToolOutcome (..))
-import Sabela.Diagnose (couldNotFindModule, hiddenPackage)
+import Sabela.Diagnose (couldNotFindModule, hiddenPackagesV, pinnedDep)
 
 autofixNote :: Text -> Text -> Text
 autofixNote pkg repairedCode =
@@ -56,7 +56,11 @@ renameNote wrong right pkg repairedCode =
 hiddenPackageOf :: ToolOutcome -> Maybe Text
 hiddenPackageOf (ToolOk _) = Nothing
 hiddenPackageOf (ToolErr value) =
-    listToMaybe (mapMaybe hiddenPackage (diagnosticTexts value))
+    listToMaybe
+        [ pinnedDep n v
+        | text <- diagnosticTexts value
+        , (n, v) <- hiddenPackagesV text
+        ]
 
 notFoundModuleOf :: ToolOutcome -> Maybe Text
 notFoundModuleOf (ToolOk _) = Nothing

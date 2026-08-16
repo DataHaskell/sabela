@@ -41,7 +41,7 @@ msgs = T.intercalate " | " . map gMessage
 diagnoseAdviceSpec :: Spec
 diagnoseAdviceSpec = describe "Sabela.Diagnose (advice)" $ do
     describe "missing module (the plotting failure)" $ do
-        it "foregrounds the dep from GHC's hidden-package wall, version stripped" $ do
+        it "foregrounds the dep pinned to the version GHC named" $ do
             let raw =
                     "<no location info>: error: [GHC-87110]\n\
                     \    Could not load module \8216Granite.Svg\8217.\n\
@@ -50,7 +50,7 @@ diagnoseAdviceSpec = describe "Sabela.Diagnose (advice)" $ do
                     \    It is a member of the hidden package \8216granite-0.6.0.0\8217."
                 g = diagnoseBare raw
             cats g `shouldBe` ["missing-dependency"]
-            msgs g `shouldSatisfy` T.isInfixOf "build-depends: granite"
+            msgs g `shouldSatisfy` T.isInfixOf "build-depends: granite ==0.7.3.0"
             msgs g `shouldSatisfy` T.isInfixOf "-- cabal:"
             msgs g `shouldNotSatisfy` T.isInfixOf "granite-0"
         it "names the exposing package when the store knows it" $ do
