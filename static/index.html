@@ -5,10 +5,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sabela Notebook</title>
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%231b1a17'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23d69a3c'%20stroke-width='3'%20fill='none'%20stroke-linecap='square'%20stroke-linejoin='miter'/%3E%3Cpath%20d='M6%2029L9%2026L12%2029L15%2026L18%2029L21%2026L24%2029'%20stroke='%23d69a3c'%20stroke-width='1.6'%20fill='none'/%3E%3C/svg%3E"
-    />
+<!-- The one Sabela favicon; every page includes this so they cannot drift. -->
+<link
+  rel="icon"
+  href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"
+/>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/nord.min.css" />
@@ -3193,6 +3194,12 @@ button.palette-trigger kbd {
           <polyline points="1 4 1 10 7 10" />
           <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
         </symbol>
+        <symbol id="i-reactive" viewBox="0 0 24 24">
+          <path d="M12 4a8 8 0 0 1 1.39 15.88" />
+          <polygon points="9.45 20.58 13.79 22.15 12.99 17.61" fill="currentColor" stroke="none" />
+          <path d="M12 20a8 8 0 0 1-1.39-15.88" />
+          <polygon points="14.55 3.42 10.21 1.85 11.01 6.39" fill="currentColor" stroke="none" />
+        </symbol>
         <symbol id="i-eye" viewBox="0 0 24 24">
           <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
           <circle cx="12" cy="12" r="3" />
@@ -3406,7 +3413,7 @@ button.palette-trigger kbd {
         title="Reactive: edits run automatically. Click to defer runs."
         aria-label="Toggle run mode"
       >
-        <svg class="icon-svg"><use href="#i-zap" /></svg>
+        <svg class="icon-svg"><use href="#i-reactive" /></svg>
       </button>
       <button class="primary" id="btn-run-all" onclick="runAll()" aria-label="Run all cells">
         <svg class="icon-svg" style="vertical-align: -2px"><use href="#i-play" /></svg>

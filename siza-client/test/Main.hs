@@ -2,6 +2,7 @@ module Main (main) where
 
 import Test.AdviceSpec (adviceSpec)
 import Test.AgentCheckSpec (agentCheckSpec)
+import Test.AllMcpSpecs (allMcpSpecs)
 import Test.ArtifactSpec (artifactSpec)
 import Test.CabalFactsSpec (cabalFactsSpec)
 import Test.CandidateRankSpec (candidateRankSpec)
@@ -90,9 +91,6 @@ import Test.LanguageSpec (
 import Test.LeverSurfaceSpec (leverSurfaceSpec)
 import Test.LoginSpec (loginSpec)
 import Test.MarkerEchoSpec (markerEchoSpec)
-import Test.McpCallSpec (mcpCallSpec)
-import Test.McpSpec (mcpSpec)
-import Test.McpSurfaceSpec (mcpSurfaceSpec)
 import Test.NormalizeFindabilitySpec (normalizeFindabilitySpec)
 import Test.NoteLedgerSpec (noteLedgerSpec)
 import Test.OutcomeDistillSpec (outcomeDistillSpec)
@@ -168,7 +166,6 @@ main = hspec $ do
     systemPromptSpec
     hubTokenSpec
     loginSpec
-    mcpSpec
     agentCheckSpec
     installAffordanceSpec
     kernelVocabClientSpec
@@ -247,13 +244,12 @@ main = hspec $ do
     worldCardSpec
     repairCascadeSpec
     stackSessionSpec
-    mcpCallSpec
+    allMcpSpecs
     stackParitySpec
     stackNoteDeliverySpec
     goalPlumbingSpec
     verifyToolSpec
     catalogueHonestySpec
-    mcpSurfaceSpec
     vetSilenceSpec
     redStreakSpec
     verifyDiagSpec

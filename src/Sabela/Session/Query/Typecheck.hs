@@ -13,12 +13,14 @@ module Sabela.Session.Query.Typecheck (
 ) where
 
 import Data.Char (isAlphaNum, isSpace, toLower)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Clock (getMonotonicTimeNSec)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 
+import Sabela.AI.Capabilities.Edit.CompileGate.Bind (bindParts)
 import Sabela.Session (Session)
 import Sabela.Session.Query.Command (QueryCommand (..), runQueryCommand)
 
@@ -31,10 +33,19 @@ data TypecheckResult = TypecheckResult
 data TypecheckInput = ValueExpression | ValueBindings | OutsideValueSubset
     deriving (Eq, Show)
 
+{- | True when the source binds at the top level. GHCi answers @:type pat <- act@
+with "not an expression", and the compile gate already renders such a cell
+through its bind proxy, so it never belongs to this subset. A generator arrow
+inside brackets sits at depth, so a list comprehension stays an expression.
+-}
+isBindStatement :: Text -> Bool
+isBindStatement = isJust . bindParts . T.strip
+
 classifyTypecheckInput :: Text -> TypecheckInput
 classifyTypecheckInput source
     | null ls = ValueExpression
     | any outside ls = OutsideValueSubset
+    | isBindStatement source = OutsideValueSubset
     | all isBinding ls = ValueBindings
     | any isBinding ls = OutsideValueSubset
     | otherwise = ValueExpression
@@ -109,7 +120,7 @@ typecheckValueWith askType askBindings source = do
                 ok = not failed && expectedSuffix source `T.isInfixOf` output
             finish started (if ok then "ok" else "diagnostic") ok output (before == after)
   where
-    failureSignals = ["error:", "Found hole:", "parse error"]
+    failureSignals = ["error:", "Found hole:", "parse error", "not an expression"]
     finish started verdict ok diagnostics unchanged = do
         finished <- getMonotonicTimeNSec
         hPutStrLn stderr $

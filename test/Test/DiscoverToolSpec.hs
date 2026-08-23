@@ -28,6 +28,11 @@ spec = describe "discovery tool handlers" $ do
         t `shouldSatisfy` T.isInfixOf "-- cabal: build-depends: dataframe"
         t `shouldSatisfy` T.isInfixOf "readCsv"
 
-    it "find_example_cell returns no example for a retired query (no near-miss)" $ do
+    it "find_example_cell answers a plotting query with the local drawing API" $ do
         let t = enc (findExamplesOutcome (query "plotting"))
+        t `shouldSatisfy` T.isInfixOf "barChart"
+        t `shouldSatisfy` T.isInfixOf "import Sabela.Notebook"
+
+    it "find_example_cell returns no example for a retired query (no near-miss)" $ do
+        let t = enc (findExamplesOutcome (query "parquet"))
         t `shouldSatisfy` T.isInfixOf "\"examples\":[]"

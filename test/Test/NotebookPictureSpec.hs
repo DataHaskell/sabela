@@ -64,15 +64,3 @@ spec = do
     describe "fromSvg" $
         it "drops a raw SVG fragment in verbatim" $
             svgBody (fromSvg "<custom/>") `shouldBe` "<custom/>"
-
-    describe "lineChart" $ do
-        it "is empty for fewer than two points" $
-            svgBody (lineChart (Canvas 100 100) [(1, 1)]) `shouldBe` ""
-        it "auto-scales points into the canvas (with a 30px margin)" $
-            svgBody (lineChart (Canvas 100 100) [(0, 0), (10, 10)])
-                `shouldSatisfy` isInfixOf "30,70 70,30"
-
-    describe "plot" $
-        it "is lineChart on the default canvas, as displayPicture is displayPictureOn" $ do
-            let pts = [(0, 0), (10, 10), (20, 5)]
-            svgBody (plot pts) `shouldBe` svgBody (lineChart defaultCanvas pts)

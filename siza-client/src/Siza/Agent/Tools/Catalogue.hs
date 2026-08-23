@@ -1,4 +1,4 @@
-module Siza.Agent.Tools.Catalogue (baseCatalogue) where
+module Siza.Agent.Tools.Catalogue (baseCatalogue, mcpOnlyCatalogue) where
 
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
@@ -41,6 +41,14 @@ intProp d = object ["type" .= ("integer" :: Text), "description" .= d]
 boolProp :: Text -> Value
 boolProp d = object ["type" .= ("boolean" :: Text), "description" .= d]
 
+enumProp :: [Text] -> Text -> Value
+enumProp vals d =
+    object
+        [ "type" .= ("string" :: Text)
+        , "enum" .= vals
+        , "description" .= d
+        ]
+
 listProp :: Text -> Value
 listProp d =
     object
@@ -76,6 +84,12 @@ baseCatalogue =
                 ( "full"
                 , boolProp "Include each cell's source (default false: first-line preview)."
                 )
+            ,
+                ( "cell_type"
+                , enumProp
+                    ["CodeCell", "ProseCell"]
+                    "Keep only cells of this kind. Omit for all of them."
+                )
             ]
             []
         )
@@ -89,14 +103,31 @@ baseCatalogue =
         ( props
             [ ("cell_id", intProp "Cell id from list_cells.")
             , ("full", boolProp "Include the cell's outputs (default false).")
+            ,
+                ( "output_mime"
+                , prop
+                    "With full, keep only outputs of this mime type, such as text/markdown. Use it to read a table beside a rendered chart without pulling the chart."
+                )
             ]
             ["cell_id"]
         )
     , fn
         "insert_cell"
-        "Append a new Haskell cell and run it. Put the cell's full Haskell source in the `source` argument. Use this to add code."
+        "Add a new cell and run it. `source` is the cell's full text: Haskell for a code cell, markdown for a prose cell. Defaults to a Haskell code cell appended at the end; pass `cell_type: ProseCell` for prose, and `after_cell_id` to place it, where -1 means the top."
         ( props
-            [ ("source", prop "The full Haskell source for the new cell.")
+            [ ("source", prop "The full text for the new cell.")
+            ,
+                ( "cell_type"
+                , enumProp ["CodeCell", "ProseCell"] "CodeCell (default) or ProseCell."
+                )
+            ,
+                ( "language"
+                , enumProp ["Haskell", "Python"] "Language of a code cell (default Haskell)."
+                )
+            ,
+                ( "after_cell_id"
+                , intProp "Place the cell after this one; -1 for the top. Omit to append."
+                )
             , ("goal", goalProp)
             ]
             ["source"]
@@ -107,6 +138,11 @@ baseCatalogue =
         ( props
             [ ("cell_id", intProp "Cell to replace.")
             , ("new_source", prop "The replacement Haskell source.")
+            ,
+                ( "expected_hash"
+                , prop
+                    "The hash last read for this cell. Pass it to be refused rather than overwrite an edit someone else made."
+                )
             , ("goal", goalProp)
             ]
             ["cell_id", "new_source"]
@@ -204,5 +240,58 @@ baseCatalogue =
     , fn
         "kernel_restart"
         "Hard-reset the Haskell kernel: force-kill the kernel process (even a wedged one that ignores interrupt) and respawn it clean — reusing the installed packages without rebuilding, and WITHOUT re-running any cells. Returns immediately; poll kernel_status until idle. This is how you recover a stuck or wedged kernel."
+        (props [] [])
+    ]
+
+{- | Tools served to an agent driving through MCP and not to the chat loop.
+The chat surface serves weak models, where the tools on offer decide what the
+model reaches for, so it keeps the smaller set: one way to write a cell, and no
+way to hand an edit to a human.
+-}
+mcpOnlyCatalogue :: [Value]
+mcpOnlyCatalogue =
+    [ fn
+        "propose_edit"
+        "Propose a replacement for a cell someone else wrote. Nothing is applied or run: the edit waits for them to accept or reject it in the browser. Use this for a cell you did not write yourself."
+        ( props
+            [ ("cell_id", intProp "Cell to propose against.")
+            , ("new_source", prop "The replacement source.")
+            ,
+                ( "expected_hash"
+                , prop "The hash last read for this cell, to detect a concurrent edit."
+                )
+            ]
+            ["cell_id", "new_source"]
+        )
+    , fn
+        "replace_cells"
+        "Replace the source of several cells in one call. Pass `edits`, a list of {cell_id, new_source, expected_hash?}. They are applied in the order given and stop at the first failure, so what ran is reported back."
+        ( object
+            [ "type" .= ("object" :: Text)
+            , "properties"
+                .= object
+                    [ "edits"
+                        .= object
+                            [ "type" .= ("array" :: Text)
+                            , "description" .= ("The edits to apply, in order." :: Text)
+                            , "items"
+                                .= object
+                                    [ "type" .= ("object" :: Text)
+                                    , "properties"
+                                        .= object
+                                            [ "cell_id" .= intProp "Cell to replace."
+                                            , "new_source" .= prop "The replacement source."
+                                            , "expected_hash" .= prop "Hash last read for this cell."
+                                            ]
+                                    , "required" .= (["cell_id", "new_source"] :: [Text])
+                                    ]
+                            ]
+                    ]
+            , "required" .= (["edits"] :: [Text])
+            ]
+        )
+    , fn
+        "export_notebook"
+        "Every cell's id, position, type, language and source in one call. Use this to read a notebook before editing it, instead of reading cells one by one."
         (props [] [])
     ]

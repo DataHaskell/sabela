@@ -48,6 +48,7 @@ library
                       Siza.Agent.Messages
                       Siza.Agent.Render
                       Siza.Agent.Ack
+                      Siza.Agent.Bulk
                       Siza.Agent.Scaffold
                       -- Bounded context: Gating / repair
                       Siza.Preflight
@@ -160,6 +161,7 @@ library
                       Siza.Mcp
                       Siza.Mcp.Surface
                       Siza.Mcp.Rpc
+                      Siza.Mcp.Serve
                       -- Guides
                       Siza.Guide
     build-depends:    base >= 4 && < 5
@@ -323,7 +325,11 @@ test-suite siza-client-test
                       Test.RepairCascadeSpec
                       Test.StackFixtures
                       Test.StackSessionSpec
+                      Test.AllMcpSpecs
+                      Test.McpAuthoringSpec
+                      Test.McpBulkSpec
                       Test.McpCallSpec
+                      Test.McpConcurrencySpec
                       Test.StackNoteDeliverySpec
                       Test.StackParitySpec
                       Test.GoalPlumbingSpec

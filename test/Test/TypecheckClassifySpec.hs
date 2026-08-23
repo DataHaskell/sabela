@@ -37,3 +37,21 @@ spec = describe "value-subset classification" $ do
             classifyTypecheckInput
             ["data C = C", "import Data.Map", "type C = Int"]
             `shouldBe` replicate 3 OutsideValueSubset
+
+    {- GHCi answers a bind with "not an expression", so the gate can only
+    refuse a cell the compile gate handles properly through its bind proxy. -}
+    it "keeps a statement bind outside the subset, however it is laid out" $
+        map
+            classifyTypecheckInput
+            [ "idxFiles <- forM idxNames fetchIdx"
+            , "probeBind <- pure (1 :: Int)"
+            , "idxFiles <-\n    forM idxNames fetchIdx"
+            , "(a, b) <- pure (1 :: Int, 2 :: Int)"
+            ]
+            `shouldBe` replicate 4 OutsideValueSubset
+
+    it "still admits a multi-line expression, which the query wraps" $
+        classifyTypecheckInput "print\n  (1 :: Int)" `shouldBe` ValueExpression
+
+    it "still admits a multi-line run of definitions, which it wraps itself" $
+        classifyTypecheckInput "a = 1\nb = 2" `shouldBe` ValueBindings

@@ -1,4 +1,4 @@
-module Sabela.Notebook.Picture.Internal (
+module Sabela.Notebook.Picture.Types (
     Point,
     Picture (..),
     Shape (..),

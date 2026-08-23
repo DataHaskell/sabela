@@ -71,10 +71,15 @@ buildBudgetFor spec tc
 disposableRouteName :: Text
 disposableRouteName = "disposable_scratch"
 
+{- | The cells a candidate is compiled against: the ones above the cell it
+replaces. The cells below consume what that cell defines, so replaying them
+without the candidate refuses edits that would compile; whether they still
+compile is settled when they re-run after the commit.
+-}
 prefixFor :: CandidateSpec -> Notebook -> Notebook
 prefixFor spec nb = case candidateReplacesCellId spec of
     Nothing -> nb
-    Just cid -> nb{nbCells = filter ((/= cid) . cellId) (nbCells nb)}
+    Just cid -> nb{nbCells = takeWhile ((/= cid) . cellId) (nbCells nb)}
 
 candidateProjectMeta :: Set Text -> Notebook -> CandidateSpec -> CabalMeta
 candidateProjectMeta globalDeps nb spec =

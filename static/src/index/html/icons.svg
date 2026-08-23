@@ -101,6 +101,12 @@
           <polyline points="1 4 1 10 7 10" />
           <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
         </symbol>
+        <symbol id="i-reactive" viewBox="0 0 24 24">
+          <path d="M12 4a8 8 0 0 1 1.39 15.88" />
+          <polygon points="9.45 20.58 13.79 22.15 12.99 17.61" fill="currentColor" stroke="none" />
+          <path d="M12 20a8 8 0 0 1-1.39-15.88" />
+          <polygon points="14.55 3.42 10.21 1.85 11.01 6.39" fill="currentColor" stroke="none" />
+        </symbol>
         <symbol id="i-eye" viewBox="0 0 24 24">
           <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
           <circle cx="12" cy="12" r="3" />

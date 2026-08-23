@@ -16,8 +16,8 @@ import Sabela.AI.Capabilities.ToolName (
     toolWireName,
  )
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
-import Siza.Agent.ToolRoute (Route (..), recoverTurn, routeCallWith)
-import Siza.Agent.Tools (offeredArgKeys, offeredNames)
+import Siza.Agent.ToolRoute (Route (..), recoverTurn, routeCallWithin)
+import Siza.Agent.Tools (chatArgKeys, offeredArgKeys, offeredNames)
 
 schemaRecoverySpec :: Spec
 schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
@@ -29,7 +29,7 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
             it (T.unpack ("corruptions of " <> name)) $
                 forM_ (corruptionsOf name) $ \bad -> do
                     let args = requiredPayloadFor name
-                        route = routeCallWith offeredArgKeys (ToolCall bad args)
+                        route = routeCallWithin offeredArgKeys chatArgKeys (ToolCall bad args)
                     case route of
                         RouteTool tn a -> do
                             (bad, dispatchFits tn a) `shouldBe` (bad, True)
@@ -50,7 +50,7 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
                         [ "cell_id" .= (0 :: Int)
                         , "new_source" .= ("import Graphics.Plotly\nfig = 1" :: Text)
                         ]
-            case routeCallWith offeredArgKeys (ToolCall "?..??" payload) of
+            case routeCallWithin offeredArgKeys chatArgKeys (ToolCall "?..??" payload) of
                 RouteTool tn a -> do
                     tn `shouldBe` ReplaceCellSource
                     a `shouldBe` payload
@@ -58,7 +58,7 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
                     expectationFailure ("expected a dispatch, got " <> show other)
         it "the run-085948 '…?' insert_cell payload dispatches" $ do
             let payload = object ["source" .= ("bars = [1,2,3]" :: Text)]
-            case routeCallWith offeredArgKeys (ToolCall "\x2026?" payload) of
+            case routeCallWithin offeredArgKeys chatArgKeys (ToolCall "\x2026?" payload) of
                 RouteTool tn _ -> tn `shouldBe` InsertCell
                 other ->
                     expectationFailure ("expected a dispatch, got " <> show other)
@@ -66,13 +66,14 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
             let payload =
                     object
                         ["cell_id" .= (3 :: Int), "new_source" .= ("x = 2" :: Text)]
-            case routeCallWith offeredArgKeys (ToolCall "insert_cell?We" payload) of
+            case routeCallWithin offeredArgKeys chatArgKeys (ToolCall "insert_cell?We" payload) of
                 RouteTool tn _ -> tn `shouldBe` ReplaceCellSource
                 other ->
                     expectationFailure ("expected a dispatch, got " <> show other)
         it "an ambiguous fingerprint reprompts naming the parse failure" $
-            case routeCallWith
+            case routeCallWithin
                 offeredArgKeys
+                chatArgKeys
                 (ToolCall "??" (object ["cell_id" .= (1 :: Int)])) of
                 RouteBadArgs hint -> do
                     hint `shouldSatisfy` T.isInfixOf "could not parse tool call"
@@ -80,7 +81,7 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
                 other ->
                     expectationFailure ("expected a reprompt, got " <> show other)
         it "empty args cannot fingerprint: reprompt, never a guess" $
-            case routeCallWith offeredArgKeys (ToolCall "??" (object [])) of
+            case routeCallWithin offeredArgKeys chatArgKeys (ToolCall "??" (object [])) of
                 RouteBadArgs hint ->
                     hint `shouldSatisfy` T.isInfixOf "could not parse tool call"
                 other ->
@@ -92,7 +93,7 @@ schemaRecoverySpec = describe "schema-match recovery boundary (R9-T5)" $ do
                             [ "cell_id" .= (0 :: Int)
                             , "new_source" .= ("x = 1" :: Text)
                             ]
-                case routeCallWith offeredArgKeys (ToolCall name payload) of
+                case routeCallWithin offeredArgKeys chatArgKeys (ToolCall name payload) of
                     RouteUnknown n -> n `shouldBe` name
                     other ->
                         expectationFailure ("expected RouteUnknown, got " <> show other)

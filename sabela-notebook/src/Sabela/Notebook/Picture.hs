@@ -26,8 +26,6 @@ module Sabela.Notebook.Picture (
     scale,
     rotate,
     group,
-    plot,
-    lineChart,
     Canvas (..),
     defaultCanvas,
     displayPicture,
@@ -39,14 +37,14 @@ module Sabela.Notebook.Picture (
 
 import Data.List (intercalate)
 import Sabela.Notebook.Markup (unSvg)
-import Sabela.Notebook.Picture.Internal (
+import Sabela.Notebook.Picture.Svg (renderSvg, svgBody)
+import Sabela.Notebook.Picture.Types (
     Canvas (..),
     Picture (..),
     Point,
     Shape (..),
     num,
  )
-import Sabela.Notebook.Picture.Svg (renderSvg, svgBody)
 
 circle :: Point -> Double -> Picture
 circle c r = Prim (Circle c r)
@@ -110,24 +108,6 @@ rotate deg = Attr [("transform", "rotate(" ++ num deg ++ ")")]
 
 group :: [Picture] -> Picture
 group = mconcat
-
-lineChart :: Canvas -> [(Double, Double)] -> Picture
-lineChart (Canvas w h) pts
-    | length pts < 2 = mempty
-    | otherwise = axes <> strokeWidth 2 (polyline scaled)
-  where
-    m = 30
-    xs = map fst pts
-    ys = map snd pts
-    spanX = let d = maximum xs - minimum xs in if d == 0 then 1 else d
-    spanY = let d = maximum ys - minimum ys in if d == 0 then 1 else d
-    sx x = m + (x - minimum xs) / spanX * (w - 2 * m)
-    sy y = (h - m) - (y - minimum ys) / spanY * (h - 2 * m)
-    scaled = [(sx x, sy y) | (x, y) <- pts]
-    axes = line (m, m) (m, h - m) <> line (m, h - m) (w - m, h - m)
-
-plot :: [(Double, Double)] -> Picture
-plot = lineChart defaultCanvas
 
 defaultCanvas :: Canvas
 defaultCanvas = Canvas 300 300

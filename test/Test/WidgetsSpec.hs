@@ -38,6 +38,10 @@ spec = do
                 , "sabelaTextInput({"
                 , "sabelaButton({"
                 ]
+        it "offers the seam a package widget mounts through" $ do
+            defs `shouldSatisfy` T.isInfixOf "htmlWidget :: SabelaBase.String"
+            defs `shouldSatisfy` T.isInfixOf "_sabelaWidgetSlots"
+            defs `shouldSatisfy` T.isInfixOf "SabelaIORef.readIORef _sabelaWidgetRef"
         it "keeps the friendly constructor signatures (export-freeze depends on them)" $
             mapM_
                 (\s -> defs `shouldSatisfy` T.isInfixOf s)

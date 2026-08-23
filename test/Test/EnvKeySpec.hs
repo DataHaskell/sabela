@@ -13,8 +13,8 @@ import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck (elements, listOf)
 import qualified Test.QuickCheck as QC
 
-import ScriptHs.Parser (CabalMeta (..), SourceRepoPin (..))
 import Sabela.Session.EnvKey (canonicalDep, canonicalKeyText, envBucketName)
+import ScriptHs.Parser (CabalMeta (..), SourceRepoPin (..))
 
 emptyMeta :: CabalMeta
 emptyMeta =

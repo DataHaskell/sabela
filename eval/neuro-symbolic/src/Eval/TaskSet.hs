@@ -41,6 +41,14 @@ tasks =
         "Plot these quarterly sales figures as a bar chart and show the chart in the notebook: Q1 12, Q2 18, Q3 9, Q4 15. Use the granite plotting library."
         ByRender
     , Task
+        "localBars"
+        "Plot these quarterly sales figures as a bar chart and show the chart in the notebook: Q1 12, Q2 18, Q3 9, Q4 15. Use what already ships with the notebook rather than installing a plotting library."
+        ByRender
+    , Task
+        "pressCounter"
+        "Add a widget to the notebook with a button, showing how many times the button has been pressed."
+        ByRender
+    , Task
         "revenueTotal"
         "A CSV file `revenue.csv` with columns `month` and `revenue` is in the working directory. Using the dataframe library, load it into a DataFrame and define `revenueTotal :: Double` as the total revenue across all months."
         (ByValue "abs (revenueTotal - 600) < 0.001")

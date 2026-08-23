@@ -61,6 +61,7 @@ toolAnnotations name =
 readOnlyTools :: [Text]
 readOnlyTools =
     [ "list_cells"
+    , "export_notebook"
     , "read_cell"
     , "list_bindings"
     , "check_type"
@@ -109,6 +110,9 @@ titleTable =
     , ("await_idle", "Wait for the running cell to finish")
     , ("interrupt", "Abort the running cell")
     , ("kernel_restart", "Restart the kernel")
+    , ("propose_edit", "Offer a cell edit for its author to accept")
+    , ("export_notebook", "Read every cell in one call")
+    , ("replace_cells", "Rewrite several cells in one call")
     ]
 
 promptsList :: Value

@@ -40,8 +40,12 @@ data QueryCommand
     | QueryComplete Text
     | QueryBindings
 
+{- | @:{ … :}@ around a type query: GHCi reads @:type expr@ to the end of the
+line, so an unwrapped multi-line argument leaves its tail as fresh input and
+GHCi performs it. Bracketing makes one command of it whatever it contains.
+-}
 toText :: QueryCommand -> Text
-toText (QueryType t) = ":type " <> t
+toText (QueryType t) = T.unlines [":{", ":type " <> t, ":}"]
 toText (QueryInfo t) = ":info " <> t
 toText (QueryKind t) = ":kind " <> t
 toText (QueryBrowse t) = ":browse " <> t

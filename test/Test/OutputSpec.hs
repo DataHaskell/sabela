@@ -42,7 +42,7 @@ scatterEmbedSpec = describe "scatter widget JS embedding" $ do
     it "embeds the real scatter.js library, not a hand-escaped blob" $ do
         scatterWidgetJs `shouldSatisfy` T.isInfixOf "function sabelaScatter"
         scatterWidgetJs `shouldSatisfy` T.isInfixOf "parent.postMessage"
-        scatterWidgetJs `shouldSatisfy` T.isInfixOf "inPoly"
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "sabelaScatterInPoly"
 
     it "splices the embedded library into the GHCi prelude defs" $ do
         scatterDefs `shouldSatisfy` T.isInfixOf "_sabelaScatterJs"
@@ -50,6 +50,36 @@ scatterEmbedSpec = describe "scatter widget JS embedding" $ do
 
     it "emits a per-render bootstrap call rather than an inline IIFE" $ do
         scatterDefs `shouldSatisfy` T.isInfixOf "sabelaScatter({"
+
+    it "ships the view maths the renderer frames and zooms with" $
+        mapM_
+            (\f -> scatterWidgetJs `shouldSatisfy` T.isInfixOf f)
+            [ "function sabelaScatterRobustRange"
+            , "function sabelaScatterFit"
+            , "function sabelaScatterZoom"
+            , "function sabelaScatterPan"
+            , "function sabelaScatterTicks"
+            ]
+
+    it "draws through a device-pixel-ratio backing store" $ do
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "devicePixelRatio"
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "setTransform(dpr"
+
+    it "binds wheel zoom and shift-drag pan" $ do
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "'wheel'"
+        scatterWidgetJs `shouldSatisfy` T.isInfixOf "e.shiftKey"
+
+    it
+        "offers equal aspect per plot, off by default so unrelated axes are undistorted"
+        $ do
+            scatterDefs `shouldSatisfy` T.isInfixOf "soEqualAspect :: SabelaBase.Bool"
+            scatterDefs `shouldSatisfy` T.isInfixOf "soEqualAspect = SabelaBase.False"
+            scatterDefs `shouldSatisfy` T.isInfixOf "soEqualAspect opts"
+
+    it "tells the reader how to zoom, pan and reset" $
+        mapM_
+            (\c -> scatterDefs `shouldSatisfy` T.isInfixOf c)
+            ["scroll to zoom", "shift-drag to pan", "double-click to reset"]
 
 parseMimeOutputsSpec :: Spec
 parseMimeOutputsSpec = describe "parseMimeOutputs" $ do

@@ -4,7 +4,7 @@ module Sabela.Notebook.Picture.Svg (
 ) where
 
 import Sabela.Notebook.Markup (Svg (..))
-import Sabela.Notebook.Picture.Internal (
+import Sabela.Notebook.Picture.Types (
     Canvas (..),
     Picture (..),
     Shape (..),

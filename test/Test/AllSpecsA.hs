@@ -47,6 +47,7 @@ import qualified Test.GateCheckedSpec as GateCheckedSpec
 import qualified Test.GateDefaultingSpec as GateDefaultingSpec
 import qualified Test.GateErrorClassSpec as GateErrorClassSpec
 import qualified Test.GatePartialRepairSpec as GatePartialRepairSpec
+import qualified Test.GatePrefixSpec as GatePrefixSpec
 import qualified Test.GateSourceTruthSpec as GateSourceTruthSpec
 import qualified Test.GateStageWireSpec as GateStageWireSpec
 import qualified Test.GrammarRouteSpec as GrammarRouteSpec
@@ -75,11 +76,13 @@ import qualified Test.NonThreadedForkSpec as NonThreadedForkSpec
 import qualified Test.NormalizeGateSpec as NormalizeGateSpec
 import qualified Test.NormalizeProposalsSpec as NormalizeProposalsSpec
 import qualified Test.NotebookAnimSpec as NotebookAnimSpec
+import qualified Test.NotebookChartSpec as NotebookChartSpec
 import qualified Test.NotebookCheckSpec as NotebookCheckSpec
 import qualified Test.NotebookEditSpec as NotebookEditSpec
 import qualified Test.NotebookFrpSpec as NotebookFrpSpec
 import qualified Test.NotebookPictureSpec as NotebookPictureSpec
 import qualified Test.NotebookViolationSpec as NotebookViolationSpec
+import qualified Test.NotebookWidgetSpec as NotebookWidgetSpec
 import qualified Test.OrphanGateSpec as OrphanGateSpec
 import qualified Test.OrphanGateWireSpec as OrphanGateWireSpec
 import qualified Test.OrphanModuleReconcileSpec as OrphanModuleReconcileSpec
@@ -89,6 +92,7 @@ import qualified Test.PreludeScopeSpec as PreludeScopeSpec
 import qualified Test.PromptUnifySpec as PromptUnifySpec
 import qualified Test.PureEvalLiveSpec as PureEvalLiveSpec
 import qualified Test.QualifiedNameSpec as QualifiedNameSpec
+import qualified Test.QueryLeakSpec as QueryLeakSpec
 import qualified Test.ReactivityDoorSpec as ReactivityDoorSpec
 import qualified Test.RefinementFitSpec as RefinementFitSpec
 import qualified Test.RepairEngineSpec as RepairEngineSpec
@@ -143,6 +147,10 @@ allSpecsA = do
     OrphanGateWireSpec.spec
     NotebookPictureSpec.spec
     NotebookAnimSpec.spec
+    GatePrefixSpec.spec
+    NotebookChartSpec.spec
+    QueryLeakSpec.spec
+    NotebookWidgetSpec.spec
     NotebookCheckSpec.spec
     WidgetsSpec.spec
     StaleRunSpec.spec

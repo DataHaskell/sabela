@@ -13,6 +13,7 @@ module Siza.Agent.ToolRoute (
     recoverTurn,
     routeCall,
     routeCallWith,
+    routeCallWithin,
     schemaMatches,
     unwrapArgs,
 ) where
@@ -44,14 +45,24 @@ maxNameDrift :: Int
 maxNameDrift = 2
 
 routeCallWith :: [(Text, ([Text], [Text]))] -> ToolCall -> Route
-routeCallWith vocab tc = case routeCall tc of
-    RouteUnknown name -> case recoverCall vocab tc of
+routeCallWith vocab = routeCallWithin vocab vocab
+
+{- | @routeCallWithin known recoverable@. A malformed call is rescued by
+matching its arguments against @recoverable@, which is narrower than @known@
+wherever two tools take the same arguments: shape recovery is for the weak
+models on the chat surface, and a tool only an MCP client calls by exact name
+would make every recovery ambiguous.
+-}
+routeCallWithin ::
+    [(Text, ([Text], [Text]))] -> [(Text, ([Text], [Text]))] -> ToolCall -> Route
+routeCallWithin vocab recoverable tc = case routeCall tc of
+    RouteUnknown name -> case recoverCall recoverable tc of
         Just rc -> routeCall rc
         Nothing
             | null (nameCandidates (map fst vocab) name) -> RouteUnknown name
             | otherwise ->
                 RouteBadArgs
-                    (parseFailureHint name (schemaMatches vocab (plainArgs tc)))
+                    (parseFailureHint name (schemaMatches recoverable (plainArgs tc)))
     RouteTool tn a
         | Just schema <- lookup (toolWireName tn) vocab
         , not (argsFit a schema) ->

@@ -28,8 +28,16 @@ spec = describe "Sabela.AI.Examples.searchExamples (shape idioms only)" $ do
                 ("$(" `T.isInfixOf` exCode e) `shouldBe` True
             [] -> expectationFailure "expected a typed column example"
 
-    it "returns nothing for a plotting query (granite bars retired)" $
-        searchExamples "plotting" `shouldBe` []
+    it "routes a plotting query to the drawing that ships with every notebook" $ do
+        topTitle "plotting" `shouldBe` "Draw a bar chart of labelled values"
+        topTitle "bar chart" `shouldBe` "Draw a bar chart of labelled values"
+        topTitle "histogram" `shouldBe` "Draw points, a line, or a distribution"
+
+    it "routes an interactive query to a widget" $ do
+        topTitle "widget with a button"
+            `shouldBe` "A widget with a button that counts presses"
+        ("mkWidget" `T.isInfixOf` exCode (head (searchExamples "widget")))
+            `shouldBe` True
 
     it
         "returns nothing for a regression query (the linear/logistic mis-tag is gone)"
@@ -42,8 +50,10 @@ spec = describe "Sabela.AI.Examples.searchExamples (shape idioms only)" $ do
     it "returns nothing for an unrelated query" $
         searchExamples "xyzzy unrelated nonsense" `shouldBe` []
 
-    it "every example is a runnable cell beginning with a -- cabal: line" $
-        all (("-- cabal:" `T.isPrefixOf`) . firstLine . exCode) exampleIndex
-            `shouldBe` True
+    it "every example is a cell that runs as it stands" $
+        all (paste . firstLine . exCode) exampleIndex `shouldBe` True
   where
     firstLine = T.takeWhile (/= '\n')
+    -- Either it declares what it needs, or it imports what already ships with
+    -- the notebook.
+    paste l = "-- cabal:" `T.isPrefixOf` l || "import Sabela.Notebook" `T.isPrefixOf` l

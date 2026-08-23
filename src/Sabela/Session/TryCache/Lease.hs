@@ -23,7 +23,14 @@ import Control.Concurrent.MVar (
     takeMVar,
     tryTakeMVar,
  )
-import Control.Exception (bracket, bracketOnError, finally, handle, onException, try)
+import Control.Exception (
+    bracket,
+    bracketOnError,
+    finally,
+    handle,
+    onException,
+    try,
+ )
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import GHC.Clock (getMonotonicTimeNSec)

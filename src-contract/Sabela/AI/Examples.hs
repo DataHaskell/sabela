@@ -65,6 +65,83 @@ exampleIndex =
             , "total"
             ]
         )
+    , Example
+        [ "bar"
+        , "bars"
+        , "chart"
+        , "plot"
+        , "graph"
+        , "draw"
+        , "picture"
+        , "svg"
+        , "visualise"
+        , "visualize"
+        ]
+        "Draw a bar chart of labelled values"
+        ( T.unlines
+            [ "import Sabela.Notebook"
+            , ""
+            , "-- barChart takes the pairs you already have; displayPicture shows it."
+            , "displayPicture (barChart [(\"Q1\", 12), (\"Q2\", 18), (\"Q3\", 9)])"
+            ]
+        )
+    , Example
+        [ "scatter"
+        , "points"
+        , "line chart"
+        , "line graph"
+        , "histogram"
+        , "distribution"
+        ]
+        "Draw points, a line, or a distribution"
+        ( T.unlines
+            [ "import Sabela.Notebook"
+            , ""
+            , "displayPicture (scatterChart [(1, 2), (2, 4), (3, 3)])"
+            , "displayPicture (lineChart [(1, 2), (2, 4), (3, 3)])"
+            , "displayPicture (histogram 10 [1, 1, 2, 3, 5, 8, 13])"
+            ]
+        )
+    , Example
+        ["widget", "button", "counter", "click", "press", "interactive"]
+        "A widget with a button that counts presses"
+        ( T.unlines
+            [ "import Sabela.Notebook.Widget"
+            , "import Sabela.Notebook.Widget.Kit (counter)"
+            , ""
+            , "-- The kit has whole widgets; htmlWidget mounts one in this cell."
+            , "presses <- mkWidget (htmlWidget \"presses\" (renderWidget (counter \"presses\" 0)))"
+            , "presses"
+            ]
+        )
+    , Example
+        [ "widget"
+        , "custom"
+        , "slider"
+        , "checkbox"
+        , "dropdown"
+        , "form"
+        , "interactive"
+        , "frp"
+        , "event"
+        ]
+        "Write a widget of your own"
+        ( T.unlines
+            [ "import Sabela.Notebook.Widget"
+            , "import Sabela.Notebook.Event (accumB, mapE)"
+            , ""
+            , "-- Each control hands back the Event of its own uses; fold that into state."
+            , "tally :: Ui Int"
+            , "tally = do"
+            , "  up <- pushButton \"+\""
+            , "  n  <- sample (accumB (0 :: Int) (mapE (const (+ 1)) up))"
+            , "  say (\"count: \" ++ show n)"
+            , "  pure n"
+            , ""
+            , "count <- mkWidget (htmlWidget \"tally\" (renderWidget tally))"
+            , "count"
+            ]
+        )
     ]
 
 searchExamples :: Text -> [Example]

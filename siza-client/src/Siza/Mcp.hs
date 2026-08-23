@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Siza.Mcp (
     runMcp,
     McpEnv,
@@ -14,6 +16,15 @@ module Siza.Mcp (
     gateForCall,
 ) where
 
+import Control.Concurrent (
+    forkIO,
+    newEmptyMVar,
+    newMVar,
+    putMVar,
+    takeMVar,
+    withMVar,
+ )
+import Control.Exception (SomeException, catch, finally)
 import Data.Aeson (Value (..), encode, object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
@@ -50,6 +61,7 @@ import Siza.Agent.ToolRoute (Route (..), routeCallWith)
 import qualified Siza.Agent.Tools as AgentTools
 import Siza.Language (Diagnostic, renderDiagnostic)
 import Siza.Mcp.Rpc
+import Siza.Mcp.Serve (serveRequests, stdinLine)
 import Siza.Mcp.Surface (
     mcpCatalogue,
     notebookUri,
@@ -139,17 +151,11 @@ runMcp conn base = do
     hSetBuffering stderr LineBuffering
     catalogue <- loadCatalogue conn base
     ss <- mcpSession
-    loop (mcpEnvOver ss (AgentTools.dispatch conn base) catalogue)
-  where
-    loop env = do
-        eof <- isEOF
-        if eof
-            then pure ()
-            else do
-                line <- BS8.getLine
-                resp <- handleLine env (stripCR line)
-                mapM_ emit resp
-                loop env
+    serveRequests
+        stdinLine
+        emit
+        handleLine
+        (mcpEnvOver ss (AgentTools.dispatch conn base) catalogue)
 
 emit :: Value -> IO ()
 emit = LBS8.putStrLn . encode

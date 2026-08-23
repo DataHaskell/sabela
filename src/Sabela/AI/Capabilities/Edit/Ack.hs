@@ -13,7 +13,6 @@ module Sabela.AI.Capabilities.Edit.Ack (
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, try)
-import Control.Monad (void)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (Pair)
@@ -85,11 +84,12 @@ ackWriteAndRun app store rn cancelTok input cell disposition notesFor = do
                     )
                 )
         RunNow -> do
-            void . forkIO $ do
+            runner <- forkIO $ do
                 r <-
                     try
                         (autoExecuteAfterMutation app store rn cancelTok (cellId cell))
                 settleWrite pw (either exceptionSummary id r)
+            attachRunner pw runner
             deadline <- writeAckDeadlineUs
             mSummary <- awaitWriteSettled pw deadline
             case mSummary of

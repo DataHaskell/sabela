@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               sabela-notebook
-version:            0.2.0.0
+version:            0.3.0.0
 synopsis:           FRP, animation, and picture vocabulary for Sabela notebooks.
 description:
     The batteries every Sabela notebook depends on: a small, heavily documented
@@ -29,14 +29,22 @@ library
     exposed-modules:
         Sabela.Notebook
         Sabela.Notebook.Anim
+        Sabela.Notebook.Chart
         Sabela.Notebook.Check
         Sabela.Notebook.Behavior
         Sabela.Notebook.Event
         Sabela.Notebook.Frp
         Sabela.Notebook.Markup
         Sabela.Notebook.Picture
+        Sabela.Notebook.Picture.Types
+        Sabela.Notebook.Widget
+        Sabela.Notebook.Widget.Dsl
+        Sabela.Notebook.Widget.Free
+        Sabela.Notebook.Widget.Interpret
+        Sabela.Notebook.Widget.Kit
+        Sabela.Notebook.Widget.Runtime
+        Sabela.Notebook.Widget.Types
     other-modules:
-        Sabela.Notebook.Picture.Internal
         Sabela.Notebook.Picture.Svg
     -- liftA2 from the Prelude (base >= 4.18 / GHC >= 9.6).
     build-depends:    base >= 4.18 && < 5

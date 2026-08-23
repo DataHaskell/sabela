@@ -131,6 +131,7 @@ import qualified Test.UsageEventSpec as UsageEventSpec
 import qualified Test.UsageMergeSpec as UsageMergeSpec
 import qualified Test.VerdictSpec as VerdictSpec
 import qualified Test.WorkspaceRecoverySpec as WorkspaceRecoverySpec
+import qualified Test.WriteAbandonSpec as WriteAbandonSpec
 import qualified Test.WriteAckLiveSpec as WriteAckLiveSpec
 import qualified Test.WriteAckRetrySpec as WriteAckRetrySpec
 import qualified Test.WriteAckShapeSpec as WriteAckShapeSpec
@@ -237,6 +238,7 @@ allSpecsB = do
     WriteAckRetrySpec.spec
     WriteAckShapeSpec.spec
     KernelStateHolderSpec.spec
+    WriteAbandonSpec.spec
     BuildBlameSpec.spec
     RepairNeverWorseSpec.spec
     RestartModeSpec.spec
