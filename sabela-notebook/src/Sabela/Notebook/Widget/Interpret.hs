@@ -1,9 +1,10 @@
--- | Running a widget program.
---
--- One traversal serves both callers: 'renderUi' builds the HTML the reader
--- sees, and 'valueOf' throws that away and keeps the answer, which is what
--- makes widget logic testable against a made-up history with no browser in
--- sight.
+{- | Running a widget program.
+
+One traversal serves both callers: 'renderUi' builds the HTML the reader
+sees, and 'valueOf' throws that away and keeps the answer, which is what
+makes widget logic testable against a made-up history with no browser in
+sight.
+-}
 module Sabela.Notebook.Widget.Interpret (
     Store,
     renderUi,
@@ -42,8 +43,9 @@ data Ctx = Ctx
     , ctxNow :: Time
     }
 
--- | Slot names already handed out, so that two controls sharing a label still
--- get a slot each.
+{- | Slot names already handed out, so that two controls sharing a label still
+get a slot each.
+-}
 type Used = [(String, Int)]
 
 -- | The HTML for a widget and the value its program computed.
@@ -53,13 +55,15 @@ renderUi widget store program =
         (html, value, _) = go ctx [] program
      in (concat html, value)
 
--- | The value alone. Feed it a store you wrote by hand to test a widget's
--- behaviour without rendering anything.
+{- | The value alone. Feed it a store you wrote by hand to test a widget's
+behaviour without rendering anything.
+-}
 valueOf :: String -> Store -> Ui a -> a
 valueOf widget store = snd . renderUi widget store
 
--- | Every slot a program asks for, in order. Useful for checking that a
--- control keeps its identity when the program around it changes.
+{- | Every slot a program asks for, in order. Useful for checking that a
+control keeps its identity when the program around it changes.
+-}
 slotsOf :: String -> Ui a -> [Slot]
 slotsOf widget program = [s | Just s <- map slotOf (describeParts widget [] program)]
   where
@@ -155,7 +159,13 @@ controlHtml slot spec occurrences = case controlKind spec of
                 ++ ">"
             )
     Choosing options _ ->
-        wrap ("<select " ++ dataAttrs "choice" ++ ">" ++ concatMap option options ++ "</select>")
+        wrap
+            ( "<select "
+                ++ dataAttrs "choice"
+                ++ ">"
+                ++ concatMap option options
+                ++ "</select>"
+            )
   where
     current = currentValue (controlKind spec) occurrences
     label = escapeHtml (controlLabel spec)
@@ -168,7 +178,8 @@ controlHtml slot spec occurrences = case controlKind spec of
             ++ "' data-log='"
             ++ escapeHtml (encodeLog occurrences)
             ++ "'"
-    wrap inner = "<label class='sbw-field'><span>" ++ label ++ "</span>" ++ inner ++ "</label>"
+    wrap inner =
+        "<label class='sbw-field'><span>" ++ label ++ "</span>" ++ inner ++ "</label>"
     option o =
         "<option"
             ++ (if o == current then " selected" else "")

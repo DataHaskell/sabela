@@ -1,9 +1,10 @@
--- | The browser half of a widget: one script, shipped as a literal so the
--- package keeps to @base@ alone (the same trade "Sabela.Notebook.Anim" makes).
---
--- It binds every control the Haskell side rendered, appends what the reader did
--- to that control's log, and posts the log back. It holds no state of its own
--- and knows nothing about any particular widget.
+{- | The browser half of a widget: one script, shipped as a literal so the
+package keeps to @base@ alone (the same trade "Sabela.Notebook.Anim" makes).
+
+It binds every control the Haskell side rendered, appends what the reader did
+to that control's log, and posts the log back. It holds no state of its own
+and knows nothing about any particular widget.
+-}
 module Sabela.Notebook.Widget.Runtime (runtimeJs, runtimeCss) where
 
 runtimeCss :: String

@@ -12,7 +12,9 @@ tally :: Ui Int
 tally = do
     up <- pushButton "+"
     downwards <- pushButton "-"
-    n <- sample (accumB 0 (merge (mapE (const (+ 1)) up) (mapE (const (subtract 1)) downwards)))
+    n <-
+        sample
+            (accumB 0 (merge (mapE (const (+ 1)) up) (mapE (const (subtract 1)) downwards)))
     say ("count: " ++ show n)
     pure n
 
@@ -83,14 +85,21 @@ spec = do
 
     describe "the kit answers the common asks in one call" $ do
         it "counter counts" $
-            valueOf "c" [("c:counter/+", pressedAt [1, 2])] (counter "counter" 0) `shouldBe` 2
+            valueOf "c" [("c:counter/+", pressedAt [1, 2])] (counter "counter" 0)
+                `shouldBe` 2
         it "pickOne starts on the first option" $
             valueOf "p" [] (pickOne "fruit" ["apple", "pear"]) `shouldBe` "apple"
         it "pickOne takes the reader's last choice" $
-            valueOf "p" [("p:fruit/fruit", show [(1 :: Double, "pear")])] (pickOne "fruit" ["apple", "pear"])
+            valueOf
+                "p"
+                [("p:fruit/fruit", show [(1 :: Double, "pear")])]
+                (pickOne "fruit" ["apple", "pear"])
                 `shouldBe` "pear"
         it "numberBox reads the slider" $
-            valueOf "n" [("n:size/size", show [(2 :: Double, "7.5")])] (numberBox "size" 0 10 1)
+            valueOf
+                "n"
+                [("n:size/size", show [(2 :: Double, "7.5")])]
+                (numberBox "size" 0 10 1)
                 `shouldBe` 7.5
         it "onOff reads the switch" $
             valueOf "o" [("o:live/live", show [(1 :: Double, "True")])] (onOff "live" False)

@@ -1,10 +1,11 @@
--- | Whole widgets, one call each, named after what they do.
---
--- Reach for these first. Each one is an ordinary program in the vocabulary of
--- "Sabela.Notebook.Widget", so when you want something they do not do, read the
--- source of the nearest one and write your own in the same words.
---
--- > chosen <- mkWidget (htmlWidget "fruit" (renderWidget (pickOne "fruit" ["apple", "pear"])))
+{- | Whole widgets, one call each, named after what they do.
+
+Reach for these first. Each one is an ordinary program in the vocabulary of
+"Sabela.Notebook.Widget", so when you want something they do not do, read the
+source of the nearest one and write your own in the same words.
+
+> chosen <- mkWidget (htmlWidget "fruit" (renderWidget (pickOne "fruit" ["apple", "pear"])))
+-}
 module Sabela.Notebook.Widget.Kit (
     counter,
     pickOne,
@@ -17,14 +18,20 @@ import Sabela.Notebook.Event (accumB, mapE, merge, stepper)
 import Sabela.Notebook.Widget.Dsl
 import Sabela.Notebook.Widget.Types (Ui)
 
--- | A number with buttons either side of it, and the count it stands at.
---
--- > n <- mkWidget (htmlWidget "hits" (renderWidget (counter "hits" 0)))
+{- | A number with buttons either side of it, and the count it stands at.
+
+> n <- mkWidget (htmlWidget "hits" (renderWidget (counter "hits" 0)))
+-}
 counter :: String -> Int -> Ui Int
 counter labelText start = keyed labelText $ do
     up <- pushButton "+"
     downwards <- pushButton "-"
-    n <- sample (accumB start (merge (mapE (const (+ 1)) up) (mapE (const (subtract 1)) downwards)))
+    n <-
+        sample
+            ( accumB
+                start
+                (merge (mapE (const (+ 1)) up) (mapE (const (subtract 1)) downwards))
+            )
     say (labelText ++ ": " ++ show n)
     pure n
 

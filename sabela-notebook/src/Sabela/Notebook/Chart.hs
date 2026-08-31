@@ -1,10 +1,11 @@
--- | Charts named after what they draw, each taking the data you already have.
---
--- Every chart comes in two forms: the plain name draws on 'defaultCanvas', and
--- the @…On@ form takes a 'Canvas' when you want a particular size. Show one with
--- 'Sabela.Notebook.Picture.displayPicture'.
---
--- > displayPicture (barChart [("Q1", 12), ("Q2", 18), ("Q3", 9)])
+{- | Charts named after what they draw, each taking the data you already have.
+
+Every chart comes in two forms: the plain name draws on 'defaultCanvas', and
+the @…On@ form takes a 'Canvas' when you want a particular size. Show one with
+'Sabela.Notebook.Picture.displayPicture'.
+
+> displayPicture (barChart [("Q1", 12), ("Q2", 18), ("Q3", 9)])
+-}
 module Sabela.Notebook.Chart (
     barChart,
     barChartOn,
@@ -32,9 +33,10 @@ axesAt (Canvas w h) baseline =
     line (margin, margin) (margin, h - margin)
         <> line (margin, baseline) (w - margin, baseline)
 
--- | A bar per labelled value, on the default canvas.
---
--- > barChart [("Q1", 12), ("Q2", 18), ("Q3", 9)]
+{- | A bar per labelled value, on the default canvas.
+
+> barChart [("Q1", 12), ("Q2", 18), ("Q3", 9)]
+-}
 barChart :: [(String, Double)] -> Picture
 barChart = barChartOn defaultCanvas
 
@@ -56,8 +58,9 @@ barChartOn canvas@(Canvas w h) bars =
         top = min baseline (yOf v)
         height = abs (yOf v - baseline)
 
--- | Maps values to canvas rows, and where zero sits. A flat column still gets a
--- span so nothing divides by zero.
+{- | Maps values to canvas rows, and where zero sits. A flat column still gets a
+span so nothing divides by zero.
+-}
 verticalScale :: Canvas -> [Double] -> (Double -> Double, Double)
 verticalScale (Canvas _ h) vs = (yOf, yOf 0)
   where
@@ -66,9 +69,10 @@ verticalScale (Canvas _ h) vs = (yOf, yOf 0)
     range = if hi == lo then 1 else hi - lo
     yOf v = (h - margin) - (v - lo) / range * (h - 2 * margin)
 
--- | Points joined in order, on the default canvas.
---
--- > lineChart [(0, 1), (1, 4), (2, 2)]
+{- | Points joined in order, on the default canvas.
+
+> lineChart [(0, 1), (1, 4), (2, 2)]
+-}
 lineChart :: [(Double, Double)] -> Picture
 lineChart = lineChartOn defaultCanvas
 
@@ -76,11 +80,13 @@ lineChart = lineChartOn defaultCanvas
 lineChartOn :: Canvas -> [(Double, Double)] -> Picture
 lineChartOn canvas pts
     | length pts < 2 = mempty
-    | otherwise = frameOf canvas pts <> strokeWidth 2 (polyline (map (toPixels canvas pts) pts))
+    | otherwise =
+        frameOf canvas pts <> strokeWidth 2 (polyline (map (toPixels canvas pts) pts))
 
--- | One dot per point, on the default canvas.
---
--- > scatterChart [(0, 1), (1, 4), (2, 2)]
+{- | One dot per point, on the default canvas.
+
+> scatterChart [(0, 1), (1, 4), (2, 2)]
+-}
 scatterChart :: [(Double, Double)] -> Picture
 scatterChart = scatterChartOn defaultCanvas
 
@@ -106,11 +112,12 @@ toPixels (Canvas w h) pts (x, y) =
     ys = map snd pts
     spanOf vs = let d = maximum vs - minimum vs in if d == 0 then 1 else d
 
--- | How many observations fall in each of @n@ equal-width bins. Every
--- observation lands in exactly one bin, and a sample with no spread lands
--- wholly in the first.
---
--- > binCounts 4 [1, 1, 2, 2, 2, 3, 8, 9]
+{- | How many observations fall in each of @n@ equal-width bins. Every
+observation lands in exactly one bin, and a sample with no spread lands
+wholly in the first.
+
+> binCounts 4 [1, 1, 2, 2, 2, 3, 8, 9]
+-}
 binCounts :: Int -> [Double] -> [Int]
 binCounts n xs
     | n <= 0 || null xs = []
@@ -121,9 +128,10 @@ binCounts n xs
     width = if hi == lo then 1 else (hi - lo) / fromIntegral n
     binOf x = min (n - 1) (floor ((x - lo) / width))
 
--- | The distribution of a sample in @n@ bins, on the default canvas.
---
--- > histogram 10 measurements
+{- | The distribution of a sample in @n@ bins, on the default canvas.
+
+> histogram 10 measurements
+-}
 histogram :: Int -> [Double] -> Picture
 histogram = histogramOn defaultCanvas
 
@@ -131,7 +139,8 @@ histogram = histogramOn defaultCanvas
 histogramOn :: Canvas -> Int -> [Double] -> Picture
 histogramOn canvas n xs
     | null counts = mempty
-    | otherwise = barChartOn canvas [(binLabel i, fromIntegral c) | (i, c) <- zip [0 ..] counts]
+    | otherwise =
+        barChartOn canvas [(binLabel i, fromIntegral c) | (i, c) <- zip [0 ..] counts]
   where
     counts = binCounts n xs
     lo = minimum xs

@@ -1,13 +1,14 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | The free monad, in the twenty lines it takes, so that the widget package
--- stays dependency-free.
---
--- A @'Free' f a@ is a program built from the instructions in @f@: either a
--- finished value ('Pure') or one instruction whose continuation is the rest of
--- the program ('Free'). Because it is a 'Monad', programs are written with
--- @do@ notation, and because it is only data, the same program can be run by
--- more than one interpreter.
+{- | The free monad, in the twenty lines it takes, so that the widget package
+stays dependency-free.
+
+A @'Free' f a@ is a program built from the instructions in @f@: either a
+finished value ('Pure') or one instruction whose continuation is the rest of
+the program ('Free'). Because it is a 'Monad', programs are written with
+@do@ notation, and because it is only data, the same program can be run by
+more than one interpreter.
+-}
 module Sabela.Notebook.Widget.Free (
     Free (..),
     liftF,

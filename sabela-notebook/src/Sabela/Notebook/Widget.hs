@@ -1,24 +1,25 @@
--- | Widgets you write in Haskell.
---
--- A widget is a pure function from what the reader has done to what they see.
--- Controls hand back an 'Sabela.Notebook.Event.Event' of their own
--- occurrences, so state is spelled with the FRP vocabulary rather than with
--- callbacks, and nothing is stored anywhere except the log of interactions.
---
--- Show one in a cell:
---
--- > import Sabela.Notebook.Widget
--- >
--- > tally :: Ui ()
--- > tally = do
--- >   up <- pushButton "+"
--- >   n  <- sample (accumB (0 :: Int) (fmap (const (+ 1)) up))
--- >   say ("count: " ++ show n)
--- >
--- > count <- mkWidget (htmlWidget "tally" (renderWidget tally))
---
--- For ready-made widgets that need no program of your own, see
--- "Sabela.Notebook.Widget.Kit".
+{- | Widgets you write in Haskell.
+
+A widget is a pure function from what the reader has done to what they see.
+Controls hand back an 'Sabela.Notebook.Event.Event' of their own
+occurrences, so state is spelled with the FRP vocabulary rather than with
+callbacks, and nothing is stored anywhere except the log of interactions.
+
+Show one in a cell:
+
+> import Sabela.Notebook.Widget
+>
+> tally :: Ui ()
+> tally = do
+>   up <- pushButton "+"
+>   n  <- sample (accumB (0 :: Int) (fmap (const (+ 1)) up))
+>   say ("count: " ++ show n)
+>
+> count <- mkWidget (htmlWidget "tally" (renderWidget tally))
+
+For ready-made widgets that need no program of your own, see
+"Sabela.Notebook.Widget.Kit".
+-}
 module Sabela.Notebook.Widget (
     module Sabela.Notebook.Widget.Dsl,
     Ui,

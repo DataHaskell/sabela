@@ -1,20 +1,21 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- | The words a widget is written in.
---
--- Every control hands back an 'Event': the times the reader used it, and what
--- they left behind. Turn that into a value with the FRP combinators, then draw
--- with 'say' or 'paint'.
---
--- > tally :: Ui ()
--- > tally = do
--- >   up   <- pushButton "+"
--- >   down <- pushButton "-"
--- >   n    <- sample (accumB (0 :: Int) (merge (fmap (const (+ 1)) up) (fmap (const (subtract 1)) down)))
--- >   say ("count: " ++ show n)
---
--- The names avoid @button@, @slider@, @dropdown@, @checkbox@ and @textInput@,
--- which Sabela defines in every session and which would shadow an import.
+{- | The words a widget is written in.
+
+Every control hands back an 'Event': the times the reader used it, and what
+they left behind. Turn that into a value with the FRP combinators, then draw
+with 'say' or 'paint'.
+
+> tally :: Ui ()
+> tally = do
+>   up   <- pushButton "+"
+>   down <- pushButton "-"
+>   n    <- sample (accumB (0 :: Int) (merge (fmap (const (+ 1)) up) (fmap (const (subtract 1)) down)))
+>   say ("count: " ++ show n)
+
+The names avoid @button@, @slider@, @dropdown@, @checkbox@ and @textInput@,
+which Sabela defines in every session and which would shadow an import.
+-}
 module Sabela.Notebook.Widget.Dsl (
     say,
     paint,
@@ -97,9 +98,10 @@ wrapped layout inner = do
     liftF (Close ())
     pure a
 
--- | Gives every control inside a name of its own, so that adding or hiding a
--- neighbour cannot make one forget what the reader did. Worth doing whenever
--- two controls share a label, or a control appears only sometimes.
+{- | Gives every control inside a name of its own, so that adding or hiding a
+neighbour cannot make one forget what the reader did. Worth doing whenever
+two controls share a label, or a control appears only sometimes.
+-}
 keyed :: String -> Ui a -> Ui a
 keyed prefix = hoistFree scope
   where
@@ -131,4 +133,8 @@ latest fallback e = case occurrencesOf e of
 
 control :: String -> ControlKind -> Ui (Event String)
 control labelText kind =
-    liftF (Ask (Control{controlKey = labelText, controlLabel = labelText, controlKind = kind}) id)
+    liftF
+        ( Ask
+            (Control{controlKey = labelText, controlLabel = labelText, controlKind = kind})
+            id
+        )

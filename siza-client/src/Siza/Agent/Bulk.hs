@@ -28,12 +28,14 @@ import Sabela.AI.Capabilities.ToolName (ToolName (..))
 import Sabela.AI.Types (ToolOutcome (..))
 import Siza.Transport (Conn, callTool)
 
--- | Aeson's arrays are vectors; these keep the module to what is already a
--- dependency.
+{- | Aeson's arrays are vectors; these keep the module to what is already a
+dependency.
+-}
 toList :: (Foldable f) => f a -> [a]
 toList = foldr (:) []
 
-filterArray :: (Foldable f, Applicative g, Monoid (g a)) => (a -> Bool) -> f a -> g a
+filterArray ::
+    (Applicative g, Foldable f, Monoid (g a)) => (a -> Bool) -> f a -> g a
 filterArray keep = foldr (\x acc -> if keep x then pure x <> acc else acc) mempty
 
 -- | One entry of a batch: which cell, the new source, and the hash to guard on.
