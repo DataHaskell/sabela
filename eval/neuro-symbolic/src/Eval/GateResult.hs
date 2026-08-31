@@ -2,9 +2,11 @@
 
 module Eval.GateResult (
     GateResult (..),
+    ContextMetric (..),
     SearchMode (..),
     modeText,
     gateKey,
+    gateKeysForMetric,
     readGateResults,
     appendGateResult,
     isDone,
@@ -49,6 +51,18 @@ import Eval.Bench (
 data SearchMode = SearchOff | SearchOn
     deriving (Eq, Ord, Show)
 
+data ContextMetric = LegacyTranscriptChars | EncodedRequestBodyBytes
+    deriving (Eq, Show)
+
+metricText :: ContextMetric -> Text
+metricText LegacyTranscriptChars = "transcript_chars"
+metricText EncodedRequestBodyBytes = "request_body_bytes"
+
+metricFromText :: Text -> Maybe ContextMetric
+metricFromText "transcript_chars" = Just LegacyTranscriptChars
+metricFromText "request_body_bytes" = Just EncodedRequestBodyBytes
+metricFromText _ = Nothing
+
 modeText :: SearchMode -> Text
 modeText SearchOff = "off"
 modeText SearchOn = "on"
@@ -67,6 +81,8 @@ data GateResult = GateResult
     , grCalls :: Int
     , grStopped :: Text
     , grCtxChars :: Int
+    -- ^ Legacy field name; 'grContextMetric' supplies its unit.
+    , grContextMetric :: ContextMetric
     }
     deriving (Eq, Show)
 
@@ -81,12 +97,19 @@ instance ToJSON GateResult where
             , "grCalls" .= grCalls g
             , "grStopped" .= grStopped g
             , "grCtxChars" .= grCtxChars g
+            , "grCtxMetric" .= metricText (grContextMetric g)
             ]
 
 instance FromJSON GateResult where
     parseJSON = withObject "GateResult" $ \o -> do
         m <- o .: "grMode"
         mode <- maybe (fail ("bad grMode: " <> T.unpack m)) pure (modeFromText m)
+        metricTag <- o .:? "grCtxMetric" .!= "transcript_chars"
+        metric <-
+            maybe
+                (fail ("bad grCtxMetric: " <> T.unpack metricTag))
+                pure
+                (metricFromText metricTag)
         GateResult
             <$> o .: "grTask"
             <*> o .: "grSeed"
@@ -96,9 +119,15 @@ instance FromJSON GateResult where
             <*> o .: "grCalls"
             <*> o .:? "grStopped" .!= ""
             <*> o .:? "grCtxChars" .!= 0
+            <*> pure metric
 
 gateKey :: GateResult -> (Text, Int, SearchMode)
 gateKey g = (grTask g, grSeed g, grMode g)
+
+gateKeysForMetric ::
+    ContextMetric -> [GateResult] -> Set.Set (Text, Int, SearchMode)
+gateKeysForMetric metric =
+    Set.fromList . map gateKey . filter ((== metric) . grContextMetric)
 
 readGateResults :: FilePath -> IO [GateResult]
 readGateResults path = do
@@ -128,14 +157,15 @@ isDone done task seed mode = Set.member (task, seed, mode) done
 renderGateResults :: [GateResult] -> Text
 renderGateResults rs =
     T.unlines
-        ("Per task (A=SearchOff, B=SearchOn):" : map taskRow (byTaskComparison rs))
+        ("Per task (A=SearchOff, B=SearchOn):" : map taskRow (byTaskComparison measured))
         <> "\nOverall:\n"
-        <> renderComparison (summarise rs)
+        <> renderComparison (summarise measured)
         <> "\n"
-        <> renderCost rs
+        <> renderCost measured
         <> renderCtx rs
-        <> infraNote rs
+        <> infraNote measured
   where
+    measured = [g | g <- rs, grContextMetric g == EncodedRequestBodyBytes]
     taskRow (tid, Comparison a b _ _) =
         "  " <> tid <> ":  A " <> rate a <> "   B " <> rate b
     rate r = tshow (arPasses r) <> "/" <> tshow (arRuns r)
@@ -197,12 +227,12 @@ costByTask rs =
 
 renderCtx :: [GateResult] -> Text
 renderCtx rs
-    | all ((== 0) . grCtxChars) rs = ""
+    | null measured = legacyNote
     | otherwise =
         T.unlines
-            ( "Context/task (mean chars, A=Off B=On):"
+            ( "Model request payload/task (mean cumulative bytes, A=Off B=On):"
                 : [ "  " <> tid <> ":  A " <> mean tid SearchOff <> "   B " <> mean tid SearchOn
-                  | tid <- nub (map grTask rs)
+                  | tid <- nub (map grTask measured)
                   ]
             )
             <> "Overall:  A "
@@ -210,13 +240,22 @@ renderCtx rs
             <> "   B "
             <> meanAll SearchOn
             <> "\n"
+            <> legacyNote
   where
-    mean tid mode = fmt [grCtxChars g | g <- rs, grTask g == tid, grMode g == mode]
-    meanAll mode = fmt [grCtxChars g | g <- rs, grMode g == mode]
+    measured = [g | g <- rs, grContextMetric g == EncodedRequestBodyBytes]
+    legacyN = length rs - length measured
+    mean tid mode = fmt [grCtxChars g | g <- measured, grTask g == tid, grMode g == mode]
+    meanAll mode = fmt [grCtxChars g | g <- measured, grMode g == mode]
     fmt [] = "-"
     fmt xs =
         tshow (round1 (fromIntegral (sum xs) / (1000 * fromIntegral (length xs))))
             <> "k"
+    legacyNote
+        | legacyN == 0 = ""
+        | otherwise =
+            "Excluded legacy context rows: "
+                <> tshow legacyN
+                <> " (final-transcript chars; not mixed with request bytes).\n"
 
 infraNote :: [GateResult] -> Text
 infraNote rs
