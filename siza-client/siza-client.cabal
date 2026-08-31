@@ -59,6 +59,7 @@ library
                       Siza.Agent.RepairLocate
                       Siza.Agent.RepairTiers
                       Siza.Agent.Futility
+                      Siza.Agent.Futility.Rejection
                       Siza.Agent.Streak
                       Siza.Agent.Chat.Verify
                       Siza.Agent.Check

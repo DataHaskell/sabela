@@ -31,8 +31,8 @@ cellsPayload :: Text -> Value
 cellsPayload h =
     object ["cells" .= [object ["id" .= (3 :: Int), "hash" .= h]]]
 
-statusPayload :: Int -> Value
-statusPayload g = object ["ksGen" .= g, "ebGeneration" .= (99 :: Int)]
+statusPayload :: Int -> Int -> Value
+statusPayload kernel events = object ["ksGen" .= kernel, "ebGeneration" .= events]
 
 passPayload :: Value
 passPayload =
@@ -40,12 +40,12 @@ passPayload =
 
 -- | A dispatch serving canned notebook state, counting verify dispatches.
 fakeDispatch ::
-    Text -> Int -> IO (ToolCall -> IO (Either Text ToolOutcome), IO Int)
-fakeDispatch h g = do
+    Text -> Int -> Int -> IO (ToolCall -> IO (Either Text ToolOutcome), IO Int)
+fakeDispatch h kernel events = do
     verifies <- newIORef (0 :: Int)
     let disp call = case tcName call of
             "list_cells" -> pure (Right (ToolOk (cellsPayload h)))
-            "kernel_status" -> pure (Right (ToolOk (statusPayload g)))
+            "kernel_status" -> pure (Right (ToolOk (statusPayload kernel events)))
             "verify" -> do
                 modifyIORef' verifies (+ 1)
                 pure (Right (ToolOk passPayload))
@@ -67,7 +67,7 @@ verifyMemoSpec = describe "the repeated-verify memo" $ do
         verifyCheckOf (ToolCall "verify" (object [])) `shouldBe` Nothing
 
     it "answers a repeat under an identical seal, marked as unchanged" $ do
-        (disp, _) <- fakeDispatch "h1" 5
+        (disp, _) <- fakeDispatch "h1" 5 99
         memo <- newVerifyMemo
         Just seal <- currentSeal disp
         memoRecord memo "x == 1" seal (Right (ToolOk passPayload))
@@ -75,8 +75,8 @@ verifyMemoSpec = describe "the repeated-verify memo" $ do
         hit `shouldSatisfy` isJust
 
     it "misses when a cell hash changed" $ do
-        (disp1, _) <- fakeDispatch "h1" 5
-        (disp2, _) <- fakeDispatch "h2" 5
+        (disp1, _) <- fakeDispatch "h1" 5 99
+        (disp2, _) <- fakeDispatch "h2" 5 99
         memo <- newVerifyMemo
         Just s1 <- currentSeal disp1
         Just s2 <- currentSeal disp2
@@ -84,8 +84,17 @@ verifyMemoSpec = describe "the repeated-verify memo" $ do
         memoHit memo "x == 1" s2 `shouldReturn` Nothing
 
     it "misses after a kernel restart" $ do
-        (disp1, _) <- fakeDispatch "h1" 5
-        (disp2, _) <- fakeDispatch "h1" 6
+        (disp1, _) <- fakeDispatch "h1" 5 99
+        (disp2, _) <- fakeDispatch "h1" 6 99
+        memo <- newVerifyMemo
+        Just s1 <- currentSeal disp1
+        Just s2 <- currentSeal disp2
+        memoRecord memo "x == 1" s1 (Right (ToolOk passPayload))
+        memoHit memo "x == 1" s2 `shouldReturn` Nothing
+
+    it "misses after an execution under unchanged source and kernel generation" $ do
+        (disp1, _) <- fakeDispatch "h1" 5 99
+        (disp2, _) <- fakeDispatch "h1" 5 100
         memo <- newVerifyMemo
         Just s1 <- currentSeal disp1
         Just s2 <- currentSeal disp2
@@ -93,7 +102,7 @@ verifyMemoSpec = describe "the repeated-verify memo" $ do
         memoHit memo "x == 1" s2 `shouldReturn` Nothing
 
     it "never memoises anything but a pass" $ do
-        (disp, _) <- fakeDispatch "h1" 5
+        (disp, _) <- fakeDispatch "h1" 5 99
         memo <- newVerifyMemo
         Just seal <- currentSeal disp
         let failPayload = object ["verdict" .= ("fail" :: Text)]
@@ -103,7 +112,7 @@ verifyMemoSpec = describe "the repeated-verify memo" $ do
 
     it "the stack runs the scratch cycle once for two identical verifies" $ do
         ss <- newSessionFor McpSurface GrammarOff ""
-        (disp, verifies) <- fakeDispatch "h1" 5
+        (disp, verifies) <- fakeDispatch "h1" 5 99
         r1 <- runToolCall ss disp verifyCall
         r2 <- runToolCall ss disp verifyCall
         verifies `shouldReturn` 1
