@@ -28,9 +28,12 @@ salvageInsertSource :: Int -> Text -> Maybe Text
 salvageInsertSource toolCount content
     | toolCount /= 0 = Nothing
     | T.count "```" content /= 2 = Nothing
+    | not ("```" `T.isPrefixOf` stripped && "```" `T.isSuffixOf` stripped) = Nothing
     | otherwise = case salvageCell content of
         Just src | T.length src <= salvageCap -> Just src
         _ -> Nothing
+  where
+    stripped = T.strip content
 
 salvageCap :: Int
 salvageCap = 4000

@@ -16,7 +16,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
 import Sabela.AI.CellResult (CellId)
-import Sabela.AI.Salvage (salvageCell)
+import Sabela.AI.Salvage (salvageInsertSource)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
 import Siza.Agent.EmitLedger (emitTurn)
@@ -124,7 +124,7 @@ noCallTurn ep start turn nCalls repairs owned msgs t =
     case stopDecision (Map.map ocHealthy owned) of
         Stop
             | Map.null owned
-            , Just src <- salvageCell (turnContent t) -> do
+            , Just src <- salvageInsertSource nCalls (turnContent t) -> do
                 let call = ToolCall "insert_cell" (object ["source" .= src])
                 outcome <- drvDispatch (epDriver ep) call
                 noteUnconfirmed ep [(call, outcome)]

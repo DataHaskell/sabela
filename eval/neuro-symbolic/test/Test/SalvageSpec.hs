@@ -60,9 +60,12 @@ spec = describe "Rank 3 code-fence salvage" $ do
                 `shouldBe` Just "result = read_cell 1 ++ go (x)"
 
     describe "salvageInsertSource (product policy)" $ do
-        it "salvages one fenced block when no tool ran this turn" $
-            salvageInsertSource 0 "here:\n```haskell\ntotal = 600\n```"
+        it "salvages one code-only fenced block when no tool ran" $
+            salvageInsertSource 0 "```haskell\ntotal = 600\n```"
                 `shouldBe` Just "total = 600"
+        it "does not turn an explanation containing code into a write" $
+            salvageInsertSource 0 "here:\n```haskell\ntotal = 600\n```"
+                `shouldBe` Nothing
         it "does not salvage once any tool ran this turn" $
             salvageInsertSource 1 "```haskell\ntotal = 600\n```" `shouldBe` Nothing
         it "rejects ambiguous multiple blocks" $
@@ -92,6 +95,27 @@ spec = describe "Rank 3 code-fence salvage" $ do
             arStopped run `shouldBe` "done"
             arToolCalls run `shouldBe` 1
 
+        it "does not salvage after a read-only tool call" $ do
+            driver <-
+                scriptedDriverWith
+                    alwaysHealthy
+                    CheckNotApplicable
+                    [callTurn "list_bindings", echoTurn]
+            run <- runEpisodeWith openBudget driver (taskPrompt dummyTask) 10
+            arStopped run `shouldBe` "done_unverified"
+            arToolCalls run `shouldBe` 1
+
+        it "leaves an explanatory response as prose" $ do
+            driver <-
+                scriptedDriverWith
+                    alwaysHealthy
+                    CheckNotApplicable
+                    [explanationTurn]
+            run <- runEpisodeWith openBudget driver (taskPrompt dummyTask) 10
+            arStopped run `shouldBe` "done_unverified"
+            arToolCalls run `shouldBe` 0
+            arTurns run `shouldBe` 1
+
     describe "runEpisodeTraced (debug trace sink)" $
         it "streams the system prompt and the task through the sink" $ do
             sink <- newIORef []
@@ -119,6 +143,13 @@ echoTurn =
     Turn
         (object ["role" .= ("assistant" :: Text)])
         "```haskell\nrevenueTotal = 600\n```"
+        []
+
+explanationTurn :: Turn
+explanationTurn =
+    Turn
+        (object ["role" .= ("assistant" :: Text)])
+        "Use this expression:\n```haskell\nrevenueTotal = 600\n```"
         []
 
 callTurn :: Text -> Turn
@@ -150,7 +181,11 @@ would report an exception where the stop tag is the thing under test.
 -}
 scriptedDriver ::
     (ToolCall -> IO (Either Text ToolOutcome)) -> [Turn] -> IO Driver
-scriptedDriver disp script = do
+scriptedDriver disp = scriptedDriverWith disp CheckPassed
+
+scriptedDriverWith ::
+    (ToolCall -> IO (Either Text ToolOutcome)) -> CheckResult -> [Turn] -> IO Driver
+scriptedDriverWith disp verdict script = do
     cursor <- newIORef (0 :: Int)
     let nextTurn _msgs = do
             i <- readIORef cursor
@@ -161,7 +196,7 @@ scriptedDriver disp script = do
             { drvChat = nextTurn
             , drvDispatch = disp
             , drvNow = pure 0
-            , drvVerify = const (pure (CheckPassed, Nothing))
+            , drvVerify = const (pure (verdict, Nothing))
             }
 
 alwaysHealthy :: ToolCall -> IO (Either Text ToolOutcome)
