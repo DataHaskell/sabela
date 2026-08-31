@@ -88,6 +88,7 @@ data Episode = Episode
     , epWrapped :: IORef Bool
     , epLastDitch :: IORef Bool
     , epUnconfirmed :: IORef Int
+    , epArtifactRequired :: IORef Bool
     }
 
 newEpisode ::
@@ -113,6 +114,7 @@ newEpisode sess emits emit budget driver prompt maxTurns =
         <*> newIORef False
         <*> newIORef False
         <*> newIORef 0
+        <*> newIORef False
 
 stopTagFor :: CheckResult -> Text
 stopTagFor CheckPassed = "done"
@@ -271,4 +273,7 @@ saveEx :: Episode -> Map CellId OwnedCell -> IO ()
 saveEx ep owned =
     saveVerified
         (epPrompt ep)
-        [ocSource oc | oc <- Map.elems owned, ocHealthy oc]
+        [ ocSource oc
+        | (cid, oc) <- Map.toList owned
+        , hasArtifact (Map.singleton cid oc)
+        ]

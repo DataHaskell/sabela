@@ -128,7 +128,9 @@ reasonNote = maybe "" noVerdictNote . noWriteReason . ownedOf
 
 -- | Cells a turn might have committed, executable or not.
 ownedOf :: [Text] -> Map.Map CellId OwnedCell
-ownedOf srcs = Map.fromList (zip [0 ..] [OwnedCell True "" s False | s <- srcs])
+ownedOf srcs =
+    Map.fromList
+        (zip [0 ..] [OwnedCell True True "" s False True Nothing | s <- srcs])
 
 {- | Every message the harness itself writes, over generated owned counts,
 missing names, diagnostics and guidance — so a property about what the harness

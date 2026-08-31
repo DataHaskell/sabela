@@ -59,7 +59,7 @@ rejectionDispatch driver msgs k call = do
             case mWin of
                 Just win -> pure win
                 Nothing -> restoreOriginal driver cid call o0
-        _ -> pure (CallResult call o0 [])
+        _ -> pure (CallResult call o0 [] [] 0)
 
 rolloutReplace ::
     Driver -> IORef (Maybe CallResult) -> CellId -> Text -> IO Bool
@@ -69,7 +69,7 @@ rolloutReplace driver winRef cid src
         let rc = replaceCall cid src
         o <- drvDispatch driver rc
         let ok = maybe False snd (ownedCellOutcome rc o)
-        when ok (writeIORef winRef (Just (CallResult rc o [])))
+        when ok (writeIORef winRef (Just (CallResult rc o [] [] 0)))
         pure ok
 
 restoreOriginal ::
@@ -80,7 +80,7 @@ restoreOriginal driver cid call o0 = do
             (pure ())
             (void . drvDispatch driver . replaceCall cid)
             (writeSource call)
-    pure (CallResult call o0 [])
+    pure (CallResult call o0 [] [] 0)
 
 reAskSource :: Driver -> [Value] -> IO (Maybe Text)
 reAskSource driver msgs = do

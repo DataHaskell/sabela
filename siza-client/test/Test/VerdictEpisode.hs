@@ -112,7 +112,7 @@ acceptedWrite (Just m) =
         && not ("notCommitted" `T.isInfixOf` textField "content" m)
 
 ownedFor :: Text -> Map.Map Int OwnedCell
-ownedFor src = Map.singleton 0 (OwnedCell True "" src False)
+ownedFor src = Map.singleton 0 (OwnedCell True True "" src False True Nothing)
 
 {- | A scripted episode: one turn per write, then a read-only turn (so the
 done probe has somewhere to fire), then the terminal reply.

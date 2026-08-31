@@ -81,3 +81,24 @@ writeAckClientSpec = describe "client write-ack reconciliation (R6.1)" $ do
         errOut <- reconcileWrite call (Left "transport error")
         errOut `shouldBe` Left "transport error"
         calls `shouldReturn` 0
+
+    it "reads a completed null execution as a healthy non-running write" $ do
+        let done =
+                Right
+                    ( ToolOk
+                        ( object
+                            [ "cellId" .= (2 :: Int)
+                            , "status" .= ("completed" :: Text)
+                            , "execution" .= Null
+                            ]
+                        )
+                    )
+            prose =
+                ToolCall
+                    "insert_cell"
+                    ( object
+                        [ "cell_type" .= ("ProseCell" :: Text)
+                        , "source" .= ("A note." :: Text)
+                        ]
+                    )
+        ownedCellOutcome prose done `shouldBe` Just (2, True)

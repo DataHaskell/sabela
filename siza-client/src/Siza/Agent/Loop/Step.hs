@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-Technique: the turn machine [Episode]; "Siza.Agent.Loop" is only a facade.
-Guarantee: a no-call turn stops with a typed reason, re-enters on reds, or salvages.
+ Guarantee: a no-call turn stops with a typed reason, re-enters on reds, or salvages.
 Entry: 'runTurns'. Next: Siza.Agent.Loop.Episode. Trap: 'Stepping' threads seven positional parameters.
 -}
 module Siza.Agent.Loop.Step (
@@ -14,7 +13,6 @@ import Data.Aeson (Value, object, (.=))
 import Data.IORef (readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-
 import Sabela.AI.CellResult (CellId)
 import Sabela.AI.Salvage (salvageCell)
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
@@ -48,6 +46,7 @@ import Siza.Agent.Messages (reenterAlarmMsg, streakMsg, toolMsg)
 import Siza.Agent.Owned (
     OwnedCell (..),
     StopDecision (..),
+    artifactAttempted,
     bestFailing,
     hasArtifact,
     landedArtifact,
@@ -62,10 +61,7 @@ import Siza.Agent.Tools (renderOutcome)
 
 type Owned = Map CellId OwnedCell
 
-{- | What every step of the loop threads forward: the episode, the wall-clock it
-started at, the turn, tool-call and repair counts, the cells it owns, and the
-transcript so far.
--}
+-- | The episode state every loop step threads forward.
 type Stepping a =
     Episode -> Double -> Int -> Int -> Int -> Owned -> [Value] -> a
 
@@ -128,6 +124,8 @@ noCallTurn ep start turn nCalls repairs owned msgs t =
                 let call = ToolCall "insert_cell" (object ["source" .= src])
                 outcome <- drvDispatch (epDriver ep) call
                 noteUnconfirmed ep [(call, outcome)]
+                when (artifactAttempted (call, outcome)) $
+                    writeIORef (epArtifactRequired ep) True
                 let owned' = recordOwned (call, outcome) owned
                     salvaged = ToolCall "salvage" (tcArgs call)
                 out <-
@@ -150,6 +148,7 @@ anything else re-enters with the verdict, until the stuck budget runs out.
 verifyStop :: Stepping (Turn -> IO AgentRun)
 verifyStop ep start turn nCalls repairs owned msgs t = do
     (result, mEv) <- drvVerify (epDriver ep) owned
+    artifactRequired <- readIORef (epArtifactRequired ep)
     case result of
         CheckPassed
             | hasArtifact owned -> do
@@ -157,6 +156,7 @@ verifyStop ep start turn nCalls repairs owned msgs t = do
                 stopWith CheckPassed
         CheckNotApplicable
             | hasArtifact owned -> stopWith CheckNotApplicable
+            | not artifactRequired -> stopWith CheckNotApplicable
         _ -> do
             s <- readIORef (epStuck ep)
             if s + 1 >= maxStuckVerifies
@@ -246,7 +246,11 @@ calledTurn :: Stepping (Turn -> IO AgentRun)
 calledTurn ep start turn nCalls repairs owned msgs t = do
     results <- mapM (dispatchCall (epSess ep) (epDriver ep) msgs) (turnCalls t)
     let steps = [(crCall r, crOutcome r) | r <- results]
+        stateSteps = concatMap crStateSteps results
+        callSpend = length steps + sum (map crHiddenCalls results)
         landedNow = any landedArtifact steps
+    when (any artifactAttempted steps) $
+        writeIORef (epArtifactRequired ep) True
     done0 <- readIORef (epDelivered ep)
     discovered <-
         if done0
@@ -258,7 +262,8 @@ calledTurn ep start turn nCalls repairs owned msgs t = do
                     [(c, o) | (c, Right o) <- steps]
     when landedNow $ writeIORef (epDelivered ep) True
     noteUnconfirmed ep steps
-    let owned' = foldr recordOwned owned steps
+    let modelOwned = foldr recordOwned owned steps
+        owned' = foldl (flip recordOwned) modelOwned stateSteps
     signalMsgs <- doneSignalProbe ep landedNow owned'
     let toolMsgs = [toolMsg c (renderOutcome o) | (c, o) <- steps]
         noteMsgs = maybe [] pure (notesMessage results)
@@ -278,7 +283,7 @@ calledTurn ep start turn nCalls repairs owned msgs t = do
                 ep
                 owned'
                 (turn + 1)
-                (nCalls + length steps)
+                (nCalls + callSpend)
                 (bestFailing owned')
                 "kernel_error"
                 (msgs ++ out)
@@ -287,7 +292,7 @@ calledTurn ep start turn nCalls repairs owned msgs t = do
                 ep
                 start
                 (turn + 1)
-                (nCalls + length steps)
+                (nCalls + callSpend)
                 repairs
                 owned'
                 (msgs ++ out)

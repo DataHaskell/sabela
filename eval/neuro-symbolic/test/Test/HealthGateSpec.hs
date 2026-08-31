@@ -2,7 +2,7 @@
 
 module Test.HealthGateSpec (spec) where
 
-import Data.Aeson (Value, object, (.=))
+import Data.Aeson (Value (..), object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -25,7 +25,14 @@ import Eval.Agent (
 import Eval.Ollama (ToolCall (..), Turn (..))
 import Eval.Task (Grader (..), Task (..))
 import Siza.Agent.Messages (reenterMessage)
-import Siza.Agent.Owned (OwnedCell (..), noProgressStep, redSignature)
+import Siza.Agent.Owned (
+    OwnedCell (..),
+    artifactAttempted,
+    hasArtifact,
+    noProgressStep,
+    recordOwned,
+    redSignature,
+ )
 
 insertOf :: ToolCall
 insertOf = ToolCall "insert_cell" (object ["source" .= ("x = 1" :: Text)])
@@ -68,6 +75,40 @@ spec = describe "B2 health gate" $ do
             ownedCellOutcome insertOf (Right (ToolOk (object ["ok" .= True])))
                 `shouldBe` Nothing
 
+        it "treats a completed non-executing write as healthy, not as an artifact" $ do
+            let prose =
+                    ToolCall
+                        "insert_cell"
+                        (object ["cell_type" .= ("ProseCell" :: Text), "source" .= ("# Note" :: Text)])
+                out =
+                    Right
+                        ( ToolOk
+                            ( object
+                                [ "cellId" .= (3 :: Int)
+                                , "status" .= ("completed" :: Text)
+                                , "execution" .= Null
+                                ]
+                            )
+                        )
+                owned = recordOwned (prose, out) Map.empty
+            ownedCellOutcome prose out `shouldBe` Just (3, True)
+            ocExecuted <$> Map.lookup 3 owned `shouldBe` Just False
+            hasArtifact owned `shouldBe` False
+            artifactAttempted (prose, out) `shouldBe` False
+
+        it "keeps a rejected code write as an outstanding artifact attempt" $
+            artifactAttempted (insertOf, Left "compile gate rejected the write")
+                `shouldBe` True
+
+        it "keeps a Python CodeCell write as an artifact attempt" $
+            artifactAttempted
+                ( ToolCall
+                    "insert_cell"
+                    (object ["language" .= ("Python" :: Text), "source" .= ("x = 1" :: Text)])
+                , Left "Python session unavailable"
+                )
+                `shouldBe` True
+
     describe "stopDecision" $ do
         it "stops when nothing is owned" $
             stopDecision Map.empty `shouldBe` Stop
@@ -81,8 +122,8 @@ spec = describe "B2 health gate" $ do
     describe "redSignature (reenter no-progress detector)" $ do
         let owned =
                 Map.fromList
-                    [ (2, OwnedCell False "ambiguous take" "src" False)
-                    , (1, OwnedCell False "not in scope foo" "src" False)
+                    [ (2, OwnedCell False True "ambiguous take" "src" False True Nothing)
+                    , (1, OwnedCell False True "not in scope foo" "src" False True Nothing)
                     ]
         it "is stable and sorted by cell id regardless of the red list order" $
             redSignature [2, 1] owned
@@ -91,7 +132,9 @@ spec = describe "B2 health gate" $ do
             redSignature [1, 2] owned `shouldBe` redSignature [2, 1] owned
         it "changes when a cell's diagnostic changes (real progress)" $
             ( redSignature [1] owned
-                == redSignature [1] (Map.insert 1 (OwnedCell False "different" "src" False) owned)
+                == redSignature
+                    [1]
+                    (Map.insert 1 (OwnedCell False True "different" "src" False True Nothing) owned)
             )
                 `shouldBe` False
         it "ignores cells absent from the red list" $
@@ -100,8 +143,8 @@ spec = describe "B2 health gate" $ do
     describe "noProgressStep (oscillation-aware reenter guard)" $ do
         let owned =
                 Map.fromList
-                    [ (1, OwnedCell False "not in scope foo" "src" False)
-                    , (2, OwnedCell False "ambiguous take" "src" False)
+                    [ (1, OwnedCell False True "not in scope foo" "src" False True Nothing)
+                    , (2, OwnedCell False True "ambiguous take" "src" False True Nothing)
                     ]
             sigA = redSignature [1] owned
             sigB = redSignature [2] owned

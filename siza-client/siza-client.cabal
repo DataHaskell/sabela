@@ -164,6 +164,8 @@ library
                       Siza.Mcp.Serve
                       -- Guides
                       Siza.Guide
+    other-modules:    Siza.Agent.Owned.Snapshot
+                      Siza.Agent.Stack.Reconcile
     build-depends:    base >= 4 && < 5
                       -- the contract sub-library: typed wire DTOs + AST parser
                       -- reuse, without the server's warp/servant/process drag
@@ -289,6 +291,7 @@ test-suite siza-client-test
                       Test.DiscoverNextSpec
                       Test.DiscoverHiddenDbSpec
                       Test.ArtifactSpec
+                      Test.ArtifactFixtures
                       Test.CompactProtectSpec
                       Test.CompactSpec
                       Test.DiscoverHackageSpec

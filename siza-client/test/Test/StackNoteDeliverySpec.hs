@@ -10,12 +10,14 @@ module Test.StackNoteDeliverySpec (stackNoteDeliverySpec) where
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.IORef (modifyIORef', newIORef, readIORef, writeIORef)
+import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Hspec
 import Test.QuickCheck
 
+import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..), Turn (..))
 import Siza.Agent.Check (CheckResult (..))
 import Siza.Agent.GrammarCards (GrammarMode (..))
@@ -26,7 +28,8 @@ import Siza.Agent.Loop (
     episodeStack,
     runEpisodeSeeded,
  )
-import Siza.Agent.Stack (Dispatch, StackSession, newStackSession)
+import Siza.Agent.Owned (OwnedCell (..), hasArtifact)
+import Siza.Agent.Stack (Dispatch, StackSession, newStackSession, ownedCells)
 import Siza.Agent.Stack.Call (
     CallResult (..),
     StackNote (..),
@@ -65,8 +68,112 @@ stackNoteDeliverySpec = describe "a note the shared stack computes reaches the m
                             | n <- notes
                             ]
 
+    describe "settled deferred state stays off the model-result channel" $ do
+        it "reconciles a clean cell with one hidden snapshot call" $ do
+            (result, tape, owned) <- deferredAwait False
+            map tcName tape
+                `shouldBe` ["insert_cell", "run_pending", "await_idle", "list_cells"]
+            crHiddenCalls result `shouldBe` 1
+            map (tcName . fst) (crStateSteps result) `shouldBe` ["list_cells"]
+            hasArtifact owned `shouldBe` True
+
+        it "reads a failed cell once and discloses only its compact diagnosis" $ do
+            (result, tape, owned) <- deferredAwait True
+            map tcName tape
+                `shouldBe` ["insert_cell", "run_pending", "await_idle", "list_cells", "read_cell"]
+            crHiddenCalls result `shouldBe` 2
+            map (tcName . fst) (crStateSteps result)
+                `shouldBe` ["list_cells", "read_cell"]
+            ocDiagnostic <$> Map.lookup 7 owned
+                `shouldBe` Just "Variable not in scope: total"
+            map snText (crNotes result)
+                `shouldSatisfy` any (T.isInfixOf "Variable not in scope: total")
+
+        it "counts the hidden snapshot in the episode's actual dispatch total" $ do
+            turnRef <- newIORef (0 :: Int)
+            let calls =
+                    [ ToolCall "insert_cell" (object ["source" .= ("answer = 42" :: Text)])
+                    , ToolCall "run_pending" (object [])
+                    , ToolCall "await_idle" (object [])
+                    ]
+                chat _ = do
+                    n <- readIORef turnRef
+                    writeIORef turnRef (n + 1)
+                    pure . Right $
+                        Turn
+                            (object ["role" .= ("assistant" :: Text), "content" .= ("" :: Text)])
+                            ""
+                            (take 1 (drop n calls))
+                driver =
+                    Driver
+                        { drvChat = chat
+                        , drvDispatch = pure . deferredReply False
+                        , drvNow = pure 0
+                        , drvVerify = const (pure (CheckPassed, Nothing))
+                        }
+            run <-
+                runEpisodeSeeded
+                    []
+                    (const (pure ()))
+                    GrammarOn
+                    EpisodeBudget{ebMaxRepairs = 4, ebDeadlineSecs = 600}
+                    driver
+                    "write a deferred cell"
+                    4
+            arToolCalls run `shouldBe` 4
+
 chatSession :: IO StackSession
 chatSession = newStackSession GrammarOn ""
+
+deferredAwait :: Bool -> IO (CallResult, [ToolCall], Map.Map Int OwnedCell)
+deferredAwait fails = do
+    tapeRef <- newIORef []
+    ss <- newStackSession GrammarOn ""
+    let fake call = do
+            modifyIORef' tapeRef (<> [call])
+            pure (deferredReply fails call)
+        run = runToolCall ss (episodeStack ss fake)
+    _ <- run (ToolCall "insert_cell" (object ["source" .= ("answer = 42" :: Text)]))
+    _ <- run (ToolCall "run_pending" (object []))
+    result <- run (ToolCall "await_idle" (object []))
+    (,,) result <$> readIORef tapeRef <*> ownedCells ss
+
+deferredReply :: Bool -> ToolCall -> Either Text ToolOutcome
+deferredReply _ (ToolCall "insert_cell" _) =
+    Right . ToolOk $
+        object
+            [ "cellId" .= (7 :: Int)
+            , "hash" .= ("h7" :: Text)
+            , "status" .= ("completed" :: Text)
+            , "execution" .= Null
+            ]
+deferredReply _ (ToolCall "run_pending" _) =
+    Right (ToolOk (object ["pending" .= ([7] :: [Int])]))
+deferredReply _ (ToolCall "await_idle" _) =
+    Right (ToolOk (object ["waited" .= ("settled" :: Text)]))
+deferredReply fails (ToolCall "list_cells" _) =
+    Right . ToolOk $
+        object
+            [ "cells"
+                .= [ object
+                        [ "id" .= (7 :: Int)
+                        , "hash" .= ("h7" :: Text)
+                        , "type" .= ("CodeCell" :: Text)
+                        , "dirty" .= False
+                        , "hasError" .= fails
+                        ]
+                   ]
+            ]
+deferredReply fails (ToolCall "read_cell" _) =
+    Right . ToolOk $
+        object
+            [ "id" .= (7 :: Int)
+            , "hash" .= ("h7" :: Text)
+            , "source" .= ("answer = 42" :: Text)
+            , "error"
+                .= if fails then Just ("Variable not in scope: total" :: Text) else Nothing
+            ]
+deferredReply _ _ = Left "unexpected call"
 
 {- | A grid whose second write is blocked by a red cell, which is what makes
 the shared stack re-aim it and produce a note the caller did not ask for.

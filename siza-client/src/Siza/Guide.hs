@@ -21,11 +21,11 @@ module Siza.Guide (
     -}
     runEpisodeSeeded,
 
-    -- * Only parsed, gated code counts
+    -- * Only parsed, executed code counts as an artifact
 
-    {- | Only a 'Vetted' (constructor unexported) reaches the wire. The
-    compile gate itself is server-side (sabela's @gatedCandidate@);
-    "Siza.Agent.Owned" is its typed client echo.
+    {- | Only an unexported 'Vetted' Haskell value reaches the server gate.
+    "Siza.Agent.Owned" records health separately from execution;
+    'landedArtifact' requires healthy, executed, substantive source.
     -}
     Vetted,
     preflight,

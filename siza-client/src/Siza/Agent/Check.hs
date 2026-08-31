@@ -78,8 +78,8 @@ noVerdictNote NoCellCommitted =
 noVerdictNote (NoExecutableCell n) =
     "the "
         <> T.pack (show n)
-        <> " cell(s) committed this episode hold only blank lines, comments or \
-           \pragmas, so there was nothing to check"
+        <> " cell(s) committed this episode produced no executable, substantive \
+           \result, so there was nothing to check"
 noVerdictNote NoCheckProposed =
     "no covering check was proposed for this deliverable"
 noVerdictNote (CheckDiscarded why) =
