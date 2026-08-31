@@ -100,12 +100,13 @@ mcpConcurrencySpec = describe "the MCP server serves requests concurrently" $ do
                 | otherwise = pure (Right (ToolOk "idle"))
             env = mcpEnvOver session dispatch mcpCatalogue
         queue <- newIORef [callLine "execute_cell", callLine "kernel_status"]
-        done <- timeout 5_000_000 $
-            serveRequests
-                (lineSource queue)
-                (\v -> atomicModifyIORef' written (\ws -> (ws ++ [show v], ())))
-                handleLine
-                env
+        done <-
+            timeout 5_000_000 $
+                serveRequests
+                    (lineSource queue)
+                    (\v -> atomicModifyIORef' written (\ws -> (ws ++ [show v], ())))
+                    handleLine
+                    env
         done `shouldBe` Just ()
         ws <- readIORef written
         unless (any ("kernel_status" `isInfixOf`) ws) $

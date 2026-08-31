@@ -52,7 +52,8 @@ mcpBulkSpec :: Spec
 mcpBulkSpec = describe "reading and writing a notebook in bulk" $ do
     describe "asking for one kind of cell" $ do
         it "keeps only prose when asked for prose" $
-            idsOf (applyCellFilters (object ["cell_type" .= ("ProseCell" :: Text)]) notebook)
+            idsOf
+                (applyCellFilters (object ["cell_type" .= ("ProseCell" :: Text)]) notebook)
                 `shouldBe` [2, 4]
 
         it "keeps only code when asked for code" $

@@ -39,7 +39,8 @@ spec = do
         it "lineChart matches lineChartOn defaultCanvas" $
             svgBody (lineChart pts) `shouldBe` svgBody (lineChartOn defaultCanvas pts)
         it "barChart matches barChartOn defaultCanvas" $
-            svgBody (barChart [("a", 1)]) `shouldBe` svgBody (barChartOn defaultCanvas [("a", 1)])
+            svgBody (barChart [("a", 1)])
+                `shouldBe` svgBody (barChartOn defaultCanvas [("a", 1)])
         it "scatterChart draws one circle per point" $
             tagCount "circle" (scatterChart pts) `shouldBe` 3
         it "an explicit canvas changes the geometry" $

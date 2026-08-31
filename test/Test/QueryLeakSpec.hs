@@ -34,7 +34,8 @@ spec = do
             asked <- newIORef ([] :: [T.Text])
             result <-
                 typecheckValueWith
-                    (\q -> modifyIORef' asked (q :) >> pure "not an expression: 'x <- pure (1 :: Int)'")
+                    ( \q -> modifyIORef' asked (q :) >> pure "not an expression: 'x <- pure (1 :: Int)'"
+                    )
                     (pure "bindings")
                     "print (1 :: Int)"
             tcSucceeded result `shouldBe` False
