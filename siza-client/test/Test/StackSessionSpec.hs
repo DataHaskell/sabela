@@ -6,7 +6,7 @@ Every layer here must work from a 'Dispatch' alone — no model, no transcript.
 module Test.StackSessionSpec (stackSessionSpec) where
 
 import Data.Aeson (Value (..), object, (.=))
-import Data.IORef (readIORef)
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -105,10 +105,65 @@ stackSessionSpec = describe "the shared dispatch stack session" $ do
         ownedCells ss >>= \m -> Map.keys m `shouldBe` []
 
     rejectionLedgerSpec
+    rejectionCacheSpec
 
-{- | C1-17c: a rejection creates no cell, so every mechanism keyed on the owned
-map is blind to it. What the session keeps instead is the diagnostic class.
--}
+rejectionCacheSpec :: Spec
+rejectionCacheSpec = describe "the deterministic rejection cache" $ do
+    it "never caches incomplete, transport, timeout, or infrastructure failures" $
+        mapM_ dispatchTwice nonCacheable
+
+    it "a world-changing call invalidates the cached rejection" $ do
+        writes <- newIORef (0 :: Int)
+        ss <- newStackSession GrammarOn ""
+        let dispatch tc
+                | tcName tc == "insert_cell" =
+                    modifyIORef' writes (+ 1) >> pure candidateGate
+                | tcName tc == "list_cells" =
+                    pure (Right (ToolOk (object ["cells" .= ([] :: [Value])])))
+                | tcName tc == "kernel_status" =
+                    pure
+                        (Right (ToolOk (object ["ksGen" .= (1 :: Int), "ebGeneration" .= (1 :: Int)])))
+                | otherwise = pure (Right (ToolOk (object [])))
+            run = stackDispatch ss dispatch
+        _ <- run (write "x =")
+        _ <- run (ToolCall "delete_cell" (object ["cell_id" .= (1 :: Int)]))
+        _ <- run (write "x =")
+        readIORef writes `shouldReturn` 2
+
+dispatchTwice :: (ToolCall, Either Text ToolOutcome) -> IO ()
+dispatchTwice (tc, outcome) = do
+    calls <- newIORef (0 :: Int)
+    ss <- newStackSession GrammarOn ""
+    let dispatch _ = modifyIORef' calls (+ 1) >> pure outcome
+        run = stackDispatch ss dispatch
+    _ <- run tc
+    _ <- run tc
+    readIORef calls `shouldReturn` 2
+
+candidateGate :: Either Text ToolOutcome
+candidateGate = gateOutcome "diagnostic" "your candidate" "candidate_setup" "error"
+
+nonCacheable :: [(ToolCall, Either Text ToolOutcome)]
+nonCacheable =
+    [ (ToolCall "insert_cell" (object []), candidateGate)
+    , (write "x =", Left "transport failure")
+    ,
+        ( write "x ="
+        , gateOutcome "timed_out" "your candidate" "candidate_setup" "timeout"
+        )
+    , (write "x =", gateOutcome "diagnostic" "replay" "replay" "dependency failure")
+    ]
+
+gateOutcome :: Text -> Text -> Text -> Text -> Either Text ToolOutcome
+gateOutcome verdict attributed stage diagnostic =
+    Right . ToolErr . object $
+        [ "notCommitted" .= ("compile-gate" :: Text)
+        , "verdict" .= verdict
+        , "attributedTo" .= attributed
+        , "stage" .= stage
+        , "diagnostic" .= diagnostic
+        ]
+
 rejectionLedgerSpec :: Spec
 rejectionLedgerSpec = describe "the rejection ledger a refused write leaves" $ do
     it "counts a run of N same-class rejections as N-1 repeats (C1-17c)" $
@@ -141,9 +196,6 @@ rejectionLedgerSpec = describe "the rejection ledger a refused write leaves" $ d
                             .&&. Map.elems (repeatsOf steps)
                                 === [length steps - 1]
 
-{- | The repeat count the metric defines, computed from the sequence itself:
-one fewer than the number of calls each normalised diagnostic answered.
--}
 repeatsOf :: [(Text, Text)] -> Map.Map Text Int
 repeatsOf steps =
     Map.map (subtract 1) $
@@ -173,12 +225,7 @@ built for, and answers everything else emptily.
 rejecting :: Text -> Dispatch
 rejecting diag (ToolCall name _)
     | name `elem` ["insert_cell", "replace_cell_source"] =
-        pure . Right . ToolErr $
-            object
-                [ "notCommitted" .= ("compile-gate" :: Text)
-                , "verdict" .= ("diagnostic" :: Text)
-                , "diagnostic" .= diag
-                ]
+        pure (gateOutcome "diagnostic" "your candidate" "candidate_setup" diag)
 rejecting _ (ToolCall "list_cells" _) =
     pure (Right (ToolOk (object ["cells" .= ([] :: [Value])])))
 rejecting _ _ = pure (Right (ToolOk (object ["result" .= ("" :: Text)])))
@@ -248,5 +295,5 @@ callThrough ss fake call = do
 
 futilityNoted :: Either Text ToolOutcome -> Bool
 futilityNoted (Right (ToolErr (Object o))) = hasKey "futility" (Object o)
-futilityNoted (Left e) = "byte-identical" `T.isInfixOf` e
+futilityNoted (Left e) = "recorded error" `T.isInfixOf` e
 futilityNoted _ = False

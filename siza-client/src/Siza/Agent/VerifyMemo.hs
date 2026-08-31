@@ -1,6 +1,6 @@
 {- |
 Technique: repeated-verify memo [Episode].
-Guarantee: a memoised pass is returned only under a seal proving no cell source and no kernel generation changed since the run that earned it; only a pass is ever memoised.
+Guarantee: a memoised pass is returned only under a seal proving no cell source or execution generation changed since the run that earned it; only a pass is ever memoised.
 Entry: 'memoHit' / 'memoRecord', wired in Siza.Agent.Stack.Call.
 -}
 module Siza.Agent.VerifyMemo (
@@ -25,13 +25,11 @@ import qualified Data.Text as T
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 
-{- | What must be identical for a past pass to still hold: every cell's
-source hash, and the kernel generation (a restart resets the bindings behind
-unchanged sources).
--}
+-- | Cell sources, restart generation, and the edit/run generation.
 data Seal = Seal
     { sealCells :: [(Int, Text)]
     , sealKernel :: Value
+    , sealEvents :: Value
     }
     deriving (Eq, Show)
 
@@ -58,7 +56,12 @@ currentSeal ::
 currentSeal disp = do
     cells <- disp (ToolCall "list_cells" (object []))
     status <- disp (ToolCall "kernel_status" (object []))
-    pure (Seal <$> cellHashes cells <*> kernelGen status)
+    pure
+        ( Seal
+            <$> cellHashes cells
+            <*> statusGen "ksGen" status
+            <*> statusGen "ebGeneration" status
+        )
 
 cellHashes :: Either Text ToolOutcome -> Maybe [(Int, Text)]
 cellHashes (Right (ToolOk (Object o)))
@@ -73,9 +76,9 @@ cellHash (Object c)
         Just (round i, h)
 cellHash _ = Nothing
 
-kernelGen :: Either Text ToolOutcome -> Maybe Value
-kernelGen (Right (ToolOk (Object o))) = KM.lookup (K.fromText "ksGen") o
-kernelGen _ = Nothing
+statusGen :: Text -> Either Text ToolOutcome -> Maybe Value
+statusGen field (Right (ToolOk (Object o))) = KM.lookup (K.fromText field) o
+statusGen _ _ = Nothing
 
 memoHit :: VerifyMemo -> Text -> Seal -> IO (Maybe Value)
 memoHit (VerifyMemo ref) check seal = do
@@ -99,5 +102,5 @@ unchanged v = v
 unchangedNote :: Text
 unchangedNote =
     "this exact check passed earlier this session, and every cell's source \
-    \hash and the kernel generation are identical now, so the scratch run \
+    \hash and both execution generations are identical now, so the scratch run \
     \was not repeated"

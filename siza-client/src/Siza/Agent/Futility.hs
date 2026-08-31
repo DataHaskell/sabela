@@ -17,58 +17,66 @@ module Siza.Agent.Futility (
     unchangedState,
 ) where
 
-import Data.Aeson (Value (..), encode, object, toJSON, (.=))
+import Data.Aeson (Value (..), encode, object, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as LBS
-import Data.Char (isDigit)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, listToMaybe)
-import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
 
-import Sabela.AI.SelfHeal (sourceDelta)
 import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
-
-{- | What a diagnostic class has already cost: how many calls it answered, the
-submitted sources it answered them for, and the most recent of those.
--}
-data RejectionRun = RejectionRun
-    { rrCount :: !Int
-    , rrSources :: !(Set Text)
-    , rrLast :: !Text
-    }
+import Siza.Agent.Futility.Rejection (
+    CachedRejection (..),
+    RejectionRun (..),
+    cacheableRejection,
+    cachedFact,
+    completeWrite,
+    markUnchanged,
+    normaliseDiagnostic,
+    settledNoMutation,
+    unchangedState,
+    worldChanging,
+ )
+import Siza.Agent.VerifyMemo (Seal, currentSeal)
 
 data GuardState = GuardState
     { gsCalls :: !(Map (Text, Text) Text)
     , gsRuns :: !(Map Text RejectionRun)
+    , gsEpochRuns :: !(Map Text RejectionRun)
+    , gsCached :: !(Map (Text, Text) CachedRejection)
+    , gsEpoch :: !Int
     }
 
 newtype FutilityGuard = FutilityGuard (IORef GuardState)
 
 newFutilityGuard :: IO FutilityGuard
-newFutilityGuard = FutilityGuard <$> newIORef (GuardState Map.empty Map.empty)
+newFutilityGuard =
+    FutilityGuard
+        <$> newIORef
+            GuardState
+                { gsCalls = Map.empty
+                , gsRuns = Map.empty
+                , gsEpochRuns = Map.empty
+                , gsCached = Map.empty
+                , gsEpoch = 0
+                }
 
 futilityNote :: Text
 futilityNote =
-    "This call was byte-identical to an earlier call and failed with the \
-    \identical error. Re-sending or re-phrasing the same payload will not \
-    \change the outcome - the payload is not the fault. Change approach: \
-    \check kernel_status / list_cells, use a different tool, or take a \
-    \smaller step."
+    "This call's name and arguments match an earlier call, and the recorded \
+    \error is identical."
 
 sourceFaultNote :: Text
 sourceFaultNote =
-    "This exact source was rejected before with the identical diagnostic. It \
-    \is deterministic: the fault is in the source, not the kernel or the \
-    \environment. Read the diagnostic above and change the source it names."
+    "This exact source was rejected before with the identical compiler diagnostic."
 
 noteFor :: Either Text ToolOutcome -> Text
 noteFor out
@@ -88,7 +96,48 @@ guardDispatch ::
     ToolCall ->
     IO (Either Text ToolOutcome)
 guardDispatch (FutilityGuard ref) dispatch call = do
-    out <- dispatch call
+    reused <- validatedCache ref dispatch call
+    maybe fresh pure reused
+  where
+    fresh = do
+        out <- dispatch call
+        seal <- rejectionSeal dispatch call out
+        _ <- atomicModifyIORef' ref (afterDispatch call out seal)
+        observe False ref call out
+
+validatedCache ::
+    IORef GuardState ->
+    (ToolCall -> IO (Either Text ToolOutcome)) ->
+    ToolCall ->
+    IO (Maybe (Either Text ToolOutcome))
+validatedCache ref dispatch call = do
+    cached <- Map.lookup (callKey call) . gsCached <$> readIORef ref
+    case cached of
+        Just c | completeWrite call -> do
+            seal <- currentSeal dispatch
+            if seal == Just (cachedSeal c)
+                then Just <$> observe True ref call (Right (cachedOutcome c))
+                else do
+                    atomicModifyIORef' ref (\s -> (invalidateWorld s, ()))
+                    pure Nothing
+        _ -> pure Nothing
+
+rejectionSeal ::
+    (ToolCall -> IO (Either Text ToolOutcome)) ->
+    ToolCall ->
+    Either Text ToolOutcome ->
+    IO (Maybe Seal)
+rejectionSeal dispatch call out
+    | completeWrite call && cacheableRejection out = currentSeal dispatch
+    | otherwise = pure Nothing
+
+observe ::
+    Bool ->
+    IORef GuardState ->
+    ToolCall ->
+    Either Text ToolOutcome ->
+    IO (Either Text ToolOutcome)
+observe reused ref call out = do
     let key = callKey call
         src = submittedSource call
         mClass = diagnosticClass out
@@ -103,7 +152,43 @@ guardDispatch (FutilityGuard ref) dispatch call = do
                 annotated
                     | prevFt == Just ft = annotate (noteFor out) marked
                     | otherwise = marked
-            pure annotated
+            epoch <- gsEpoch <$> readIORef ref
+            pure (if reused then cachedFact epoch annotated else annotated)
+
+afterDispatch ::
+    ToolCall ->
+    Either Text ToolOutcome ->
+    Maybe Seal ->
+    GuardState ->
+    (GuardState, Int)
+afterDispatch call out seal s
+    | worldChanging call && not (settledNoMutation out) =
+        let s' = invalidateWorld s
+         in (s', gsEpoch s')
+    | completeWrite call
+    , cacheableRejection out
+    , Right rejected <- out =
+        case seal of
+            Just observed ->
+                ( s
+                    { gsCached =
+                        Map.insert
+                            (callKey call)
+                            (CachedRejection rejected observed)
+                            (gsCached s)
+                    }
+                , gsEpoch s
+                )
+            Nothing -> (s, gsEpoch s)
+    | otherwise = (s, gsEpoch s)
+
+invalidateWorld :: GuardState -> GuardState
+invalidateWorld s =
+    s
+        { gsEpochRuns = Map.empty
+        , gsCached = Map.empty
+        , gsEpoch = gsEpoch s + 1
+        }
 
 forgetCall :: (Text, Text) -> GuardState -> GuardState
 forgetCall key s = s{gsCalls = Map.delete key (gsCalls s)}
@@ -122,12 +207,13 @@ record ::
 record key ft mClass src s = (s', (Map.lookup key (gsCalls s), prevRun))
   where
     s' =
-        GuardState
+        s
             { gsCalls = Map.insert key ft (gsCalls s)
-            , gsRuns = maybe (gsRuns s) bump mClass
+            , gsRuns = maybe (gsRuns s) (bump (gsRuns s)) mClass
+            , gsEpochRuns = maybe (gsEpochRuns s) (bump (gsEpochRuns s)) mClass
             }
-    prevRun = flip Map.lookup (gsRuns s) =<< mClass
-    bump cls = Map.insert cls (extend prevRun) (gsRuns s)
+    prevRun = flip Map.lookup (gsEpochRuns s) =<< mClass
+    bump runs cls = Map.insert cls (extend (Map.lookup cls runs)) runs
     extend Nothing = RejectionRun 1 (Set.singleton src) src
     extend (Just r) =
         RejectionRun (rrCount r + 1) (Set.insert src (rrSources r)) src
@@ -138,26 +224,6 @@ it. Zero for a class seen once, so an absent repeat is still a recorded fact.
 rejectionRepeats :: FutilityGuard -> IO (Map Text Int)
 rejectionRepeats (FutilityGuard ref) =
     Map.map (subtract 1 . rrCount) . gsRuns <$> readIORef ref
-
-{- | A diagnostic with its @\<interactive\>@ positions erased. Two rejections
-that differ only in where the session happened to place the candidate are the
-same diagnostic, and the model cannot act on the difference.
--}
-normaliseDiagnostic :: Text -> Text
-normaliseDiagnostic t = case T.breakOn interactiveMarker t of
-    (_, rest) | T.null rest -> t
-    (pre, rest) ->
-        let body = T.drop (T.length interactiveMarker) rest
-            (pos, after) = T.span positionChar body
-         in pre
-                <> interactiveMarker
-                <> (if T.null pos then "" else "L:C")
-                <> normaliseDiagnostic after
-  where
-    positionChar c = isDigit c || c == ':' || c == '-'
-
-interactiveMarker :: Text
-interactiveMarker = "<interactive>:"
 
 {- | The diagnostic class a deterministic rejection belongs to. Only a
 rejection carrying a diagnostic has one: an outcome with no diagnostic gives
@@ -170,74 +236,6 @@ diagnosticClass out@(Right (ToolErr (Object o)))
     , not (T.null (T.strip d)) =
         Just (normaliseDiagnostic d)
 diagnosticClass _ = Nothing
-
-{- | Say that this diagnostic is the one an earlier call already produced, and
-over how many distinct sources. Both numbers are counted here; nothing is
-claimed about where the cause is.
--}
-markUnchanged ::
-    Text -> Either Text ToolOutcome -> RejectionRun -> Either Text ToolOutcome
-markUnchanged src (Right (ToolErr (Object o))) prev =
-    Right (ToolErr (Object (KM.insert (K.fromText "unchanged") detail marked)))
-  where
-    marked = KM.insert (K.fromText "state") (String unchangedState) o
-    detail =
-        object
-            ( [ "priorCalls" .= rrCount prev
-              , "distinctSources" .= Set.size sources
-              , "sourceChanged" .= changed
-              , "note" .= unchangedNote (rrCount prev) (Set.size sources)
-              ]
-                <> changedLinesPairs
-            )
-    sources = Set.filter (not . T.null) (Set.insert src (rrSources prev))
-    changed = src /= rrLast prev
-    (removed, added) = sourceDelta (rrLast prev) src
-    dropped =
-        length removed
-            + length added
-            - length (take deltaLines removed)
-            - length (take deltaLines added)
-    changedLinesPairs
-        | not changed = []
-        | otherwise =
-            [ "changedLines"
-                .= object
-                    ( [ "removed" .= toJSON (take deltaLines removed)
-                      , "added" .= toJSON (take deltaLines added)
-                      ]
-                        <> ["furtherLines" .= dropped | dropped > 0]
-                    )
-            ]
-markUnchanged _ out _ = out
-
--- | How many changed lines either side of the delta is worth carrying.
-deltaLines :: Int
-deltaLines = 12
-
-unchangedState :: Text
-unchangedState = "unchanged"
-
-{- | Only what was counted: how many calls this diagnostic answered, and how
-many different non-empty sources those calls submitted.
--}
-unchangedNote :: Int -> Int -> Text
-unchangedNote priorCalls distinct =
-    "This diagnostic is identical, ignoring <interactive> line and column \
-    \numbers, to the one "
-        <> tshow priorCalls
-        <> " earlier call(s) in this session produced."
-        <> sourceSentence
-  where
-    sourceSentence
-        | distinct <= 0 = ""
-        | otherwise =
-            " Counting this call, "
-                <> tshow distinct
-                <> " distinct submitted source(s) have produced it."
-
-tshow :: (Show a) => a -> Text
-tshow = T.pack . show
 
 callKey :: ToolCall -> (Text, Text)
 callKey (ToolCall n a) = (n, encodeText a)

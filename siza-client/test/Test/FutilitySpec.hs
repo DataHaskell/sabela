@@ -36,7 +36,7 @@ noteOf (Right (ToolErr (Object o))) = case KM.lookup "futility" o of
 noteOf _ = Nothing
 
 hasNote :: Either Text ToolOutcome -> Bool
-hasNote (Left e) = "byte-identical" `T.isInfixOf` e
+hasNote (Left e) = futilityNote `T.isInfixOf` e
 hasNote (Right (ToolErr (Object o))) = KM.member "futility" o
 hasNote _ = False
 
@@ -58,44 +58,53 @@ futilitySpec = describe "Siza.Agent.Futility (retry-futility guard)" $ do
                 e `shouldSatisfy` T.isInfixOf futilityNote
             _ -> expectationFailure "expected Left"
 
-    it "directs away from payload rewriting, toward a different approach" $ do
-        futilityNote `shouldSatisfy` T.isInfixOf "not the fault"
-        futilityNote `shouldSatisfy` T.isInfixOf "Change approach"
+    it "reports only the equality the guard measured" $ do
+        futilityNote `shouldSatisfy` T.isInfixOf "arguments"
+        futilityNote `shouldSatisfy` T.isInfixOf "recorded error"
+        futilityNote `shouldSatisfy` not . T.isInfixOf "Change approach"
 
-    describe "truthful futility for a deterministic rejection" $ do
+    describe "cached deterministic compile-gate rejection" $ do
         let gateRejection =
                 ToolErr
                     ( object
                         [ "notCommitted" .= ("compile-gate" :: Text)
                         , "verdict" .= ("diagnostic" :: Text)
+                        , "attributedTo" .= ("your candidate" :: Text)
+                        , "stage" .= ("candidate_setup" :: Text)
                         , "diagnostic"
                             .= ("<interactive>:238:1: error: [GHC-88464]" :: Text)
                         ]
                     )
-            rejecting _ = pure (Right gateRejection)
-            secondNote = do
-                g <- newFutilityGuard
-                _ <- guardDispatch g rejecting (call "x = 1 +")
-                out <- guardDispatch g rejecting (call "x = 1 +")
-                pure (noteOf out)
-
-        it "false-futility: never tells the model the payload is not the fault" $ do
-            n <- secondNote
-            n `shouldSatisfy` maybe False (not . T.isInfixOf "not the fault")
-
-        it "names the source as the fault" $ do
-            n <- secondNote
-            n `shouldSatisfy` maybe False (T.isInfixOf "source")
-
-        it "never steers a source error at state-inspection tools" $ do
-            n <- secondNote
-            n `shouldSatisfy` maybe False (not . T.isInfixOf "kernel_status")
-
-        it "still gives the environmental note for a transport failure" $ do
+        it "invalidates a hit when only ebGeneration changes" $ do
+            calls <- newIORef (0 :: Int)
+            eventGen <- newIORef (11 :: Int)
             g <- newFutilityGuard
-            _ <- guardDispatch g (failingWith "boom") (call "x = 1")
-            out <- guardDispatch g (failingWith "boom") (call "x = 1")
-            hasNote out `shouldBe` True
+            let rejecting tc = case tcName tc of
+                    "list_cells" ->
+                        pure . Right . ToolOk $
+                            object ["cells" .= [object ["id" .= (1 :: Int), "hash" .= ("h1" :: Text)]]]
+                    "kernel_status" -> do
+                        e <- readIORef eventGen
+                        pure (Right (ToolOk (object ["ksGen" .= (7 :: Int), "ebGeneration" .= e])))
+                    _ -> modifyIORef' calls (+ 1) >> pure (Right gateRejection)
+                run = guardDispatch g rejecting (call "x = 1 +")
+            _ <- run
+            second <- run
+            readIORef calls `shouldReturn` 1
+            KM.member "cached" (errFields second) `shouldBe` True
+            KM.member "diagnostic" (errFields second) `shouldBe` False
+            KM.member "repeatOf" (errFields second) `shouldBe` False
+            stateOf second `shouldBe` Just unchangedState
+            case KM.lookup "basis" (errFields second) of
+                Just (Object b) -> do
+                    KM.lookup "diagnosticSummary" b
+                        `shouldBe` Just (String "<interactive>:238:1: error: [GHC-88464]")
+                    KM.lookup "worldSealMatched" b `shouldBe` Just (Bool True)
+                _ -> expectationFailure "cached rejection has no factual basis"
+            modifyIORef' eventGen (+ 1)
+            third <- run
+            readIORef calls `shouldReturn` 2
+            KM.member "diagnostic" (errFields third) `shouldBe` True
 
     it "does not annotate when the arguments differ" $ do
         g <- newFutilityGuard
