@@ -151,6 +151,29 @@ verdictSpec = describe "the notebook decides (C1-15c PROPERTY 2)" $ do
         kept `shouldBe` Nothing
         map tcName seen `shouldBe` []
 
+    it "does not offer a display repair for a healthy prose acknowledgement" $ do
+        seen <- newIORef []
+        let prose =
+                ToolCall
+                    "insert_cell"
+                    ( object
+                        [ "cell_type" .= ("ProseCell" :: Text)
+                        , "source" .= ("A written explanation." :: Text)
+                        ]
+                    )
+            ack =
+                Right
+                    ( ToolOk
+                        ( object
+                            [ "cellId" .= (3 :: Int)
+                            , "execution" .= Null
+                            ]
+                        )
+                    )
+            dispatch tc = modifyIORef' seen (++ [tc]) >> pure ack
+        repairDisplayContract "show it" dispatch prose ack `shouldReturn` Nothing
+        readIORef seen `shouldReturn` []
+
 is :: Text -> Text -> Bool
 is = (==)
 

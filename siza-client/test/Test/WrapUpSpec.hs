@@ -42,12 +42,25 @@ blankFinals = ["", "   ", " \n\t "]
 ownedShapes :: [(Text, Map.Map Int OwnedCell)]
 ownedShapes =
     [ ("no cells", Map.empty)
-    , ("healthy", Map.fromList [(0, OwnedCell True "" "x = 1" False)])
+    ,
+        ( "healthy"
+        , Map.fromList [(0, OwnedCell True True "" "x = 1" False True Nothing)]
+        )
     ,
         ( "red"
         , Map.fromList
-            [ (0, OwnedCell True "" "x = 1" False)
-            , (1, OwnedCell False "Variable not in scope: colx" "y = colx df" False)
+            [ (0, OwnedCell True True "" "x = 1" False True Nothing)
+            ,
+                ( 1
+                , OwnedCell
+                    False
+                    True
+                    "Variable not in scope: colx"
+                    "y = colx df"
+                    False
+                    True
+                    Nothing
+                )
             ]
         )
     ]

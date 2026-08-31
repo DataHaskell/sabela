@@ -4,6 +4,7 @@ module Test.DoneSignalSpec (doneSignalSpec) where
 
 import Control.Monad (forM_)
 import Data.Aeson (Value (..), object, (.=))
+import qualified Data.Aeson.KeyMap as KM
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -46,10 +47,27 @@ foundEnvelope =
 
 dispatchScript :: ToolCall -> IO (Either Text ToolOutcome)
 dispatchScript tc = case tcName tc of
-    "insert_cell" -> pure (Right (ToolOk cleanWrite))
+    "insert_cell"
+        | isProse tc ->
+            pure
+                ( Right
+                    ( ToolOk
+                        ( object
+                            [ "cellId" .= (1 :: Int)
+                            , "status" .= ("completed" :: Text)
+                            , "execution" .= Null
+                            ]
+                        )
+                    )
+                )
+        | otherwise -> pure (Right (ToolOk cleanWrite))
     "discover" -> pure (Right (ToolOk foundEnvelope))
     "list_cells" -> pure (Right (ToolOk (object ["cells" .= ([] :: [Value])])))
     _ -> pure (Right (ToolOk (object ["result" .= ("x :: Int" :: Text)])))
+  where
+    isProse call = case tcArgs call of
+        Object o -> KM.lookup "cell_type" o == Just (String "ProseCell")
+        _ -> False
 
 assistant :: Text -> Value
 assistant t = object ["role" .= ("assistant" :: Text), "content" .= t]
@@ -93,6 +111,16 @@ noCheck = (CheckNotApplicable, Just "the proposed check was discarded")
 
 write :: ToolCall
 write = ToolCall "insert_cell" (object ["source" .= ("jsonSum = 60" :: Text)])
+
+proseWrite :: ToolCall
+proseWrite =
+    ToolCall
+        "insert_cell"
+        ( object
+            [ "cell_type" .= ("ProseCell" :: Text)
+            , "source" .= ("The result is 60." :: Text)
+            ]
+        )
 
 readOnly :: ToolCall
 readOnly = ToolCall "list_bindings" (object [])
@@ -167,6 +195,18 @@ doneSignalSpec = describe "deliverable-green done-signal (R5.5/R5.7/R9.8)" $ do
     it "never fires on a read-only spiral with no deliverable write" $ do
         run <-
             runScript [[readOnly], [readOnly], [readOnly]] passed
+        signalMsgs run `shouldBe` []
+
+    it "lets an explicit prose write finish without pretending it executed" $ do
+        run <- runScript [[proseWrite]] noCheck
+        arStopped run `shouldBe` "done_unverified"
+        arToolCalls run `shouldBe` 1
+        signalMsgs run `shouldBe` []
+        couldNotRunMsgs run `shouldBe` []
+
+    it "lets a read-only answer finish when no executable artifact was attempted" $ do
+        run <- runScript [[readOnly], [readOnly], [readOnly]] noCheck
+        arStopped run `shouldBe` "done_unverified"
         signalMsgs run `shouldBe` []
 
     it "R5.7: no channel emits search/read advice after the signal" $ do

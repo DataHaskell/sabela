@@ -205,7 +205,7 @@ recordedLine owned = case newestFailing owned of
     Nothing
         | not (hasArtifact owned) ->
             tShow (Map.size owned)
-                <> " cell(s) written, none of them substantive \8212 no \
+                <> " cell(s) written, none produced an executable \8212 no \
                    \deliverable was committed."
     Nothing ->
         tShow (Map.size owned)

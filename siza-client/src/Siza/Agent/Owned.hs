@@ -18,6 +18,8 @@ module Siza.Agent.Owned (
     newestFailing,
     redSignature,
     noProgressStep,
+    artifactAttempted,
+    writeExecuted,
 ) where
 
 import Data.Aeson (Value (..))
@@ -36,14 +38,8 @@ import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.Check (NoVerdict (..))
 import Siza.Agent.GrammarCards (isOwningTool, toolCallSource)
+import Siza.Agent.Owned.Snapshot (OwnedCell (..), recordRead, recordSnapshot)
 import Siza.Agent.Render (renderOutcome)
-
-data OwnedCell = OwnedCell
-    { ocHealthy :: Bool
-    , ocDiagnostic :: Text
-    , ocSource :: Text
-    , ocInvariantAlarm :: Bool
-    }
 
 data StopDecision = Stop | Reenter [CellId]
     deriving (Eq, Show)
@@ -54,13 +50,42 @@ recordOwned ::
     Map CellId OwnedCell
 recordOwned (tc, out) m
     | tcName tc == "delete_cell" = maybe m (`Map.delete` m) (deletedCellId out)
+    | tcName tc == "execute_cell" = recordExecution out m
+    | tcName tc == "list_cells" = recordSnapshot out m
+    | tcName tc == "read_cell" = recordRead (callCellId tc) out m
     | otherwise = case ownedCellOutcome tc out of
         Just (cid, healthy) ->
             Map.insert
                 cid
-                (OwnedCell healthy (renderOutcome out) (toolCallSource tc) (rejectedClass out))
+                ( OwnedCell
+                    healthy
+                    (writeExecuted out)
+                    (renderOutcome out)
+                    (toolCallSource tc)
+                    (rejectedClass out)
+                    (not (explicitlyNonCode tc))
+                    (outcomeTextField "hash" out)
+                )
                 m
         Nothing -> m
+
+recordExecution ::
+    Either Text ToolOutcome -> Map CellId OwnedCell -> Map CellId OwnedCell
+recordExecution out@(Right (ToolOk (Object o))) m
+    | Just cid <- intField "cellId" o
+    , hasBool "ok" o =
+        Map.adjust
+            ( \oc ->
+                oc
+                    { ocHealthy = boolField "ok" o
+                    , ocExecuted = True
+                    , ocDiagnostic = renderOutcome out
+                    , ocInvariantAlarm = rejectedClass out
+                    }
+            )
+            cid
+            m
+recordExecution _ m = m
 
 rejectedClass :: Either Text ToolOutcome -> Bool
 rejectedClass (Right (ToolOk (Object o))) = outcomeTagIs "Rejected" o
@@ -80,6 +105,11 @@ deletedCellId :: Either Text ToolOutcome -> Maybe CellId
 deletedCellId (Right (ToolOk (Object o)))
     | boolField "deleted" o = intField "cellId" o
 deletedCellId _ = Nothing
+
+callCellId :: ToolCall -> Maybe CellId
+callCellId tc = case tcArgs tc of
+    Object o -> intField "cell_id" o
+    _ -> Nothing
 
 stopDecision :: Map CellId Bool -> StopDecision
 stopDecision owned = case [cid | (cid, ok) <- Map.toList owned, not ok] of
@@ -106,7 +136,13 @@ newestFailing owned =
         [] -> Nothing
 
 hasArtifact :: Map CellId OwnedCell -> Bool
-hasArtifact = any (substantive . ocSource) . Map.elems
+hasArtifact = any isArtifact . Map.elems
+  where
+    isArtifact oc =
+        ocHealthy oc
+            && ocExecuted oc
+            && ocArtifactEligible oc
+            && substantive (ocSource oc)
 
 {- | Why this turn has nothing to check, or 'Nothing' when it has something.
 Read from the same map 'hasArtifact' reads, so the reason reported can never
@@ -124,7 +160,29 @@ anything" asks this, so no weaker notion can drift from 'hasArtifact'.
 -}
 landedArtifact :: (ToolCall, Either Text ToolOutcome) -> Bool
 landedArtifact (tc, out) =
-    maybe False snd (ownedCellOutcome tc out) && substantive (toolCallSource tc)
+    maybe False snd (ownedCellOutcome tc out)
+        && writeExecuted out
+        && substantive (toolCallSource tc)
+
+{- | Whether a write made the episode owe an executable artifact. Only an
+explicit prose insert is categorically exempt; a code write that did not run
+still creates the obligation.
+-}
+artifactAttempted :: (ToolCall, Either Text ToolOutcome) -> Bool
+artifactAttempted (tc, _) =
+    isOwningTool (tcName tc)
+        && not (explicitlyNonCode tc)
+
+writeExecuted :: Either Text ToolOutcome -> Bool
+writeExecuted (Right (ToolOk (Object o))) = case KM.lookup "execution" o of
+    Just (Object e) -> hasBool "ok" e && not (outcomeTagIs "Deferred" e)
+    Just _ -> False
+    Nothing -> hasBool "ok" o
+writeExecuted _ = False
+
+explicitlyNonCode :: ToolCall -> Bool
+explicitlyNonCode tc =
+    textField "cell_type" (tcArgs tc) == Just "ProseCell"
 
 substantive :: Text -> Bool
 substantive src =
@@ -148,7 +206,10 @@ noProgressStep seen sig = (Set.insert sig seen, sig `Set.member` seen)
 
 cellOk :: KM.KeyMap Value -> Bool
 cellOk o = case KM.lookup "execution" o of
-    Just (Object e) -> boolField "ok" e
+    Just (Object e)
+        | outcomeTagIs "Deferred" e -> True
+        | otherwise -> boolField "ok" e
+    Just Null -> True
     _ -> boolField "ok" o
 
 intField :: Text -> KM.KeyMap Value -> Maybe CellId
@@ -158,3 +219,23 @@ intField k o = case KM.lookup (K.fromText k) o of
 
 boolField :: Text -> KM.KeyMap Value -> Bool
 boolField k o = KM.lookup (K.fromText k) o == Just (Bool True)
+
+hasBool :: Text -> KM.KeyMap Value -> Bool
+hasBool k o = case KM.lookup (K.fromText k) o of
+    Just (Bool _) -> True
+    _ -> False
+
+keyTextField :: Text -> KM.KeyMap Value -> Maybe Text
+keyTextField k o = case KM.lookup (K.fromText k) o of
+    Just (String s) -> Just s
+    _ -> Nothing
+
+outcomeTextField :: Text -> Either Text ToolOutcome -> Maybe Text
+outcomeTextField k (Right (ToolOk (Object o))) = keyTextField k o
+outcomeTextField _ _ = Nothing
+
+textField :: Text -> Value -> Maybe Text
+textField k (Object o) = case KM.lookup (K.fromText k) o of
+    Just (String s) -> Just s
+    _ -> Nothing
+textField _ _ = Nothing

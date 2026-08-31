@@ -44,6 +44,7 @@ import Siza.Agent.Stack (
     sessionPolicy,
     ssHealReds,
  )
+import Siza.Agent.Stack.Reconcile (reconcileAwait)
 import Siza.Agent.Stack.Route (blockingCell, discloseRoute, routedRetryNote)
 import Siza.Agent.VerifyMemo (
     currentSeal,
@@ -65,6 +66,8 @@ data CallResult = CallResult
     { crCall :: ToolCall
     , crOutcome :: Either Text ToolOutcome
     , crNotes :: [StackNote]
+    , crStateSteps :: [(ToolCall, Either Text ToolOutcome)]
+    , crHiddenCalls :: Int
     }
 
 {- | Dispatch a call and carry it through the repair layers. @disp@ must
@@ -79,7 +82,7 @@ runToolCall ss disp call
             Just payload -> do
                 let out = Right (ToolOk payload)
                 recordCall ss (call, out)
-                pure (CallResult call out [])
+                pure (CallResult call out [] [] 0)
             Nothing -> do
                 result <- plainRun ss disp call
                 mapM_
@@ -94,9 +97,18 @@ plainRun ss disp call = do
     (call', out', routeNotes) <- unblock ss disp call outcome
     (call'', out'') <- surfaceDisplay ss disp call' out'
     recordCall ss (call'', out'')
+    (stateSteps, stateTexts) <- reconcileAwait ss disp call'' out''
+    let stateNotes = map (StackNote "red_cells") stateTexts
     healNotes <- healAfter ss disp call'' out''
     discNotes <- discoverAfter ss disp call'' out''
-    pure (CallResult call'' out'' (routeNotes ++ healNotes ++ discNotes))
+    pure
+        ( CallResult
+            call''
+            out''
+            (routeNotes ++ stateNotes ++ healNotes ++ discNotes)
+            stateSteps
+            (length stateSteps)
+        )
 
 {- | The discovery a call implicates, for a surface with no later turn to
 inject it in. The chat loop has one, and injects it as messages instead.

@@ -25,7 +25,7 @@ import Sabela.AI.Types (ToolOutcome (..))
 import Sabela.LLM.Ollama.Client (ToolCall (..))
 import Siza.Agent.GrammarCards (isOwningTool, toolCallSource)
 import Siza.Agent.Loop.Support (replaceCall)
-import Siza.Agent.Owned (ownedCellOutcome)
+import Siza.Agent.Owned (ownedCellOutcome, writeExecuted)
 import Siza.Agent.Repair (Dispatch, snapshot)
 
 {- | Every rendering worth offering for this source, richest unpacking last,
@@ -90,6 +90,7 @@ repairDisplayContract ::
 repairDisplayContract goal disp call out
     | not (isOwningTool (tcName call)) = pure Nothing
     | Just (cid, True) <- ownedCellOutcome call out
+    , writeExecuted out
     , noVisibleOutput out
     , let src = toolCallSource call
     , candidates@(_ : _) <- displayCandidates goal src =
