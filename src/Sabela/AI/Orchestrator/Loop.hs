@@ -168,9 +168,10 @@ agenticLoop app store rn turn = do
 
     handleDone ownedRef liveGrammar salvaged reenters parts = do
         owned <- readIORef ownedRef
+        toolCount <- readIORef (turnToolCount turn)
         let content = T.concat [t | TextPart t <- parts]
             mSalvage =
-                if salvaged then Nothing else salvageInsertSource (Map.size owned) content
+                if salvaged then Nothing else salvageInsertSource toolCount content
         case mSalvage of
             Just src -> do
                 traceEvent app ["kind" .= ("salvage" :: Text)]
