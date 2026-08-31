@@ -10,17 +10,26 @@ module Eval.Gate (
     searchEnv,
     armOrder,
     capabilityEnvFor,
+    meteredTlsManagerSettings,
     module Eval.GateReport,
     module Eval.GateResult,
 ) where
 
 import Control.Monad (forM, forM_, unless, when)
-import qualified Data.Set as Set
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Network.HTTP.Client.TLS (newTlsManager)
+import Network.HTTP.Client (
+    ManagerSettings (managerModifyRequest),
+    Request (requestBody),
+    RequestBody (..),
+    newManager,
+ )
+import Network.HTTP.Client.TLS (tlsManagerSettings)
 import System.Environment (setEnv, unsetEnv)
 
 import Eval.Agent (
@@ -50,7 +59,6 @@ import Eval.Task (
  )
 import Eval.Tools (dispatch, episodeCatalogue)
 import Eval.TranscriptLint (lintLine, lintMessages, stopIssues)
-import Siza.Agent.Transcript (contextChars)
 
 data GateLever = ResolverLever | CapabilityLever | ServerFlagLever String
     deriving (Eq, Show)
@@ -101,7 +109,7 @@ runGateResuming ::
     BenchConfig -> GateLever -> FilePath -> [Task] -> [Int] -> IO [GateResult]
 runGateResuming cfg lever resultsFile tasks seeds = do
     prior <- readGateResults resultsFile
-    let done = Set.fromList (map gateKey prior)
+    let done = gateKeysForMetric EncodedRequestBodyBytes prior
         runs = gateRuns tasks seeds
         total = length runs
     forM_ (zip [0 ..] runs) $ \(i, (task, seed, mode)) ->
@@ -122,6 +130,7 @@ runGateResuming cfg lever resultsFile tasks seeds = do
                         (rsCalls st)
                         stopped
                         ctx
+                        EncodedRequestBodyBytes
             appendGateResult resultsFile gr
             TIO.putStrLn (progressLine (i + 1) total task seed mode st)
     readGateResults resultsFile
@@ -152,6 +161,7 @@ runArmGate ::
 runArmGate cfg lever base seed mode task = do
     setCapabilityEnv lever mode
     cat <- episodeCatalogue
+    requestBytes <- newIORef 0
     let attempt s = do
             when (s /= seed) $
                 putStrLn $
@@ -163,7 +173,7 @@ runArmGate cfg lever base seed mode task = do
                         <> T.unpack (modeText mode)
                         <> ": 0-turn infra failure — retrying with fresh seed "
                         <> show s
-            mgr <- newTlsManager
+            mgr <- newManager (meteredTlsManagerSettings requestBytes)
             let driver =
                     Driver
                         { drvChat =
@@ -183,11 +193,40 @@ runArmGate cfg lever base seed mode task = do
         retryFreshSeed maxEpisodeRetries seed ((>= 1) . arTurns) attempt
     saveGateEpisode cfg lever base task seed seedsTried mode run
     (v, _) <- grade (bcConn cfg) base task
+    totalRequestBytes <- readIORef requestBytes
     pure
         ( RunStat (v == Surfaced) (arTurns run) (arToolCalls run)
         , arStopped run
-        , contextChars (arTranscript run)
+        , totalRequestBytes
         )
+
+{- | Count encoded bodies after the shared client resolves its request. The
+counter spans fresh-seed retries, which also consumed model input.
+-}
+meteredTlsManagerSettings :: IORef Int -> ManagerSettings
+meteredTlsManagerSettings total =
+    tlsManagerSettings
+        { managerModifyRequest = \request -> do
+            ready <- managerModifyRequest tlsManagerSettings request
+            bytes <- requestBodyBytes (requestBody ready)
+            modifyIORef' total (+ bytes)
+            pure ready
+        }
+
+requestBodyBytes :: RequestBody -> IO Int
+requestBodyBytes body = case body of
+    RequestBodyLBS bytes -> pure (fromIntegral (LBS.length bytes))
+    RequestBodyBS bytes -> pure (BS.length bytes)
+    RequestBodyBuilder bytes _ -> pure (fromIntegral bytes)
+    RequestBodyStream bytes _ -> pure (fromIntegral bytes)
+    RequestBodyStreamChunked _ -> unsupported
+    RequestBodyIO _ -> unsupported
+  where
+    unsupported =
+        ioError
+            ( userError
+                "gate payload meter: Ollama request body has no exact encoded length"
+            )
 
 maxEpisodeRetries :: Int
 maxEpisodeRetries = 2

@@ -45,7 +45,11 @@ import Eval.Episode (
     voidPair,
  )
 import Eval.GateMetrics (renderGateMetrics)
-import Eval.GateResult (GateResult (..), SearchMode (..))
+import Eval.GateResult (
+    ContextMetric (EncodedRequestBodyBytes),
+    GateResult (..),
+    SearchMode (..),
+ )
 import Eval.Ollama (ToolCall (..), Turn (..))
 import Eval.ReportGuard (guardReport)
 import Eval.TranscriptLint (lintLine, lintMessages)
@@ -208,6 +212,6 @@ spec = describe "Eval.Episode (R8.1-R8.3 measurement plumbing)" $ do
   where
     readFileT p = T.pack <$> readFile p
     gateRows task =
-        [ GateResult task 1 SearchOff True 2 1 "done" 0
-        , GateResult task 1 SearchOn True 2 1 "done" 0
+        [ GateResult task 1 SearchOff True 2 1 "done" 0 EncodedRequestBodyBytes
+        , GateResult task 1 SearchOn True 2 1 "done" 0 EncodedRequestBodyBytes
         ]

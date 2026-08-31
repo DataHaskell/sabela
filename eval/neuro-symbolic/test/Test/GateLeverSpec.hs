@@ -2,12 +2,26 @@
 
 module Test.GateLeverSpec (spec) where
 
+import Data.Aeson (encode, object, (.=))
+import Data.IORef (newIORef, readIORef)
 import qualified Data.Text as T
+import Network.HTTP.Client (
+    Request (requestBody),
+    RequestBody (RequestBodyLBS),
+    managerModifyRequest,
+    parseRequest,
+ )
 import Test.Hspec
 
 import Eval.Bench (ArmResult (..), Comparison (..), renderComparison)
-import Eval.Gate (GateLever (..), armOrder, searchEnv)
+import Eval.Gate (
+    GateLever (..),
+    armOrder,
+    meteredTlsManagerSettings,
+    searchEnv,
+ )
 import Eval.GateResult (SearchMode (..))
+import Eval.Ollama (OllamaReqOpts (..), chatRequestBody)
 
 spec :: Spec
 spec = describe "Eval.Gate.searchEnv" $ do
@@ -45,3 +59,49 @@ spec = describe "Eval.Gate.searchEnv" $ do
         it "does not label a significant delta" $
             renderComparison (cmp 3.0)
                 `shouldSatisfy` (not . T.isInfixOf "NOISE")
+
+    describe "gate model-request payload meter" $ do
+        it "counts encoded bytes, including the exact offered catalogue" $ do
+            withTotal <- newIORef 0
+            withoutTotal <- newIORef 0
+            request <- parseRequest "http://localhost:11434/api/chat"
+            let messages = [object ["role" .= ("user" :: T.Text), "content" .= ("λ" :: T.Text)]]
+                catalogue =
+                    [ object
+                        [ "type" .= ("function" :: T.Text)
+                        , "function"
+                            .= object
+                                [ "name" .= ("discover" :: T.Text)
+                                , "description" .= ("look up one fact" :: T.Text)
+                                ]
+                        ]
+                    ]
+                opts = OllamaReqOpts False (Just 7) "30m" 32768 0.4
+                withBody = encode (chatRequestBody opts "gpt-oss:20b" messages catalogue)
+                withoutBody = encode (chatRequestBody opts "gpt-oss:20b" messages [])
+                withSettings = meteredTlsManagerSettings withTotal
+                withoutSettings = meteredTlsManagerSettings withoutTotal
+            _ <-
+                managerModifyRequest
+                    withSettings
+                    request{requestBody = RequestBodyLBS withBody}
+            _ <-
+                managerModifyRequest
+                    withoutSettings
+                    request{requestBody = RequestBodyLBS withoutBody}
+            withBytes <- readIORef withTotal
+            withoutBytes <- readIORef withoutTotal
+            withBytes `shouldSatisfy` (> withoutBytes)
+
+        it "accumulates every request rather than measuring the final transcript" $ do
+            total <- newIORef 0
+            request <- parseRequest "http://localhost:11434/api/chat"
+            let settings = meteredTlsManagerSettings total
+                -- Aeson writes lambda as two UTF-8 bytes: 16 bytes, 15 characters.
+                firstBody = encode (object ["content" .= ("λ" :: T.Text)])
+                first = request{requestBody = RequestBodyLBS firstBody}
+                second = request{requestBody = RequestBodyLBS "1234567"}
+            _ <- managerModifyRequest settings first
+            _ <- managerModifyRequest settings second
+            measured <- readIORef total
+            measured `shouldBe` 23

@@ -19,7 +19,6 @@ library
     default-language: Haskell2010
     default-extensions: OverloadedStrings, LambdaCase, ScopedTypeVariables
     exposed-modules:  Eval.Ollama
-                      Eval.Provider
                       Eval.Preflight
                       Eval.Tools
                       Eval.Bench
@@ -38,17 +37,8 @@ library
                       Eval.ElisionLint
                       Eval.VerdictLint
                       Eval.VerifierLeakLint
-                      Eval.Discover
-                      Eval.Exemplars
-                      Eval.Sample
                       Eval.Agent
-                      Eval.HoleFit
-                      Eval.Messages
-                      Eval.Owned
                       Eval.Render
-                      Eval.Repair
-                      Eval.Salvage
-                      Eval.Scaffold
                       Eval.Transcript
                       Eval.Task
                       Eval.TaskSet
