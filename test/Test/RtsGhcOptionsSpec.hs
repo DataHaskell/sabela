@@ -57,7 +57,7 @@ spec = describe "rtsGhcOptions" $ do
     describe "the whole rendering" $
         it "pins the flags a freshly-detected 8-capability box gets" $
             rtsGhcOptions 8 Nothing
-                `shouldBe` "+RTS -N8 -A64m -n4m -H1G -M8g -RTS"
+                `shouldBe` "+RTS -N8 -A64m -n4m -H1G -T -M8g -RTS"
 
 boundedTotal :: Int -> IO ()
 boundedTotal caps =

@@ -1,0 +1,203 @@
+/* ── Diagnostics (cell errors) ─────────────── */
+/* One card per error: a header with a red dot, the gist and the location
+   on the right, then GHC's context lines in a hairline-edged block. */
+.cell-output.error,
+.output-error-trail {
+  color: var(--fg);
+  white-space: normal;
+  word-break: normal;
+}
+.output-error-trail {
+  padding-left: 0;
+}
+.diag + .diag {
+  margin-top: 8px;
+}
+.diag-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--fg-bright);
+  line-height: 1.5;
+}
+.diag-head.jump {
+  cursor: pointer;
+}
+.diag-head.jump:hover .diag-loc {
+  color: var(--accent);
+}
+.diag-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  align-self: center;
+  background: var(--red);
+}
+.diag-msg {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.diag-msg code,
+.diag-body code,
+.info-note code {
+  color: var(--syn-string);
+  font-family: var(--font-mono);
+}
+.diag-loc {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.diag-body {
+  margin: 4px 0 0 15px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diag-body .ctx {
+  color: var(--fg-dim);
+}
+.diag-body .ctx code {
+  color: var(--fg);
+}
+
+/* ── Info panel lookups ────────────────────── */
+.info-note {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--fg-dim);
+  white-space: pre-wrap;
+}
+.info-sig {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg-output);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--syn-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.info-sig .hl-keyword,
+.info-instance .hl-keyword {
+  color: var(--syn-keyword);
+}
+.info-sig .hl-type,
+.info-instance .hl-type {
+  color: var(--syn-keyword2);
+}
+.info-sig .hl-op,
+.info-instance .hl-op {
+  color: var(--syn-operator);
+}
+.info-sig .hl-string,
+.info-instance .hl-string {
+  color: var(--syn-string);
+}
+.info-sig .hl-num,
+.info-instance .hl-num {
+  color: var(--syn-number);
+}
+.info-sig .hl-comment,
+.info-instance .hl-comment {
+  color: var(--syn-comment);
+}
+.info-where {
+  margin: 6px 0 12px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: normal;
+}
+.info-where code {
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+.info-doc {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-bright);
+  white-space: normal;
+  max-width: 60ch;
+}
+.info-doc p {
+  margin: 0 0 8px;
+}
+.info-doc h1,
+.info-doc h2,
+.info-doc h3,
+.info-doc h4 {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.info-doc code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--syn-operator);
+}
+.info-doc pre {
+  margin: 6px 0 10px;
+  padding: 6px 10px;
+  background: var(--bg-output);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.info-doc pre code {
+  color: var(--syn-normal);
+  font-size: 12px;
+}
+.info-doc a {
+  color: var(--accent);
+}
+.info-doc em {
+  color: var(--fg);
+}
+.info-instances {
+  margin-top: 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: normal;
+}
+.info-instances summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.info-instances summary::before {
+  content: '▸ ';
+}
+.info-instances[open] summary::before {
+  content: '▾ ';
+}
+.info-instances summary:hover {
+  color: var(--fg);
+}
+.info-instance {
+  margin-top: 3px;
+  padding-left: 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

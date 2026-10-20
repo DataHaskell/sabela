@@ -19,10 +19,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 
-import Sabela.Compiled (CompilePlan (..))
 import Sabela.Deps (collectMetadata)
 import Sabela.Handlers.Compile (CompileOutcome (..), runCompilePhase)
-import Sabela.Handlers.Exec (runAndBroadcast)
 import Sabela.Handlers.Lifecycle (
     installAndRestartUnlocked,
     killAllSessionsUnlocked,
@@ -49,7 +47,6 @@ import Sabela.Reactivity (
     bridgeConsumers,
     changedBridgeValues,
     computeExecutionPlanIn,
-    computeFullExecutionPlan,
     computeRootedExecutionPlan,
     computeStaleExecutionPlanIn,
     haskellCodeCells,
@@ -114,9 +111,9 @@ runEnvNode app gen nb =
             then pure False
             else installAndRestartUnlocked app gen (collectMetadata nb)
 
-{- | An explicit Run of one cell. While the environment is current that means
-exactly that cell; once it is not, the kernel has to be rebuilt first, and a
-rebuilt kernel holds nobody's bindings — so the notebook runs, not just the cell.
+{- | An explicit Run of one cell forces that cell and is reactive beyond it:
+its consumers re-run in dependency order, exactly as after an edit. Once the
+environment is stale the kernel is rebuilt first, and the whole notebook runs.
 -}
 executeSingleCell :: App -> Int -> Int -> IO ()
 executeSingleCell app gen cid = do
@@ -124,35 +121,12 @@ executeSingleCell app gen cid = do
     nb <- readNotebook (appNotebook app)
     (env, mods) <- planInputs app nb
     let allCode = haskellCodeCells nb
-    case (env, mods) of
-        (EnvFresh, ModulesLoaded) ->
-            executeSingleCellPlan app gen cid allCode (computeFullExecutionPlan allCode nb)
-        _ ->
-            executePlan app gen nb (computeStaleExecutionPlanIn env mods allCode nb)
+        plan = case (env, mods) of
+            (EnvFresh, ModulesLoaded) ->
+                computeRootedExecutionPlan env mods (S.singleton cid) allCode nb
+            _ -> computeStaleExecutionPlanIn env mods allCode nb
+    executePlan app gen nb plan
     whenCurrentGen app gen $ broadcast app EvExecutionDone
-
-executeSingleCellPlan :: App -> Int -> Int -> [Cell] -> ExecutionPlan -> IO ()
-executeSingleCellPlan app gen cid allCode plan =
-    case find (\c -> cellId c == cid) allCode of
-        Just cell ->
-            whenCurrentGen app gen $
-                if cellInSkipSet cid plan
-                    then broadcastPlanErrors app plan (Just cid)
-                    else
-                        if M.member cid (cpCellModule (epCompilePlan plan))
-                            then do
-                                outcome <-
-                                    runCompilePhase app gen (epCompilePlan plan) [cell]
-                                runPostCompile app gen plan outcome []
-                            else runAndBroadcast app gen cell
-        Nothing -> pure ()
-
-cellInSkipSet :: Int -> ExecutionPlan -> Bool
-cellInSkipSet cid plan =
-    S.member cid $
-        epCycleIds plan
-            `S.union` M.keysSet (epRedefErrors plan)
-            `S.union` M.keysSet (cpViolations (epCompilePlan plan))
 
 executeRunAll :: App -> Int -> IO ()
 executeRunAll app gen = do

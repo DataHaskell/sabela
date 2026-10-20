@@ -98,6 +98,7 @@ import Test.OutcomeShapeSpec (outcomeShapeSpec)
 import Test.PostNudgeGateSpec (postNudgeGateSpec)
 import Test.ProseGateSpec (proseGateSpec)
 import Test.ProvenanceSpec (chainSpec, provenanceSpec, retroSpec)
+import Test.ProviderCheckSpec (providerCheckSpec)
 import Test.ReEchoFixtureSpec (reEchoFixtureSpec)
 import Test.ReadSourceHandoffSpec (readSourceHandoffSpec)
 import Test.RecallSpec (recallSpec)
@@ -160,6 +161,7 @@ main = hspec $ do
     transportSpec
     toolTimeoutSpec
     transportFailureSpec
+    providerCheckSpec
     futilitySpec
     renderOutcomeSpec
     recordFieldUseSpec

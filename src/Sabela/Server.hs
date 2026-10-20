@@ -52,6 +52,7 @@ import Sabela.Server.Ai (
     setAIConfigH,
  )
 import Sabela.Server.Api (FullAPI, fullProxy)
+import Sabela.Server.Bindings (bindingsH)
 import Sabela.Server.Dataset (datasetPreviewH)
 import Sabela.Server.Export (
     exportDashboardApp,
@@ -71,6 +72,7 @@ import Sabela.Server.Files (
     renameFileH,
     writeFileH,
  )
+import Sabela.Server.FrameQuery (frameQueryH)
 import Sabela.Server.Import (importUrlApp)
 import Sabela.Server.Notebook (
     cellsToSegments,
@@ -192,6 +194,8 @@ server app rn =
         :<|> renameFileH app
         :<|> completeH app
         :<|> infoH app
+        :<|> bindingsH app
+        :<|> frameQueryH app
         :<|> examplesH
         :<|> setCellLangH app
         :<|> setWidgetH app rn

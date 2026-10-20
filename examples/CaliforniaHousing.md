@@ -147,7 +147,7 @@ numerical attribute.
 import qualified DataFrame.Display.Web.Plot as Plt
 
 p <- Plt.allHistograms (df |> D.selectBy [D.byProperty D.isNumeric])
-displayHtml p
+html p
 ```
 
 > <!-- scripths:mime text/html -->
@@ -247,7 +247,7 @@ withPriceBuckets = df
 
 scatter <- Plt.scatter ((Plt.mkScatter (F.name longitude) (F.name latitude)){ Plt.color = Just "price_bucket" }) withPriceBuckets
 
-displayHtml scatter
+html scatter
 ```
 
 > <!-- scripths:mime text/html -->
@@ -329,7 +329,7 @@ baseChart =
         , chartSize = SizePixels 760 620
         }
 
-displayHtml (T.unpack (renderChartSvg baseChart))
+html (T.unpack (renderChartSvg baseChart))
 ```
 
 > <!-- scripths:mime text/html -->
@@ -21034,7 +21034,7 @@ spatialChart =
         , chartSize = SizePixels 760 620
         }
 
-displayHtml (T.unpack (renderChartSvg spatialChart))
+html (T.unpack (renderChartSvg spatialChart))
 ```
 
 > <!-- scripths:mime text/html -->
@@ -41839,7 +41839,7 @@ corrChart =
         , chartSize = SizePixels 820 760
         }
 
-displayHtml (T.unpack (renderChartSvg corrChart))
+html (T.unpack (renderChartSvg corrChart))
 ```
 
 > <!-- scripths:mime text/html -->

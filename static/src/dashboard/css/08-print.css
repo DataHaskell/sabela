@@ -96,12 +96,10 @@
     max-width: 100%;
   }
   .print-inline table {
-    border-collapse: separate;
-    border-spacing: 0;
+    border-collapse: collapse;
     width: 100%;
     margin: 10px 0;
     border: 1px solid var(--border);
-    border-radius: 6px;
     overflow: hidden;
     font-size: 10pt;
   }
@@ -117,7 +115,7 @@
   .print-inline th {
     background: var(--bg-muted);
     color: var(--fg-heading);
-    font-weight: 600;
+    font-weight: 500;
   }
   .print-inline tr:nth-child(even) td {
     background: rgba(var(--accent-rgb), 0.05);

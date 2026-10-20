@@ -1,103 +1,25 @@
-/* ── Signature motion: "sabela" = to respond ──────────────────────
-     A code cell emits an amber ripple down its spine the instant a
-     result lands, so reactive (upstream-driven) re-runs visibly cascade. */
+/* ── Response cue ───────────────────────────
+   A code cell's left edge flashes the caret colour the instant a result
+   lands, so reactive (upstream-driven) re-runs are visible as they cascade.
+   Flat and brief: no glow, no slide-in. */
 @keyframes cell-respond {
-  0% {
-    box-shadow: inset 3px 0 0 -1px rgba(var(--accent-rgb), 0);
-  }
-  18% {
-    box-shadow:
-      inset 3px 0 0 0 var(--accent),
-      -2px 0 24px -6px rgba(var(--accent-rgb), 0.6);
+  0%,
+  60% {
+    border-left-color: var(--accent);
   }
   100% {
-    box-shadow: inset 3px 0 0 -1px rgba(var(--accent-rgb), 0);
+    border-left-color: transparent;
   }
 }
 .cell.responding {
-  animation: cell-respond 1.05s cubic-bezier(0.22, 0.61, 0.36, 1);
+  animation: cell-respond 0.9s ease-out;
 }
-
-/* While a cell runs, a column of gold chevrons flows down its left spine —
-     the same dentelle motif as the toolbar frieze, animated as "response". */
-.cell.code.running::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  z-index: 6;
-  pointer-events: none;
-  background: var(--accent);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='6'%3E%3Cpath d='M0 0 L1.5 3 L3 0 Z' fill='%23000'/%3E%3C/svg%3E")
-    repeat-y;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='6'%3E%3Cpath d='M0 0 L1.5 3 L3 0 Z' fill='%23000'/%3E%3C/svg%3E")
-    repeat-y;
-  -webkit-mask-size: 3px 6px;
-  mask-size: 3px 6px;
-  animation: spine-flow 0.8s linear infinite;
-}
-@keyframes spine-flow {
-  to {
-    -webkit-mask-position: 0 6px;
-    mask-position: 0 6px;
-  }
-}
-
-/* One-time staggered reveal on first paint (gated by .intro, which the
-     renderer adds only on the initial load — never on reactive re-renders). */
-@keyframes cell-rise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.notebook.intro > * {
-  animation: cell-rise 0.5s both cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-.notebook.intro > *:nth-child(1) {
-  animation-delay: 0.03s;
-}
-.notebook.intro > *:nth-child(2) {
-  animation-delay: 0.07s;
-}
-.notebook.intro > *:nth-child(3) {
-  animation-delay: 0.11s;
-}
-.notebook.intro > *:nth-child(4) {
-  animation-delay: 0.15s;
-}
-.notebook.intro > *:nth-child(5) {
-  animation-delay: 0.19s;
-}
-.notebook.intro > *:nth-child(6) {
-  animation-delay: 0.23s;
-}
-.notebook.intro > *:nth-child(7) {
-  animation-delay: 0.27s;
-}
-.notebook.intro > *:nth-child(8) {
-  animation-delay: 0.31s;
-}
-.notebook.intro > *:nth-child(9) {
-  animation-delay: 0.35s;
-}
-.notebook.intro > *:nth-child(10) {
-  animation-delay: 0.39s;
-}
-.notebook.intro > *:nth-child(n + 11) {
-  animation-delay: 0.42s;
+.cell.code.running {
+  border-left-color: var(--accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cell.responding,
-  .cell.code.running::before,
-  .notebook.intro > * {
+  .cell.responding {
     animation: none !important;
   }
 }

@@ -27,7 +27,12 @@ import Sabela.Model (
     NotebookEvent (..),
     SessionStatus (..),
  )
-import Sabela.Output (displayPrelude)
+import Sabela.Output (displayPrelude, incompletePatternsAsErrors)
+import Sabela.Output.Optional (
+    OptionalDisplay (..),
+    optionalDisplays,
+    wantedBy,
+ )
 import Sabela.Session (
     Session,
     clearErrCallback,
@@ -118,6 +123,8 @@ injectPrelude app sess sig = do
             void (try (closeSession sess) :: IO (Either SomeException ()))
             pure False
         Right _ -> do
+            offerOptionalDisplays app (ghciBackend sess)
+            armCellDiagnostics (ghciBackend sess)
             captureBindingsBaseline sess
             installHaskellSession (appSessions app) (ghciBackend sess) sig
             -- The epoch only moves here, so this is the one place a client can
@@ -137,7 +144,35 @@ loadSabelaPrelude app = do
                     app
                     backend
                     ("Kernel crashed during prelude: " <> T.pack (show e))
-            Right _ -> pure ()
+            Right _ -> offerOptionalDisplays app backend >> armCellDiagnostics backend
+
+{- | Flags that judge notebook cells but not the harness code loaded before
+them, so they go on last. A failure to set them must not take the kernel down.
+-}
+armCellDiagnostics :: ST.SessionBackend -> IO ()
+armCellDiagnostics backend =
+    void
+        ( try (ST.sbRunBlock backend incompletePatternsAsErrors) ::
+            IO (Either SomeException (Text, Text))
+        )
+
+{- | Offers each display the notebook can take. Offered, not required: a
+block names a package's own types, so a session without that package must not
+be brought down by the block failing.
+-}
+offerOptionalDisplays :: App -> ST.SessionBackend -> IO ()
+offerOptionalDisplays app backend = do
+    nb <- readNotebook (appNotebook app)
+    forM_ (filter (wantedBy nb) optionalDisplays) $ \od -> do
+        result <- try (ST.sbRunBlock backend (odDefs od))
+        case result of
+            Left (e :: SomeException) -> unavailable od (T.pack (show e))
+            Right (_, err)
+                | not (T.null (T.strip err)) -> unavailable od (T.strip err)
+                | otherwise -> pure ()
+  where
+    unavailable od detail =
+        debugLog app ("[handler] " <> odName od <> " display unavailable: " <> detail)
 
 handleKernelCrash :: App -> ST.SessionBackend -> Text -> IO ()
 handleKernelCrash app crashed msg = do

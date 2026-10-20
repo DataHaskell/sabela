@@ -102,7 +102,7 @@ compileChanged ::
     S.Set Text ->
     IO CompileOutcome
 compileChanged app gen backend cplan affectedCells changed orphans = withBuilding app $ do
-    let projDir = envTmpDir (appEnv app) </> "repl-project"
+    let projDir = envReplProjectDir (appEnv app)
     forM_ (M.toList changed) $ \(name, src) -> do
         let path = projDir </> moduleFilePath name
         createDirectoryIfMissing True (takeDirectory path)

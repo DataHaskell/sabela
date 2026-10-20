@@ -62,7 +62,7 @@ rtsGhcOptions caps mHeap =
         , show n
         , " -A"
         , show (nurseryMb n)
-        , "m -n4m -H1G"
+        , "m -n4m -H1G -T"
         , heap
         , " -RTS"
         ]

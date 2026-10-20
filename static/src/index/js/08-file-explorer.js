@@ -48,6 +48,12 @@ function applyFileFilter() {
   });
 }
 
+// A folder row's glyph pair: the expand chevron, then the folder.
+function treeGlyph(open) {
+  const chev = open ? 'i-chev-down' : 'i-chev-right';
+  return `<svg class="icon-svg chev"><use href="#${chev}"/></svg><svg class="icon-svg"><use href="#i-folder"/></svg>`;
+}
+
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('collapsed');
 }
@@ -72,23 +78,10 @@ async function loadFileTree(path, container, depth) {
       row.appendChild(indent);
 
       const icon = document.createElement('span');
-      icon.className = 'icon';
-      if (entry.feIsDir) {
-        icon.className += ' dir';
-        icon.textContent = expandedDirs.has(entry.fePath) ? '▾' : '▸';
-      } else {
-        const ext = entry.feName.split('.').pop();
-        if (ext === 'md') {
-          icon.className += ' md';
-          icon.textContent = '◇';
-        } else if (ext === 'hs') {
-          icon.className += ' hs';
-          icon.textContent = 'λ';
-        } else {
-          icon.className += ' file';
-          icon.textContent = '·';
-        }
-      }
+      icon.className = 'icon' + (entry.feIsDir ? ' dir' : ' file');
+      icon.innerHTML = entry.feIsDir
+        ? treeGlyph(expandedDirs.has(entry.fePath))
+        : '<svg class="icon-svg"><use href="#i-file-text"/></svg>';
       row.appendChild(icon);
 
       const name = document.createElement('span');
@@ -103,10 +96,10 @@ async function loadFileTree(path, container, depth) {
           if (expandedDirs.has(entry.fePath)) {
             expandedDirs.delete(entry.fePath);
             childContainer.innerHTML = '';
-            icon.textContent = '▸';
+            icon.innerHTML = treeGlyph(false);
           } else {
             expandedDirs.add(entry.fePath);
-            icon.textContent = '▾';
+            icon.innerHTML = treeGlyph(true);
             await loadFileTree(entry.fePath, childContainer, depth + 1);
           }
           persistExpandedDirs();

@@ -47,7 +47,7 @@ extractFromModule m =
         defs = S.unions (map topLevelDefsFromDecl topDecls)
         rawUses = S.unions (map declFreeVars topDecls)
         instUses = S.unions (map instanceTypeUses insts)
-        conUses = patternConUses m
+        conUses = patternConUses m `S.union` recordConUses m
         tyUses = typeNameUses m
         uses =
             S.unions [rawUses, instUses, conUses, tyUses]
@@ -67,6 +67,14 @@ patternConUses m =
     S.fromList
         [ rdrText (unLoc lcon)
         | Hs.ConPat _ lcon _ <- universeBi m :: [Hs.Pat Hs.GhcPs]
+        ]
+
+-- | Constructors applied with record syntax: @User { name = n }@ depends on @User@.
+recordConUses :: Hs.HsModule Hs.GhcPs -> Set Text
+recordConUses m =
+    S.fromList
+        [ rdrText (unLoc lcon)
+        | Hs.RecordCon _ lcon _ <- universeBi m :: [Hs.HsExpr Hs.GhcPs]
         ]
 
 -- | Type-level names anywhere: signatures, annotations, deriving clauses.
@@ -195,7 +203,9 @@ bindBinders = \case
 tyClBinders :: Hs.TyClDecl Hs.GhcPs -> Set Text
 tyClBinders = \case
     Hs.DataDecl{Hs.tcdLName = ln, Hs.tcdDataDefn = ddef} ->
-        S.insert (rdrText (unLoc ln)) (dataDefnConstructors ddef)
+        S.insert
+            (rdrText (unLoc ln))
+            (dataDefnConstructors ddef `S.union` dataDefnFields ddef)
     Hs.SynDecl{Hs.tcdLName = ln} ->
         S.singleton (rdrText (unLoc ln))
     Hs.ClassDecl{Hs.tcdLName = ln, Hs.tcdSigs = sigs} ->
@@ -205,6 +215,14 @@ tyClBinders = \case
 dataDefnConstructors :: Hs.HsDataDefn Hs.GhcPs -> Set Text
 dataDefnConstructors ddef =
     S.unions [conDeclNames (unLoc lc) | lc <- toList (Hs.dd_cons ddef)]
+
+-- | Record field selectors are bindings of the data cell, like its constructors.
+dataDefnFields :: Hs.HsDataDefn Hs.GhcPs -> Set Text
+dataDefnFields ddef =
+    S.fromList
+        [ rdrText (unLoc (Hs.foLabel fo))
+        | fo <- universeBi ddef :: [Hs.FieldOcc Hs.GhcPs]
+        ]
 
 conDeclNames :: Hs.ConDecl Hs.GhcPs -> Set Text
 conDeclNames = \case

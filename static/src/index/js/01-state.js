@@ -2,6 +2,7 @@ const editors = {}; // cellId → CodeMirror instance
 const cellErrors = {}; // cellId → [CellError]
 const cellWarnings = {}; // cellId → [CellError] (non-fatal diagnostics)
 const collapsedCells = new Set(); // cellId → collapsed
+const collapsedOutputs = new Set(); // cellId → output collapsed
 let notebook = null;
 let evtSource = null;
 let activeTab = 'info';
@@ -15,10 +16,28 @@ let unsavedChanges = false;
 const dirtyCells = new Set();
 const AUTOSAVE_INTERVAL_MS = 10000;
 
-// Set the toolbar title: the warm-lambda brand mark followed by the notebook
-// title (appended as a text node, so titles are never interpreted as HTML).
+// Set the open tab's title and mirror it into the status bar (text nodes
+// only, so titles are never interpreted as HTML).
 function setToolbarTitle(title) {
   const el = document.getElementById('toolbar-title');
-  el.innerHTML = '<span class="lam">λ</span> ';
-  el.append(title);
+  el.textContent = title;
+  const sb = document.getElementById('sb-file-name');
+  if (sb) sb.textContent = title;
+}
+
+// Status bar readouts: the focused editor's caret and the notebook's size.
+function updateCursorStatus(cm) {
+  const el = document.getElementById('sb-pos');
+  if (!el || !cm) return;
+  const c = cm.getCursor();
+  el.textContent = `line ${c.line + 1} : col ${c.ch + 1}`;
+  const cellEl = cm.getWrapperElement().closest('.cell');
+  const total = notebook ? notebook.nbCells.length : 0;
+  if (cellEl && cellEl.dataset.num && total) setCellCountStatus(total, Number(cellEl.dataset.num));
+}
+function setCellCountStatus(n, current) {
+  const el = document.getElementById('sb-cells');
+  if (!el) return;
+  if (current) el.textContent = `Cell ${current} of ${n}`;
+  else el.textContent = n === 1 ? '1 cell' : `${n} cells`;
 }

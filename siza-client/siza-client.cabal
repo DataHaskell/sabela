@@ -356,6 +356,7 @@ test-suite siza-client-test
                       Test.ProvenanceSpec
                       Test.CrossSeamSpec
                       Test.FutilitySpec
+                      Test.ProviderCheckSpec
                       Test.TransportFailureSpec
                       Test.TransportSpec
                       Test.HubTokenSpec

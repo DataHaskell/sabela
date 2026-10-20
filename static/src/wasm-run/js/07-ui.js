@@ -12,34 +12,32 @@
 // and a status line.
 
 // Styles for the injected controls — the Sabela editor's cell shape (card,
-// gutter with cell number + `hs` chip, run button, top-bordered output) in a LIGHT
-// EMBER palette: warm cream card, dark-brown text, ember-orange accents. Tokens
-// are scoped to .swasm-cell so they don't leak into the export page. (--sg, the
-// run-hover/accent, is ember here, not green.)
+// gutter with cell number + lang, run button, top-bordered output) in the
+// editor's Summer (light) palette, flat and square. Tokens are scoped to
+// .swasm-cell so they don't leak into the export page.
 function injectRunStyles() {
   if (document.getElementById('swasm-style')) return;
   const s = document.createElement('style');
   s.id = 'swasm-style';
   s.textContent = [
-    '.swasm-cell{--sb:#fbf3e4;--so:#f4e9d3;--sf:#34291a;--sd:#927f5f;--sbd:#e7d6b6;',
-    '--sac:#cf7a2a;--sad:#f0e2c5;--sy:#cf7a2a;--sg:#cf7a2a;--sr:#c0573f;',
+    '.swasm-cell{--sb:#fbfbfb;--so:#f2f2f2;--sf:#181818;--sd:#808080;--sbd:#e8e8e8;',
+    '--sac:#fc1785;--sad:#f2f2f2;--sy:#fb6620;--sg:#22a21f;--sr:#d9262a;',
     "--sm:'JetBrains Mono',ui-monospace,SFMono-Regular,monospace;",
     'position:relative;background:var(--sb);border:1px solid var(--sbd);',
-    'border-radius:8px;overflow:hidden;margin:6px 0;box-shadow:0 1px 3px rgba(90,55,20,.08)}',
+    'overflow:hidden;margin:6px 0}',
     '.swasm-cell:hover{border-color:var(--sad)}',
     '.swasm-cell.running{border-color:var(--sy)}',
     '.swasm-cell.has-error{border-color:var(--sr)}',
     '.swasm-gutter{display:flex;align-items:center;gap:8px;padding:6px 12px 0;',
     'font-family:var(--sm);font-size:10px;color:var(--sd)}',
     '.swasm-num{min-width:14px;text-align:right;color:var(--sd)}',
-    '.swasm-lang{background:var(--sad);color:var(--sd);padding:1px 5px;border-radius:2px;',
-    'letter-spacing:.5px;text-transform:uppercase}',
+    '.swasm-lang{color:var(--sd)}',
     '.swasm-status{color:var(--sy)}',
     // Always visible (not hover-revealed like the editor) — this is a runner, so
     // the run affordance stays in the cell at full opacity.
     '.swasm-actions{position:absolute;top:6px;right:8px;z-index:5}',
     '.swasm-run{display:inline-flex;align-items:center;gap:4px;font-family:var(--sm);font-size:10px;',
-    'padding:3px 7px;border:1px solid var(--sbd);border-radius:4px;background:var(--sb);',
+    'padding:3px 7px;border:1px solid var(--sbd);background:var(--sb);',
     'color:var(--sd);cursor:pointer;line-height:1}',
     '.swasm-run svg{width:12px;height:12px}',
     '.swasm-run:hover{color:var(--sg);border-color:var(--sg)}',
@@ -55,8 +53,8 @@ function injectRunStyles() {
     '.swasm-out .cell-output{white-space:pre-wrap;font-family:inherit;color:var(--sf)}',
     '.swasm-out .cell-output.error{color:var(--sr)}',
     '.swasm-fork{font-size:12.5px;color:var(--sd)}',
-    '.swasm-fork-btn{cursor:pointer;border:0;border-radius:4px;padding:3px 10px;margin-left:6px;',
-    'background:var(--sac);color:#2a2017;font-family:var(--sm);font-size:11px;font-weight:600}',
+    '.swasm-fork-btn{cursor:pointer;border:1px solid var(--sbd);padding:3px 10px;margin-left:6px;',
+    'background:transparent;color:var(--sac);font-family:var(--sm);font-size:11px}',
   ].join('');
   document.head.appendChild(s);
 }

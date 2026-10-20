@@ -31,10 +31,10 @@ The single verb `display` shows the control **and** returns the current value:
 A range slider that re-runs the cell as the user drags (debounced to avoid flooding).
 
 ```haskell
-c <- display (slider "celsius" (20 :: Int) (-40) 120)
+c <- mkWidget (slider "celsius" (20 :: Int) (-40) 120)
 let f = c * 9 `div` 5 + 32; k = c + 273
 
-displayHtml $ unlines
+html $ unlines
   [ "<p style='font-size:1.4em;margin:4px 0'><b>" ++ show c ++ " &#8451;</b></p>"
   , "<p style='color:#888;margin:4px 0'>" ++ show f ++ " &#8457; &nbsp; " ++ show k ++ " K</p>"
   ]
@@ -57,14 +57,14 @@ displayHtml $ unlines
 A select control that re-runs on each change.
 
 ```haskell
-shape <- display (dropdown "shape" ["Circle", "Square", "Triangle"] "Circle")
+shape <- mkWidget (dropdown "shape" ["Circle", "Square", "Triangle"] "Circle")
 
 let svg = case shape of
       "Circle"   -> "<circle cx='60' cy='60' r='50' fill='#3498db'/>"
       "Square"   -> "<rect x='10' y='10' width='100' height='100' rx='4' fill='#e74c3c'/>"
       _          -> "<polygon points='60,10 110,110 10,110' fill='#2ecc71'/>"
 
-displayHtml $ "<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>" ++ svg ++ "</svg>"
+html $ "<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>" ++ svg ++ "</svg>"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -84,13 +84,13 @@ displayHtml $ "<svg width='120' height='120' xmlns='http://www.w3.org/2000/svg'>
 A button that re-runs on each click. `Nothing` on the first run (before clicking); `Just ()` after.
 
 ```haskell
-clicked <- display (button "Roll dice" "go")
+clicked <- mkWidget (button "Roll dice" "go")
 
 let result = case clicked of
       Nothing -> "Click the button to roll."
       Just () -> "You rolled: " ++ show (42 :: Int)
 
-displayHtml $ "<p>" ++ result ++ "</p>"
+html $ "<p>" ++ result ++ "</p>"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -107,12 +107,12 @@ displayHtml $ "<p>" ++ result ++ "</p>"
 ```
 
 ```haskell
-verbose <- display (checkbox "verbose" False)
-n <- display (slider "n" (1000 :: Int) 1 10000)
+verbose <- mkWidget (checkbox "verbose" False)
+n <- mkWidget (slider "n" (1000 :: Int) 1 10000)
 
 if verbose then displayMarkdown ("Computing sum from 1 to " ++ show n) else return ()
 
-displayHtml $ "<p>Result: <b>" ++ show (sum [1..n]) ++ "</b></p>"
+html $ "<p>Result: <b>" ++ show (sum [1..n]) ++ "</b></p>"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -131,9 +131,9 @@ displayHtml $ "<p>Result: <b>" ++ show (sum [1..n]) ++ "</b></p>"
 ```
 
 ```haskell
-name <- display (textInput "name" "World")
+name <- mkWidget (textInput "name" "World")
 
-displayHtml $ "<h2>Hello, " ++ name ++ "!</h2>"
+html $ "<h2>Hello, " ++ name ++ "!</h2>"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -158,9 +158,9 @@ of thousands of points (downsample beyond ~50k).
 
 ```haskell
 let pts = [(x, sin x + x / 6) | x <- map (/ 4) [0 .. 80 :: Double]]
-sel'' <- display (scatterSelect "wave" pts)
+sel'' <- mkWidget (scatterSelect "wave" pts)
 
-displayHtml $ "<p><b>" ++ show (length sel'') ++ "</b> selected: "
+html $ "<p><b>" ++ show (length sel'') ++ "</b> selected: "
            ++ show (take 12 sel'') ++ "</p>"
 ```
 
@@ -275,7 +275,7 @@ overplotting, and add a title/axis labels:
 let opts = defScatter { soColor = "tomato", soAlpha = 0.3, soRadius = 3
                       , soTitle = "Income vs value"
                       , soXLabel = "median income", soYLabel = "house value" }
-sel <- display (scatterSelectWith "wave2" opts pts)
+sel <- mkWidget (scatterSelectWith "wave2" opts pts)
 ```
 
 > <!-- scripths:mime text/html -->
@@ -367,7 +367,7 @@ and draws a colourbar:
 ```haskell
 sizes = map snd pts   -- [Double], one colour value per point
 
-sel' <- display (scatterSelectWith "wave" defScatter { soColorBy = sizes } pts)
+sel' <- mkWidget (scatterSelectWith "wave" defScatter { soColorBy = sizes } pts)
 
 take 5 sel'
 ```
@@ -479,7 +479,7 @@ Then select-then-filter is two cells. The plot binds `sel`:
 ```haskell
 let pts' = zip (D.columnAsList (F.col @Double "median_income")     df)
               (D.columnAsList (F.col @Double "median_house_value") df)
-sel''' <- display (scatterSelect "housing" pts')
+sel''' <- mkWidget (scatterSelect "housing" pts')
 
 print sel'''
 ```
@@ -575,7 +575,7 @@ print sel'''
 import DataFrame.Operations.Subset (selectRows)
 
 let chosen = selectRows sel''' df
-displayMarkdown $ "Selected **" ++ show (D.nRows chosen) ++ "** of "
+md $ "Selected **" ++ show (D.nRows chosen) ++ "** of "
                ++ show (D.nRows df) ++ " rows"
 ```
 
@@ -596,9 +596,9 @@ See `examples/scatter-selection.md` for a complete, runnable version.
 **`fmap`** — derive a value from one widget without binding:
 
 ```haskell
-f' <- display (fmap (\c -> c * 9 `div` 5 + 32) (slider "celsius" (20 :: Int) (-40) 120))
+f' <- mkWidget (fmap (\c -> c * 9 `div` 5 + 32) (slider "celsius" (20 :: Int) (-40) 120))
 
-displayHtml $ "<p>" ++ show f' ++ " &#8457;</p>"
+html $ "<p>" ++ show f' ++ " &#8457;</p>"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -610,9 +610,9 @@ displayHtml $ "<p>" ++ show f' ++ " &#8457;</p>"
 **`liftA2`** — combine two widgets:
 
 ```haskell
-area <- display (liftA2 (*) (slider "width" (10 :: Int) 1 100) (slider "height" (10 :: Int) 1 100))
+area <- mkWidget (liftA2 (*) (slider "width" (10 :: Int) 1 100) (slider "height" (10 :: Int) 1 100))
 
-displayHtml $ "<p>Area: <b>" ++ show area ++ "</b></p>"
+html $ "<p>Area: <b>" ++ show area ++ "</b></p>"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -626,9 +626,9 @@ displayHtml $ "<p>Area: <b>" ++ show area ++ "</b></p>"
 **`constInput`** — a fixed value with no control:
 
 ```haskell
-x <- display (constInput (42 :: Int))
+x <- mkWidget (constInput (42 :: Int))
 
-displayHtml $ "<p>Always: " ++ show x ++ "</p>"
+html $ "<p>Always: " ++ show x ++ "</p>"
 ```
 
 > <!-- scripths:mime text/html -->
@@ -643,7 +643,7 @@ import qualified DataFrame as D
 import qualified Data.Text as T
 import DataFrame ((|>))
 
-v <- display (slider "rows" (10 :: Int) 1 20)
+v <- mkWidget (slider "rows" (10 :: Int) 1 20)
 
 D.empty |> D.insert "x" [1..100]
         |> D.insert "y" [101..200]

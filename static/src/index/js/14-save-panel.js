@@ -86,6 +86,10 @@ function switchTab(tab, opts) {
   // Widen panel for chat via a class, so .collapsed can still override the
   // width when the drawer is toggled shut (inline styles would not let it).
   document.getElementById('right-panel').classList.toggle('chat-active', tab === 'chat');
+  if (tab === 'info') {
+    applyBindingsCollapsed();
+    scheduleBindingsRefresh(0);
+  }
   if (tab === 'chat') {
     updateChatContext().then(() => {
       if (!aiConfigured && !(opts && opts.quiet)) openAIModal();

@@ -6,13 +6,8 @@
     <title>Sabela Notebook</title>
     <!-- include: ../shared/favicon.html -->
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/nord.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/idea.min.css" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css"
-    />
+    <link rel="stylesheet" href="../vendor/codemirror/codemirror.min.css" />
+    <link rel="stylesheet" href="../vendor/codemirror/show-hint.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
     <script src="js/boot-theme.js"></script>
     <link rel="stylesheet" href="css/01-base.css" />
@@ -29,66 +24,13 @@
     <link rel="stylesheet" href="css/12-signature.css" />
     <link rel="stylesheet" href="css/14-kernel.css" />
     <link rel="stylesheet" href="css/15-dataset.css" />
+    <link rel="stylesheet" href="css/16-bindings.css" />
+    <link rel="stylesheet" href="css/17-diagnostics.css" />
     <link rel="stylesheet" href="css/13-responsive.css" />
   </head>
   <body>
     <!-- include: html/icons.svg -->
     <!-- include: html/modals.html -->
-    <div class="toolbar">
-      <button class="icon-btn" id="btn-sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle file explorer">
-        <svg class="icon-svg"><use href="#i-menu" /></svg>
-      </button>
-      <span class="toolbar-title-wrap">
-        <span class="toolbar-title" id="toolbar-title">
-          <span class="lam">λ</span>
-          Sabela
-        </span>
-        <span class="dirty-dot" id="dirty-dot" title="Unsaved changes"></span>
-      </span>
-      <span class="spacer"></span>
-      <button
-        class="icon-btn"
-        id="btn-run-mode"
-        onclick="toggleRunMode()"
-        title="Reactive: edits run automatically. Click to defer runs."
-        aria-label="Toggle run mode"
-      >
-        <svg class="icon-svg"><use href="#i-reactive" /></svg>
-      </button>
-      <button class="primary" id="btn-run-all" onclick="runAll()" aria-label="Run all cells">
-        <svg class="icon-svg" style="vertical-align: -2px"><use href="#i-play" /></svg>
-        <span class="btn-label" id="run-all-label">Run all</span>
-      </button>
-      <button
-        class="icon-btn"
-        id="btn-stop"
-        style="display: none"
-        onclick="interruptKernel()"
-        title="Stop running cell"
-        aria-label="Stop running cell"
-      >
-        <svg class="icon-svg"><use href="#i-square" /></svg>
-      </button>
-      <button class="palette-trigger" id="btn-palette" onclick="openPalette()" aria-label="Open command palette">
-        <svg class="icon-svg"><use href="#i-search" /></svg>
-        <span class="palette-trigger-label">Search commands…</span>
-        <kbd id="kbd-palette">Ctrl+K</kbd>
-      </button>
-      <div class="toolbar-dropdown" id="overflow-menu">
-        <button class="icon-btn" onclick="toggleDropdown(this)" aria-label="More commands" title="More">
-          <svg class="icon-svg"><use href="#i-more" /></svg>
-        </button>
-        <div class="toolbar-dropdown-menu" id="overflow-menu-list"></div>
-      </div>
-      <button class="icon-btn" id="theme-toggle" onclick="openThemePicker()" title="Theme" aria-label="Choose a theme">
-        <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
-      </button>
-      <span class="save-indicator" id="save-indicator">saved ✓</span>
-      <span class="sse-dot" id="sse-dot" title="Event stream connection"></span>
-      <span class="kernel-chip cold" id="kernel-chip" onclick="toggleKernelLog()" title="Kernel state">no kernel</span>
-      <span class="status" id="status"></span>
-    </div>
-
     <div class="main-layout">
       <!-- Left sidebar: file explorer -->
       <div class="sidebar" id="sidebar">
@@ -107,27 +49,6 @@
           </button>
         </div>
         <div class="side-pane" id="side-pane-files">
-          <div class="sidebar-header">
-            <span>files</span>
-            <button onclick="startNewFile()" title="New file" aria-label="New file">
-              <svg class="icon-svg small"><use href="#i-file-plus" /></svg>
-            </button>
-            <button onclick="startNewFolder()" title="New folder" aria-label="New folder">
-              <svg class="icon-svg small"><use href="#i-folder-plus" /></svg>
-            </button>
-            <button onclick="startUpload('.')" title="Upload files" aria-label="Upload files">
-              <svg class="icon-svg small"><use href="#i-upload" /></svg>
-            </button>
-            <button onclick="startImportUrl('.')" title="Import from URL" aria-label="Import from URL">
-              <svg class="icon-svg small"><use href="#i-link" /></svg>
-            </button>
-            <button onclick="collapseAllDirs()" title="Collapse all" aria-label="Collapse all folders">
-              <svg class="icon-svg small"><use href="#i-fold" /></svg>
-            </button>
-            <button onclick="refreshFiles()" title="Refresh" aria-label="Refresh file tree">
-              <svg class="icon-svg small"><use href="#i-refresh" /></svg>
-            </button>
-          </div>
           <div class="sidebar-filter">
             <input
               type="text"
@@ -141,25 +62,107 @@
           </div>
           <div id="new-item-input" style="display: none"></div>
           <div class="file-tree" id="file-tree"></div>
-        </div>
-        <div class="side-pane" id="side-pane-data" style="display: none">
-          <div class="sidebar-header">
-            <span>datasets</span>
-            <button onclick="startUpload('.')" title="Upload files" aria-label="Upload a dataset">
-              <svg class="icon-svg small"><use href="#i-upload" /></svg>
+          <div class="sidebar-toolbar" role="toolbar" aria-label="File actions">
+            <button onclick="startNewFile()" title="New file" aria-label="New file">
+              <svg class="icon-svg"><use href="#i-file-plus" /></svg>
             </button>
-            <button onclick="loadDataFiles()" title="Refresh" aria-label="Refresh dataset list">
-              <svg class="icon-svg small"><use href="#i-refresh" /></svg>
+            <button onclick="startNewFolder()" title="New folder" aria-label="New folder">
+              <svg class="icon-svg"><use href="#i-folder-plus" /></svg>
+            </button>
+            <button onclick="startUpload('.')" title="Upload files" aria-label="Upload files">
+              <svg class="icon-svg"><use href="#i-upload" /></svg>
+            </button>
+            <button onclick="startImportUrl('.')" title="Import from URL" aria-label="Import from URL">
+              <svg class="icon-svg"><use href="#i-link" /></svg>
+            </button>
+            <button onclick="collapseAllDirs()" title="Collapse all" aria-label="Collapse all folders">
+              <svg class="icon-svg"><use href="#i-fold" /></svg>
+            </button>
+            <button onclick="refreshFiles()" title="Refresh" aria-label="Refresh file tree">
+              <svg class="icon-svg"><use href="#i-refresh" /></svg>
             </button>
           </div>
+        </div>
+        <div class="side-pane" id="side-pane-data" style="display: none">
           <div class="data-list" id="data-list"></div>
           <div class="data-detail" id="data-detail"></div>
+          <div class="sidebar-toolbar" role="toolbar" aria-label="Dataset actions">
+            <button onclick="startUpload('.')" title="Upload files" aria-label="Upload a dataset">
+              <svg class="icon-svg"><use href="#i-upload" /></svg>
+            </button>
+            <button onclick="loadDataFiles()" title="Refresh" aria-label="Refresh dataset list">
+              <svg class="icon-svg"><use href="#i-refresh" /></svg>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Notebook area -->
-      <div class="notebook-area" id="notebook-area">
-        <div class="notebook" id="notebook"></div>
+      <!-- Document column: the tab bar sits over the notebook only, so the
+           tree view runs the full height on the left. -->
+      <div class="doc-column">
+        <div class="toolbar">
+          <button
+            class="tbtn phone-only"
+            id="btn-sidebar-toggle"
+            onclick="toggleSidebar()"
+            aria-label="Toggle file explorer"
+          >
+            Files
+          </button>
+          <span class="toolbar-title-wrap">
+            <span class="toolbar-title" id="toolbar-title">Sabela</span>
+            <span class="dirty-dot" id="dirty-dot" title="Unsaved changes"></span>
+          </span>
+          <span class="spacer"></span>
+          <button
+            class="icon-btn"
+            id="btn-run-mode"
+            onclick="toggleRunMode()"
+            title="Reactive: edits run automatically. Click to defer runs."
+            aria-label="Toggle run mode"
+          >
+            <svg class="icon-svg"><use href="#i-reactive" /></svg>
+          </button>
+          <button class="palette-trigger" id="btn-palette" onclick="openPalette()" aria-label="Open command palette">
+            <span class="palette-trigger-label">Commands</span>
+            <kbd id="kbd-palette">Ctrl+K</kbd>
+          </button>
+          <div class="toolbar-dropdown" id="overflow-menu">
+            <button class="tbtn" onclick="toggleDropdown(this)" aria-label="More commands" title="More">More</button>
+            <div class="toolbar-dropdown-menu" id="overflow-menu-list"></div>
+          </div>
+          <button class="tbtn" id="theme-toggle" onclick="openThemePicker()" title="Theme" aria-label="Choose a theme">
+            Theme
+          </button>
+        </div>
+        <div class="nb-toolbar" role="toolbar" aria-label="Notebook actions">
+          <button onclick="addCellAtEnd('CodeCell')">+ Code</button>
+          <button onclick="addCellAtEnd('ProseCell')">+ Markdown</button>
+          <span class="nb-sep"></span>
+          <button class="primary" id="btn-run-all" onclick="runAll()" aria-label="Run all cells">
+            <svg class="icon-svg small"><use href="#i-play" /></svg>
+            <span id="run-all-label">Run all</span>
+          </button>
+          <button onclick="restartKernel()" title="Restart the kernel">
+            <svg class="icon-svg small"><use href="#i-rotate" /></svg>
+            Restart
+          </button>
+          <button onclick="resetNotebook()" title="Restart the kernel and clear every output">
+            <svg class="icon-svg small"><use href="#i-circle-slash" /></svg>
+            Clear all outputs
+          </button>
+          <button id="btn-stop" style="display: none" onclick="interruptKernel()" title="Stop running cell">
+            <svg class="icon-svg small"><use href="#i-square" /></svg>
+            Stop
+          </button>
+          <span class="spacer"></span>
+          <span class="kernel-chip cold" id="kernel-chip" onclick="toggleKernelLog()" title="Kernel state">
+            no kernel
+          </span>
+        </div>
+        <div class="notebook-area" id="notebook-area">
+          <div class="notebook" id="notebook"></div>
+        </div>
       </div>
 
       <!-- Right panel: info + examples -->
@@ -201,20 +204,41 @@
           <button class="panel-tab-close" onclick="closePanel()" aria-label="Close panel" title="Close panel">×</button>
         </div>
         <div class="panel-content" id="panel-info" role="tabpanel" aria-labelledby="tab-info" style="display: block">
+          <div class="bindings" id="bindings">
+            <div class="bindings-head" onclick="toggleBindings()">
+              <span id="bindings-chevron">▾</span>
+              <span class="bindings-title">Bindings</span>
+              <span class="bindings-meta" id="bindings-meta"></span>
+              <button
+                onclick="
+                  event.stopPropagation();
+                  scheduleBindingsRefresh(0);
+                "
+                title="Refresh bindings and heap stats"
+                aria-label="Refresh bindings"
+              >
+                refresh
+              </button>
+            </div>
+            <div id="bindings-body">
+              <div class="bindings-memory" id="bindings-memory"></div>
+              <div class="bindings-list" id="bindings-list"></div>
+            </div>
+          </div>
           <div class="info-search">
             <input
               type="text"
               id="info-input"
               placeholder="Type name, e.g. map"
               aria-label="Haskell identifier to look up"
-              onkeydown="if(event.key==='Enter')lookupInfo()"
+              onkeydown="if (event.key === 'Enter') lookupInfo();"
             />
             <button onclick="lookupInfo()" aria-label="Look up identifier">lookup</button>
           </div>
           <div class="info-content" id="info-result">
-            <div style="color: var(--fg-dim)">
+            <div class="info-hint">
               Type a Haskell identifier and press Enter, or press
-              <kbd id="kbd-lookup" style="background: var(--bg-cell); padding: 2px 6px; border-radius: 3px">Ctrl+I</kbd>
+              <kbd id="kbd-lookup">Ctrl+I</kbd>
               in a code cell to look up the word under cursor.
             </div>
           </div>
@@ -240,7 +264,7 @@
               class="chat-new-btn"
               id="chat-model-btn"
               onclick="openAIModal()"
-              title="Change model or API key"
+              title="Change provider or model"
               style="margin-right: 6px"
             >
               model
@@ -263,10 +287,35 @@
       </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/haskell/haskell.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+    <div class="statusbar" role="status" aria-label="Status bar">
+      <div class="sb-left">
+        <span class="sb-item" id="sb-file">
+          <svg class="icon-svg"><use href="#i-file-text" /></svg>
+          <span id="sb-file-name">Sabela</span>
+        </span>
+        <span class="sb-sep">|</span>
+        <span class="sb-item" id="sb-pos">line 1 : col 1</span>
+        <span class="sb-sep">|</span>
+        <span class="status" id="status"></span>
+      </div>
+      <div class="sb-right">
+        <span class="save-indicator" id="save-indicator">saved</span>
+        <span class="sb-sep">|</span>
+        <span class="sb-item clickable" id="sb-runmode" onclick="toggleRunMode()" title="Run mode">reactive</span>
+        <span class="sb-sep">|</span>
+        <span class="sb-item" id="sb-cells">0 cells</span>
+        <span class="sb-sep">|</span>
+        <span class="sb-item" title="Event stream connection">
+          <span class="sse-dot" id="sse-dot"></span>
+          <span id="sb-sse-label">offline</span>
+        </span>
+      </div>
+    </div>
+
+    <script src="../vendor/codemirror/codemirror.min.js"></script>
+    <script src="../vendor/codemirror/haskell.min.js"></script>
+    <script src="../vendor/codemirror/python.min.js"></script>
+    <script src="../vendor/codemirror/show-hint.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
@@ -278,7 +327,10 @@
     <script src="js/04b-kernel.js"></script>
     <script src="js/05-editor.js"></script>
     <script src="js/06-info-panel.js"></script>
+    <script src="js/06c-info-render.js"></script>
+    <script src="js/06b-bindings-panel.js"></script>
     <script src="../shared/mime-render.js"></script>
+    <script src="js/07a-diagnostics.js"></script>
     <script src="js/07-output.js"></script>
     <script src="js/08-file-explorer.js"></script>
     <script src="js/08c-dataset.js"></script>

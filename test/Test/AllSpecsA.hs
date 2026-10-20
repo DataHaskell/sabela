@@ -3,6 +3,7 @@ module Test.AllSpecsA (allSpecsA) where
 import qualified Test.AdviceTruthSpec as AdviceTruthSpec
 import qualified Test.ArgRepairSpec as ArgRepairSpec
 import qualified Test.BindSpec as BindSpec
+import qualified Test.BindingsViewSpec as BindingsViewSpec
 import qualified Test.BridgeGraphSpec as BridgeGraphSpec
 import qualified Test.BrowseCardParseSpec as BrowseCardParseSpec
 import qualified Test.BrowseCardSanitizeSpec as BrowseCardSanitizeSpec
@@ -28,6 +29,7 @@ import qualified Test.DiagnosticMitigationSpec as DiagnosticMitigationSpec
 import qualified Test.DiscoverGrammarSpec as DiscoverGrammarSpec
 import qualified Test.DiscoverToolSpec as DiscoverToolSpec
 import qualified Test.DiscoveryBenchSpec as DiscoveryBenchSpec
+import qualified Test.DisplaySpec as DisplaySpec
 import qualified Test.DisposableAttributionSpec as DisposableAttributionSpec
 import qualified Test.EditDispatchSpec as EditDispatchSpec
 import qualified Test.EditNoOpSpec as EditNoOpSpec
@@ -41,6 +43,7 @@ import qualified Test.ExecuteCellSpec as ExecuteCellSpec
 import qualified Test.ExportRankSpec as ExportRankSpec
 import qualified Test.ExportSpec as ExportSpec
 import qualified Test.ExtRepairSpec as ExtRepairSpec
+import qualified Test.FrameQuerySpec as FrameQuerySpec
 import qualified Test.GateArmingSpec as GateArmingSpec
 import qualified Test.GateBinderGuardSpec as GateBinderGuardSpec
 import qualified Test.GateCheckedSpec as GateCheckedSpec
@@ -93,12 +96,16 @@ import qualified Test.PromptUnifySpec as PromptUnifySpec
 import qualified Test.PureEvalLiveSpec as PureEvalLiveSpec
 import qualified Test.QualifiedNameSpec as QualifiedNameSpec
 import qualified Test.QueryLeakSpec as QueryLeakSpec
+import qualified Test.ReactivityDocSpec as ReactivityDocSpec
 import qualified Test.ReactivityDoorSpec as ReactivityDoorSpec
+import qualified Test.ReactivityLiveSpec as ReactivityLiveSpec
 import qualified Test.RefinementFitSpec as RefinementFitSpec
 import qualified Test.RepairEngineSpec as RepairEngineSpec
 import qualified Test.RepairGateSpec as RepairGateSpec
 import qualified Test.RepairGuardSpec as RepairGuardSpec
 import qualified Test.RepairTraceWireSpec as RepairTraceWireSpec
+import qualified Test.ReplProjectDirSpec as ReplProjectDirSpec
+import qualified Test.RunDispatchSpec as RunDispatchSpec
 import qualified Test.RunModeWireSpec as RunModeWireSpec
 import qualified Test.ScratchScopeSpec as ScratchScopeSpec
 import qualified Test.ScratchVetSpec as ScratchVetSpec
@@ -224,9 +231,11 @@ allSpecsA = do
     ScratchVetSpec.spec
     PreludeScopeSpec.spec
     PreludeGhciSpec.spec
+    DisplaySpec.spec
     QualifiedNameSpec.spec
     ScratchScopeSpec.spec
     CheckTypeScopeSpec.spec
+    ReplProjectDirSpec.spec
     ScratchpadKeySpec.spec
     HoogleDbSpec.spec
     SearchCacheFreshSpec.spec
@@ -257,14 +266,19 @@ allSpecsA = do
     GraphEdgesSpec.spec
     OrphanModuleReconcileSpec.spec
     ReactivityDoorSpec.spec
+    ReactivityDocSpec.spec
+    RunDispatchSpec.spec
     BridgeGraphSpec.spec
     SkipFeedbackSpec.spec
     TypecheckClassifySpec.spec
     liveSpecs $ do
         SessionSpec.spec
+        BindingsViewSpec.spec
+        FrameQuerySpec.spec
         SessionLoopSpec.spec
         SessionLiveSpec.spec
         PureEvalLiveSpec.spec
+        ReactivityLiveSpec.spec
         MaterializeSpec.spec
         MaterializeEnvSpec.spec
         SwitchNotebookSpec.spec

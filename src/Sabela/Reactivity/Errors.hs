@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import Sabela.Model (Cell (..), Notebook (..))
 import qualified Sabela.Topo as Topo
 
+cellPositionMap :: (Enum a, Num a) => Notebook -> M.Map Int a
 cellPositionMap nb =
     M.fromList (zip (map cellId (nbCells nb)) [1 ..])
 

@@ -13,16 +13,13 @@ let notebookData = null;
 
 // ── Theme handling (the same picker as the editor; 'sabela-theme' key) ──
 const THEMES = [
-  { id: 'warm', name: 'Warm Paper', mode: 'light', bg: '#f7f3ec', accent: '#c2674a' },
-  { id: 'nord', name: 'Nord', mode: 'dark', bg: '#2e3440', accent: '#88c0d0' },
-  { id: 'nord-light', name: 'Nord Light', mode: 'light', bg: '#eceff4', accent: '#5e81ac' },
-  { id: 'nord-aurora', name: 'Aurora Purple', mode: 'dark', bg: '#2e3440', accent: '#b48ead' },
-  { id: 'nord-ember', name: 'Aurora Ember', mode: 'dark', bg: '#2e3440', accent: '#d08770' },
-  { id: 'vscode', name: 'VS Code Dark', mode: 'dark', bg: '#1e1e1e', accent: '#3794ff' },
+  { id: 'default', name: 'Default', mode: 'dark', bg: '#2e2e32', accent: '#93ddfa' },
+  { id: 'summer', name: 'Summer', mode: 'light', bg: '#fbfbfb', accent: '#fc1785' },
+  { id: 'fall', name: 'Fall', mode: 'dark', bg: '#343233', accent: '#ffd152' },
 ];
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
-  return THEMES.some((x) => x.id === t) ? t : 'warm';
+  return THEMES.some((x) => x.id === t) ? t : 'default';
 }
 function cssVar(name, fallback) {
   return (getComputedStyle(document.documentElement).getPropertyValue(name) || fallback).trim();
@@ -114,8 +111,22 @@ function iframeContentStyle() {
   const border = cssVar('--border', '#e4e4e7');
   const accent = cssVar('--accent', '#0066ff');
   const altRow = `rgba(${cssVar('--accent-rgb', '0,102,255')},0.05)`;
-  return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:12px 16px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
+  return `<style>:root{${gridPaletteVars(bg, muted, fg, border, accent)}}body{background:${bg};color:${fg};font-family:'Fira Sans',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:14px;margin:0;padding:12px 16px;line-height:1.55}img{max-width:100%}a{color:${accent}}table{border-collapse:collapse;width:100%;border:1px solid ${border};margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:500}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
 }
+// The palette the embedded grid runtime reads (--sabela-*), so a table in an
+// export carries this page's theme rather than one derived from its background.
+function gridPaletteVars(surface, raised, fg, border, accent) {
+  return [
+    `--sabela-surface:${surface}`,
+    `--sabela-raised:${raised}`,
+    `--sabela-fg:${fg}`,
+    `--sabela-dim:${cssVar('--fg-dim', fg)}`,
+    `--sabela-border:${border}`,
+    `--sabela-accent:${accent}`,
+    `--sabela-accent-rgb:${cssVar('--accent-rgb', '0,102,255')}`,
+  ].join(';');
+}
+
 function widgetIframeStyle() {
   const fg = cssVar('--fg', '#0a0a0a');
   const fgDim = cssVar('--fg-dim', '#71717a');

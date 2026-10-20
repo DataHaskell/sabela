@@ -52,12 +52,16 @@ parseTurnWithTools tools raw = do
         Right value -> Right value
     parseResponse (mapMaybe schemaFromTool tools) response
 
+{- | A top-level @error@ is the server refusing the request (unknown model,
+out of memory, ...) unless it wraps a recoverable tool payload; re-prompting
+the model cannot fix a server error, so it is classed as transport.
+-}
 parseResponse :: [Schema] -> Value -> Either ParseFailure Turn
 parseResponse schemas (Object outer)
     | Just (String err) <- KM.lookup "error" outer =
         case recoverFromError err of
             Just turn -> validateTurn schemas turn
-            Nothing -> Left (failure MalformedToolCall err Nothing)
+            Nothing -> Left (serverError err)
     | Just msg@(Object fields) <- KM.lookup "message" outer = do
         let content = textField "content" fields
             thinking = textField "thinking" fields
@@ -206,6 +210,10 @@ looksToolPayload text =
             && any
                 (`T.isInfixOf` stripped)
                 ["\"name\"", "\"arguments\"", "\"source\"", "\"new_source\"", "\"code\""]
+
+serverError :: Text -> ParseFailure
+serverError err =
+    ParseFailure TransportFailure err ("ollama: " <> err) Nothing
 
 failure :: ParseFailureClass -> Text -> Maybe Text -> ParseFailure
 failure cls diagnostic suggested =

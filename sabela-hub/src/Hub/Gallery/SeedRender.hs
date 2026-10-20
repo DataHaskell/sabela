@@ -10,6 +10,8 @@ module Hub.Gallery.SeedRender (
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Hub.Brand (brandMark, faviconTag)
+
 inline :: Text -> Text
 inline =
     T.pack
@@ -164,7 +166,7 @@ page title author slug body =
     T.concat
         [ pageHead title
         , "<header class=\"top\">\n"
-        , "<a class=\"brand\" href=\"/gallery\"><span class=\"lam\">&lambda;</span> Sabela</a>\n"
+        , "<a class=\"brand\" href=\"/gallery\">" <> brandMark <> "Sabela</a>\n"
         , "<nav class=\"acts\">\n"
         , "<a class=\"gal\" href=\"/gallery\">Gallery</a>\n"
         , "<a class=\"dl\" href=\"/_hub/source/" <> slug <> "\">Download</a>\n"
@@ -182,8 +184,10 @@ pageHead :: Text -> Text
 pageHead title =
     T.concat
         [ "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\n"
+        , faviconTag
         , "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
         , "<title>" <> escapeHtml title <> "</title>\n"
+        , "<script>if(self!==top)document.documentElement.classList.add('framed')</script>\n"
         , "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n"
         , "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css\">\n"
         , "<style>\n"
@@ -203,33 +207,34 @@ pageScripts =
 pageCss :: Text
 pageCss =
     T.unlines
-        [ "@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap');"
-        , ":root{--bg:#f7f3ec;--cell:#fff;--panel:#f0eadf;--fg:#2e3440;--dim:#6f6a5d;--accent:#c2674a;--border:#e7ddcf;--mono:'JetBrains Mono',ui-monospace,monospace}"
+        [ "@import url('https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');"
+        , ":root{--bg:#fbfbfb;--cell:#fbfbfb;--panel:#f2f2f2;--fg:#181818;--dim:#808080;--accent:#fc1785;--mauve:#fb6620;--blue:#1586d2;--border:#e8e8e8;--green:#22a21f;--radius:0;--mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Fira Sans',-apple-system,BlinkMacSystemFont,system-ui,sans-serif}"
         , "*{box-sizing:border-box}"
-        , "body{margin:0;background:radial-gradient(60% 44% at 86% -10%,rgba(208,135,111,.18),transparent 72%),var(--bg);color:var(--fg);font-family:Geist,system-ui,sans-serif;line-height:1.6}"
+        , "body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.6}"
         , "a{color:var(--accent)}"
-        , ".top{display:flex;align-items:center;justify-content:space-between;padding:0 clamp(1.2rem,5vw,3rem);height:58px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0}"
-        , ".brand{font-weight:600;font-size:1.1rem;text-decoration:none;color:var(--fg)}.brand .lam{color:var(--accent);font-family:var(--mono)}"
-        , ".acts{display:flex;gap:.7rem;align-items:center;font-family:var(--mono);font-size:.8rem}"
+        , ".top{display:flex;align-items:center;justify-content:space-between;padding:0 clamp(1.2rem,5vw,3rem);height:34px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0}"
+        , ".brand{font-weight:500;font-size:.95rem;text-decoration:none;color:var(--fg)}"
+        , ".acts{display:flex;gap:.7rem;align-items:center;font-size:.85rem}"
         , ".acts .gal{color:var(--dim)}.acts .gal:hover{color:var(--fg)}"
-        , ".acts .dl{color:var(--dim);border:1px solid var(--border);border-radius:6px;padding:.3rem .7rem;background:var(--cell);text-decoration:none}"
+        , ".acts .dl{color:var(--dim);border:1px solid var(--border);padding:.15rem .6rem;background:var(--cell);text-decoration:none}"
         , ".acts .dl:hover{color:var(--fg);border-color:var(--dim)}"
         , ".acts form{margin:0}"
-        , ".acts .fork{color:#fff;background:var(--accent);border:none;border-radius:6px;padding:.38rem .9rem;font:inherit;font-weight:600;cursor:pointer}"
-        , ".acts .fork:hover{opacity:.9}"
+        , ".acts .fork{color:var(--fg);background:transparent;border:1px solid var(--fg);padding:.15rem .7rem;font:inherit;cursor:pointer}"
+        , ".acts .fork:hover{background:var(--fg);color:var(--bg)}"
         , "main{max-width:46rem;margin:0 auto;padding:clamp(1.6rem,4vw,3rem) clamp(1.2rem,5vw,2rem) 5rem}"
-        , "h1,h2,h3{font-family:Fraunces,Georgia,serif;letter-spacing:-.01em;line-height:1.2}"
-        , "h1{font-size:clamp(1.9rem,4vw,2.6rem);margin:.2rem 0 .3rem}"
-        , "h2{font-size:1.5rem;margin:2.2rem 0 .6rem}"
+        , "h1,h2,h3{font-weight:500;line-height:1.25}"
+        , "h1{font-size:clamp(1.7rem,3.5vw,2.2rem);margin:.2rem 0 .3rem}"
+        , "h2{font-size:1.4rem;margin:2.2rem 0 .6rem}"
         , ".byline{font-family:var(--mono);font-size:.8rem;color:var(--accent);margin:0 0 2rem}"
         , "p{margin:.9rem 0}"
-        , "code{font-family:var(--mono);font-size:.86em;background:var(--panel);padding:.08em .35em;border-radius:4px}"
-        , "pre.code{background:#fff;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:1rem 1.2rem;overflow:auto;box-shadow:0 4px 14px rgba(70,52,34,.06)}"
+        , "code{font-family:var(--mono);font-size:.86em;background:var(--panel);padding:.08em .35em}"
+        , "pre.code{background:var(--panel);border:1px solid var(--border);border-left:2px solid var(--accent);padding:1rem 1.2rem;overflow:auto}"
         , "pre.code code{background:none;padding:0;font-size:.82rem;line-height:1.5}"
         , "pre.code code.hljs{background:transparent;padding:0}"
-        , ".out{border-left:3px solid #6f9355;background:#fff;border-radius:0 8px 8px 0;padding:.8rem 1.1rem;margin:.4rem 0 1.4rem}"
+        , ".out{border-left:2px solid var(--green);background:var(--panel);padding:.8rem 1.1rem;margin:.4rem 0 1.4rem}"
         , "pre.out{font-family:var(--mono);font-size:.8rem;color:var(--dim);white-space:pre-wrap}"
-        , "img{max-width:100%;border-radius:8px}"
+        , "img{max-width:100%}"
+        , ".framed header.top,.framed body>div[role=note]{display:none!important}"
         ]
 
 brandDashboard :: Text -> Text
@@ -237,16 +242,15 @@ brandDashboard html
     | "db-brand" `T.isInfixOf` html = html
     | otherwise = replaceFirst "</head>" (css <> "</head>") withMark
   where
-    mark = "<span class=\"db-brand\"><span class=\"lam\">\955</span> Sabela</span>"
+    mark = "<span class=\"db-brand\">" <> brandMark <> "Sabela</span>"
     withMark =
         replaceFirst
             "<h1 id=\"dashboard-title\""
             (mark <> "<h1 id=\"dashboard-title\"")
             html
     css =
-        "<style>.db-brand{font-family:var(--font-mono);font-weight:600;"
-            <> "font-size:15px;color:var(--fg-heading);white-space:nowrap}"
-            <> ".db-brand .lam{color:#c2674a}</style>"
+        "<style>.db-brand{font-family:var(--font-sans);font-weight:400;"
+            <> "font-size:13px;color:var(--fg-dim);white-space:nowrap;margin-right:6px}</style>"
 
 replaceFirst :: Text -> Text -> Text -> Text
 replaceFirst needle repl hay

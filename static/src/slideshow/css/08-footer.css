@@ -1,52 +1,43 @@
-/* ── Footer nav ────────────────────────────── */
+/* ── Footer: a status-bar strip with prev / counter / next ── */
 .slide-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 12px;
-  pointer-events: none;
+  background: var(--bg-muted);
+  border-top: 1px solid var(--border);
+  z-index: 100;
 }
 .slide-nav .nav-group {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 6px 8px;
-  box-shadow: var(--shadow);
-  pointer-events: auto;
+  gap: 12px;
 }
 .slide-nav button {
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  height: 26px;
+  padding: 0 8px;
   border: none;
   background: transparent;
   color: var(--fg-dim);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 12px;
 }
 .slide-nav button:hover:not(:disabled) {
-  background: var(--bg-muted);
-  color: var(--fg-heading);
+  color: var(--fg);
 }
 .slide-nav button:disabled {
-  opacity: 0.3;
+  opacity: 0.4;
   cursor: default;
 }
 .slide-counter {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg-dim);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--fg);
   min-width: 56px;
   text-align: center;
   font-variant-numeric: tabular-nums;

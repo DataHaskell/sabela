@@ -55,6 +55,7 @@ import Sabela.Handlers.Plan (executeFullRestart)
 import Sabela.Handlers.Shared (bumpGeneration)
 import Sabela.Model
 import Sabela.Output (parseMimeOutputs)
+import Sabela.Output.Runtime (elideRuntimes, restoreRuntimes)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..), broadcastNotebook)
 import Sabela.State.Environment (Environment (..))
@@ -124,11 +125,11 @@ segmentToCell store (CodeBlock lang code (Just (CodeOutput m o))) = do
 
 parseCodeOutputItems :: MimeType -> Text -> [OutputItem]
 parseCodeOutputItems MimePlain o =
-    [ OutputItem (textToMime mt) b
+    [ OutputItem (textToMime mt) (restoreRuntimes b)
     | (mt, b) <- parseMimeOutputs o
     , not (T.null (T.strip b))
     ]
-parseCodeOutputItems m o = [OutputItem m o]
+parseCodeOutputItems m o = [OutputItem m (restoreRuntimes o)]
 
 parseLang :: Text -> ST.CellLang
 parseLang lang
@@ -193,12 +194,12 @@ codeToSegment c =
      in case filter (not . T.null . T.strip . oiOutput) (cellOutputs c) of
             [] -> CodeBlock tag (cellSource c) Nothing
             [OutputItem mime o] ->
-                CodeBlock tag (cellSource c) (Just (CodeOutput mime o))
+                CodeBlock tag (cellSource c) (Just (CodeOutput mime (elideRuntimes o)))
             items ->
                 CodeBlock
                     tag
                     (cellSource c)
-                    (Just (CodeOutput MimePlain (serializeOutputs items)))
+                    (Just (CodeOutput MimePlain (elideRuntimes (serializeOutputs items))))
 
 langTag :: ST.CellLang -> Text
 langTag ST.Haskell = "haskell"

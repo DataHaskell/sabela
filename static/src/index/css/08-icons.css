@@ -1,28 +1,26 @@
 /* ── Icon system ────────────────────────────── */
-/* Geometric IDE icons: squared caps + mitred joins (not Lucide-round) so the
-   set reads hard-edged, echoing the Ndebele/Great Zimbabwe chevron vocabulary. */
+/* Plain 1px glyphs with square caps and corners (16px grid drawn at 14px). */
 .icon-svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   stroke: currentColor;
-  stroke-width: 1.75;
+  stroke-width: 1.2;
   fill: none;
-  stroke-linecap: square;
+  stroke-linecap: butt;
   stroke-linejoin: miter;
-  stroke-miterlimit: 6;
   flex-shrink: 0;
   vertical-align: -3px;
 }
 .icon-svg.small {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 .icon-svg.large {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
-/* Bare icon button (no border, just a hit target) */
+/* Bare icon button: dim glyph, text-coloured on hover, nothing else. */
 button.icon-btn,
 .icon-btn {
   display: inline-flex;
@@ -30,27 +28,22 @@ button.icon-btn,
   justify-content: center;
   gap: 6px;
   background: transparent;
-  border: 1px solid transparent !important;
+  border: none !important;
   color: var(--fg-dim);
   width: 28px;
-  height: 28px;
-  border-radius: 5px;
+  height: 26px;
+  border-radius: 0;
   cursor: pointer;
   padding: 0;
-  transition:
-    background 0.12s,
-    color 0.12s,
-    border-color 0.12s;
   flex-shrink: 0;
 }
 button.icon-btn:hover,
 .icon-btn:hover {
-  background: var(--bg-cell) !important;
+  background: transparent !important;
   color: var(--fg-bright);
-  border-color: var(--border) !important;
 }
 button.icon-btn.active,
 .icon-btn.active {
   color: var(--accent);
-  background: var(--accent-dim) !important;
+  background: transparent !important;
 }

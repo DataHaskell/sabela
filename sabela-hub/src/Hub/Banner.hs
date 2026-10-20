@@ -52,18 +52,17 @@ bannerHtml slug =
     wrapStyle =
         T.concat
             [ "display:flex;align-items:center;gap:14px;"
-            , "padding:11px 20px;background:#fff4d6;color:#5b4a26;"
-            , "border-bottom:1px solid #e6cf93;"
-            , "font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;"
+            , "padding:6px 14px;background:#f2f2f2;color:#181818;"
+            , "border-bottom:1px solid #e8e8e8;"
+            , "font:13px/1.45 'Fira Sans',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;"
             ]
     buttonStyle =
         T.concat
-            [ "white-space:nowrap;cursor:pointer;border:0;border-radius:6px;"
-            , "padding:7px 14px;background:#0066ff;color:#fff;font:inherit;"
-            , "font-weight:600;"
+            [ "white-space:nowrap;cursor:pointer;border:1px solid #181818;"
+            , "padding:3px 10px;background:transparent;color:#181818;font:inherit;"
             ]
     closeStyle =
         T.concat
-            [ "cursor:pointer;border:0;background:none;color:#8a7a52;"
-            , "font-size:20px;line-height:1;padding:0 2px;"
+            [ "cursor:pointer;border:0;background:none;color:#808080;"
+            , "font-size:18px;line-height:1;padding:0 2px;"
             ]

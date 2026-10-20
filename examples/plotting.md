@@ -113,7 +113,7 @@ displayLatex "x ^ 2 + 5"
 No one likes pie charts but we have them anyway.
 
 ```haskell
-displaySvg $ T.unpack (pie [("Alpha",0.35),("Beta",0.25),("Gamma",0.20),("Delta",0.20)] defPlot{widthChars=46,heightChars=18,legendPos=LegendRight,plotTitle="Share"})
+svg $ T.unpack (pie [("Alpha",0.35),("Beta",0.25),("Gamma",0.20),("Delta",0.20)] defPlot{widthChars=46,heightChars=18,legendPos=LegendRight,plotTitle="Share"})
 ```
 
 > <!-- sabela:mime image/svg+xml -->
@@ -138,7 +138,7 @@ displaySvg $ T.unpack (pie [("Alpha",0.35),("Beta",0.25),("Gamma",0.20),("Delta"
 If you fancy yourself a statistician you can try out box plots.
 
 ```haskell
-displaySvg $ T.unpack $ boxPlot [ ("Class A", [78, 82, 85, 88, 90, 92, 85, 87, 89, 91, 76, 94, 88])
+svg $ T.unpack $ boxPlot [ ("Class A", [78, 82, 85, 88, 90, 92, 85, 87, 89, 91, 76, 94, 88])
                             , ("Class B", [70, 75, 72, 80, 85, 78, 82, 77, 79, 81, 74, 83])
                             , ("Class C", [88, 92, 95, 90, 93, 89, 91, 94, 96, 87, 90, 92])
                             , ("Class D", [65, 70, 92, 68, 75, 80, 73, 71, 69, 74, 77, 76])
@@ -202,7 +202,7 @@ displaySvg $ T.unpack $ boxPlot [ ("Class A", [78, 82, 85, 88, 90, 92, 85, 87, 8
 The humble line plot.
 
 ```haskell
-displaySvg $ T.unpack $ lineGraph [ ("Product A", [(1, 100), (2, 120), (3, 115), (4, 140), (5, 155), (6, 148)])
+svg $ T.unpack $ lineGraph [ ("Product A", [(1, 100), (2, 120), (3, 115), (4, 140), (5, 155), (6, 148)])
                               , ("Product B", [(1, 80), (2, 85), (3, 95), (4, 92), (5, 110), (6, 125)])
                               , ("Product C", [(1, 60), (2, 62), (3, 70), (4, 85), (5, 82), (6, 90)])
                               ] defPlot {plotTitle="Monthly Sales Trends"}

@@ -47,6 +47,7 @@ function render(nb) {
     container.appendChild(el);
     container.appendChild(makeAddRow(cell.cellId));
   }
+  setCellCountStatus(nb.nbCells.length);
 }
 
 // Matches the `-- compile` / `-- compile: Module.Name` cell directive.
@@ -70,14 +71,24 @@ function renderCodeCell(cell, cellNum) {
   const compiled = isCompiledSource(cell);
   if (compiled) div.classList.add('compiled');
 
+  div.dataset.num = cellNum;
   const gutter = document.createElement('div');
   gutter.className = 'cell-gutter';
   gutter.innerHTML =
-    `<span class="cell-number" title="Cell id ${cell.cellId}">${cellNum}</span><select class="lang-tag" onchange="setCellLang(${cell.cellId}, this.value)"><option value="Haskell"${cell.cellLang === 'Haskell' ? ' selected' : ''}>hs</option><option value="Python"${cell.cellLang === 'Python' ? ' selected' : ''}>py</option></select>` +
-    (compiled
-      ? `<button class="compile-tag" onclick="toggleCellCompile(${cell.cellId})" title="Compiled to native code (-O2). Click to switch back to interpreted.">⚡comp</button>`
-      : '');
+    `<button class="gutter-run" onclick="runCell(${cell.cellId})" aria-label="Run cell" title="Run cell (${kbd('shift', 'enter')})"><svg class="icon-svg"><use href="#i-play"/></svg></button>` +
+    `<button class="fold-bar in-fold" onclick="toggleCellCollapse(${cell.cellId})" aria-label="Collapse cell input" title="Collapse input"></button>` +
+    `<span class="cell-number" title="Cell id ${cell.cellId}">[${cellNum}]</span>`;
   div.appendChild(gutter);
+  const box = document.createElement('div');
+  box.className = 'cell-box';
+  div.appendChild(box);
+  const foot = document.createElement('div');
+  foot.className = 'cell-foot';
+  foot.innerHTML =
+    `<button class="lang-tag" onclick="showLangMenu(event, ${cell.cellId}, '${cell.cellLang}')" title="Change cell language">${cell.cellLang}</button>` +
+    (compiled
+      ? `<button class="compile-tag" onclick="toggleCellCompile(${cell.cellId})" title="Compiled to native code (-O2). Click to switch back to interpreted.">compiled</button>`
+      : '');
 
   const collapsed = collapsedCells.has(cell.cellId);
   if (collapsed) div.classList.add('collapsed');
@@ -89,21 +100,25 @@ function renderCodeCell(cell, cellNum) {
     <button class="run-btn" onclick="runCell(${cell.cellId})" aria-label="Run cell" title="Run cell (${kbd('shift', 'enter')})"><svg class="icon-svg small"><use href="#i-play"/></svg> run</button>
     <button class="clear-btn" onclick="clearCellOutput(${cell.cellId})" aria-label="Clear output" title="Clear output"><svg class="icon-svg small"><use href="#i-circle-slash"/></svg></button>
     ${cell.cellLang !== 'Python' ? `<button class="export-btn" onclick="exportPipeline(${cell.cellId}, 'haskell')" aria-label="Export pipeline ending here" title="Export pipeline ending here (.hs)"><svg class="icon-svg small"><use href="#i-download"/></svg></button>` : ''}
-    ${cell.cellLang !== 'Python' && !compiled ? `<button class="compile-mode-btn" onclick="toggleCellCompile(${cell.cellId})" aria-label="Compile this cell" title="Compile this cell to native code (-O2)">⚡</button>` : ''}
+    ${cell.cellLang !== 'Python' && !compiled ? `<button class="compile-mode-btn" onclick="toggleCellCompile(${cell.cellId})" aria-label="Compile this cell" title="Compile this cell to native code (-O2)"><svg class="icon-svg small"><use href="#i-zap"/></svg></button>` : ''}
     <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell" title="Delete cell"><svg class="icon-svg small"><use href="#i-trash"/></svg></button>`;
-  div.appendChild(actions);
+  box.appendChild(actions);
 
   const summary = document.createElement('div');
   summary.className = 'cell-summary';
   summary.textContent = (cell.cellSource || '').split('\n')[0].trim() || '(empty)';
-  gutter.appendChild(summary);
+  foot.prepend(summary);
 
   const editorDiv = document.createElement('div');
   editorDiv.className = 'cell-editor';
-  div.appendChild(editorDiv);
+  box.appendChild(editorDiv);
+  box.appendChild(foot);
 
   const outDiv = renderOutputDiv(cell);
-  if (outDiv) div.appendChild(outDiv);
+  if (outDiv) {
+    div.appendChild(outDiv);
+    attachOutputFold(div, cell.cellId);
+  }
 
   requestAnimationFrame(() => {
     // Previously guarded with `if (editors[cell.cellId]) return` to avoid
@@ -122,13 +137,13 @@ function renderCodeCell(cell, cellNum) {
       value: cell.cellSource,
       mode: cell.cellLang === 'Python' ? 'python' : 'haskell',
       theme: cmTheme(),
-      lineNumbers: false,
+      lineNumbers: true,
       viewportMargin: Infinity,
       inputStyle: window.matchMedia('(pointer: coarse)').matches ? 'contenteditable' : 'textarea',
       indentUnit: 2,
       tabSize: 2,
       lineWrapping: true,
-      gutters: ['warn-gutter', 'error-gutter'],
+      gutters: ['CodeMirror-linenumbers', 'warn-gutter', 'error-gutter'],
       extraKeys: {
         'Shift-Enter': () => runCell(cell.cellId),
         'Ctrl-Enter': () => runCell(cell.cellId),
@@ -163,6 +178,12 @@ function renderCodeCell(cell, cellNum) {
         'Ctrl-S': () => saveNotebook(),
         'Cmd-S': () => saveNotebook(),
       },
+    });
+    cm.on('cursorActivity', updateCursorStatus);
+    cm.on('focus', () => {
+      document.querySelectorAll('.cell.focused').forEach((c) => c.classList.remove('focused'));
+      div.classList.add('focused');
+      updateCursorStatus(cm);
     });
     cm.on('change', (_cm, changeObj) => {
       unsavedChanges = true;

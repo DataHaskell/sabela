@@ -4,10 +4,14 @@ function connectSSE() {
   evtSource = new EventSource('/api/events');
   evtSource.onopen = () => {
     document.getElementById('sse-dot').classList.add('connected');
+    setSseLabel('connected');
     // A silent reconnect after a laptop sleep leaves the client's view stale.
     refreshKernelState();
   };
-  evtSource.onerror = () => document.getElementById('sse-dot').classList.remove('connected');
+  evtSource.onerror = () => {
+    document.getElementById('sse-dot').classList.remove('connected');
+    setSseLabel('offline');
+  };
   evtSource.onmessage = (e) => {
     try {
       handleSSE(JSON.parse(e.data));
@@ -62,6 +66,7 @@ function handleSSE(ev) {
       break;
     case 'executionDone':
       refreshKernelState();
+      scheduleBindingsRefresh();
       setStatus('Done', '');
       document
         .querySelectorAll('.cell.code.running')
@@ -79,6 +84,7 @@ function handleSSE(ev) {
         hideCrashBanner();
         finishBuildModal('Build succeeded', 'ok');
         setStatus('Done', '');
+        scheduleBindingsRefresh();
       } else if (ev.state === 'crashed') {
         setStatus('Kernel crashed', 'error');
         showCrashBanner();
@@ -228,4 +234,9 @@ function pulseCell(cellId) {
   void el.offsetWidth; // force reflow so the animation restarts
   el.classList.add('responding');
   el.addEventListener('animationend', () => el.classList.remove('responding'), { once: true });
+}
+
+function setSseLabel(text) {
+  const el = document.getElementById('sb-sse-label');
+  if (el) el.textContent = text;
 }

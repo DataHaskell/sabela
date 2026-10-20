@@ -36,6 +36,7 @@ import Servant (Handler, NoContent (..))
 
 import Sabela.AI.Capabilities.Kernel (kernelStatusValue)
 import Sabela.Api
+import Sabela.Errors.Json (plainDiagnostics)
 import Sabela.Handlers
 import Sabela.Model
 import Sabela.Output.Examples (builtinExamples)
@@ -154,8 +155,8 @@ queryWithFallback :: ST.SessionBackend -> Text -> Text -> IO InfoResult
 queryWithFallback backend name info
     | T.null info || "not in scope" `T.isInfixOf` T.toLower info = do
         ty <- ST.sbQueryType backend name
-        pure (InfoResult ty)
-    | otherwise = appendDoc backend name info
+        pure (InfoResult (plainDiagnostics ty))
+    | otherwise = appendDoc backend name (plainDiagnostics info)
 
 appendDoc :: ST.SessionBackend -> Text -> Text -> IO InfoResult
 appendDoc backend name info = do

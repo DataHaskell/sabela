@@ -18,7 +18,7 @@ async function showFilePreview(name, path) {
   notebook = null;
   activePreviewCm = null;
   container.innerHTML = '';
-  document.getElementById('toolbar-title').textContent = '📄 ' + name;
+  setToolbarTitle(name);
   setStatus('Loading ' + path + '…', 'running');
 
   let first;
@@ -35,7 +35,7 @@ async function showFilePreview(name, path) {
 
   const wrapper = document.createElement('div');
   wrapper.style.cssText =
-    'background: var(--bg-cell); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;';
+    'background: var(--bg); border-top: 1px solid var(--border); overflow: hidden;';
   container.appendChild(wrapper);
   const bar = document.createElement('div');
   bar.className = 'preview-bar';

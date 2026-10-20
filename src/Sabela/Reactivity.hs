@@ -67,6 +67,8 @@ data ExecutionPlan = ExecutionPlan
     , epCompileCells :: [Cell]
     , epCompilePlan :: CompilePlan
     , epCycleIds :: S.Set Int
+    , epBlockedByCycle :: S.Set Int
+    , epDeps :: M.Map Int (S.Set Int)
     , epRedefErrors :: M.Map Int [Text]
     , epDefMap :: M.Map Text Int
     , epCellPositions :: M.Map Int Int
@@ -180,6 +182,7 @@ computePlanCore env mods mRoots allCode nb =
         topoResult = Topo.topoSort toSort deps
         skipIds =
             Topo.trCycleIds topoResult
+                `S.union` Topo.trBlockedIds topoResult
                 `S.union` M.keysSet redefMap
                 `S.union` M.keysSet (cpViolations cplan)
         isCompiledId cid = M.member cid (cpCellModule cplan)
@@ -202,6 +205,8 @@ computePlanCore env mods mRoots allCode nb =
             , epCompileCells = compiledCells
             , epCompilePlan = cplan
             , epCycleIds = Topo.trCycleIds topoResult
+            , epBlockedByCycle = Topo.trBlockedIds topoResult
+            , epDeps = deps
             , epRedefErrors = redefMap
             , epDefMap = defMap
             , epCellPositions = posMap

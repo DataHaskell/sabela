@@ -5,10 +5,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sabela Slideshow</title>
-<!-- The one Sabela favicon; every page includes this so they cannot drift. -->
+<!-- The one Sabela favicon, the DataHaskell mark; every page includes this so they cannot drift. -->
 <link
   rel="icon"
-  href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230066ff'/%3E%3Cpath%20d='M10%2026L19%206M14.5%2016.5L23%2026'%20stroke='%23fff'%20stroke-width='3'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E"
+  href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Crect%20width='24'%20height='24'%20fill='%235a287f'/%3E%3Cpath%20fill='%23fff'%20d='M5.6%203h2.8v2.6H11v2.8H8.4V11H5.6V8.4H3V5.6h2.6z'/%3E%3Crect%20fill='%23fff'%20x='9.4'%20y='9.4'%20width='5.6'%20height='5.6'/%3E%3Cpath%20fill='%23fff'%20d='M3%2021l4-7%204%207z'/%3E%3Ccircle%20fill='%23fff'%20cx='18.6'%20cy='18.6'%20r='3'/%3E%3C/svg%3E"
 />
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
@@ -17,81 +17,81 @@
     <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/languages/haskell.min.js"></script>
     <script>
-// Theme bootstrap — shared with editor via 'sabela-theme' localStorage key.
+// Theme bootstrap — follows the editor's scheme ('sabela-theme' key): Summer
+// is the light deck, the other schemes are dark; unset follows the OS.
 (() => {
+  const MAP = { summer: 'light', default: 'dark', fall: 'dark', light: 'light', dark: 'dark' };
   const stored = localStorage.getItem('sabela-theme');
   const theme =
-    stored === 'light' || stored === 'dark'
-      ? stored
-      : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
-        ? 'light'
-        : 'dark';
+    MAP[stored] ||
+    (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+      ? 'light'
+      : 'dark');
   document.documentElement.dataset.theme = theme;
-  window.__sabelaThemePinned = !!stored;
+  window.__sabelaThemePinned = !!MAP[stored];
 })();
     </script>
     <style>
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
+/* Light decks use the editor's Summer scheme, dark decks its default one. */
 :root {
-  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --radius: 0px;
+  --pad-x: 14px;
+  --shadow: none;
 
-  --bg: #ffffff;
-  --bg-muted: #fafafa;
-  --bg-card: #ffffff;
-  --fg: #0a0a0a;
-  --fg-dim: #71717a;
-  --fg-heading: #000000;
-  --accent: #0066ff;
-  --accent-rgb: 0, 102, 255;
-  --accent-hover: #0052cc;
-  --border: #e4e4e7;
-  --border-light: #f4f4f5;
-  --radius: 8px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --err-border: #fecaca;
-  --err-bg: #fef2f2;
-  --err-fg: #991b1b;
-
-  /* syntax tokens — Catppuccin Latte */
-  --hl-keyword: #8839ef;
-  --hl-string: #40a02b;
-  --hl-number: #fe640b;
-  --hl-comment: #8c8fa1;
-  --hl-function: #1e66f5;
-  --hl-type: #df8e1d;
-  --hl-builtin: #d20f39;
-  --hl-operator: #04a5e5;
-  --hl-meta: #ea76cb;
+  --bg: #fbfbfb;
+  --bg-muted: #f2f2f2;
+  --bg-card: #fbfbfb;
+  --fg: #181818;
+  --fg-dim: #808080;
+  --fg-heading: #181818;
+  --accent: #fc1785;
+  --accent-rgb: 252, 23, 133;
+  --accent-hover: #181818;
+  --selection: #b7dce8;
+  --border: #e8e8e8;
+  --border-light: #e8e8e8;
+  --err-border: #d9262a;
+  --err-bg: #f2f2f2;
+  --err-fg: #d9262a;
+  --hl-keyword: #fb6620;
+  --hl-string: #1586d2;
+  --hl-number: #1586d2;
+  --hl-comment: #22a21f;
+  --hl-function: #fc1785;
+  --hl-type: #fc1785;
+  --hl-builtin: #fc1785;
+  --hl-operator: #fb6620;
+  --hl-meta: #fb6620;
 }
 :root[data-theme='dark'] {
-  --bg: #1e1e2e;
-  --bg-muted: #262637;
-  --bg-card: #181825;
-  --fg: #cdd6f4;
-  --fg-dim: #9399b2;
-  --fg-heading: #f5f5ff;
-  --accent: #89b4fa;
-  --accent-rgb: 137, 180, 250;
-  --accent-hover: #a4c0fa;
-  --border: #313244;
-  --border-light: #262637;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --err-border: #5a2730;
-  --err-bg: #2a1a1e;
-  --err-fg: #f38ba8;
-
-  /* syntax tokens — Catppuccin Mocha */
-  --hl-keyword: #cba6f7;
-  --hl-string: #a6e3a1;
-  --hl-number: #fab387;
-  --hl-comment: #7f849c;
-  --hl-function: #89b4fa;
-  --hl-type: #f9e2af;
-  --hl-builtin: #f38ba8;
-  --hl-operator: #89dceb;
-  --hl-meta: #f5c2e7;
+  --bg: #2e2e32;
+  --bg-muted: #252529;
+  --bg-card: #2e2e32;
+  --fg: #e1e1e6;
+  --fg-dim: #97979c;
+  --fg-heading: #e1e1e6;
+  --accent: #93ddfa;
+  --accent-rgb: 147, 221, 250;
+  --accent-hover: #e1e1e6;
+  --selection: #48484f;
+  --border: #202024;
+  --border-light: #202024;
+  --err-border: #ff3333;
+  --err-bg: #252529;
+  --err-fg: #ff3333;
+  --hl-keyword: #e58ac9;
+  --hl-string: #f7c95c;
+  --hl-number: #ffa94d;
+  --hl-comment: #676b6f;
+  --hl-function: #93ddfa;
+  --hl-type: #f77483;
+  --hl-builtin: #93ddfa;
+  --hl-operator: #93ddfa;
+  --hl-meta: #e58ac9;
 }
 
 * {
@@ -111,31 +111,32 @@ body {
   font-family: var(--font-sans);
   background: var(--bg);
   color: var(--fg);
-  line-height: 1.65;
+  line-height: 1.55;
   font-size: 15px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-/* ── Header ────────────────────────────────── */
+::selection {
+  background: var(--selection);
+}
+/* ── Header: one flat strip, title left, plain-word actions right ── */
 .slide-header {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 20px;
-  background: var(--bg);
+  height: 34px;
+  padding: 0 var(--pad-x);
+  background: var(--bg-muted);
   border-bottom: 1px solid var(--border);
   z-index: 100;
 }
 .slide-header h1 {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  color: var(--fg-heading);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fg);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -143,101 +144,54 @@ body {
 }
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 2px;
   align-items: center;
 }
 .header-actions a,
 .header-actions button {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 0;
   background: transparent;
   color: var(--fg-dim);
   cursor: pointer;
   text-decoration: none;
-  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
 }
 .header-actions a:hover,
 .header-actions button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  color: var(--fg);
 }
 .header-actions button.active {
-  border-color: var(--accent);
   color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.08);
-}
-.header-actions .icon-btn {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  color: var(--fg-dim);
-}
-.header-actions .icon-btn:hover {
-  background: var(--bg-muted);
-  color: var(--fg-heading);
-  border-color: transparent;
 }
 .fontsize-group {
   display: inline-flex;
   align-items: stretch;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
 }
 .fontsize-group button {
-  border: none;
-  border-radius: 0;
-  padding: 6px 10px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg-dim);
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.fontsize-group button:hover {
-  background: var(--bg-muted);
-  color: var(--accent);
-}
-.fontsize-group button + button {
-  border-left: 1px solid var(--border);
+  padding: 0 6px;
 }
 .fontsize-group #fs-pct {
-  min-width: 48px;
-  text-align: center;
+  min-width: 44px;
+  justify-content: center;
   font-variant-numeric: tabular-nums;
-}
-.icon-svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  stroke-width: 2;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex-shrink: 0;
 }
 /* ── Progress bar ──────────────────────────── */
 .progress-track {
   flex: 0 0 auto;
-  height: 3px;
+  height: 2px;
   background: var(--border-light);
 }
 .progress-fill {
   height: 100%;
   background: var(--accent);
   width: 0%;
-  transition: width 0.25s ease;
 }
 
 /* ── Deck ──────────────────────────────────── */
@@ -283,7 +237,6 @@ body {
   background: var(--bg-card);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
   padding: 18px 20px;
   overflow-x: auto;
   white-space: pre;
@@ -318,18 +271,15 @@ body {
   gap: 5px;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 5px 10px;
-  border-radius: 6px;
   border: 1px solid var(--accent);
   color: var(--accent);
   background: transparent;
   cursor: pointer;
-  transition: all 0.15s;
 }
 .run-btn:hover {
-  background: var(--accent);
-  color: #fff;
+  background: var(--selection);
 }
 .run-btn svg {
   width: 12px;
@@ -341,11 +291,9 @@ body {
   background: var(--bg-card);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
   padding: 18px 20px;
   resize: vertical;
   outline: none;
-  transition: border-color 0.15s;
   font-family: var(--font-sans);
   font-size: 18px;
   line-height: 1.6;
@@ -360,9 +308,7 @@ body {
 .code-ed {
   position: relative;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
   background: var(--bg-card);
-  transition: border-color 0.15s;
 }
 .code-ed:focus-within {
   border-color: var(--accent);
@@ -388,7 +334,6 @@ body {
   pointer-events: none;
   background: transparent;
   color: var(--fg);
-  border-radius: var(--radius);
 }
 .code-ed-hl code {
   font: inherit;
@@ -484,37 +429,35 @@ body {
   font-style: italic;
 }
 .hljs-strong {
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .code-lang {
   display: inline-block;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--fg-dim);
   margin-bottom: 8px;
 }
 /* ── Prose slides ──────────────────────────── */
 .prose h1 {
   font-size: 42px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--fg-heading);
   margin-bottom: 18px;
   line-height: 1.2;
 }
 .prose h2 {
   font-size: 32px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fg-heading);
   margin-bottom: 14px;
   line-height: 1.25;
 }
 .prose h3 {
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fg-heading);
   margin-bottom: 10px;
 }
@@ -569,14 +512,12 @@ body {
   font-size: 0.88em;
   background: var(--bg-muted);
   padding: 2px 6px;
-  border-radius: 4px;
 }
 .prose pre {
   font-family: var(--font-mono);
   font-size: 15px;
   background: var(--bg-muted);
   padding: 16px 20px;
-  border-radius: var(--radius);
   overflow-x: auto;
   margin-bottom: 16px;
 }
@@ -597,15 +538,12 @@ body {
 }
 .prose table,
 .slide-output .mime-markdown table {
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   width: 100%;
   margin: 16px 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
   overflow: hidden;
   font-size: 15px;
-  box-shadow: var(--shadow);
   background: var(--bg-card);
 }
 .prose th,
@@ -625,13 +563,13 @@ body {
 .slide-output .mime-markdown th {
   background: var(--bg-muted);
   color: var(--fg-heading);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
   border-bottom: 1px solid var(--border);
 }
 .prose tr:nth-child(even) td,
 .slide-output .mime-markdown tr:nth-child(even) td {
-  background: rgba(var(--accent-rgb), 0.04);
+  background: var(--bg-muted);
 }
 /* ── Output content ────────────────────────── */
 .slide-output .output-block {
@@ -646,7 +584,6 @@ body {
   display: block;
   min-height: 60px;
   border: 1px solid var(--border-light);
-  border-radius: var(--radius);
 }
 .slide-output .mime-svg {
   text-align: center;
@@ -667,7 +604,6 @@ body {
   font-size: 14px;
   background: var(--bg-muted);
   padding: 14px 18px;
-  border-radius: var(--radius);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -684,12 +620,10 @@ body {
   font-size: 16px;
   background: var(--bg-muted);
   padding: 16px 20px;
-  border-radius: var(--radius);
   white-space: pre-wrap;
   word-break: break-word;
 }
 .slide-widget {
-  border-radius: 6px;
   overflow: hidden;
   background: var(--bg-muted);
   margin-bottom: 12px;
@@ -713,7 +647,6 @@ body {
 .slide-error {
   padding: 14px 18px;
   border: 1px solid var(--err-border);
-  border-radius: var(--radius);
   background: var(--err-bg);
   color: var(--err-fg);
   font-family: var(--font-mono);
@@ -728,55 +661,46 @@ body {
   opacity: 0.6;
   padding: 40px 0;
 }
-/* ── Footer nav ────────────────────────────── */
+/* ── Footer: a status-bar strip with prev / counter / next ── */
 .slide-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 12px;
-  pointer-events: none;
+  background: var(--bg-muted);
+  border-top: 1px solid var(--border);
+  z-index: 100;
 }
 .slide-nav .nav-group {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 6px 8px;
-  box-shadow: var(--shadow);
-  pointer-events: auto;
+  gap: 12px;
 }
 .slide-nav button {
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  height: 26px;
+  padding: 0 8px;
   border: none;
   background: transparent;
   color: var(--fg-dim);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 12px;
 }
 .slide-nav button:hover:not(:disabled) {
-  background: var(--bg-muted);
-  color: var(--fg-heading);
+  color: var(--fg);
 }
 .slide-nav button:disabled {
-  opacity: 0.3;
+  opacity: 0.4;
   cursor: default;
 }
 .slide-counter {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg-dim);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--fg);
   min-width: 56px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -786,10 +710,10 @@ body {
   position: fixed;
   bottom: 16px;
   right: 16px;
-  padding: 6px 14px;
-  border-radius: 20px;
+  bottom: 32px;
+  padding: 3px 10px;
   font-size: 12px;
-  font-weight: 600;
+  font-family: var(--font-sans);
   background: var(--bg-muted);
   border: 1px solid var(--border);
   color: var(--fg-dim);
@@ -830,55 +754,11 @@ body {
     </script>
   </head>
   <body>
-    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
-      <defs>
-        <symbol id="i-sun" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="4" />
-          <line x1="12" y1="2" x2="12" y2="4" />
-          <line x1="12" y1="20" x2="12" y2="22" />
-          <line x1="4.93" y1="4.93" x2="6.34" y2="6.34" />
-          <line x1="17.66" y1="17.66" x2="19.07" y2="19.07" />
-          <line x1="2" y1="12" x2="4" y2="12" />
-          <line x1="20" y1="12" x2="22" y2="12" />
-          <line x1="4.93" y1="19.07" x2="6.34" y2="17.66" />
-          <line x1="17.66" y1="6.34" x2="19.07" y2="4.93" />
-        </symbol>
-        <symbol id="i-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </symbol>
-        <symbol id="i-prev" viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18" /></symbol>
-        <symbol id="i-next" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18" /></symbol>
-        <symbol id="i-fs" viewBox="0 0 24 24">
-          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-          <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-          <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-        </symbol>
-        <symbol id="i-code" viewBox="0 0 24 24">
-          <polyline points="16 18 22 12 16 6" />
-          <polyline points="8 6 2 12 8 18" />
-        </symbol>
-        <symbol id="i-edit" viewBox="0 0 24 24">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-        </symbol>
-        <symbol id="i-run" viewBox="0 0 24 24">
-          <polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none" />
-        </symbol>
-      </defs>
-    </svg>
-
     <div class="slide-header">
       <h1 id="deck-title">Slideshow</h1>
       <div class="header-actions" id="header-actions">
-        <button id="code-toggle" onclick="toggleCode()" title="Show source code (c)">
-          <svg class="icon-svg" style="vertical-align: -3px; margin-right: 4px"><use href="#i-code" /></svg>
-          Code
-        </button>
-        <button id="edit-toggle" onclick="toggleEdit()" title="Edit slides live (e)">
-          <svg class="icon-svg" style="vertical-align: -3px; margin-right: 4px"><use href="#i-edit" /></svg>
-          Edit
-        </button>
+        <button id="code-toggle" onclick="toggleCode()" title="Show source code (c)">Code</button>
+        <button id="edit-toggle" onclick="toggleEdit()" title="Edit slides live (e)">Edit</button>
         <div class="fontsize-group" role="group" aria-label="Slide font size">
           <button id="fs-dec" onclick="bumpZoom(-1)" title="Decrease font (−)" aria-label="Decrease font size">
             A&minus;
@@ -892,23 +772,11 @@ body {
         </div>
         <a href="/" id="edit-link">Edit Notebook</a>
         <button onclick="exportSlideshow()" id="export-btn">Export HTML</button>
-        <button
-          class="icon-btn"
-          id="fs-toggle"
-          onclick="toggleFullscreen()"
-          title="Fullscreen (f)"
-          aria-label="Fullscreen"
-        >
-          <svg class="icon-svg"><use href="#i-fs" /></svg>
+        <button id="fs-toggle" onclick="toggleFullscreen()" title="Fullscreen (f)" aria-label="Fullscreen">
+          Full screen
         </button>
-        <button
-          class="icon-btn"
-          id="theme-toggle"
-          onclick="toggleTheme()"
-          title="Toggle light/dark theme"
-          aria-label="Toggle theme"
-        >
-          <svg class="icon-svg" id="theme-icon"><use href="#i-moon" /></svg>
+        <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
+          Theme
         </button>
       </div>
     </div>
@@ -919,13 +787,9 @@ body {
 
     <div class="slide-nav">
       <div class="nav-group">
-        <button id="nav-prev" onclick="prev()" title="Previous (←)" aria-label="Previous slide">
-          <svg class="icon-svg"><use href="#i-prev" /></svg>
-        </button>
+        <button id="nav-prev" onclick="prev()" title="Previous (←)" aria-label="Previous slide">prev</button>
         <span class="slide-counter" id="slide-counter">0 / 0</span>
-        <button id="nav-next" onclick="next()" title="Next (→)" aria-label="Next slide">
-          <svg class="icon-svg"><use href="#i-next" /></svg>
-        </button>
+        <button id="nav-next" onclick="next()" title="Next (→)" aria-label="Next slide">next</button>
       </div>
     </div>
 
@@ -946,11 +810,9 @@ function currentTheme() {
 function applyTheme(theme, { persist = true } = {}) {
   document.documentElement.dataset.theme = theme;
   if (persist) {
-    localStorage.setItem('sabela-theme', theme);
+    localStorage.setItem('sabela-theme', theme === 'light' ? 'summer' : 'default');
     window.__sabelaThemePinned = true;
   }
-  const iconUse = document.querySelector('#theme-icon use');
-  if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
   rerenderVisibleIframes();
 }
 function toggleTheme() {
@@ -1003,21 +865,35 @@ window.addEventListener('message', (e) => {
 });
 function iframeContentStyle() {
   const isDark = currentTheme() === 'dark';
-  const bg = isDark ? '#1e1e2e' : '#ffffff';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgHead = isDark ? '#f5f5ff' : '#000000';
-  const muted = isDark ? '#262637' : '#fafafa';
-  const border = isDark ? '#313244' : '#e4e4e7';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  const altRow = isDark ? 'rgba(137,180,250,0.05)' : 'rgba(0,102,255,0.04)';
-  return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:14px 18px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
+  const bg = isDark ? '#2e2e32' : '#fbfbfb';
+  const fg = isDark ? '#e1e1e6' : '#181818';
+  const fgHead = isDark ? '#e1e1e6' : '#181818';
+  const muted = isDark ? '#252529' : '#f2f2f2';
+  const border = isDark ? '#202024' : '#e8e8e8';
+  const accent = isDark ? '#93ddfa' : '#fc1785';
+  const altRow = muted;
+  return `<style>:root{${gridPaletteVars(isDark, bg, muted, fg, border, accent)}}body{background:${bg};color:${fg};font-family:'Fira Sans',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:14px 18px;line-height:1.55}img{max-width:100%}a{color:${accent}}table{border-collapse:collapse;width:100%;border:1px solid ${border};margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:500}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
 }
+// The palette the embedded grid runtime reads (--sabela-*), so a table in a
+// slide carries the deck's theme rather than one derived from its background.
+function gridPaletteVars(isDark, surface, raised, fg, border, accent) {
+  return [
+    `--sabela-surface:${surface}`,
+    `--sabela-raised:${raised}`,
+    `--sabela-fg:${fg}`,
+    `--sabela-dim:${isDark ? '#97979c' : '#808080'}`,
+    `--sabela-border:${border}`,
+    `--sabela-accent:${accent}`,
+    `--sabela-accent-rgb:${isDark ? '147,221,250' : '252,23,133'}`,
+  ].join(';');
+}
+
 function widgetIframeStyle() {
   const isDark = currentTheme() === 'dark';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgDim = isDark ? '#9399b2' : '#71717a';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:8px 14px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
+  const fg = isDark ? '#e1e1e6' : '#181818';
+  const fgDim = isDark ? '#97979c' : '#808080';
+  const accent = isDark ? '#93ddfa' : '#fc1785';
+  return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:8px 14px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:500;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
 }
 if (window.matchMedia) {
   window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {

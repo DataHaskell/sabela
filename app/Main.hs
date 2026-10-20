@@ -5,7 +5,7 @@ module Main (main) where
 {- HLINT ignore "Use fewer imports" -}
 import Control.Exception (finally)
 import Control.Monad (unless, void, when)
-import Data.Maybe (isJust, maybeToList)
+import Data.Maybe (isJust)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
@@ -25,6 +25,7 @@ import Sabela.Handlers (
     shutdownAllSessions,
  )
 import Sabela.Server (mkApp, newApp)
+import Sabela.Session.SupportSource (materializeSupportSource)
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
 import System.Directory (
@@ -79,20 +80,17 @@ withPort s k = case readMaybe s of
     Just p -> k p
     Nothing -> hPutStrLn stderr ("Invalid port: " <> s) >> exitFailure
 
-{- | Dev fallback for resolving the @sabela-notebook@ support library when
-@SABELA_LOCAL_PACKAGES@ is unset. Tries the build-time source path first (so a
-@cabal install@ed binary resolves it from any working directory, as long as the
-repo it was built from is still on disk), then a sibling @sabela-notebook@ under
-the current directory. A real Hackage install matches neither and resolves the
-package from Hackage instead.
+{- | Resolve @sabela-notebook@ when @SABELA_LOCAL_PACKAGES@ is unset: the
+build-time path, then a sibling under the working directory, then the sources
+embedded at build time, unpacked into the XDG data directory.
 -}
-locateSupportSource :: IO (Maybe FilePath)
+locateSupportSource :: IO FilePath
 locateSupportSource = go [buildTimeSupportDir, "sabela-notebook"]
   where
-    go [] = pure Nothing
+    go [] = materializeSupportSource
     go (dir : rest) = do
         present <- doesFileExist (dir </> "sabela-notebook.cabal")
-        if present then Just <$> makeAbsolute dir else go rest
+        if present then makeAbsolute dir else go rest
 
 {- | Where a local search index may live: the repository this binary was built
 from, then the working directory, so a checkout that has one is used and an
@@ -117,7 +115,7 @@ start port workDir globalFile pkgs = do
     mLocalPkgs <- lookupEnv "SABELA_LOCAL_PACKAGES"
     localPkgs <- case mLocalPkgs of
         Just s | not (null s) -> pure (splitSearchPath s)
-        _ -> maybeToList <$> locateSupportSource
+        _ -> pure <$> locateSupportSource
     unless (null localPkgs) $
         putStrLn ("Local package overlays: " ++ unwords localPkgs)
     app <- newApp workDir allGlobalDeps (Just httpMgr) mAiToken localPkgs

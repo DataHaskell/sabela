@@ -14,14 +14,8 @@ async function lookupInfo(name) {
   try {
     const res = await api('POST', 'info', { irName: name });
     container.innerHTML = '';
-    if (res.irText) {
-      const block = document.createElement('div');
-      block.className = 'info-block';
-      block.textContent = res.irText;
-      container.appendChild(block);
-    } else {
-      container.innerHTML = '<div style="color:var(--fg-dim)">No information found.</div>';
-    }
+    if (res.irText) renderInfoResult(container, res.irText, name);
+    else container.innerHTML = '<div class="info-note">No information found.</div>';
   } catch (e) {
     container.innerHTML = '';
     const err = document.createElement('div');

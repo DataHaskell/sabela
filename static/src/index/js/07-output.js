@@ -42,12 +42,14 @@ function updateCellOutput(cellId, outputs, error) {
   const hasContent = hasOutput || (error && error.trim());
   if (!hasContent) {
     if (out) out.remove();
+    detachOutputFold(el);
     return;
   }
   if (!out) {
     out = document.createElement('div');
     out.className = 'cell-output';
     el.appendChild(out);
+    attachOutputFold(el, cellId);
   }
 
   // Pin the wrapper's height so nothing collapses mid-swap; released after
@@ -56,7 +58,7 @@ function updateCellOutput(cellId, outputs, error) {
 
   if (error && !hasOutput) {
     if (out._errText !== error) {
-      out.textContent = error;
+      renderDiagnostics(out, error, cellId);
       out._errText = error;
     }
     out.className = 'cell-output error';
@@ -64,7 +66,7 @@ function updateCellOutput(cellId, outputs, error) {
     return;
   }
   out._errText = null;
-  if (out.classList.contains('error')) out.textContent = '';
+  if (out.classList.contains('error')) out.innerHTML = '';
   out.className = 'cell-output';
 
   const items = mergeOutputs(outputs).filter((i) => i.oiOutput && i.oiOutput.trim());
@@ -101,7 +103,10 @@ function updateCellOutput(cellId, outputs, error) {
       errDiv.className = 'output-error-trail';
       out.appendChild(errDiv);
     }
-    errDiv.textContent = error;
+    if (errDiv._errText !== error) {
+      renderDiagnostics(errDiv, error, cellId);
+      errDiv._errText = error;
+    }
   } else {
     if (errDiv) errDiv.remove();
   }
@@ -146,7 +151,7 @@ function renderOutputDiv(cell) {
   out.className = 'cell-output';
   if (cell.cellError && !hasOutput) {
     out.className = 'cell-output error';
-    out.textContent = cell.cellError;
+    renderDiagnostics(out, cell.cellError, cell.cellId);
     out._errText = cell.cellError;
     return out;
   }
@@ -162,8 +167,48 @@ function renderOutputDiv(cell) {
   if (cell.cellError && cell.cellError.trim()) {
     const errDiv = document.createElement('div');
     errDiv.className = 'output-error-trail';
-    errDiv.textContent = cell.cellError;
+    renderDiagnostics(errDiv, cell.cellError, cell.cellId);
+    errDiv._errText = cell.cellError;
     out.appendChild(errDiv);
   }
   return out;
+}
+
+// VS Code-style output fold: a bar in the gutter beside the output collapses
+// it to a one-line placeholder; the placeholder (or the bar) expands it again.
+function attachOutputFold(el, cellId) {
+  if (el.querySelector('.out-fold')) return;
+  const bar = document.createElement('button');
+  bar.className = 'fold-bar out-fold';
+  bar.setAttribute('aria-label', 'Collapse output');
+  bar.title = 'Collapse output';
+  bar.onclick = () => toggleOutputCollapse(cellId);
+  const note = document.createElement('div');
+  note.className = 'out-placeholder';
+  note.textContent = 'Output collapsed';
+  note.title = 'Show output';
+  note.onclick = () => toggleOutputCollapse(cellId);
+  el.append(bar, note);
+  setOutputCollapsed(el, collapsedOutputs.has(cellId));
+}
+
+function detachOutputFold(el) {
+  el.querySelectorAll('.out-fold, .out-placeholder').forEach((n) => n.remove());
+}
+
+function setOutputCollapsed(el, collapsed) {
+  el.classList.toggle('out-collapsed', collapsed);
+  const bar = el.querySelector('.out-fold');
+  if (!bar) return;
+  bar.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  bar.title = collapsed ? 'Expand output' : 'Collapse output';
+}
+
+function toggleOutputCollapse(cellId) {
+  const el = document.querySelector(`.cell[data-id="${cellId}"]`);
+  if (!el) return;
+  const collapsed = !collapsedOutputs.has(cellId);
+  if (collapsed) collapsedOutputs.add(cellId);
+  else collapsedOutputs.delete(cellId);
+  setOutputCollapsed(el, collapsed);
 }

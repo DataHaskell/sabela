@@ -8,6 +8,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
+import Sabela.Output.Fence (wrapRuntime)
+
 sabelaWidgetsJs :: Text
 sabelaWidgetsJs =
     TE.decodeUtf8
@@ -17,7 +19,8 @@ widgetDefs :: Text
 widgetDefs =
     T.unlines
         [ "_sabelaWidgetsJs :: SabelaBase.String"
-        , "_sabelaWidgetsJs = " <> T.pack (show (T.unpack sabelaWidgetsJs))
+        , "_sabelaWidgetsJs = "
+            <> T.pack (show (T.unpack (wrapRuntime "widgets" sabelaWidgetsJs)))
         , "_sabelaWidgetBlock :: SabelaBase.String -> SabelaBase.String -> SabelaBase.String"
         , "_sabelaWidgetBlock elId call = \"<div id='\" SabelaBase.++ elId SabelaBase.++ \"'></div><script>\" SabelaBase.++ _sabelaWidgetsJs SabelaBase.++ call SabelaBase.++ \"</script>\""
         , "_sabelaWidgetElId :: SabelaBase.String -> SabelaBase.String -> SabelaBase.String"
@@ -25,7 +28,7 @@ widgetDefs =
         , "_sabelaWidgetSlots :: SabelaBase.IO (SabelaBase.String, [(SabelaBase.String, SabelaBase.String)])"
         , "_sabelaWidgetSlots = SabelaIORef.readIORef _sabelaCellIdRef SabelaBase.>>= \\cid -> SabelaIORef.readIORef _sabelaWidgetRef SabelaBase.>>= \\slots -> SabelaBase.return (cid, slots)"
         , "htmlWidget :: SabelaBase.String -> (SabelaBase.String -> SabelaBase.String -> [(SabelaBase.String, SabelaBase.String)] -> (SabelaBase.String, a)) -> Input a"
-        , "htmlWidget name build = Input { iValue = _sabelaWidgetSlots SabelaBase.>>= \\(cid, slots) -> case build name cid slots of { (_, value) -> SabelaBase.return value }, iShow = _sabelaWidgetSlots SabelaBase.>>= \\(cid, slots) -> case build name cid slots of { (html, _) -> displayMime_ \"text/html\" html } }"
+        , "htmlWidget name build = Input { iValue = _sabelaWidgetSlots SabelaBase.>>= \\(cid, slots) -> case build name cid slots of { (_, value) -> SabelaBase.return value }, iShow = _sabelaWidgetSlots SabelaBase.>>= \\(cid, slots) -> case build name cid slots of { (markup, _) -> displayMime_ \"text/html\" markup } }"
         , "slider :: (SabelaBase.Show a, SabelaBase.Read a, SabelaBase.Integral a) => SabelaBase.String -> a -> a -> a -> Input a"
         , "slider name def lo hi = Input { iValue = widgetRead name def, iShow = widgetRead name def SabelaBase.>>= \\val -> SabelaIORef.readIORef _sabelaCellIdRef SabelaBase.>>= \\cid -> displayMime_ \"text/html\" (let elId = _sabelaWidgetElId cid name in _sabelaWidgetBlock elId (\"sabelaSlider({elId:\" SabelaBase.++ SabelaBase.show elId SabelaBase.++ \",cid:\" SabelaBase.++ cid SabelaBase.++ \",name:\" SabelaBase.++ SabelaBase.show name SabelaBase.++ \",min:\" SabelaBase.++ SabelaBase.show lo SabelaBase.++ \",max:\" SabelaBase.++ SabelaBase.show hi SabelaBase.++ \",value:\" SabelaBase.++ SabelaBase.show val SabelaBase.++ \"});\")) }"
         , "dropdown :: SabelaBase.String -> [SabelaBase.String] -> SabelaBase.String -> Input SabelaBase.String"

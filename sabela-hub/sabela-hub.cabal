@@ -46,6 +46,7 @@ library
                       Hub.Shares.Api,
                       Hub.Reaper,
                       Hub.Banner,
+                      Hub.Brand,
                       Hub.Runner,
                       Hub.Republish,
                       Hub.Share

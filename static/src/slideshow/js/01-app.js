@@ -12,11 +12,9 @@ function currentTheme() {
 function applyTheme(theme, { persist = true } = {}) {
   document.documentElement.dataset.theme = theme;
   if (persist) {
-    localStorage.setItem('sabela-theme', theme);
+    localStorage.setItem('sabela-theme', theme === 'light' ? 'summer' : 'default');
     window.__sabelaThemePinned = true;
   }
-  const iconUse = document.querySelector('#theme-icon use');
-  if (iconUse) iconUse.setAttribute('href', theme === 'light' ? '#i-moon' : '#i-sun');
   rerenderVisibleIframes();
 }
 function toggleTheme() {

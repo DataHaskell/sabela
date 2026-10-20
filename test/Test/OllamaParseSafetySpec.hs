@@ -56,6 +56,13 @@ spec = describe "Ollama tool-call parse safety" $ do
                 Left failure -> pfClass failure `shouldSatisfy` (`elem` unsafeClasses)
                 Right t -> expectationFailure ("unsafe payload dispatched: " <> show t)
 
+    it "classes a server-side error as transport, so it is not re-prompted" $
+        case parseTurnWithTools schemas (encode (object ["error" .= notFound])) of
+            Left failure -> do
+                pfClass failure `shouldBe` TransportFailure
+                pfReprompt failure `shouldSatisfy` T.isInfixOf notFound
+            Right t -> expectationFailure ("server error dispatched: " <> show t)
+
     it "recovers a bare code payload as the unified try tool" $
         recoverFromContent "{\"code\":\"1 + 1\"}"
             `shouldBe` Just (ToolCall "try" (object ["code" .= ("1 + 1" :: T.Text)]))
@@ -103,6 +110,9 @@ unsafeBodies =
     ]
   where
     ballooned = T.unlines (replicate 595 "S..?? lyx???? ....????")
+
+notFound :: T.Text
+notFound = "model 'qwen3.5-fast' not found"
 
 unsafeClasses :: [ParseFailureClass]
 unsafeClasses =

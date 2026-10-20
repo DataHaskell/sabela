@@ -17,6 +17,7 @@ import Sabela.Reactivity (
     cycleErrorMsg,
     redefinitionErrorMsg,
  )
+import Sabela.Reactivity.Upstream (cycleBlockedMsg)
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
 
@@ -58,6 +59,12 @@ broadcastCycleErrors app plan filterCid = do
                     cells
                     (epDefMap plan)
         forM_ (S.toList cycleIds) $ \cid -> broadcastCellError app cid msg
+    let blocked = filterCycleIds filterCid (epBlockedByCycle plan)
+    forM_ (S.toList blocked) $ \cid ->
+        broadcastCellError
+            app
+            cid
+            (cycleBlockedMsg (epCellPositions plan) (epCycleIds plan))
 
 filterByCell :: Maybe Int -> M.Map Int a -> M.Map Int a
 filterByCell Nothing m = m

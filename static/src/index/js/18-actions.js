@@ -61,8 +61,8 @@ function showCrashBanner() {
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'crash-banner';
-    banner.style.cssText =
-      'background:#b91c1c;color:#fff;padding:8px 16px;text-align:center;cursor:pointer;font-weight:600;';
+    banner.className = 'notebook-banner';
+    banner.style.cursor = 'pointer';
     banner.textContent = 'Kernel crashed — click to restart';
     banner.onclick = restartKernel;
     document.body.prepend(banner);
@@ -73,6 +73,13 @@ function showCrashBanner() {
 function hideCrashBanner() {
   const banner = document.getElementById('crash-banner');
   if (banner) banner.style.display = 'none';
+}
+
+// The notebook toolbar's "+ Code" / "+ Markdown": append after the last cell.
+function addCellAtEnd(type) {
+  const cells = notebook ? notebook.nbCells : [];
+  const last = cells.length ? cells[cells.length - 1].cellId : -1;
+  return addCell(last, type, 'Haskell');
 }
 
 // Returns the new cell's id, so a caller inserting several in a row can

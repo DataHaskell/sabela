@@ -156,7 +156,7 @@ that box. `throw ex` unwinds out to the `try` that owns `ex`; `jumpTo break`
 exits just the loop. Nothing leaks outward:
 
 ```haskell
-displayHtml $ concat
+html $ concat
   [ "<svg viewBox='0 0 560 250' xmlns='http://www.w3.org/2000/svg' font-family='ui-sans-serif,system-ui,sans-serif'>"
   , "<rect x='6' y='6' width='548' height='238' rx='14' fill='#faf7f1' stroke='#2e3440' stroke-width='1.5'/>"
   , "<text x='20' y='28' font-size='13' font-weight='700' fill='#2e3440'>runPureEff</text>"
@@ -243,7 +243,7 @@ traceSvg inputs =
           ++ map box steps
           ++ ["</svg>"]
 
-displayHtml (traceSvg ["1", "2", "3", "0", "99"])
+html (traceSvg ["1", "2", "3", "0", "99"])
 ```
 
 The same function over real input is just `runEff $ \io -> ...` with

@@ -1,15 +1,12 @@
 /* ── Tables (prose + markdown outputs) ─────── */
 .dash-section table,
 .dash-output .mime-markdown table {
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   width: 100%;
   margin: 14px 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
   overflow: hidden;
   font-size: 14px;
-  box-shadow: var(--shadow);
   background: var(--bg-card);
 }
 .dash-section th,
@@ -28,18 +25,13 @@
 .dash-output .mime-markdown th {
   background: var(--bg-muted);
   color: var(--fg-heading);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13px;
-  letter-spacing: 0.2px;
   border-bottom: 1px solid var(--border);
 }
 .dash-section tr:nth-child(even) td,
 .dash-output .mime-markdown tr:nth-child(even) td {
-  background: rgba(var(--accent-rgb), 0.04);
-}
-.dash-section tbody tr:hover td,
-.dash-output .mime-markdown tbody tr:hover td {
-  background: rgba(var(--accent-rgb), 0.08);
+  background: var(--bg-muted);
 }
 /* Right-align numeric-looking columns automatically isn't possible without JS;
      leave default alignment but tighten cell typography. */
@@ -48,7 +40,7 @@
   font-variant-numeric: tabular-nums;
 }
 .dash-section blockquote {
-  border-left: 3px solid var(--accent);
+  border-left: 2px solid var(--accent);
   padding: 8px 16px;
   color: var(--fg-dim);
   margin-bottom: 12px;

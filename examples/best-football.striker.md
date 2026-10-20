@@ -163,7 +163,7 @@ chart =
             , G.plotTitle = "Goals + assists per 90 — every qualified attacker, top-5 leagues"
             }
 
-displayHtml (T.unpack chart)
+html (T.unpack chart)
 ```
 
 > <!-- scripths:mime text/html -->

@@ -17,6 +17,7 @@ module Sabela.Handlers.Exec (
 import Control.Exception (SomeException, try)
 import Control.Monad (forM_, when)
 import qualified Data.Map.Strict as M
+import Data.Maybe (isNothing)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -39,6 +40,7 @@ import Sabela.Model (
     textToMime,
  )
 import Sabela.Output (parseMimeOutputs)
+import Sabela.Output.Display (attributeInteractivePrint)
 import Sabela.Parse (cellNames)
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
@@ -50,7 +52,8 @@ import ScriptHs.Compiled (linePragmaTag)
 import ScriptHs.Parser (CabalMeta (..), parseScriptNumbered)
 import ScriptHs.Render (toGhciScriptTagged)
 
-runAndBroadcast :: App -> Int -> Cell -> IO ()
+-- | Runs one cell and reports whether it succeeded, so a runner can suspend its consumers.
+runAndBroadcast :: App -> Int -> Cell -> IO Bool
 runAndBroadcast app gen cell = do
     broadcast app (EvCellUpdating (cellId cell))
     loadSabelaPrelude app
@@ -66,6 +69,7 @@ runAndBroadcast app gen cell = do
                 errs
                 (rrWarnings result)
             )
+    pure (isNothing (rrError result))
 
 execCell :: App -> Cell -> IO (RunResult, [CellError])
 execCell app cell = do
@@ -139,11 +143,12 @@ parseCellResult jsonOn cid rawOut rawErr = do
     pure $
         if jsonOn
             then
-                let (errs, warns, residual) = parseJsonInteractive rawErr
+                let (errs, warns, residual) =
+                        parseJsonInteractive (attributeInteractivePrint rawErr)
                     pseudoRaw = T.unlines (map (locateError cid) errs) <> residual
                  in (RunResult cid outputs (classifyError errs pseudoRaw) warns, errs)
             else
-                let scrubbed = scrubHarnessFrames rawErr
+                let scrubbed = scrubHarnessFrames (attributeInteractivePrint rawErr)
                     errs = parseErrors scrubbed
                  in (RunResult cid outputs (classifyError errs scrubbed) [], errs)
 

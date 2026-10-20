@@ -11,3 +11,6 @@ static/src/**/*.svg
 dist-newstyle/
 static/dist-newstyle/
 static/images/
+
+# Vendored third-party libraries.
+static/src/vendor/

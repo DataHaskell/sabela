@@ -5,13 +5,30 @@ module Sabela.Output where
 import Control.Applicative ((<|>))
 import Data.Text (Text)
 import qualified Data.Text as T
+import Sabela.Output.Display (
+    displayDefs,
+    displayImports,
+    displayPragmas,
+    interactivePrintSetting,
+ )
 import Sabela.Output.Scatter (scatterDefs)
 import Sabela.Output.Widgets (widgetDefs)
 
 {- | Every name this block looks up is reached through one of its own
 qualified aliases, and it imports nothing unqualified, so neither can a user's
 cell make it ambiguous nor can it outrank that cell's own @hiding@ clause.
+It ends by handing printing to 'Sabela.Output.Display.displayDefs', so a
+cell's trailing expression renders itself.
 -}
+
+{- | A match that stopped being exhaustive is an error, not a warning the
+kernel compiles past: the cell fails, so its consumers suspend instead of
+running against a partial function. Armed after the prelude and the optional displays.
+-}
+incompletePatternsAsErrors :: Text
+incompletePatternsAsErrors =
+    ":set -Wincomplete-patterns -Werror=incomplete-patterns\n"
+
 displayPrelude :: Text
 displayPrelude =
     T.unlines
@@ -20,7 +37,14 @@ displayPrelude =
                , "import qualified Control.Exception"
                , "import qualified Data.Proxy"
                , "import qualified Data.Typeable"
-               , ":{"
+               , "import qualified Data.Dynamic"
+               , "import qualified Foreign.Ptr"
+               , "import qualified Foreign.StablePtr"
+               , "import qualified System.Environment"
+               ]
+            <> displayImports
+            <> displayPragmas
+            <> [ ":{"
                , "data Input a = Input {iValue :: SabelaBase.IO a, iShow :: SabelaBase.IO ()}"
                , "instance SabelaBase.Functor Input where"
                , "    fmap f b = Input{iValue = SabelaBase.fmap f (iValue b), iShow = iShow b}"
@@ -69,7 +93,10 @@ displayPrelude =
         )
         <> widgetDefs
         <> scatterDefs
+        <> displayDefs
         <> ":}\n"
+        <> interactivePrintSetting
+        <> "\n"
 
 {- | The base modules this block resolves its ambient names against, all under
 one alias. Prelude is deliberately not among them: an import of it here would
@@ -82,6 +109,7 @@ baseAliases =
         [ "Control.Applicative"
         , "Control.Monad"
         , "Data.Bool"
+        , "Data.Char"
         , "Data.Eq"
         , "Data.Function"
         , "Data.Functor"

@@ -42,6 +42,7 @@ import Sabela.Api
 import Sabela.Handlers (ReactiveNotebook)
 import Sabela.Handlers.Shared (broadcast)
 import Sabela.Model
+import Sabela.Server.Ai.Models (knownModels)
 import Sabela.State (
     AIConfigUpdate (..),
     App (..),
@@ -53,22 +54,31 @@ import Sabela.State (
     setAIStore,
     updateAIConfig,
  )
+import Sabela.State.Config (ollamaProviderId)
 import Sabela.State.Environment (Environment (..))
 import Sabela.State.NotebookStore (readNotebook)
+import Sabela.State.OllamaModels (installedOllamaModels)
 
 getAIConfigH :: App -> Handler Value
 getAIConfigH app = liftIO $ do
     numCtx <- getAINumCtx app
     toolLimit <- getAIToolLimit app
-    let knobs = ["numCtx" .= numCtx, "toolLimit" .= toolLimit]
+    installed <- maybe (pure Nothing) installedOllamaModels (appHttpMgr app)
+    let knobs =
+            [ "numCtx" .= numCtx
+            , "toolLimit" .= toolLimit
+            , "models" .= knownModels
+            , "ollamaModels" .= fromMaybe [] installed
+            , "ollamaReachable" .= isJust installed
+            ]
     mStore <- getAIStore app
     case mStore of
         Nothing ->
             pure $
                 object $
                     [ "configured" .= False
+                    , "provider" .= ollamaProviderId
                     , "model" .= (Nothing :: Maybe Text)
-                    , "models" .= knownModels
                     ]
                         ++ knobs
         Just store -> do
@@ -79,30 +89,8 @@ getAIConfigH app = liftIO $ do
                     [ "configured" .= True
                     , "provider" .= provider
                     , "model" .= acModel cfg
-                    , "models" .= knownModels
                     ]
                         ++ knobs
-
-knownModels :: [Value]
-knownModels =
-    [ modelEntry
-        "claude-haiku-4-5-20251001"
-        "Haiku 4.5"
-        "Fast + cheap; best for high-frequency iteration"
-    , modelEntry
-        "claude-sonnet-4-6"
-        "Sonnet 4.6"
-        "Recommended balance of speed and capability"
-    , modelEntry
-        "claude-opus-4-7"
-        "Opus 4.7"
-        "Most capable; slower; use for hard reasoning"
-    , modelEntry "claude-sonnet-4-20250514" "Sonnet 4 (legacy)" "Original default"
-    ]
-  where
-    modelEntry :: Text -> Text -> Text -> Value
-    modelEntry mid label desc =
-        object ["id" .= mid, "label" .= label, "description" .= desc]
 
 setAIConfigH :: App -> Value -> Handler Value
 setAIConfigH app (Object o) = liftIO $ do
@@ -169,7 +157,7 @@ chatMessageH app rn (ChatRequest msg) = liftIO $ do
                 app
                 ( EvChatError
                     Nothing
-                    "AI not configured. Open the Chat panel to set your API key."
+                    "AI not configured. Open the Chat panel to pick a model."
                 )
         Just store ->
             handleChatMessage app store rn msg

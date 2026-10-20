@@ -67,6 +67,19 @@ inlined — exactly as the original single `<script>` did — so functions stay
 reachable from inline `onclick=` handlers. Keep them that way (no ES-module
 `import`/`export` in these partials).
 
+### Embedded runtimes (not bundled pages)
+
+`static/src/widgets/*.js` and `prelude/display.hs` are **not** touched by the
+bundler. They are embedded into the binary with Template Haskell
+(`Sabela.Output.Scatter`, `Sabela.Output.Grid`, `Sabela.Output.Display`) and
+spliced into the GHCi prelude, so a rendered widget or table carries its own
+runtime and works in an export with nothing to fetch. Two consequences:
+
+- After editing one, `touch` its embedding module before `cabal build` —
+  cabal will not otherwise notice that a TH-embedded asset changed.
+- `node tools/grid-model-test.mjs` (`make grid-test`) covers the table view's
+  typing, formatting and ordering without a browser; it is a presubmit gate.
+
 ### Workflow
 
 - `make frontend` (or `node tools/build-frontend.mjs`) — rebuild the embeds after

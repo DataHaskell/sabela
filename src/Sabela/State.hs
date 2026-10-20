@@ -38,6 +38,12 @@ import Sabela.State.DependencyTracker
 import Sabela.State.Environment
 import Sabela.State.EventBus
 import Sabela.State.NotebookStore
+import Sabela.State.OllamaModels (
+    chooseOllamaModel,
+    defaultProvider,
+    installedOllamaModels,
+ )
+import Sabela.State.ReplProject (claimReplProjectDir)
 import Sabela.State.SessionManager
 import Sabela.State.WidgetStore
 
@@ -48,25 +54,30 @@ newApp workDir globalDeps mHttpMgr mAiToken localPkgs = do
     localAbs <- mapM canonicalizePath localPkgs
     tmpBase <- getCanonicalTemporaryDirectory
     tmpDir <- createTempDirectory tmpBase "sabela-server"
+    (replDir, replLock) <- claimReplProjectDir tmpDir absWork
     debug <- isJust <$> lookupEnv "SABELA_DEBUG"
     (mApiKey, mSavedModel, mSavedProvider, mNumCtx, mToolLimit) <-
         resolveConfig absWork
     envModel <- lookupEnv "ANTHROPIC_MODEL"
+    installed <- maybe (pure Nothing) installedOllamaModels mHttpMgr
     let numCtx0 = fromMaybe defaultNumCtx mNumCtx
         toolLimit0 = fromMaybe defaultToolLimit mToolLimit
-        provider = fromMaybe "anthropic" mSavedProvider
+        provider =
+            fromMaybe (defaultProvider installed (isJust mApiKey)) mSavedProvider
         isOllama = provider == ollamaProviderId
         defaultModel
-            | isOllama = T.unpack defaultOllamaModel
+            | isOllama = T.unpack (chooseOllamaModel installed Nothing)
             | otherwise = "claude-sonnet-4-20250514"
         modelPref
-            | isOllama = fmap T.unpack mSavedModel
+            | isOllama = Just (T.unpack (chooseOllamaModel installed mSavedModel))
             | otherwise = envModel <|> fmap T.unpack mSavedModel
         apiModel = fromMaybe defaultModel modelPref
         env =
             Environment
                 { envWorkDir = absWork
                 , envTmpDir = tmpDir
+                , envReplProjectDir = replDir
+                , envReplProjectLock = replLock
                 , envGlobalDeps = globalDeps
                 , envLocalPackages = localAbs
                 , envDebugLog = debug

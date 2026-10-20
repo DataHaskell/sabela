@@ -2,7 +2,7 @@
 # `cabal` / `./scripts/*.sh` (see CLAUDE.md); this Makefile exists mainly
 # to make rebuilding the embedded frontend and search cache discoverable.
 
-.PHONY: help frontend frontend-check hub-assets search-cache capability-index \
+.PHONY: help frontend frontend-check grid-test hub-assets search-cache capability-index \
         hackage-facts presubmit presubmit-quick \
         search-cache-local search-cache-hackage test test-fast payload-probe
 
@@ -32,6 +32,9 @@ frontend: ## Rebuild the embedded HTML (static/*.html) + the WASM-run bundle (st
 
 frontend-check: ## Fail if any static/*.html or the WASM-run bundle is stale vs its static/src/ partials
 	node tools/build-frontend.mjs --check
+
+grid-test: ## Check the table view's typing, formatting and ordering (no browser needed)
+	node tools/grid-model-test.mjs
 
 hub-assets: ## Refresh the hub's WASM assets (sabela-hub/static/) so it builds/deploys self-contained
 	node tools/build-frontend.mjs

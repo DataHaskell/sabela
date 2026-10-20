@@ -133,7 +133,7 @@ runChatCommand ::
     IO ()
 runChatCommand opts withConn resolveBase warnNonLocal noServer = do
     mgr <- newTlsManager
-    ensureOllama mgr
+    ensureOllama mgr (coModel opts)
     applyUrlOverride (coUrl opts)
     withConn $ \conn ->
         resolveBase conn (coUrl opts) $ \base -> do

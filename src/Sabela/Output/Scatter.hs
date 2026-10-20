@@ -8,6 +8,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
+import Sabela.Output.Fence (wrapRuntime)
+
 scatterViewJs :: Text
 scatterViewJs =
     TE.decodeUtf8
@@ -45,7 +47,8 @@ scatterDefs =
         , "  cid <- SabelaIORef.readIORef _sabelaCellIdRef"
         , "  displayMime_ \"text/html\" (scatterHtml name cid opts pts sel)"
         , "_sabelaScatterJs :: SabelaBase.String"
-        , "_sabelaScatterJs = " <> T.pack (show (T.unpack scatterWidgetJs))
+        , "_sabelaScatterJs = "
+            <> T.pack (show (T.unpack (wrapRuntime "scatter" scatterWidgetJs)))
         , "scatterHtml :: SabelaBase.String -> SabelaBase.String -> ScatterOpts -> [(SabelaBase.Double, SabelaBase.Double)] -> [SabelaBase.Int] -> SabelaBase.String"
         , "scatterHtml name cid opts pts sel = SabelaBase.unlines"
         , "  [ \"<div style='font-family:sans-serif'>\""

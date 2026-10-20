@@ -78,7 +78,7 @@ let opts = defScatter
       , soColorBy = prices        -- colour = median house value
       }
 
-sel <- display (scatterSelectWith "housing" opts pts)
+sel <- mkWidget (scatterSelectWith "housing" opts pts)
 ```
 
 > <!-- sabela:mime text/html -->
@@ -180,7 +180,7 @@ let chosen  = selectRows sel df
 let n       = D.nRows chosen
 let meanVal = if n == 0 then 0 else round (D.mean (F.col @Double "median_house_value") chosen) :: Int
 
-displayMarkdown $
+md $
     "Selected **" ++ show n ++ "** of " ++ show (D.nRows df) ++ " districts"
         ++ (if n == 0
                 then " — draw a lasso on the plot above to begin."

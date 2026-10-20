@@ -13,6 +13,8 @@ import Servant
 
 import Sabela.Anthropic.Types (ToolDef)
 import Sabela.Api
+import Sabela.Api.Bindings (BindingsResult)
+import Sabela.Api.FrameQuery (FrameQueryRequest, FrameQueryResult)
 import Sabela.Model
 import qualified Sabela.SessionTypes as ST
 
@@ -94,6 +96,12 @@ type JsonAPI =
             :> "info"
             :> ReqBody '[JSON] InfoRequest
             :> Post '[JSON] InfoResult
+        :<|> "api" :> "bindings" :> Get '[JSON] BindingsResult
+        :<|> "api"
+            :> "frame"
+            :> "query"
+            :> ReqBody '[JSON] FrameQueryRequest
+            :> Post '[JSON] FrameQueryResult
         :<|> "api" :> "examples" :> Get '[JSON] [Example]
         :<|> "api"
             :> "cell"

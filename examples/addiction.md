@@ -324,7 +324,7 @@ probeAuc frame =
 
 probeTree = L.fit probeCfg (F.col @Double "yProbe") probeFlagged
 
-displayMarkdown (unlines
+md (unlines
   [ "```", D.prettyPrint (L.predict probeTree), "```"
   , "| frame | depth-3 AUC |", "|---|---|"
   , "| values only | " <> show (r4 (probeAuc probeValues)) <> " |"
@@ -746,7 +746,7 @@ prep d =
 work = prep (df |> D.take workRows)
 workPos = D.nRows (D.filterWhere (F.col @Double "y" `F.eq` F.lit 1.0) work)
 
-displayMarkdown (show workRows <> " rows, positive rate "
+md (show workRows <> " rows, positive rate "
   <> show (r4 (fromIntegral workPos / fromIntegral workRows)) <> " against 0.7094 for the full data")
 ```
 
@@ -869,7 +869,7 @@ densPanel c = G.overlay
   , G.density (edaColOf edaAddicted c) <> G.color edaOrange
   ] <> G.title c
 
-displaySvg (Tx.unpack (G.renderSVG
+svg (Tx.unpack (G.renderSVG
   (edaGrid densPanel numericCols <> G.width 960 <> G.height 720)))
 ```
 
@@ -901,7 +901,7 @@ boxPanel c = G.overlay
   , G.boxplot (edaColOf edaAddicted c) <> G.color edaOrange
   ] <> G.title c
 
-displaySvg (Tx.unpack (G.renderSVG
+svg (Tx.unpack (G.renderSVG
   (edaGrid boxPanel numericCols <> G.width 960 <> G.height 720)))
 ```
 
@@ -1087,7 +1087,7 @@ workT = T.unsafeFreeze
     , '("weekend_screen_time", Double)
     , '("y", Double) ] work
 
-displayMarkdown ("typed schema: " <> show (T.columnNames workT))
+md ("typed schema: " <> show (T.columnNames workT))
 ```
 
 > <!-- scripths:mime text/markdown -->
@@ -1231,7 +1231,7 @@ import qualified Data.Text as Tx
 totalExposure = (F.col @Double "daily_screen_time_hours") + (F.col @Double "social_media_hours")
 expOf d = G.ColNum (VU.convert (L.columnOf d totalExposure))
 
-displaySvg (Tx.unpack (G.renderSVG (G.overlay
+svg (Tx.unpack (G.renderSVG (G.overlay
   [ G.histogram (expOf edaClean) <> G.color (G.rgb 31 119 180) <> G.binCount 24
   , G.histogram (expOf edaAddicted) <> G.color (G.rgb 255 127 14) <> G.binCount 24
   ] <> G.title "daily_screen_time_hours + social_media_hours")))
@@ -1656,7 +1656,7 @@ timedFit tr ho cfg = do
 capTrain = pPrepTrain fullMeans (D.range (0, capRows) df)
 capHold = pPrepTrain fullMeans (D.range (600000, 625000) df)
 
-displayMarkdown (unlines
+md (unlines
   [ "Cost of a 100-tree, depth-3 fit, measured on this machine:"
   , ""
   , "| rows | seconds | in-sample AUC |"
@@ -1685,7 +1685,7 @@ displayMarkdown (unlines
 > says this model is not short of rows.
 
 ```haskell
-displayMarkdown (unlines
+md (unlines
   [ "Capacity sweep, 50,000 training rows against a disjoint 25,000-row holdout:"
   , ""
   , "| trees | depth | rate | holdout AUC | seconds |"
@@ -2459,7 +2459,7 @@ import DataFrame ((|>))
 
 dfTest <- D.readCsv "./examples/data/addiction/test.csv"
 
-displayMarkdown ("test.csv: " <> show (D.nRows dfTest) <> " rows, "
+md ("test.csv: " <> show (D.nRows dfTest) <> " rows, "
   <> show (length (D.columnNames dfTest)) <> " columns")
 ```
 
@@ -2552,7 +2552,7 @@ driftPanel c = G.overlay
   , G.density (edaColOf driftTest c) <> G.color edaOrange
   ] <> G.title c
 
-displaySvg (Tx.unpack (G.renderSVG
+svg (Tx.unpack (G.renderSVG
   (edaGrid driftPanel pNumericCols <> G.width 960 <> G.height 720)))
 ```
 

@@ -102,8 +102,8 @@ That's why we can use `do` syntax to glue together several I/O actions into one.
 Take a look at the following example:
 
 ```haskell
-name <- display (textInput "name" "World")
-displayHtml $ "Hey " ++ name ++ ", you rock!"
+name <- mkWidget (textInput "name" "World")
+html $ "Hey " ++ name ++ ", you rock!"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -295,8 +295,8 @@ Every I/O action that gets performed has a result encapsulated within it.
 That's why our previous example program could also have been written like this:
 
 ```haskell
-name <- display (textInput "name" "World")
-displayHtml $ "Hey " ++ name ++ ", you rock!"
+name <- mkWidget (textInput "name" "World")
+html $ "Hey " ++ name ++ ", you rock!"
 ```
 
 However, `foo` would just have a value of `()`, so doing that would be kind of moot.
@@ -343,9 +343,9 @@ Check this out:
 ```haskell
 import Data.Char
 
-firstName <- display (textInput "firstName" "John")
-lastName <- display (textInput "lastName" "Doe")
-displayHtml $ "hey " ++ map toUpper firstName ++ " " ++ map toUpper lastName ++ ", how are you?"
+firstName <- mkWidget (textInput "firstName" "John")
+lastName <- mkWidget (textInput "lastName" "Doe")
+html $ "hey " ++ map toUpper firstName ++ " " ++ map toUpper lastName ++ ", how are you?"
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -868,9 +868,9 @@ Its type signature is `sequence :: [IO a] -> IO [a]`.
 Doing this:
 
 ```haskell
-line1 <- display (textInput "line1" "first")
-line2 <- display (textInput "line2" "second")
-line3 <- display (textInput "line3" "third")
+line1 <- mkWidget (textInput "line1" "first")
+line2 <- mkWidget (textInput "line2" "second")
+line3 <- mkWidget (textInput "line3" "third")
 print [line1, line2, line3]
 ```
 

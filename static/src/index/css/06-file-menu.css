@@ -1,75 +1,64 @@
-/* ── File context menu ──────────────────────── */
+/* ── Menus (file context menu, "More" dropdown) ── */
+/* A plain pane-coloured box with a 1px edge; rows are one line of text with
+   the hovered row filled in the caret colour, keybindings right-aligned and
+   dim. No glyphs, no coloured rows. */
 .ctx-menu {
   position: fixed;
   z-index: 400;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 6px;
-  min-width: 200px;
-  box-shadow: var(--shadow-strong);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  animation: ctx-pop 0.1s ease-out;
+  padding: 4px 0;
+  min-width: 220px;
+  font-family: var(--font-sans);
+  font-size: 13px;
 }
-@keyframes ctx-pop {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.ctx-menu-item {
-  padding: 7px 10px;
+.ctx-menu-item,
+.toolbar-dropdown-menu .dd-item,
+.theme-menu-item {
+  height: 24px;
+  padding: 0 24px 0 var(--pad-x);
   cursor: pointer;
   color: var(--fg);
   display: flex;
   align-items: center;
   gap: 10px;
-  border-radius: 6px;
-  transition:
-    background 0.08s,
-    color 0.08s;
-}
-.ctx-menu-item .icon-svg {
-  width: 14px;
-  height: 14px;
-  color: var(--fg-dim);
-  flex-shrink: 0;
+  white-space: nowrap;
 }
 .ctx-menu-item:hover,
-.ctx-menu-item:focus-visible {
-  background: rgba(var(--accent-rgb), 0.14);
-  color: var(--fg-bright);
+.ctx-menu-item:focus-visible,
+.toolbar-dropdown-menu .dd-item:hover,
+.theme-menu-item:hover {
+  background: var(--accent);
+  color: var(--bg);
   outline: none;
 }
-.ctx-menu-item:hover .icon-svg,
-.ctx-menu-item:focus-visible .icon-svg {
-  color: var(--accent);
-}
-.ctx-menu-item .ctx-shortcut {
+.ctx-menu-item .ctx-shortcut,
+.toolbar-dropdown-menu .dd-item .dd-hint {
   margin-left: auto;
-  font-size: 10.5px;
+  padding-left: 24px;
+  font-size: 12px;
   color: var(--fg-dim);
 }
-.ctx-menu-item.danger {
-  color: var(--red);
+.ctx-menu-item:hover .ctx-shortcut,
+.toolbar-dropdown-menu .dd-item:hover .dd-hint,
+.toolbar-dropdown-menu .dd-item:hover .dd-chev,
+.theme-menu-item:hover .nm::after,
+.ctx-menu-item:hover .nm::after {
+  color: var(--bg);
 }
-.ctx-menu-item.danger .icon-svg {
-  color: var(--red);
+.ctx-menu-item.active {
+  color: var(--fg-bright);
 }
-.ctx-menu-item.danger:hover {
-  background: rgba(243, 139, 168, 0.14);
-  color: var(--red);
+.ctx-menu-item.active .nm::after {
+  content: ' ✓';
+  color: var(--accent);
 }
-:root[data-theme='light'] .ctx-menu-item.danger:hover {
-  background: rgba(210, 15, 57, 0.1);
+.lang-menu {
+  min-width: 140px;
 }
-.ctx-menu-sep {
+.ctx-menu-sep,
+.toolbar-dropdown-menu .dd-sep {
   height: 1px;
   background: var(--border);
-  margin: 6px 4px;
+  margin: 4px 0;
 }

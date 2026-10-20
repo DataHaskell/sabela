@@ -1,136 +1,172 @@
-/* ── Theme picker menu ─────────────────────── */
-.theme-menu {
-  position: fixed;
-  z-index: 200;
-  display: none;
-  flex-direction: column;
-  min-width: 200px;
-  padding: 6px;
-  background: var(--bg-cell);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-strong);
-}
-.theme-menu.open {
-  display: flex;
-}
-.theme-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 9px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--fg);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.theme-menu-item:hover {
-  background: var(--bg-panel);
-}
-.theme-menu-item.active {
-  color: var(--accent);
-  font-weight: 500;
-}
-.theme-menu-item .sw {
-  width: 26px;
-  height: 18px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.theme-menu-item .sw i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.theme-menu-item.active .nm::after {
-  content: ' ✓';
-  color: var(--accent);
-}
-
-/* ── Toolbar ───────────────────────────────── */
-/* Floating pill toolbar: detached from the edges, fully rounded, lifted with a
-   soft shadow so it reads as a command bar hovering over the workspace. */
+/* ── Tab bar (the top strip) ───────────────── */
+/* A pane-coloured strip with a divider along the bottom; the active tab is
+   filled with the document background and edged in divider. The notebook
+   title is the one open tab; the controls sit flush right. */
 .toolbar {
   flex-shrink: 0;
   z-index: 100;
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 10px 12px 4px;
-  padding: 6px 8px 6px 16px;
+  align-items: stretch;
+  gap: 0;
+  height: 34px;
+  padding: 0;
   background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: var(--shadow-soft);
-  font-family: var(--font-mono);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
   font-size: 13px;
 }
+.toolbar > * {
+  align-self: center;
+}
+.toolbar-title-wrap {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 170px;
+  max-width: 170px;
+  margin-bottom: -1px;
+  padding: 0 var(--pad-x);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  color: var(--fg);
+}
+.toolbar-title-wrap .toolbar-title {
+  margin-right: 0;
+  max-width: none;
+  flex: 1;
+}
 .toolbar-title {
-  font-weight: 600;
-  color: var(--accent);
-  margin-right: auto;
-  font-size: 14px;
-  letter-spacing: 0.5px;
+  font-weight: 400;
+  color: var(--fg);
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 200px;
 }
-/* The lambda brand mark (Haskell), in the theme's gold accent. */
 .toolbar-title .lam {
-  color: var(--accent);
-  font-family: var(--font-mono);
+  display: none;
+}
+/* Unsaved: a dot in the "modified" blue beside the tab title. */
+.dirty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--modified);
+  flex-shrink: 0;
+  opacity: 0;
+}
+.dirty-dot.show {
+  opacity: 1;
+}
+.toolbar .spacer {
+  flex: 1;
 }
 .toolbar button,
 .toolbar .tbtn {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 0;
   background: transparent;
-  color: var(--fg);
+  color: var(--fg-dim);
   cursor: pointer;
-  transition: all 0.15s;
   white-space: nowrap;
-}
-.toolbar button:hover,
-.toolbar .tbtn:hover {
-  background: var(--bg-cell);
-  border-color: var(--accent-dim);
-}
-/* Run is the one saturated signal — Ndebele green, as in Replit/IntelliJ. */
-.toolbar .primary {
-  background: var(--green);
-  color: #10140f;
-  border-color: var(--green);
-  font-weight: 600;
-  height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 13px;
+}
+.toolbar button:hover,
+.toolbar .tbtn:hover {
+  color: var(--fg-bright);
+  background: transparent;
+}
+.toolbar .primary {
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  font-weight: 400;
+  height: 26px;
+  padding: 0 10px;
+}
+.toolbar .primary .icon-svg {
+  color: var(--green);
 }
 .toolbar .primary:hover {
-  background: color-mix(in srgb, var(--green) 82%, #ffffff);
-  border-color: color-mix(in srgb, var(--green) 82%, #ffffff);
-  color: #10140f;
-  opacity: 1;
+  background: transparent;
+  color: var(--fg-bright);
 }
 .toolbar .sep {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--border);
   flex-shrink: 0;
 }
+/* The tree view toggle is a phone affordance; desktops use Ctrl+B or the menu. */
+#btn-sidebar-toggle.phone-only,
+#btn-run-mode {
+  display: none;
+}
+#theme-toggle {
+  margin-right: 6px;
+}
+
+/* ── Notebook toolbar (under the tab bar) ─── */
+/* "+ Code  + Markdown | Run all  Restart  Clear all outputs" on the left,
+   the kernel on the right, as in VS Code's notebook editor. */
+.nb-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 calc(var(--pad-x) - 8px);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.nb-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.nb-toolbar button:hover {
+  color: var(--fg-bright);
+  background: var(--accent-dim);
+}
+.nb-toolbar button .icon-svg {
+  color: var(--fg-dim);
+}
+.nb-toolbar .primary .icon-svg {
+  color: var(--green);
+}
+.nb-toolbar .nb-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 6px;
+  background: var(--border);
+}
+.nb-toolbar .spacer {
+  flex: 1;
+}
+.nb-toolbar .kernel-chip {
+  padding: 0 8px;
+}
+
+/* ── Dropdown menus ────────────────────────── */
 .toolbar-dropdown {
   position: relative;
 }
@@ -143,51 +179,20 @@
   z-index: 300;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
   padding: 4px 0;
   min-width: 220px;
-  box-shadow: var(--shadow-soft);
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
 }
 .toolbar-dropdown.open > .toolbar-dropdown-menu {
   display: block;
 }
-.toolbar-dropdown-menu .dd-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 6px 14px;
-  cursor: pointer;
-  color: var(--fg);
-  white-space: nowrap;
-}
-.toolbar-dropdown-menu .dd-item:hover {
-  background: var(--bg-cell);
-}
 .toolbar-dropdown-menu .dd-item .dd-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--fg-dim);
-  flex-shrink: 0;
-}
-.toolbar-dropdown-menu .dd-item:hover .dd-icon {
-  color: var(--accent);
+  display: none;
 }
 .toolbar-dropdown-menu .dd-item .dd-label {
   flex: 1;
 }
-.toolbar-dropdown-menu .dd-item .dd-hint {
-  font-size: 10px;
-  color: var(--fg-dim);
-  margin-left: 16px;
-}
-.toolbar-dropdown-menu .dd-sep {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 0;
-}
-/* Submenu flyout (overflow menu only) — opens LEFT, since the menu is right-anchored */
 .toolbar-dropdown-menu .dd-item.has-submenu {
   position: relative;
 }
@@ -198,13 +203,12 @@
   flex-shrink: 0;
 }
 .dd-submenu {
-  top: -5px;
+  top: -3px;
   right: 100%;
   left: auto;
   margin-top: 0;
-  margin-right: 4px;
+  margin-right: 0;
 }
-/* invisible bridge across the 4px gutter so :hover survives the parent→flyout traverse */
 .dd-item.has-submenu::after {
   content: '';
   position: absolute;
@@ -216,9 +220,69 @@
 .toolbar-dropdown-menu .dd-item.has-submenu:hover > .dd-submenu {
   display: block;
 }
-.status {
-  font-size: 11px;
+
+/* ── Status bar (bottom strip) ─────────────── */
+/* One line on the pane surface: a left group and a right group of items,
+   separated by a dim "|". */
+.statusbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--pad-x);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--fg);
   white-space: nowrap;
+  overflow: hidden;
+  z-index: 100;
+  position: relative;
+}
+.statusbar .sb-left,
+.statusbar .sb-right {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+}
+.statusbar .sb-right {
+  margin-left: auto;
+}
+.statusbar .sb-sep {
+  color: var(--fg-dim);
+  padding: 0 12px;
+}
+.statusbar .sb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg);
+}
+.statusbar .sb-item .icon-svg {
+  width: 13px;
+  height: 13px;
+  color: var(--fg);
+}
+.statusbar .sb-item.dirty .icon-svg {
+  color: var(--modified);
+}
+.statusbar .sb-item.clickable {
+  cursor: pointer;
+}
+.statusbar .sb-item.clickable:hover {
+  color: var(--fg-bright);
+}
+.status {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50vw;
+}
+.status:empty {
+  display: none;
 }
 .status.running {
   color: var(--yellow);
@@ -230,8 +294,8 @@
   color: var(--red);
 }
 .sse-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--fg-dim);
   display: inline-block;
@@ -239,4 +303,13 @@
 }
 .sse-dot.connected {
   background: var(--green);
+}
+.save-indicator {
+  font-size: 12px;
+  color: var(--green);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.save-indicator.show {
+  opacity: 1;
 }

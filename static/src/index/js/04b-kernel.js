@@ -45,6 +45,11 @@ function applyRunMode(mode) {
         ? 'Deferred: edits only mark cells stale. Click to resume reactive runs.'
         : 'Reactive: edits run automatically. Click to defer runs.';
   }
+  const sb = document.getElementById('sb-runmode');
+  if (sb) {
+    sb.textContent = mode;
+    sb.classList.toggle('deferred', mode === 'deferred');
+  }
   paintRunAllLabel();
 }
 

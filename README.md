@@ -213,8 +213,106 @@ directive without typing it.
 
 ## 7. Rich output helpers
 
-Sabela injects display helpers into the session so a cell can emit structured
-output instead of plain text:
+A cell's last expression renders itself: Sabela hands GHCi's
+`-interactive-print` to a `Display` class, which picks the best form the value
+has. Nothing you write today changes — a value with no richer instance prints
+exactly as it printed before.
+
+### Pictures and charts show themselves
+
+Every chart in `Sabela.Notebook` returns a `Picture`, and a `Picture` renders
+as SVG on its own — the value is the cell:
+
+```haskell
+import Sabela.Notebook
+
+lineChart [(0, 0), (1, 2), (2, 1)]     -- an SVG chart, no wrapper
+fill red (circle (0, 0) 40)            -- so does any picture you build
+```
+
+`displayPicture` still works and is still what you reach for mid-cell; you no
+longer need it on the last line. The `Svg` and `Html` wrappers from
+`Sabela.Notebook.Markup` display themselves the same way.
+
+### Values that know how to show themselves
+
+Wrap a string in the form it is, and the cell shows it that way:
+
+```haskell
+md "## Results\n\nThe answer is **42**."
+html "<p>Hello from <b>Sabela</b></p>"
+svg "<svg viewBox='0 0 10 10'><circle cx='5' cy='5' r='4'/></svg>"
+latex "\\frac{1}{2}"
+json "{\"ok\": true}"
+png base64Bytes          -- also: jpeg
+table ["city", "pop"] [["Bulawayo", "665000"]]   -- the same grid, from strings
+```
+
+There is no `display` call in any of those: the value is the whole cell.
+`display` exists for when you want one anyway (inside a loop, say, or in the
+middle of an `IO` block), and a widget renders itself too — bind its value with
+`mkWidget` when you need it.
+
+### Dataframes and records become tables
+
+A `DataFrame` from the [`dataframe`](https://hackage.haskell.org/package/dataframe)
+package renders as the grid with no opt-in at all — the value is the cell:
+
+```haskell
+-- cabal: build-depends: dataframe, text
+import qualified DataFrame as D
+
+df <- D.readCsv "penguins.csv"
+df
+```
+
+The instance is offered to any notebook whose cells declare the package, and
+only to those: it is injected beside the prelude rather than inside it, so a
+notebook that never asked for `dataframe` is untouched. Large frames are
+capped at 1000 rows carried into the page, and the footer still reports the
+frame's true height (`first 1000 of 5000 rows`).
+
+For your own types, opt a record in once and any list of it renders the same
+way — field names as column headers:
+
+```haskell
+import GHC.Generics (Generic)
+
+data Reading = Reading { city :: String, temp :: Double }
+    deriving (Show, Generic, Tabular)
+
+[Reading "Bulawayo" 27.5, Reading "Harare" 24.1]   -- a table
+```
+
+`deriving Tabular` is the whole opt-in, and it is what separates a table from a
+list: a type that has not opted in prints as it always did, so `[1, 2, 3]` is
+still `[1,2,3]`. A type with no `Show` instance is unchanged too — it was never
+printable.
+
+What you get is a real table view, not a static `<table>`:
+
+- **typed columns** — a header carries its name and inferred type (`#`, `abc`,
+  `✓`), and clicking it sorts ascending, then descending, then not at all
+- **a distribution strip** under each header — a histogram for numbers, the
+  leading categories in proportion for everything else
+- **colour coding** — numeric cells carry their place in the column's range as
+  background weight; a low-cardinality text column gets a stable colour per
+  category. The `color` button turns it off
+- **search** — free text over every cell, or a column expression such as
+  `temp > 25`
+- **selection** — click for a current row, ctrl-click to add, shift-click for a
+  range; the row header numbers the source rows and its corner clears
+- **resizable columns**, a sticky header, and `stats` for per-column min / mean
+  / max or unique counts
+
+Only the rows in view are built, so scrolling a long table costs what a short
+one does. A table carries at most 1000 rows into the page and reports the rest
+as a count.
+
+### The explicit helpers
+
+The older helpers still work, and stay the way to emit rich output from a cell
+whose last expression is not the thing you want shown:
 
 | Helper | Output |
 |--------|--------|
@@ -375,7 +473,13 @@ siza installed in a second terminal, Claude can list cells, read them, run them,
 propose edits you approve in the UI, and use a `try` operation for
 non-committing experiments against notebook context and candidate dependencies.
 
-Install it from inside Claude Code:
+The plugin bundles `siza mcp`, an MCP server over the notebook, so Claude calls
+typed tools rather than shell commands. Put the binary on your `PATH`, then install
+the plugin from inside Claude Code:
+
+```bash
+cabal install exe:siza --overwrite-policy=always
+```
 
 ```text
 /plugin marketplace add /path/to/sabela/cli-skill

@@ -1,4 +1,4 @@
-/* ── Header ────────────────────────────────── */
+/* ── Header: one flat strip, title left, plain-word actions right ── */
 .dashboard-header {
   position: sticky;
   top: 0;
@@ -6,28 +6,21 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 24px;
-  background: var(--bg);
+  height: 34px;
+  padding: 0 var(--pad-x);
+  background: var(--bg-muted);
   border-bottom: 1px solid var(--border);
-  backdrop-filter: saturate(120%) blur(6px);
 }
-/* Warm-lambda brand mark, matching the hub front page (terracotta λ, mono). */
-.db-brand {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--fg-heading);
-  white-space: nowrap;
-}
-.db-brand .lam {
-  color: #c2674a;
+/* Inside the hub's reader frame the hub already draws the nav bar. */
+.framed .dashboard-header,
+.framed body > div[role='note'] {
+  display: none !important;
 }
 .dashboard-header h1 {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  color: var(--fg-heading);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fg);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -35,66 +28,40 @@
 }
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 2px;
   align-items: center;
 }
 .header-actions a,
 .header-actions button {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 0;
   background: transparent;
   color: var(--fg-dim);
   cursor: pointer;
   text-decoration: none;
-  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 .header-actions a:hover,
 .header-actions button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.header-actions .icon-btn {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  color: var(--fg-dim);
-}
-.header-actions .icon-btn:hover {
-  background: var(--bg-muted);
-  color: var(--fg-heading);
-  border-color: transparent;
-}
-.icon-svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  stroke-width: 2;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex-shrink: 0;
+  color: var(--fg);
 }
 
-/* Theme picker menu (same UX as the editor). */
+/* Theme picker menu: the editor's. */
 .theme-menu {
   position: fixed;
   z-index: 200;
   display: none;
   flex-direction: column;
-  min-width: 200px;
-  padding: 6px;
-  background: var(--bg-card);
+  min-width: 190px;
+  padding: 2px 0;
+  background: var(--bg-muted);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
 .theme-menu.open {
   display: flex;
@@ -103,9 +70,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 9px;
+  height: 26px;
+  padding: 0 var(--pad-x);
   border: none;
-  border-radius: 6px;
   background: none;
   color: var(--fg);
   font-family: var(--font-sans);
@@ -114,16 +81,12 @@
   cursor: pointer;
 }
 .theme-menu-item:hover {
-  background: var(--bg-muted);
-}
-.theme-menu-item.active {
+  background: var(--selection);
   color: var(--accent);
-  font-weight: 500;
 }
 .theme-menu-item .sw {
-  width: 26px;
-  height: 18px;
-  border-radius: 4px;
+  width: 22px;
+  height: 14px;
   border: 1px solid var(--border);
   display: inline-flex;
   align-items: center;
@@ -131,9 +94,8 @@
   flex-shrink: 0;
 }
 .theme-menu-item .sw i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  width: 6px;
+  height: 6px;
 }
 .theme-menu-item.active .nm::after {
   content: ' ✓';

@@ -14,33 +14,31 @@ function showFileContextMenu(e) {
   menu.className = 'ctx-menu';
 
   if (!isDir) {
-    addCtxItem(menu, 'Open', 'i-file-text', () =>
-      openFile({ feName: name, fePath: path, feIsDir: false })
-    );
+    addCtxItem(menu, 'Open', () => openFile({ feName: name, fePath: path, feIsDir: false }));
   }
-  addCtxItem(menu, 'Copy relative path', 'i-copy', () => copyRelPath(path));
+  addCtxItem(menu, 'Copy relative path', () => copyRelPath(path));
   if (!isDir) {
     if (name.endsWith('.md') && notebook && notebook.nbTitle === path) {
-      addCtxItem(menu, 'Download .md', 'i-download', () => downloadMarkdown());
+      addCtxItem(menu, 'Download .md', () => downloadMarkdown());
     } else {
-      addCtxItem(menu, 'Download', 'i-download', () => downloadAsset(path, name));
+      addCtxItem(menu, 'Download', () => downloadAsset(path, name));
     }
   }
   addCtxSep(menu);
-  addCtxItem(menu, 'Rename', 'i-edit', () => promptRenameFile(path, name));
-  addCtxItem(menu, 'Move to folder…', 'i-folder', () => promptMoveFile(path, name));
+  addCtxItem(menu, 'Rename', () => promptRenameFile(path, name));
+  addCtxItem(menu, 'Move to folder…', () => promptMoveFile(path, name));
   if (!isDir) {
-    addCtxItem(menu, 'Duplicate', 'i-copy', () => duplicateFile(path, name));
+    addCtxItem(menu, 'Duplicate', () => duplicateFile(path, name));
   }
   addCtxSep(menu);
   if (isDir) {
-    addCtxItem(menu, 'New file here', 'i-file-plus', () => promptNewFileIn(path));
-    addCtxItem(menu, 'New folder here', 'i-folder-plus', () => promptNewFolderIn(path));
-    addCtxItem(menu, 'Upload files here', 'i-upload', () => startUpload(path));
-    addCtxItem(menu, 'Import from URL here', 'i-link', () => startImportUrl(path));
+    addCtxItem(menu, 'New file here', () => promptNewFileIn(path));
+    addCtxItem(menu, 'New folder here', () => promptNewFolderIn(path));
+    addCtxItem(menu, 'Upload files here', () => startUpload(path));
+    addCtxItem(menu, 'Import from URL here', () => startImportUrl(path));
     addCtxSep(menu);
   }
-  addCtxItem(menu, 'Delete', 'i-trash', () => confirmDeleteFile(path, name, isDir), true);
+  addCtxItem(menu, 'Delete', () => confirmDeleteFile(path, name, isDir));
 
   // Position
   menu.style.left = Math.min(e.clientX, window.innerWidth - 220) + 'px';
@@ -49,11 +47,11 @@ function showFileContextMenu(e) {
   activeCtxMenu = menu;
 }
 
-function addCtxItem(menu, label, iconId, action, danger) {
+function addCtxItem(menu, label, action, active) {
   const item = document.createElement('div');
-  item.className = 'ctx-menu-item' + (danger ? ' danger' : '');
+  item.className = 'ctx-menu-item' + (active ? ' active' : '');
   item.tabIndex = 0;
-  item.innerHTML = `<svg class="icon-svg"><use href="#${iconId}"/></svg><span>${label}</span>`;
+  item.innerHTML = `<span class="nm">${label}</span>`;
   item.onclick = () => {
     closeCtxMenu();
     action();
@@ -78,6 +76,24 @@ function closeCtxMenu() {
     activeCtxMenu.remove();
     activeCtxMenu = null;
   }
+}
+
+// The cell footer's language label opens a short menu above itself.
+var CELL_LANGS = ['Haskell', 'Python'];
+function showLangMenu(e, cellId, current) {
+  e.preventDefault();
+  e.stopPropagation();
+  closeCtxMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu lang-menu';
+  CELL_LANGS.forEach((lang) => {
+    addCtxItem(menu, lang, () => lang !== current && setCellLang(cellId, lang), lang === current);
+  });
+  document.body.appendChild(menu);
+  const r = e.currentTarget.getBoundingClientRect();
+  menu.style.left = Math.max(8, r.right - menu.offsetWidth) + 'px';
+  menu.style.top = Math.max(8, r.top - menu.offsetHeight - 4) + 'px';
+  activeCtxMenu = menu;
 }
 
 document.addEventListener('click', closeCtxMenu);

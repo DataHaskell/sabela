@@ -16,19 +16,19 @@
 }
 .dash-section h1 {
   font-size: 28px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--fg-heading);
   margin-bottom: 8px;
 }
 .dash-section h2 {
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fg-heading);
   margin-bottom: 6px;
 }
 .dash-section h3 {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fg-heading);
   margin-bottom: 4px;
 }
@@ -78,14 +78,12 @@
   font-size: 14px;
   background: var(--bg-muted);
   padding: 2px 6px;
-  border-radius: 4px;
 }
 .dash-section pre {
   font-family: var(--font-mono);
   font-size: 14px;
   background: var(--bg-muted);
   padding: 12px 16px;
-  border-radius: var(--radius);
   overflow-x: auto;
   margin-bottom: 12px;
 }

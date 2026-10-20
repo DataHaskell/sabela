@@ -24,6 +24,8 @@ async function updateChatContext() {
 }
 
 let aiModels = [];
+let aiOllamaModels = [];
+let aiOllamaReachable = false;
 let aiCurrentModel = null;
 const CUSTOM_MODEL_VALUE = '__custom__';
 
@@ -41,57 +43,74 @@ async function openAIModal() {
     const resp = await fetch('/api/config/ai');
     const info = await resp.json();
     aiModels = info.models || [];
+    aiOllamaModels = info.ollamaModels || [];
+    aiOllamaReachable = !!info.ollamaReachable;
     aiCurrentModel = info.model || null;
-    populateModelSelect(aiModels, aiCurrentModel);
-    document.getElementById('ai-modal-provider').value = info.provider || 'anthropic';
+    document.getElementById('ai-modal-provider').value = info.provider || 'ollama';
     document.getElementById('ai-modal-toollimit').value = info.toolLimit ?? '';
     document.getElementById('ai-modal-numctx').value = info.numCtx ?? '';
     onProviderChange();
     if (info.configured) {
       title.textContent = 'AI settings';
-      desc.textContent = 'Change the model, or paste a new API key to replace the stored one.';
+      desc.textContent = 'Change the provider or model. An Anthropic key is kept until replaced.';
       keyHint.textContent = '(leave blank to keep current)';
     } else {
       title.textContent = 'Connect to AI';
       desc.textContent =
-        'Enter your Anthropic API key to enable the assistant. Stored in your workspace only.';
+        'Pick a local Ollama model, or switch to Anthropic and paste an API key. Stored in your workspace only.';
       keyHint.textContent = '';
     }
   } catch (e) {
-    populateModelSelect(aiModels, aiCurrentModel);
-    document.getElementById('ai-modal-provider').value = 'anthropic';
+    document.getElementById('ai-modal-provider').value = 'ollama';
     onProviderChange();
   }
   setTimeout(() => keyInput.focus(), 50);
 }
 
-// The API key is only needed for Anthropic; Ollama is a local server. Also nudge
-// the model away from a Claude id when the user first switches to Ollama.
+// The API key is only needed for Anthropic; Ollama is a local server. The
+// model list follows the provider: the tags Ollama has pulled, or the Claude
+// models known by name.
 function onProviderChange() {
   const provider = document.getElementById('ai-modal-provider').value;
   const isOllama = provider === 'ollama';
   document.getElementById('ai-modal-key-wrap').style.display = isOllama ? 'none' : '';
   // num_ctx is an Ollama concept; Anthropic has a fixed large context window.
   document.getElementById('ai-modal-numctx-wrap').style.display = isOllama ? '' : 'none';
+  document.getElementById('ai-modal-custom').placeholder = isOllama ? 'family:tag' : 'claude-...';
   if (isOllama) {
-    const sel = document.getElementById('ai-modal-model');
-    if (sel.value === CUSTOM_MODEL_VALUE || sel.value.startsWith('claude')) {
-      sel.value = CUSTOM_MODEL_VALUE;
-      const custom = document.getElementById('ai-modal-custom');
-      if (!custom.value.trim()) custom.value = 'gpt-oss:20b';
-      onModelChange();
-    }
+    const installed = aiOllamaModels.map((id) => ({ id, label: id, description: 'installed' }));
+    const current = aiCurrentModel && !aiCurrentModel.startsWith('claude') ? aiCurrentModel : null;
+    populateModelSelect(installed, current || (installed[0] && installed[0].id), {
+      customDesc: 'Any tag from `ollama list`',
+      empty: aiOllamaReachable
+        ? 'No models pulled yet. Run: ollama pull gpt-oss:20b'
+        : 'Ollama is not reachable. Start it, or set OLLAMA_HOST.',
+    });
+  } else {
+    const current = aiCurrentModel && aiCurrentModel.startsWith('claude') ? aiCurrentModel : null;
+    populateModelSelect(aiModels, current, {
+      customDesc: 'Type any model id supported by your Anthropic account',
+    });
   }
 }
 
-function populateModelSelect(models, current) {
+function populateModelSelect(models, current, opts) {
   const sel = document.getElementById('ai-modal-model');
   sel.innerHTML = '';
   let matched = false;
+  if (!models.length && opts && opts.empty) {
+    const note = document.createElement('option');
+    note.value = '';
+    note.disabled = true;
+    note.selected = true;
+    note.textContent = opts.empty;
+    note.dataset.desc = opts.empty;
+    sel.appendChild(note);
+  }
   for (const m of models) {
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = m.label + ' — ' + m.id;
+    opt.textContent = m.label === m.id ? m.id : m.label + ' — ' + m.id;
     opt.dataset.desc = m.description || '';
     if (m.id === current) {
       opt.selected = true;
@@ -102,11 +121,13 @@ function populateModelSelect(models, current) {
   const customOpt = document.createElement('option');
   customOpt.value = CUSTOM_MODEL_VALUE;
   customOpt.textContent = 'Custom…';
-  customOpt.dataset.desc = 'Type any model id supported by your Anthropic account';
+  customOpt.dataset.desc = (opts && opts.customDesc) || '';
   sel.appendChild(customOpt);
   if (current && !matched) {
     customOpt.selected = true;
     document.getElementById('ai-modal-custom').value = current;
+  } else if (!models.length) {
+    document.getElementById('ai-modal-custom').value = '';
   }
   onModelChange();
 }
@@ -189,7 +210,8 @@ function shortModelLabel(mid) {
   if (mid.includes('haiku')) return 'haiku';
   if (mid.includes('opus')) return 'opus';
   if (mid.includes('sonnet')) return 'sonnet';
-  return mid.length > 16 ? mid.slice(0, 14) + '…' : mid;
+  const tag = mid.replace(/:latest$/, '');
+  return tag.length > 22 ? tag.slice(0, 20) + '…' : tag;
 }
 
 // Enter to submit in the modal

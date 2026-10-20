@@ -1,64 +1,63 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
+/* Light decks use the editor's Summer scheme, dark decks its default one. */
 :root {
-  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --radius: 0px;
+  --pad-x: 14px;
+  --shadow: none;
 
-  --bg: #ffffff;
-  --bg-muted: #fafafa;
-  --bg-card: #ffffff;
-  --fg: #0a0a0a;
-  --fg-dim: #71717a;
-  --fg-heading: #000000;
-  --accent: #0066ff;
-  --accent-rgb: 0, 102, 255;
-  --accent-hover: #0052cc;
-  --border: #e4e4e7;
-  --border-light: #f4f4f5;
-  --radius: 8px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --err-border: #fecaca;
-  --err-bg: #fef2f2;
-  --err-fg: #991b1b;
-
-  /* syntax tokens — Catppuccin Latte */
-  --hl-keyword: #8839ef;
-  --hl-string: #40a02b;
-  --hl-number: #fe640b;
-  --hl-comment: #8c8fa1;
-  --hl-function: #1e66f5;
-  --hl-type: #df8e1d;
-  --hl-builtin: #d20f39;
-  --hl-operator: #04a5e5;
-  --hl-meta: #ea76cb;
+  --bg: #fbfbfb;
+  --bg-muted: #f2f2f2;
+  --bg-card: #fbfbfb;
+  --fg: #181818;
+  --fg-dim: #808080;
+  --fg-heading: #181818;
+  --accent: #fc1785;
+  --accent-rgb: 252, 23, 133;
+  --accent-hover: #181818;
+  --selection: #b7dce8;
+  --border: #e8e8e8;
+  --border-light: #e8e8e8;
+  --err-border: #d9262a;
+  --err-bg: #f2f2f2;
+  --err-fg: #d9262a;
+  --hl-keyword: #fb6620;
+  --hl-string: #1586d2;
+  --hl-number: #1586d2;
+  --hl-comment: #22a21f;
+  --hl-function: #fc1785;
+  --hl-type: #fc1785;
+  --hl-builtin: #fc1785;
+  --hl-operator: #fb6620;
+  --hl-meta: #fb6620;
 }
 :root[data-theme='dark'] {
-  --bg: #1e1e2e;
-  --bg-muted: #262637;
-  --bg-card: #181825;
-  --fg: #cdd6f4;
-  --fg-dim: #9399b2;
-  --fg-heading: #f5f5ff;
-  --accent: #89b4fa;
-  --accent-rgb: 137, 180, 250;
-  --accent-hover: #a4c0fa;
-  --border: #313244;
-  --border-light: #262637;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --err-border: #5a2730;
-  --err-bg: #2a1a1e;
-  --err-fg: #f38ba8;
-
-  /* syntax tokens — Catppuccin Mocha */
-  --hl-keyword: #cba6f7;
-  --hl-string: #a6e3a1;
-  --hl-number: #fab387;
-  --hl-comment: #7f849c;
-  --hl-function: #89b4fa;
-  --hl-type: #f9e2af;
-  --hl-builtin: #f38ba8;
-  --hl-operator: #89dceb;
-  --hl-meta: #f5c2e7;
+  --bg: #2e2e32;
+  --bg-muted: #252529;
+  --bg-card: #2e2e32;
+  --fg: #e1e1e6;
+  --fg-dim: #97979c;
+  --fg-heading: #e1e1e6;
+  --accent: #93ddfa;
+  --accent-rgb: 147, 221, 250;
+  --accent-hover: #e1e1e6;
+  --selection: #48484f;
+  --border: #202024;
+  --border-light: #202024;
+  --err-border: #ff3333;
+  --err-bg: #252529;
+  --err-fg: #ff3333;
+  --hl-keyword: #e58ac9;
+  --hl-string: #f7c95c;
+  --hl-number: #ffa94d;
+  --hl-comment: #676b6f;
+  --hl-function: #93ddfa;
+  --hl-type: #f77483;
+  --hl-builtin: #93ddfa;
+  --hl-operator: #93ddfa;
+  --hl-meta: #e58ac9;
 }
 
 * {
@@ -78,11 +77,12 @@ body {
   font-family: var(--font-sans);
   background: var(--bg);
   color: var(--fg);
-  line-height: 1.65;
+  line-height: 1.55;
   font-size: 15px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+::selection {
+  background: var(--selection);
 }

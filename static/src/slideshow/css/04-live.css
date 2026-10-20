@@ -27,18 +27,15 @@
   gap: 5px;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 5px 10px;
-  border-radius: 6px;
   border: 1px solid var(--accent);
   color: var(--accent);
   background: transparent;
   cursor: pointer;
-  transition: all 0.15s;
 }
 .run-btn:hover {
-  background: var(--accent);
-  color: #fff;
+  background: var(--selection);
 }
 .run-btn svg {
   width: 12px;
@@ -50,11 +47,9 @@
   background: var(--bg-card);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
   padding: 18px 20px;
   resize: vertical;
   outline: none;
-  transition: border-color 0.15s;
   font-family: var(--font-sans);
   font-size: 18px;
   line-height: 1.6;
@@ -69,9 +64,7 @@
 .code-ed {
   position: relative;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
   background: var(--bg-card);
-  transition: border-color 0.15s;
 }
 .code-ed:focus-within {
   border-color: var(--accent);
@@ -97,7 +90,6 @@
   pointer-events: none;
   background: transparent;
   color: var(--fg);
-  border-radius: var(--radius);
 }
 .code-ed-hl code {
   font: inherit;

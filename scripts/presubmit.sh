@@ -77,6 +77,7 @@ fourmolu_check() {
 
 gate "prettier (frontend sources)" prettier_check
 gate "bundled pages up to date" node tools/build-frontend.mjs --check
+gate "table view model" node tools/grid-model-test.mjs
 gate "module size cap" ./scripts/check-module-size.sh
 gate "comment style (changed lines)" comment_style
 gate "fourmolu" fourmolu_check

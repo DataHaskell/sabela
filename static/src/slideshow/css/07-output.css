@@ -11,7 +11,6 @@
   display: block;
   min-height: 60px;
   border: 1px solid var(--border-light);
-  border-radius: var(--radius);
 }
 .slide-output .mime-svg {
   text-align: center;
@@ -32,7 +31,6 @@
   font-size: 14px;
   background: var(--bg-muted);
   padding: 14px 18px;
-  border-radius: var(--radius);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -49,12 +47,10 @@
   font-size: 16px;
   background: var(--bg-muted);
   padding: 16px 20px;
-  border-radius: var(--radius);
   white-space: pre-wrap;
   word-break: break-word;
 }
 .slide-widget {
-  border-radius: 6px;
   overflow: hidden;
   background: var(--bg-muted);
   margin-bottom: 12px;
@@ -78,7 +74,6 @@
 .slide-error {
   padding: 14px 18px;
   border: 1px solid var(--err-border);
-  border-radius: var(--radius);
   background: var(--err-bg);
   color: var(--err-fg);
   font-family: var(--font-mono);

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "siza": {
+      "command": "siza",
+      "args": ["mcp"],
+      "env": {
+        "SABELA_TOOL_TIMEOUT": "0"
+      }
+    }
+  }
+}

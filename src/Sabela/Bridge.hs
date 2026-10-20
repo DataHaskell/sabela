@@ -41,6 +41,7 @@ widgetPreamble cid vals =
      in T.unlines
             [ writeRef <> " _sabelaWidgetRef " <> T.pack pairs
             , writeRef <> " _sabelaCellIdRef " <> T.pack (show (show cid))
+            , "_sabelaFrameReset " <> T.pack (show (show cid))
             ]
   where
     writeRef = ioRefAlias <> ".writeIORef"

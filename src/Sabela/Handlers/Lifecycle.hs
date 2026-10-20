@@ -60,7 +60,6 @@ import Sabela.State.SessionManager (
     withHaskellLifecycle,
  )
 import ScriptHs.Parser (CabalMeta (..))
-import System.FilePath (isAbsolute, (</>))
 import System.Timeout (timeout)
 
 import Sabela.Session.Project (ReplSupport (..), setupReplProject)
@@ -155,7 +154,7 @@ installDepsAndStartSession app gen metas = withBuilding app $ do
 runInstallAndStart :: App -> Int -> CabalMeta -> IO Bool
 runInstallAndStart app gen metas = do
     broadcastDepsStatus app metas
-    let projDir = envTmpDir (appEnv app) </> "repl-project"
+    let projDir = envReplProjectDir (appEnv app)
         merged = mergedMeta (envGlobalDeps (appEnv app)) metas
         localPkgs = localPackagesFor app merged
     dirty <- buildIsDirty projDir

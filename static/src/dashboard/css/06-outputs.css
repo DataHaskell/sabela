@@ -2,9 +2,7 @@
 .dash-output {
   margin-bottom: 24px;
   border: 1px solid var(--border-light);
-  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow);
 }
 .dash-output iframe {
   width: 100%;
@@ -48,7 +46,6 @@
 /* ── Inline widgets ────────────────────────── */
 .dash-widget {
   margin-bottom: 8px;
-  border-radius: 6px;
   overflow: hidden;
   background: var(--bg-muted);
 }

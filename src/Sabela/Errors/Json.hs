@@ -5,6 +5,7 @@ module Sabela.Errors.Json (
     diagnosticSpans,
     parseJsonInteractive,
     parseJsonCompiled,
+    plainDiagnostics,
     annotateDefSites,
     quotedNames,
 ) where
@@ -18,6 +19,7 @@ import qualified Data.Text.Encoding as TE
 
 import Sabela.Errors (scrubHarnessFrames)
 import Sabela.Model (CellError (..))
+import Sabela.Output.Display (attributeInteractivePrint)
 import ScriptHs.Compiled (parseLinePragmaTag)
 
 data Diag = Diag
@@ -52,6 +54,17 @@ parseJsonInteractive raw =
      in (map dError errs, map dError warns, residual)
   where
     span' p ds = (filter p ds, filter (not . p) ds)
+
+{- | The messages of a JSON diagnostic stream as plain text, for query
+replies (:type, :info) that are shown to a person rather than parsed.
+-}
+plainDiagnostics :: Text -> Text
+plainDiagnostics raw =
+    let (errs, warns, residual) = parseJsonInteractive raw
+        msgs = map ceMessage (errs ++ warns)
+     in T.intercalate
+            "\n\n"
+            (msgs ++ [T.strip residual | not (T.null (T.strip residual))])
 
 parseJsonCompiled :: Text -> (M.Map Int [CellError], [CellError])
 parseJsonCompiled raw =
@@ -100,7 +113,7 @@ renderMessage :: [Text] -> [Text] -> Text
 renderMessage msgs hints =
     T.intercalate "\n" (filter (not . T.null . T.strip) (scrubbed ++ hints))
   where
-    scrubbed = map scrubHarnessFrames msgs
+    scrubbed = map (scrubHarnessFrames . attributeInteractivePrint) msgs
 
 annotateDefSites :: (Text -> Maybe Int) -> Text -> Text
 annotateDefSites resolve = T.intercalate "\n" . map annotateLine . T.lines

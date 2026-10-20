@@ -45,21 +45,35 @@ window.addEventListener('message', (e) => {
 });
 function iframeContentStyle() {
   const isDark = currentTheme() === 'dark';
-  const bg = isDark ? '#1e1e2e' : '#ffffff';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgHead = isDark ? '#f5f5ff' : '#000000';
-  const muted = isDark ? '#262637' : '#fafafa';
-  const border = isDark ? '#313244' : '#e4e4e7';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  const altRow = isDark ? 'rgba(137,180,250,0.05)' : 'rgba(0,102,255,0.04)';
-  return `<style>body{background:${bg};color:${fg};font-family:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:14px 18px;line-height:1.6;-webkit-font-smoothing:antialiased}img{max-width:100%}a{color:${accent}}table{border-collapse:separate;border-spacing:0;width:100%;border:1px solid ${border};border-radius:8px;overflow:hidden;margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:600}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
+  const bg = isDark ? '#2e2e32' : '#fbfbfb';
+  const fg = isDark ? '#e1e1e6' : '#181818';
+  const fgHead = isDark ? '#e1e1e6' : '#181818';
+  const muted = isDark ? '#252529' : '#f2f2f2';
+  const border = isDark ? '#202024' : '#e8e8e8';
+  const accent = isDark ? '#93ddfa' : '#fc1785';
+  const altRow = muted;
+  return `<style>:root{${gridPaletteVars(isDark, bg, muted, fg, border, accent)}}body{background:${bg};color:${fg};font-family:'Fira Sans',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:15px;margin:0;padding:14px 18px;line-height:1.55}img{max-width:100%}a{color:${accent}}table{border-collapse:collapse;width:100%;border:1px solid ${border};margin:14px 0;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid ${border}}tr:last-child td{border-bottom:none}th{background:${muted};color:${fgHead};font-weight:500}tr:nth-child(even) td{background:${altRow}}input,select,button{font-family:inherit;font-size:14px;accent-color:${accent}}</style>`;
 }
+// The palette the embedded grid runtime reads (--sabela-*), so a table in a
+// slide carries the deck's theme rather than one derived from its background.
+function gridPaletteVars(isDark, surface, raised, fg, border, accent) {
+  return [
+    `--sabela-surface:${surface}`,
+    `--sabela-raised:${raised}`,
+    `--sabela-fg:${fg}`,
+    `--sabela-dim:${isDark ? '#97979c' : '#808080'}`,
+    `--sabela-border:${border}`,
+    `--sabela-accent:${accent}`,
+    `--sabela-accent-rgb:${isDark ? '147,221,250' : '252,23,133'}`,
+  ].join(';');
+}
+
 function widgetIframeStyle() {
   const isDark = currentTheme() === 'dark';
-  const fg = isDark ? '#cdd6f4' : '#0a0a0a';
-  const fgDim = isDark ? '#9399b2' : '#71717a';
-  const accent = isDark ? '#89b4fa' : '#0066ff';
-  return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:8px 14px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:600;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
+  const fg = isDark ? '#e1e1e6' : '#181818';
+  const fgDim = isDark ? '#97979c' : '#808080';
+  const accent = isDark ? '#93ddfa' : '#fc1785';
+  return `<style>body{background:transparent;color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;margin:0;padding:8px 14px;line-height:1.2;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select{font-family:inherit;font-size:14px;accent-color:${accent};vertical-align:middle}button{font-family:inherit;font-size:14px;cursor:pointer;accent-color:${accent};vertical-align:middle}label{font-weight:500;font-size:13px;color:${fgDim};display:inline-block;margin-right:8px;vertical-align:middle}</style>`;
 }
 if (window.matchMedia) {
   window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {

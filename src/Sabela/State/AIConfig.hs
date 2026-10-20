@@ -30,11 +30,11 @@ import Sabela.State.App (App (..), getAIStore, setAIStore)
 import Sabela.State.Config (
     buildProvider,
     configJson,
-    defaultOllamaModel,
     ollamaProviderId,
     providerNameOf,
  )
 import Sabela.State.Environment (Environment (..))
+import Sabela.State.OllamaModels (chooseOllamaModel, installedOllamaModels)
 
 data AIConfigUpdate = AIConfigUpdate
     { aicuApiKey :: Maybe Text
@@ -72,13 +72,13 @@ updateAIConfig app upd = case appHttpMgr app of
             Just store -> onExisting mgr store
   where
     firstTime mgr =
-        let provider = fromMaybe "anthropic" (aicuProvider upd)
+        let provider = fromMaybe ollamaProviderId (aicuProvider upd)
          in if provider /= ollamaProviderId && isNothing (aicuApiKey upd)
                 then pure (Left "apiKey is required for first-time setup")
                 else do
                     (numCtx, limit) <- applyKnobs
+                    model <- maybe (defaultModelFor mgr provider) pure (aicuModel upd)
                     let key = fromMaybe "" (aicuApiKey upd)
-                        model = fromMaybe (defaultModelFor provider) (aicuModel upd)
                         cfg = mkCfg key model
                     store <- newAIStore cfg mgr
                     setAIProvider store (buildProvider mgr provider cfg numCtx)
@@ -88,11 +88,20 @@ updateAIConfig app upd = case appHttpMgr app of
     onExisting mgr store = do
         oldCfg <- getAIConfig store
         curProvider <- providerNameOf <$> getAIProvider store
-        (numCtx, limit) <- applyKnobs
         let provider = fromMaybe curProvider (aicuProvider upd)
             newKey = fromMaybe (acApiKey oldCfg) (aicuApiKey upd)
-            newModel = fromMaybe (acModel oldCfg) (aicuModel upd)
-            newCfg = oldCfg{acApiKey = newKey, acModel = newModel}
+        if provider /= ollamaProviderId && T.null newKey
+            then pure (Left "apiKey is required for first-time setup")
+            else switchTo mgr store oldCfg provider newKey
+    switchTo mgr store oldCfg provider newKey = do
+        curProvider <- providerNameOf <$> getAIProvider store
+        (numCtx, limit) <- applyKnobs
+        newModel <- case aicuModel upd of
+            Just m -> pure m
+            Nothing
+                | provider /= curProvider -> defaultModelFor mgr provider
+                | otherwise -> pure (acModel oldCfg)
+        let newCfg = oldCfg{acApiKey = newKey, acModel = newModel}
         setAIFullConfig store newCfg
         setAIProvider store (buildProvider mgr provider newCfg numCtx)
         persistConfig app newKey newModel provider numCtx limit
@@ -111,9 +120,10 @@ updateAIConfig app upd = case appHttpMgr app of
             , acModel = model
             , acBaseUrl = T.pack "https://api.anthropic.com"
             }
-    defaultModelFor p
-        | p == ollamaProviderId = defaultOllamaModel
-        | otherwise = envAnthropicModel (appEnv app)
+    defaultModelFor mgr p
+        | p == ollamaProviderId =
+            (`chooseOllamaModel` Nothing) <$> installedOllamaModels mgr
+        | otherwise = pure (envAnthropicModel (appEnv app))
 
 persistConfig :: App -> Text -> Text -> Text -> Int -> Int -> IO ()
 persistConfig app key model provider numCtx toolLimit = do

@@ -8,15 +8,20 @@ import Test.Hspec
 
 import Sabela.Model (Cell (..), CellType (..), OutputItem (..))
 import Sabela.Output (parseMimeOutputs)
+import Sabela.Output.Fence (wrapRuntime)
+import Sabela.Output.Grid (gridWidgetJs)
+import Sabela.Output.Runtime (elideRuntimes, restoreRuntimes)
 import Sabela.Server.Notebook (
     cellsToSegments,
     mimeIndicator,
+    parseCodeOutputItems,
     serializeOutputs,
     splitProseSegments,
     textToMime,
  )
 import qualified Sabela.SessionTypes as ST
 import ScriptHs.Markdown (
+    CodeOutput (..),
     MimeType (..),
     Segment (..),
     parseMarkdown,
@@ -36,7 +41,12 @@ proseTexts :: [Segment] -> [Text]
 proseTexts segs = [t | Prose t <- segs]
 
 spec :: Spec
-spec = describe "markdown + MIME round trip" $ do
+spec = do
+    runtimeSpec
+    proseSpec
+
+proseSpec :: Spec
+proseSpec = describe "markdown + MIME round trip" $ do
     it "keeps two consecutive prose cells separate" $
         roundTrip [prose "First cell", prose "Second cell"]
             `shouldBe` [Prose "First cell", Prose "Second cell"]
@@ -117,3 +127,68 @@ spec = describe "markdown + MIME round trip" $ do
                 , ("image/svg+xml", "<svg/>\n")
                 ]
          in roundTripped `shouldBe` expected
+
+-- | A table output as the prelude prints it: the data, then the runtime.
+gridOutput :: Text
+gridOutput =
+    T.concat
+        [ "<div class=\"sabela-grid\">"
+        , "<script type=\"application/json\" class=\"sabela-grid-data\">"
+        , "{\"cols\":[\"a\"],\"rows\":[[\"1\"]],\"total\":1}"
+        , "</script></div><script>"
+        , wrapRuntime "grid" gridWidgetJs
+        , "\nsabelaGridMountAll();</script>\n"
+        ]
+
+tableCell :: Cell
+tableCell =
+    Cell
+        0
+        CodeCell
+        ST.Haskell
+        "display t\n"
+        [OutputItem MimeHtml gridOutput]
+        Nothing
+        False
+
+runtimeSpec :: Spec
+runtimeSpec = describe "a table's runtime in the notebook file" $ do
+    it "puts back exactly what it took out" $
+        restoreRuntimes (elideRuntimes gridOutput) `shouldBe` gridOutput
+
+    it "elides and restores the same however many times it is asked" $ do
+        elideRuntimes (elideRuntimes gridOutput) `shouldBe` elideRuntimes gridOutput
+        restoreRuntimes (restoreRuntimes gridOutput) `shouldBe` gridOutput
+
+    it "restores a runtime the writing build did not have" $
+        let stale = wrapRuntime "grid" "// an older runtime\n"
+         in restoreRuntimes (T.replace (wrapRuntime "grid" gridWidgetJs) stale gridOutput)
+                `shouldBe` gridOutput
+
+    it "cuts a runtime a notebook older than the fences carries" $ do
+        let legacy =
+                T.replace (wrapRuntime "grid" gridWidgetJs) gridWidgetJs gridOutput
+            elided = elideRuntimes legacy
+        T.isInfixOf "function sabelaGridBody" elided `shouldBe` False
+        T.isInfixOf "sabelaGridMountAll();" elided `shouldBe` True
+        T.isInfixOf "sabela-grid-data" elided `shouldBe` True
+        restoreRuntimes elided `shouldBe` gridOutput
+
+    it "leaves a script that only calls the runtime alone" $
+        let call = "<div></div><script>sabelaGridMountAll();</script>"
+         in elideRuntimes call `shouldBe` call
+
+    it "writes the data but not the runtime" $ do
+        let md = reassemble (cellsToSegments [tableCell])
+        T.isInfixOf "sabela-grid-data" md `shouldBe` True
+        T.isInfixOf "sabelaGridMountAll" md `shouldBe` True
+        T.isInfixOf "function sabelaGridBody" md `shouldBe` False
+        T.length md < T.length gridWidgetJs `shouldBe` True
+
+    it "hands the reader back a table that can render itself" $ do
+        let md = reassemble (cellsToSegments [tableCell])
+            loaded =
+                [ parseCodeOutputItems m o
+                | CodeBlock _ _ (Just (CodeOutput m o)) <- parseMarkdown md
+                ]
+        loaded `shouldBe` [[OutputItem MimeHtml gridOutput]]

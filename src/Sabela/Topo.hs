@@ -21,9 +21,13 @@ import Data.Text (Text)
 import Sabela.Model (Cell (..))
 import Sabela.Parse (CellSymbols (..), cellNames, cellSymbols)
 
+{- | Cells on a cycle cannot run; cells merely downstream of one are blocked
+but are not themselves circular, so they get a different message.
+-}
 data TopoResult = TopoResult
     { trOrdered :: [Cell]
     , trCycleIds :: S.Set Int
+    , trBlockedIds :: S.Set Int
     }
 
 buildDefMap :: [Cell] -> (M.Map Text Int, M.Map Int [Text])
@@ -42,8 +46,8 @@ buildDefMap = foldl step (M.empty, M.empty)
                 else (defMap, M.insert cid redefs redefMap)
 
 {- | Edges: def\/use ownership, notebook-class method providers, instance
-providers for a used type, and mutators of a used binding. Providers of a kind
-never depend on fellow providers of the same name, or they would form cycles.
+providers for a used type (named directly or via one of its constructors or
+fields), and mutators of a used binding. Providers never depend on fellow providers.
 -}
 buildDepGraph :: M.Map Text Int -> [Cell] -> M.Map Int (S.Set Int)
 buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
@@ -71,6 +75,15 @@ buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
             | (cid, s) <- M.toList symsById
             , name <- S.toList (csInstanceTypes s)
             ]
+    typeSurface =
+        M.fromList
+            [ (name, maybe (S.singleton name) defsOf (M.lookup name defMap))
+            | name <- M.keys instanceMap
+            ]
+    defsOf cid = maybe S.empty csDefs (M.lookup cid symsById)
+    typesTouched uses =
+        S.fromList
+            [name | (name, surface) <- M.toList typeSurface, not (S.disjoint surface uses)]
     depsOf c =
         let s = symsById M.! cellId c
             cid = cellId c
@@ -84,7 +97,7 @@ buildDepGraph defMap cells = M.fromList [(cellId c, depsOf c) | c <- cells]
             mutationDeps =
                 providersOf mutatorMap (csMutates s) (csUses s)
             typeInstanceDeps =
-                providersOf instanceMap (csInstanceTypes s) (csUses s)
+                providersOf instanceMap (csInstanceTypes s) (typesTouched (csUses s))
          in S.delete cid $
                 S.fromList
                     (ownerDeps ++ instanceDeps ++ mutationDeps ++ typeInstanceDeps)
@@ -122,8 +135,20 @@ topoSort cells deps =
                 ]
         cids = S.fromList (map cellId cells)
         (orderedSeq, finalDeg) = runKahns st initQueue inDegree Seq.empty
-        cycleIds = S.fromList [cid | cid <- S.toList cids, M.findWithDefault 0 cid finalDeg > 0]
-     in TopoResult{trOrdered = F.toList orderedSeq, trCycleIds = cycleIds}
+        stuck = S.fromList [cid | cid <- S.toList cids, M.findWithDefault 0 cid finalDeg > 0]
+        cycleIds = S.filter (onCycle (tsFilteredDeps st) stuck) stuck
+     in TopoResult
+            { trOrdered = F.toList orderedSeq
+            , trCycleIds = cycleIds
+            , trBlockedIds = stuck `S.difference` cycleIds
+            }
+
+-- | A stuck cell is circular only if it can reach itself through other stuck cells.
+onCycle :: M.Map Int (S.Set Int) -> S.Set Int -> Int -> Bool
+onCycle deps stuck cid =
+    let within = M.map (`S.intersection` stuck) (M.restrictKeys deps stuck)
+        seeds = M.findWithDefault S.empty cid within
+     in S.member cid (reachableFrom seeds within)
 
 buildTopoState :: [Cell] -> M.Map Int (S.Set Int) -> TopoState
 buildTopoState cells deps =

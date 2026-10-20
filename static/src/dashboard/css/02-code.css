@@ -2,7 +2,6 @@
 .dash-code {
   background: var(--bg-muted);
   border: 1px solid var(--border-light);
-  border-radius: var(--radius);
   margin: 0 0 12px;
   overflow-x: auto;
 }

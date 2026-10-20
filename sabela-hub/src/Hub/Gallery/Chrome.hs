@@ -15,6 +15,7 @@ module Hub.Gallery.Chrome (
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Hub.Brand (brandMark, faviconTag)
 import Hub.Gallery.Style (styleBlock)
 
 data GalleryChrome = GalleryChrome
@@ -33,6 +34,7 @@ htmlEscape =
 page :: GalleryChrome -> Text -> Text -> Text -> Text
 page chrome title relPath body =
     "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        <> faviconTag
         <> "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
         <> "<title>"
         <> htmlEscape title
@@ -40,7 +42,9 @@ page chrome title relPath body =
         <> ogTags chrome title relPath
         <> styleBlock
         <> "</head><body><header class=\"top\">"
-        <> "<a class=\"brand\" href=\"/gallery\"><span class=\"lam\">λ</span> Sabela</a>"
+        <> "<a class=\"brand\" href=\"/gallery\">"
+        <> brandMark
+        <> "Sabela</a>"
         <> "<nav class=\"hnav\"><a href=\"https://github.com/DataHaskell/sabela\">Source</a>"
         <> "<a class=\"signin\" href=\"/_hub/login\">Sign in</a></nav></header>"
         <> body

@@ -1,20 +1,20 @@
-/* ── Header ────────────────────────────────── */
+/* ── Header: one flat strip, title left, plain-word actions right ── */
 .slide-header {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 20px;
-  background: var(--bg);
+  height: 34px;
+  padding: 0 var(--pad-x);
+  background: var(--bg-muted);
   border-bottom: 1px solid var(--border);
   z-index: 100;
 }
 .slide-header h1 {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  color: var(--fg-heading);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fg);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -22,87 +22,41 @@
 }
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 2px;
   align-items: center;
 }
 .header-actions a,
 .header-actions button {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 0;
   background: transparent;
   color: var(--fg-dim);
   cursor: pointer;
   text-decoration: none;
-  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
 }
 .header-actions a:hover,
 .header-actions button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  color: var(--fg);
 }
 .header-actions button.active {
-  border-color: var(--accent);
   color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.08);
-}
-.header-actions .icon-btn {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  color: var(--fg-dim);
-}
-.header-actions .icon-btn:hover {
-  background: var(--bg-muted);
-  color: var(--fg-heading);
-  border-color: transparent;
 }
 .fontsize-group {
   display: inline-flex;
   align-items: stretch;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
 }
 .fontsize-group button {
-  border: none;
-  border-radius: 0;
-  padding: 6px 10px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg-dim);
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.fontsize-group button:hover {
-  background: var(--bg-muted);
-  color: var(--accent);
-}
-.fontsize-group button + button {
-  border-left: 1px solid var(--border);
+  padding: 0 6px;
 }
 .fontsize-group #fs-pct {
-  min-width: 48px;
-  text-align: center;
+  min-width: 44px;
+  justify-content: center;
   font-variant-numeric: tabular-nums;
-}
-.icon-svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  stroke-width: 2;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex-shrink: 0;
 }

@@ -4,14 +4,14 @@ Pair a separate Claude Code terminal with a running Sabela notebook. Claude can 
 
 ## How it works
 
-Sabela exposes its AI tools over REST at `/api/ai/*`. A compiled, typed Haskell client (`exe:siza`, in the `siza-client` package) speaks that contract; the `siza` / `siza.cmd` shim in this directory locates and execs it. The client validates tool calls against the typed contract, runs a client-side pre-flight parse + security scan on mutating code, and records each call to a provenance log.
+Sabela exposes its AI tools over REST at `/api/ai/*`. A compiled, typed Haskell client (`exe:siza`, in the `siza-client` package) speaks that contract, and `siza mcp` serves it over the Model Context Protocol on stdio. The plugin's `.mcp.json` registers that server, so Claude Code sees the notebook as ordinary typed MCP tools (`mcp__plugin_siza_siza__list_cells`, `…__insert_cell`, and so on) instead of building shell command strings. The server validates every call against the typed contract, runs a client-side pre-flight parse + security scan on mutating code, and records each call to a provenance log under `~/.local/state/sabela/sessions/`.
 
 - `GET /api/ai/health` — liveness probe
 - `GET /api/ai/tools` — the tools + their JSON schemas
 - `GET /api/ai/notebook` — structured cell snapshot
 - `POST /api/ai/tool` — invoke a tool; body `{ name, input }`, optional `X-Sabela-Session` header
 
-On startup, Sabela writes `~/.local/state/sabela/servers/<port>.json` so the skill can auto-discover running servers.
+On startup, Sabela writes `~/.local/state/sabela/servers/<port>.json` so siza can auto-discover running servers.
 
 ## Repo layout
 
@@ -19,14 +19,10 @@ On startup, Sabela writes `~/.local/state/sabela/servers/<port>.json` so the ski
 cli-skill/
 ├── .claude-plugin/marketplace.json     # marketplace entry
 └── plugins/siza/
-    ├── .claude-plugin/plugin.json      # plugin manifest (optional, for metadata)
+    ├── .claude-plugin/plugin.json      # plugin manifest
+    ├── .mcp.json                       # registers `siza mcp` as the plugin's MCP server
     └── skills/siza/
-        ├── SKILL.md                    # the prompt loaded into Claude when triggered
-        └── scripts/
-            ├── siza                    # shim over the compiled typed client (exe:siza)
-            ├── siza.cmd                # Windows shim
-            ├── siza-mcp                # shim: `siza mcp` (MCP stdio server)
-            └── siza-mcp.cmd            # Windows MCP shim
+        └── SKILL.md
 ```
 
 Claude Code's plugin loader only discovers `SKILL.md` files at `<plugin>/skills/<name>/SKILL.md`. A bare `SKILL.md` at the plugin root is silently ignored.
@@ -40,33 +36,27 @@ Claude Code's plugin loader only discovers `SKILL.md` files at `<plugin>/skills/
    ```
    Open the URL it prints in your browser and load a notebook.
 
-2. **Build the typed client.** The skill drives a compiled binary, so build it once:
+2. **Put `siza` on your PATH.** The plugin spawns `siza mcp`, so the binary must be resolvable by name:
    ```bash
    cd /path/to/sabela
-   cabal build exe:siza
+   cabal install exe:siza --overwrite-policy=always    # symlinks into ~/.cabal/bin
    ```
+   Make sure `~/.cabal/bin` is on `PATH` for the shell that launches Claude Code.
 
-3. **Install the skill in a second terminal.** In terminal B, from inside Claude Code:
+3. **Install the plugin.** In terminal B, from inside Claude Code:
    ```
    /plugin marketplace add /path/to/sabela/cli-skill
    /plugin install siza@sabela-tools
    /reload-plugins
    ```
-   Confirm the reload line reports `… · 1 skill · …` (not `0 skills`). Then ask Claude things like _"what cells are in my Sabela notebook?"_, _"analyse the data in cell 4"_, or _"run cell 3 and tell me what it prints."_
+   `/mcp` should list `plugin:siza:siza` as connected. Then ask Claude things like _"what cells are in my Sabela notebook?"_, _"analyse the data in cell 4"_, or _"run cell 3 and tell me what it prints."_
 
-4. **Point the shim at the client.** When installed, the plugin runs from the plugin cache, not your checkout, so the shim can't auto-find the binary. Set ONE of these (in your shell profile):
+4. **Use the CLI directly** when you want to drive the notebook by hand:
    ```bash
-   export SABELA_REPO=/path/to/sabela            # shim resolves via `cabal list-bin`
-   # or, explicit (required if you built with non-default flags like -O2):
-   export SIZA_BIN="$(cd /path/to/sabela && cabal list-bin exe:siza)"
-   ```
-
-5. **Or skip the plugin and use the script directly** from the checkout — the in-repo `siza` shim auto-finds the binary, no env needed:
-   ```bash
-   cli-skill/plugins/siza/skills/siza/scripts/siza discover
-   cli-skill/plugins/siza/skills/siza/scripts/siza tool list_cells
-   cli-skill/plugins/siza/skills/siza/scripts/siza tool read_cell '{"cell_id":1}'
-   cli-skill/plugins/siza/skills/siza/scripts/siza await-idle      # block until the kernel settles
+   siza discover
+   siza tool list_cells
+   siza tool read_cell '{"cell_id":1}'
+   siza await-idle      # block until the kernel settles
    ```
 
 ## Running with a bearer token (hub / remote / shared machine)
@@ -77,67 +67,43 @@ Set `SABELA_AI_TOKEN` before starting Sabela. All `/api/ai/*` requests then requ
 # Terminal A — server
 SABELA_AI_TOKEN=$(openssl rand -hex 16) cabal run
 
-# Terminal B — client
+# Terminal B — Claude Code, with the same value exported so the MCP server inherits it
 export SABELA_AI_TOKEN=<same value>
-cli-skill/plugins/siza/skills/siza/scripts/siza tool list_cells
 ```
 
-The rest of the UI (browser notebook, SSE events, static files) stays unauthenticated — only the AI bridge is gated.
+The rest of the UI (browser notebook, SSE events, static files) stays unauthenticated — only the AI bridge is gated. For a notebook behind the hub, run `siza login` once in a terminal (it needs a human to approve in the browser); the MCP server picks up the saved token.
 
 ## Environment variables
 
+The MCP server inherits the environment of the shell that launched Claude Code.
+
 | Var | Scope | Purpose |
 |-----|-------|---------|
-| `SIZA_BIN` | shim | Explicit path to the built `siza` binary. Most reliable; required if you built with non-default flags (`-O2`). |
-| `SABELA_REPO` | shim | Your sabela checkout; the shim resolves the binary via `cabal list-bin exe:siza`. Use when installed from the plugin cache. |
 | `SABELA_AI_TOKEN` | server + client | Bearer token. Unset → local, no auth. |
-| `SABELA_URL` | client | Override auto-discovery (e.g. `http://host:3000`). |
-| `SABELA_SESSION` | client | `X-Sabela-Session` value; isolates `explore_result` handles. Defaults to a stable per-terminal id. |
-| `SABELA_TOOL_TIMEOUT` | client | Tool-call HTTP timeout in seconds; `0` = no timeout. Defaults to `60`. Set `0` for MCP so a long `execute_cell` is not abandoned. |
+| `SABELA_URL` | client | Override auto-discovery (e.g. `http://host:3000` or a hub URL). |
+| `SABELA_SESSION` | client | `X-Sabela-Session` value; isolates result handles. Defaults to a stable per-terminal id. |
+| `SABELA_TOOL_TIMEOUT` | client | Tool-call HTTP timeout in seconds; `0` = no timeout. The plugin sets `0` so a long `execute_cell` is not abandoned. |
 
-## MCP server (`siza mcp`)
+## Other MCP clients
 
-`siza mcp` serves the same tool surface over the Model Context Protocol on
-stdio, so **any MCP client** (goose, Claude Desktop, opencode) drives the
-notebook with structured tool arguments. The model fills typed fields instead of
-building a shell command string, which is where weak/open models fail today.
-
-It reuses the client's auth, discovery, hub cookie/token, and the same
-client-side pre-flight gate as `siza tool`. A mutation that fails to parse comes
-back as an MCP tool error the model can fix rather than running against the
-kernel. Tool schemas are fetched live from `GET /api/ai/tools`, so the catalogue
-stays in sync with the server.
-
-Launch it via the `siza-mcp` / `siza-mcp.cmd` shim (or `siza mcp`). Set
-`SABELA_TOOL_TIMEOUT=0` so a long `execute_cell` is not abandoned, and prefer the
-**`execute_cell` then `await_idle` (don't retry)** idiom for long cells. A retry
-bounces `busy` or wedges the kernel.
-
-The spawned command must be able to locate the compiled binary. The `siza-mcp`
-shim resolves it via `$SIZA_BIN` or `$SABELA_REPO` (see the env table above), so
-pass those through your client's env block, or point the client straight at the
-binary with `args: ["mcp"]`.
+`siza mcp` is a plain stdio MCP server, so goose, Claude Desktop, opencode, or any other MCP host can drive the notebook with the same config shape: command `siza`, args `["mcp"]`, env `SABELA_TOOL_TIMEOUT=0` (and `SABELA_URL` if not local). Prefer the **`execute_cell` then `await_idle` (don't retry)** idiom for long cells; a retry bounces `busy`.
 
 ### goose
 
-Verified quick start (the model spawns the server for one run):
-
 ```bash
 export SABELA_URL=http://localhost:3000 SABELA_TOOL_TIMEOUT=0
-export SIZA_BIN="$(cd /path/to/sabela && cabal list-bin exe:siza)"
-goose run --with-extension "/path/to/cli-skill/plugins/siza/skills/siza/scripts/siza-mcp" \
+goose run --with-extension "siza mcp" \
   -t "Call list_cells, then insert a cell defining factorial :: Integer -> Integer and run it."
 ```
 
-Persistent config (`~/.config/goose/config.yaml`); point `cmd` at the binary so
-it does not depend on the launch directory:
+Persistent config (`~/.config/goose/config.yaml`):
 
 ```yaml
 extensions:
   siza:
     name: siza
     type: stdio
-    cmd: /abs/path/to/siza        # cabal list-bin exe:siza
+    cmd: siza
     args: ["mcp"]
     enabled: true
     envs:
@@ -151,16 +117,13 @@ extensions:
 {
   "mcpServers": {
     "siza": {
-      "command": "siza-mcp",
+      "command": "siza",
+      "args": ["mcp"],
       "env": { "SABELA_URL": "http://localhost:3000", "SABELA_TOOL_TIMEOUT": "0" }
     }
   }
 }
 ```
-
-**opencode** uses the same `command` / `env` shape under its MCP block. For a
-hub-hosted notebook set `SABELA_URL=https://<hub>` and run `siza login` first;
-the saved token / cookie is picked up automatically.
 
 ## Raw curl examples
 
@@ -183,15 +146,4 @@ With a token, add `-H "Authorization: Bearer $SABELA_AI_TOKEN"` to each request.
 
 ## Tool reference
 
-[`plugins/siza/skills/siza/SKILL.md`](plugins/siza/skills/siza/SKILL.md) is the prose Claude reads when the skill triggers. It documents:
-
-- the tools with input / output JSON shapes,
-- a worked example for analysing data ("discover → list_cells → read_cell → try → insert_cell → match the typed `outcome` tag"),
-- decision tree for `propose_edit` vs `replace_cell_source` vs `insert_cell`,
-- the typed cell-result outcome (`Succeeded` / `Raised` / `Rejected` / `Aborted`), with outputs and warnings,
-- handle lifecycle and the `explore_result` ops (`head` / `tail` / `slice` / `grep`),
-- `try` rules (one speculative interface, notebook context, candidate-only dependencies, and fail-closed effects),
-- `expected_hash` optimistic concurrency and how to recover from a hash mismatch,
-- the 4096-token response cap and how to split large `propose_edit` payloads.
-
-If you're editing the skill, that's the file.
+The authoritative catalogue is the live `tools/list` handshake against `siza mcp`; each tool's description documents its arguments and result. [`plugins/siza/skills/siza/SKILL.md`](plugins/siza/skills/siza/SKILL.md) is the short prose Claude reads when the skill triggers: the hard rules, which mutation tool to pick, and kernel discipline. If you're editing the skill, that's the file.

@@ -15,6 +15,7 @@ import Sabela.Errors.Locate (
     startsWithPosition,
  )
 import Sabela.Model (CellError (..))
+import Sabela.Output.Display (attributeInteractivePrint)
 import ScriptHs.Compiled (parseLinePragmaTag)
 
 ghcCodeIn :: Text -> Maybe Int
@@ -33,10 +34,11 @@ position is a session position, and `attributeHeader` relabels it rather than
 letting a reader take 685 for line 685 of a five-line cell.
 -}
 parseErrors :: Text -> [CellError]
-parseErrors stderr
+parseErrors raw
     | T.null stderr = []
     | otherwise = concatMap parseSingleError (splitErrors stderr)
   where
+    stderr = attributeInteractivePrint raw
     parseSingleError block
         | isWarningBlock block = []
         | otherwise = case T.lines block of

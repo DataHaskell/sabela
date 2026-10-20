@@ -1,32 +1,20 @@
 // ── Theme handling ───────────────────────────────────────────────
 const THEMES = [
-  { id: 'gzim', name: 'Great Zimbabwe', mode: 'dark', bg: '#1b1a17', accent: '#d69a3c' },
-  { id: 'warm', name: 'Warm Paper', mode: 'light', bg: '#f7f3ec', accent: '#c2674a' },
-  { id: 'nord', name: 'Nord', mode: 'dark', bg: '#2e3440', accent: '#88c0d0' },
-  { id: 'nord-light', name: 'Nord Light', mode: 'light', bg: '#eceff4', accent: '#5e81ac' },
-  { id: 'nord-aurora', name: 'Aurora Purple', mode: 'dark', bg: '#2e3440', accent: '#b48ead' },
-  { id: 'nord-ember', name: 'Aurora Ember', mode: 'dark', bg: '#2e3440', accent: '#d08770' },
-  {
-    id: 'vscode',
-    name: 'VS Code Dark',
-    mode: 'dark',
-    bg: '#1e1e1e',
-    accent: '#3794ff',
-    cm: 'vscode',
-  },
+  { id: 'default', name: 'Default', mode: 'dark', bg: '#2e2e32', accent: '#93ddfa' },
+  { id: 'summer', name: 'Summer', mode: 'light', bg: '#fbfbfb', accent: '#fc1785' },
+  { id: 'fall', name: 'Fall', mode: 'dark', bg: '#343233', accent: '#ffd152' },
 ];
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
-  return THEMES.some((x) => x.id === t) ? t : 'gzim';
+  return THEMES.some((x) => x.id === t) ? t : 'default';
 }
 function themeMode(id) {
   return (THEMES.find((x) => x.id === id) || THEMES[0]).mode;
 }
-// CodeMirror theme name for the active palette (used by editors on mount too).
+// One CodeMirror theme serves every scheme: its colours are CSS variables
+// that the active [data-theme] block supplies.
 function cmTheme() {
-  const t = THEMES.find((x) => x.id === currentTheme());
-  if (t && t.cm) return t.cm;
-  return themeMode(currentTheme()) === 'light' ? 'idea' : 'nord';
+  return 'sabela';
 }
 function applyTheme(theme, { persist = true } = {}) {
   document.documentElement.dataset.theme = theme;
@@ -115,16 +103,32 @@ function iframeBaseStyle() {
   const bg = v('--output-html-bg', '#ffffff');
   const fg = v('--output-html-fg', '#1e1e2e');
   const accent = v('--accent', '#89b4fa');
-  return `<style>body{background:${bg};color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;margin:0;padding:4px 8px;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select,button{accent-color:${accent};font-family:inherit;font-size:13px;cursor:pointer}</style>`;
+  return `<style>:root{${notebookPaletteVars(v, bg, fg, accent)}}body{background:${bg};color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;margin:0;padding:4px 8px;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select,button{accent-color:${accent};font-family:inherit;font-size:13px;cursor:pointer}</style>`;
+}
+
+// The notebook's own palette, handed to an output iframe so a rendered widget
+// can look like part of the notebook rather than a white card. The canvas stays
+// --output-html-bg: only a widget that opts in (the grid) paints over it.
+function notebookPaletteVars(v, bg, fg, accent) {
+  return [
+    `--sabela-surface:${v('--bg-output', bg)}`,
+    `--sabela-raised:${v('--bg-cell', bg)}`,
+    `--sabela-fg:${v('--fg', fg)}`,
+    `--sabela-dim:${v('--fg-dim', fg)}`,
+    `--sabela-border:${v('--border', '#e2e2ea')}`,
+    `--sabela-accent:${accent}`,
+    `--sabela-accent-rgb:${v('--accent-rgb', '96,120,240')}`,
+    '--sabela-live:1',
+  ].join(';');
 }
 // Initial sync (CodeMirror theme will be set once editors mount).
 applyTheme(currentTheme(), { persist: false });
 
-// ── Dirty-dot indicator (filename next to the toolbar title) ─────
+// ── Modified indicator: the tab's dot and the status bar's file icon ──
 function updateDirtyDot() {
   const dot = document.getElementById('dirty-dot');
-  if (!dot) return;
-  if (unsavedChanges) dot.classList.add('show');
-  else dot.classList.remove('show');
+  if (dot) dot.classList.toggle('show', !!unsavedChanges);
+  const sb = document.getElementById('sb-file');
+  if (sb) sb.classList.toggle('dirty', !!unsavedChanges);
 }
 setInterval(updateDirtyDot, 600);

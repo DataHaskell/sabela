@@ -1,9 +1,5 @@
-/* ── Phone layout ──────────────────────────────
-         Kept at the end of the stylesheet so these overrides win on source
-         order against the base component rules defined earlier (media queries
-         add no specificity). Selectors match the base rules' specificity. */
+/* ── Phone layout ──────────────────────────── */
 @media (max-width: 640px) {
-  /* Sidebar floats as an overlay drawer, mirroring the right-panel. */
   .sidebar {
     position: absolute;
     top: 0;
@@ -12,55 +8,27 @@
     z-index: 60;
     max-width: 88vw;
   }
-  .sidebar:not(.collapsed) {
-    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.3);
-  }
   .sidebar.collapsed {
     width: 0;
     min-width: 0;
-    box-shadow: none;
   }
   .right-panel {
     width: min(420px, 100vw);
     max-width: 100vw;
   }
-
-  /* Toolbar fits a phone: Run all + palette collapse to icons and the
-           title shrinks, so [≡] title [▶] [search] [⋯] [theme] all show. */
-  .toolbar {
-    gap: 6px;
-    padding: 8px 10px;
-  }
   .toolbar-title-wrap {
-    max-width: 84px;
+    width: 120px;
+    max-width: 120px;
   }
-  .toolbar-title-wrap .toolbar-title {
-    max-width: 84px;
-  }
-  .toolbar .primary {
-    padding: 0 10px;
-  }
-  .toolbar .primary .btn-label {
+  button.palette-trigger kbd {
     display: none;
   }
-  button.palette-trigger {
-    min-width: 0;
-    padding: 0 8px;
+  #btn-sidebar-toggle.phone-only {
+    display: inline-flex;
   }
-  button.palette-trigger .palette-trigger-label,
-  button.palette-trigger kbd,
-  .save-indicator,
-  .toolbar .status {
+  .statusbar .sb-right {
     display: none;
   }
-
-  /* Use the full narrow width for cells. */
-  .notebook {
-    padding: 16px 12px 80px;
-  }
-
-  /* Drop CM5's reserved scrollbar gutter that renders as dead space
-           below the text on touch browsers. */
   .cell.code .CodeMirror-scroll {
     margin-bottom: 0;
     padding-bottom: 0;
@@ -68,10 +36,9 @@
   }
 }
 
-/* Comfortable tap targets on touch devices. */
 @media (pointer: coarse) {
-  .toolbar .icon-btn,
-  .sidebar-header button,
+  .toolbar .tbtn,
+  .sidebar-toolbar button,
   .cell-actions button {
     min-width: 36px;
     min-height: 36px;

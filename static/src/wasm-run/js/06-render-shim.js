@@ -17,13 +17,28 @@ function iframeBaseStyle() {
   const fg = v('--output-html-fg', '#1e1e2e');
   const accent = v('--accent', '#89b4fa');
   return (
-    `<style>body{background:${bg};color:${fg};` +
+    `<style>:root{${notebookPaletteVars(v, bg, fg, accent)}}` +
+    `body{background:${bg};color:${fg};` +
     `font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;` +
     `margin:0;padding:4px 8px;font-variant-ligatures:none;` +
     `font-feature-settings:"calt" 0,"liga" 0}` +
     `input,select,button{accent-color:${accent};font-family:inherit;` +
     `font-size:13px;cursor:pointer}</style>`
   );
+}
+
+// The page's palette, handed to the iframe so a grid renders in the share's
+// theme rather than as a white card — the editor's notebookPaletteVars.
+function notebookPaletteVars(v, bg, fg, accent) {
+  return [
+    `--sabela-surface:${v('--bg-output', bg)}`,
+    `--sabela-raised:${v('--bg-cell', bg)}`,
+    `--sabela-fg:${v('--fg', fg)}`,
+    `--sabela-dim:${v('--fg-dim', fg)}`,
+    `--sabela-border:${v('--border', '#e2e2ea')}`,
+    `--sabela-accent:${accent}`,
+    `--sabela-accent-rgb:${v('--accent-rgb', '96,120,240')}`,
+  ].join(';');
 }
 
 // KaTeX-before-marked pass for text/markdown output. The export page loads

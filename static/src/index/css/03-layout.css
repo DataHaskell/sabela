@@ -4,117 +4,104 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  min-height: 0;
 }
 
-/* ── Sidebar ───────────────────────────────── */
-/* Floating card, matching the pill nav: detached from the edges, rounded,
-   lifted by a soft shadow. */
+/* ── Sidebar (TreeView) ────────────────────── */
+/* Pane surface with a 1px divider against the document, no header, no
+   rounding; the row of dim action icons sits at the bottom. */
 .sidebar {
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
-  margin: 4px 4px 10px 12px;
+  margin: 0;
   background: var(--bg-sidebar);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-soft);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  overflow-y: auto;
-  transition:
-    width 0.15s,
-    min-width 0.15s;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  overflow: hidden;
 }
 .sidebar.collapsed {
   width: 0;
   min-width: 0;
-  margin: 0;
-  overflow: hidden;
   border: none;
-  box-shadow: none;
 }
-.sidebar-header {
+/* The document column: tab bar on top, notebook below, right of the tree. */
+.doc-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Bottom action strip: dim glyphs, evenly spaced, text-coloured on hover. */
+.sidebar-toolbar {
   display: flex;
   align-items: center;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--fg-dim);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  gap: 4px;
+  gap: 10px;
+  height: 34px;
+  padding: 0 var(--pad-x);
   flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
 }
-.sidebar-header span:first-child {
-  flex: 1;
-}
-.sidebar-header button {
+.sidebar-toolbar button {
   background: none;
   border: none;
   color: var(--fg-dim);
   cursor: pointer;
-  font-size: 13px;
-  padding: 0 3px;
-  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
 }
-.sidebar-header button:hover {
+.sidebar-toolbar button .icon-svg {
+  width: 16px;
+  height: 16px;
+}
+.sidebar-toolbar button:hover {
   color: var(--fg);
 }
-.sidebar-toggle {
-  background: none;
-  border: none;
-  color: var(--fg-dim);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  padding: 5px 8px;
-  transition: all 0.15s;
-}
-.sidebar-toggle:hover {
-  color: var(--accent);
-}
 .file-tree {
-  padding: 4px 0;
+  padding: 2px 0;
   flex: 1;
   overflow-y: auto;
 }
 .file-entry {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 10px;
+  gap: 6px;
+  height: var(--row-h);
+  padding: 0 var(--pad-x);
   cursor: pointer;
   color: var(--fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.1s;
 }
-.file-entry:hover {
-  background: var(--bg-cell);
-}
+.file-entry:hover,
 .file-entry.active {
   background: var(--accent-dim);
   color: var(--accent);
 }
 .file-entry .icon {
   flex-shrink: 0;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg);
+}
+.file-entry .icon .icon-svg {
   width: 14px;
-  text-align: center;
+  height: 14px;
 }
-.file-entry .icon.dir {
-  color: var(--peach);
+.file-entry .icon .chev {
+  width: 11px;
+  height: 11px;
+  color: var(--fg);
 }
-.file-entry .icon.md {
+.file-entry:hover .icon,
+.file-entry.active .icon {
   color: var(--accent);
-}
-.file-entry .icon.hs {
-  color: var(--green);
-}
-.file-entry .icon.file {
-  color: var(--fg-dim);
 }
 .file-entry .name {
   overflow: hidden;
@@ -122,83 +109,66 @@
 }
 .file-indent {
   display: inline-block;
+  flex-shrink: 0;
 }
 
 /* sidebar new-file input */
 .sidebar-input {
   display: flex;
-  padding: 4px 10px;
+  padding: 3px var(--pad-x);
   gap: 4px;
 }
-.sidebar-input input {
+.sidebar-input input,
+.sidebar-filter input {
   flex: 1;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--bg-cell);
-  border: 1px solid var(--accent-dim);
-  border-radius: 3px;
-  color: var(--fg);
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-bright);
   padding: 3px 6px;
   outline: none;
 }
-.sidebar-input input:focus {
+.sidebar-input input:focus,
+.sidebar-filter input:focus {
   border-color: var(--accent);
 }
 .sidebar-input button {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  background: var(--accent);
-  color: var(--bg);
-  border: none;
-  border-radius: 3px;
-  padding: 3px 8px;
+  font-size: 12px;
+  background: var(--accent-dim);
+  color: var(--fg-bright);
+  border: 1px solid var(--border);
+  padding: 0 8px;
   cursor: pointer;
 }
 .sidebar-filter {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 4px var(--pad-x) 6px;
   flex-shrink: 0;
-}
-.sidebar-filter input {
-  width: 100%;
-  box-sizing: border-box;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--bg-cell);
-  border: 1px solid var(--accent-dim);
-  border-radius: 3px;
-  color: var(--fg);
-  padding: 3px 6px;
-  outline: none;
-}
-.sidebar-filter input:focus {
-  border-color: var(--accent);
 }
 .preview-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
-  padding: 6px 10px;
-  font-size: 11px;
+  margin-top: 0;
+  padding: 4px var(--pad-x);
+  font-size: 12px;
   color: var(--fg-dim);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-cell);
+  border-top: 1px solid var(--border);
+  background: var(--bg-output);
 }
 .preview-info {
   flex: 1;
 }
 .preview-btn {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--accent);
-  color: var(--bg);
-  border: none;
-  border-radius: 3px;
-  padding: 3px 8px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
   cursor: pointer;
 }
 .preview-btn:hover {
-  opacity: 0.85;
+  color: var(--fg-bright);
+  background: var(--accent-dim);
 }

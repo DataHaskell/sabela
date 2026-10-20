@@ -1,15 +1,9 @@
 // Theme bootstrap — runs before any rendering to avoid FOUC.
-// Default palette is the original blue (Original Dark / Light by OS).
+// 'default' is the dark scheme the editor ships with.
 (() => {
-  const KNOWN = ['gzim', 'warm', 'nord', 'nord-light', 'nord-aurora', 'nord-ember', 'vscode'];
+  const KNOWN = ['default', 'summer', 'fall'];
   const stored = localStorage.getItem('sabela-theme');
-  let theme;
-  if (KNOWN.includes(stored)) {
-    theme = stored;
-  } else {
-    // Default to the Great Zimbabwe palette for everyone.
-    theme = 'gzim';
-  }
+  const theme = KNOWN.includes(stored) ? stored : 'default';
   document.documentElement.dataset.theme = theme;
-  window.__sabelaThemePinned = !!stored;
+  window.__sabelaThemePinned = KNOWN.includes(stored);
 })();
