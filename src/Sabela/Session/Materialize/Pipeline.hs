@@ -19,6 +19,7 @@ import Sabela.Bridge (bridgePreamble)
 import Sabela.Diagnose.KnockOn (dropImportKnockOns)
 import Sabela.Model (Cell (..))
 import Sabela.Output (displayPrelude)
+import Sabela.Output.Optional (optionalDisplays, wantedBy)
 import Sabela.Reactivity (ExecutionPlan (..))
 import Sabela.Session.Materialize.Candidate (
     CandidateSpec (..),
@@ -29,6 +30,7 @@ import Sabela.Session.Materialize.Candidate (
  )
 import Sabela.Session.Materialize.Replay (
     loadCompiled,
+    offerDisplays,
     replayCells,
     snapshotRenderContext,
  )
@@ -46,6 +48,7 @@ import Sabela.Session.MaterializeStage (
  )
 import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
+import Sabela.State.NotebookStore (readNotebook)
 
 runMaterialized ::
     App ->
@@ -62,10 +65,13 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
         (skipped, toReplay) = partitionReplayCells (epCellsToRun plan)
         base = base0{disposableSkippedCells = skipped}
     compiled <- loadCompiled projectDir backend (epCompilePlan plan)
+    nb <- readNotebook (appNotebook app)
+    let wanted = filter (wantedBy nb) optionalDisplays
     case compiled of
         Left msg -> pure (failed base StageCompiled Nothing msg)
         Right () -> do
-            preludeResult <- runChecked backend displayPrelude
+            preludeResult <-
+                runChecked backend displayPrelude <* offerDisplays backend wanted
             case preludeResult of
                 Left msg -> pure (failed base StagePrelude Nothing msg)
                 Right _ -> do
@@ -80,7 +86,7 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
                                     (T.pack (displayException e))
                                 )
                         Right () -> do
-                            replayed <- replayCells backend context toReplay
+                            replayed <- replayCells backend wanted context toReplay
                             case replayed of
                                 Left (done, cid, stage, msg) ->
                                     pure
@@ -88,16 +94,17 @@ runMaterialized app snapshot projectDir plan spec base0 captureBaseline backend 
                                             { disposableReplayedCells = compiledIds <> done
                                             }
                                 Right (done, scratchBridge) ->
-                                    afterReplay base (compiledIds <> done) scratchBridge
+                                    afterReplay wanted base (compiledIds <> done) scratchBridge
   where
     compiledIds = map cellId (epCompileCells plan)
 
     -- Everything from the post-replay preludes to the candidate run. Split out
     -- so the replay staircase above stays readable.
-    afterReplay base replayedIds scratchBridge = do
+    afterReplay wanted base replayedIds scratchBridge = do
         let carry result = result{disposableReplayedCells = replayedIds}
             stopAt stage msg = pure (carry (failed base stage Nothing msg))
-        finalPrelude <- runChecked backend displayPrelude
+        finalPrelude <-
+            runChecked backend displayPrelude <* offerDisplays backend wanted
         case finalPrelude of
             Left msg -> stopAt StagePrelude msg
             Right _ -> do

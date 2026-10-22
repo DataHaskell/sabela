@@ -79,6 +79,11 @@ function renderCodeCell(cell, cellNum) {
     `<button class="fold-bar in-fold" onclick="toggleCellCollapse(${cell.cellId})" aria-label="Collapse cell input" title="Collapse input"></button>` +
     `<span class="cell-number" title="Cell id ${cell.cellId}">[${cellNum}]</span>`;
   div.appendChild(gutter);
+  if (objectKindOf(cell) === 'chart') {
+    div.classList.add('viz');
+    if (codeShown.has(cell.cellId)) div.classList.add('show-code');
+    div.appendChild(renderVizHead(cell));
+  }
   const box = document.createElement('div');
   box.className = 'cell-box';
   div.appendChild(box);
@@ -99,6 +104,9 @@ function renderCodeCell(cell, cellNum) {
     <button class="collapse-btn" onclick="toggleCellCollapse(${cell.cellId})" title="Hide/show cell" aria-label="Toggle cell visibility" aria-expanded="${collapsed ? 'false' : 'true'}"><svg class="icon-svg small"><use href="#${collapsed ? 'i-chev-right' : 'i-chev-down'}"/></svg></button>
     <button class="run-btn" onclick="runCell(${cell.cellId})" aria-label="Run cell" title="Run cell (${kbd('shift', 'enter')})"><svg class="icon-svg small"><use href="#i-play"/></svg> run</button>
     <button class="clear-btn" onclick="clearCellOutput(${cell.cellId})" aria-label="Clear output" title="Clear output"><svg class="icon-svg small"><use href="#i-circle-slash"/></svg></button>
+    ${objectKindOf(cell) === 'chart' ? `<button class="design-cell-btn" onclick="openDesigner(${cell.cellId})" aria-label="Edit chart" title="Open in the Visualize panel"><svg class="icon-svg small"><use href="#i-edit"/></svg> edit chart</button>` : ''}
+    <button class="ask-btn" onclick="askAiAbout(${cell.cellId})" aria-label="Ask AI about this cell" title="Ask the assistant about this cell"><svg class="icon-svg small"><use href="#i-message"/></svg></button>
+    ${cell.cellLang !== 'Python' ? `<button class="extract-btn" onclick="startExtract(${cell.cellId})" aria-label="Extract as component" title="Extract this cell as a reusable component"><svg class="icon-svg small"><use href="#i-fold"/></svg> component</button>` : ''}
     ${cell.cellLang !== 'Python' ? `<button class="export-btn" onclick="exportPipeline(${cell.cellId}, 'haskell')" aria-label="Export pipeline ending here" title="Export pipeline ending here (.hs)"><svg class="icon-svg small"><use href="#i-download"/></svg></button>` : ''}
     ${cell.cellLang !== 'Python' && !compiled ? `<button class="compile-mode-btn" onclick="toggleCellCompile(${cell.cellId})" aria-label="Compile this cell" title="Compile this cell to native code (-O2)"><svg class="icon-svg small"><use href="#i-zap"/></svg></button>` : ''}
     <button class="delete-btn" onclick="deleteCell(${cell.cellId})" aria-label="Delete cell" title="Delete cell"><svg class="icon-svg small"><use href="#i-trash"/></svg></button>`;
@@ -118,7 +126,9 @@ function renderCodeCell(cell, cellNum) {
   if (outDiv) {
     div.appendChild(outDiv);
     attachOutputFold(div, cell.cellId);
+    attachOutputHandle(div, cell.cellId);
   }
+  if (designer.cellId === cell.cellId) div.classList.add('designing');
 
   requestAnimationFrame(() => {
     // Previously guarded with `if (editors[cell.cellId]) return` to avoid
@@ -143,6 +153,7 @@ function renderCodeCell(cell, cellNum) {
       indentUnit: 2,
       tabSize: 2,
       lineWrapping: true,
+      allowDropFileTypes: [],
       gutters: ['CodeMirror-linenumbers', 'warn-gutter', 'error-gutter'],
       extraKeys: {
         'Shift-Enter': () => runCell(cell.cellId),
@@ -191,9 +202,20 @@ function renderCodeCell(cell, cellNum) {
       if (changeObj && changeObj.origin !== 'setValue') {
         dirtyCells.add(cell.cellId);
         markCellStale(cell.cellId);
+        designerNoteUserEdit(cell.cellId);
       }
     });
     editors[cell.cellId] = cm;
+    // The editor is as tall as its lines and lines wrap, so any scroll it
+    // performs on itself is a measurement slip; undo it rather than show it.
+    cm.on('scroll', () => {
+      const info = cm.getScrollInfo();
+      if (info.top || info.left) cm.scrollTo(0, 0);
+    });
+    // Mounted before the vendored face arrived, the editor measured the
+    // fallback font; it re-measures once the face is in.
+    if (document.fonts && !document.fonts.check("13px 'Nordwand Mono'"))
+      document.fonts.ready.then(() => cm.refresh());
   });
   return div;
 }

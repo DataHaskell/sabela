@@ -62,11 +62,16 @@ function paintRunAllLabel() {
   label.textContent = runMode === 'deferred' && n > 0 ? 'Run ' + n + ' stale' : 'Run all';
 }
 
+// The restart notice is worth showing only while cells are actually out of
+// date: it goes up when a new kernel leaves some stale, and comes down by
+// itself as soon as anything runs against that kernel or nothing is stale.
 function applyNotebookState(epoch, staleIds) {
-  if (kernelEpoch !== null && epoch !== kernelEpoch) showEpochBanner();
+  const restarted = kernelEpoch !== null && epoch !== kernelEpoch;
   kernelEpoch = epoch;
   staleCellIds = new Set(staleIds || []);
   paintStaleCells();
+  if (staleCellIds.size === 0) hideEpochBanner();
+  else if (restarted) showEpochBanner(staleCellIds.size);
 }
 
 // Staleness is server-computed: it depends on the dependency graph, which the
@@ -79,18 +84,21 @@ function paintStaleCells() {
   paintRunAllLabel();
 }
 
-function showEpochBanner() {
+function showEpochBanner(staleCount) {
   let banner = document.getElementById('epoch-banner');
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'epoch-banner';
-    banner.className = 'notebook-banner';
+    banner.className = 'notebook-banner notice';
     banner.innerHTML =
-      '<span>The kernel restarted — nothing in this notebook has run against it.</span>' +
+      '<span id="epoch-banner-text"></span>' +
       '<button onclick="restartAndRunAll()">Run all</button>' +
       '<button onclick="hideEpochBanner()">Dismiss</button>';
     document.body.prepend(banner);
   }
+  const cells = staleCount === 1 ? '1 cell has' : staleCount + ' cells have';
+  document.getElementById('epoch-banner-text').textContent =
+    'The kernel restarted — ' + cells + ' not run against it.';
   banner.style.display = 'flex';
 }
 

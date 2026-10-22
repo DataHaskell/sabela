@@ -26,6 +26,8 @@
     <link rel="stylesheet" href="css/15-dataset.css" />
     <link rel="stylesheet" href="css/16-bindings.css" />
     <link rel="stylesheet" href="css/17-diagnostics.css" />
+    <link rel="stylesheet" href="css/18-builder.css" />
+    <link rel="stylesheet" href="css/19-components.css" />
     <link rel="stylesheet" href="css/13-responsive.css" />
   </head>
   <body>
@@ -46,6 +48,15 @@
           </button>
           <button class="side-tab" role="tab" data-pane="data" aria-selected="false" onclick="selectSidePane('data')">
             Data
+          </button>
+          <button
+            class="side-tab"
+            role="tab"
+            data-pane="components"
+            aria-selected="false"
+            onclick="selectSidePane('components')"
+          >
+            Components
           </button>
         </div>
         <div class="side-pane" id="side-pane-files">
@@ -85,12 +96,29 @@
         </div>
         <div class="side-pane" id="side-pane-data" style="display: none">
           <div class="data-list" id="data-list"></div>
+          <div class="data-load-bar" id="data-load-bar" style="display: none"></div>
           <div class="data-detail" id="data-detail"></div>
           <div class="sidebar-toolbar" role="toolbar" aria-label="Dataset actions">
             <button onclick="startUpload('.')" title="Upload files" aria-label="Upload a dataset">
               <svg class="icon-svg"><use href="#i-upload" /></svg>
             </button>
             <button onclick="loadDataFiles()" title="Refresh" aria-label="Refresh dataset list">
+              <svg class="icon-svg"><use href="#i-refresh" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="side-pane" id="side-pane-components" style="display: none">
+          <div class="data-list" id="components-list"></div>
+          <div class="data-detail" id="components-detail"></div>
+          <div class="sidebar-toolbar" role="toolbar" aria-label="Component actions">
+            <button
+              onclick="installComponentFromFile()"
+              title="Install a component bundle"
+              aria-label="Install a component bundle"
+            >
+              <svg class="icon-svg"><use href="#i-upload" /></svg>
+            </button>
+            <button onclick="loadComponents()" title="Refresh" aria-label="Refresh component list">
               <svg class="icon-svg"><use href="#i-refresh" /></svg>
             </button>
           </div>
@@ -102,12 +130,14 @@
       <div class="doc-column">
         <div class="toolbar">
           <button
-            class="tbtn phone-only"
+            class="icon-btn sidebar-toggle"
             id="btn-sidebar-toggle"
             onclick="toggleSidebar()"
-            aria-label="Toggle file explorer"
+            title="Hide or show the sidebar (Ctrl+B)"
+            aria-label="Toggle sidebar"
+            aria-pressed="true"
           >
-            Files
+            <svg class="icon-svg large"><use href="#i-menu" /></svg>
           </button>
           <span class="toolbar-title-wrap">
             <span class="toolbar-title" id="toolbar-title">Sabela</span>
@@ -136,6 +166,7 @@
           </button>
         </div>
         <div class="nb-toolbar" role="toolbar" aria-label="Notebook actions">
+          <button class="add-main" onclick="openInsertMenu(this, lastCellId())">+ Add ▾</button>
           <button onclick="addCellAtEnd('CodeCell')">+ Code</button>
           <button onclick="addCellAtEnd('ProseCell')">+ Markdown</button>
           <span class="nb-sep"></span>
@@ -201,6 +232,17 @@
             <svg class="icon-svg small"><use href="#i-message" /></svg>
             Chat
           </button>
+          <button
+            class="panel-tab"
+            role="tab"
+            data-tab="design"
+            onclick="togglePanel('design')"
+            aria-selected="false"
+            aria-controls="panel-design"
+          >
+            <svg class="icon-svg small"><use href="#i-viz-bar" /></svg>
+            Visualize
+          </button>
           <button class="panel-tab-close" onclick="closePanel()" aria-label="Close panel" title="Close panel">×</button>
         </div>
         <div class="panel-content" id="panel-info" role="tabpanel" aria-labelledby="tab-info" style="display: block">
@@ -245,6 +287,13 @@
         </div>
         <div
           class="panel-content"
+          id="panel-design"
+          role="tabpanel"
+          aria-labelledby="tab-design"
+          style="display: none"
+        ></div>
+        <div
+          class="panel-content"
           id="panel-examples"
           role="tabpanel"
           aria-labelledby="tab-examples"
@@ -265,7 +314,7 @@
               id="chat-model-btn"
               onclick="openAIModal()"
               title="Change provider or model"
-              style="margin-right: 6px"
+              style="margin-right: 0.375rem"
             >
               model
             </button>
@@ -335,6 +384,9 @@
     <script src="js/08-file-explorer.js"></script>
     <script src="js/08c-dataset.js"></script>
     <script src="js/08d-dataset-view.js"></script>
+    <script src="js/08e-viz-sources.js"></script>
+    <script src="js/08g-dataset-multi.js"></script>
+    <script src="js/08f-components.js"></script>
     <script src="js/09-file-preview.js"></script>
     <script src="js/10-file-io.js"></script>
     <script src="js/11-file-context-menu.js"></script>
@@ -352,6 +404,15 @@
     <script src="js/22-widget-bridge.js"></script>
     <script src="js/23-chat-modal.js"></script>
     <script src="js/24-chat.js"></script>
+    <script src="js/26-builder.js"></script>
+    <script src="js/26b-builder-shelves.js"></script>
+    <script src="js/26d-builder-options.js"></script>
+    <script src="js/26c-builder-dnd.js"></script>
+    <script src="js/26e-file-drop.js"></script>
+    <script src="js/26f-builder-add-data.js"></script>
+    <script src="js/27-insert-menu.js"></script>
+    <script src="js/28-object-actions.js"></script>
+    <script src="js/29-extract.js"></script>
     <script src="js/25-init.js"></script>
   </body>
 </html>

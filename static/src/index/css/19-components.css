@@ -1,0 +1,80 @@
+/* ── Components pane and the extract review ── */
+.comp-row {
+  gap: 0.375rem;
+}
+.comp-kind {
+  color: var(--fg-dim);
+  font-size: 0.6875rem;
+  width: 0.75rem;
+  text-align: center;
+}
+.comp-purpose {
+  padding: 0.25rem 0 0.5rem;
+  color: var(--fg);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+.comp-deps {
+  margin-top: 0.375rem;
+  color: var(--fg-dim);
+  font-size: 0.6875rem;
+}
+.extract-modal {
+  width: min(68.75rem, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+}
+.extract-head {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--fg-bright);
+  margin-bottom: 0.625rem;
+}
+.extract-cells {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 0.625rem;
+  max-height: 8.75rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+}
+.extract-cell {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--fg);
+  cursor: pointer;
+}
+.extract-cell input {
+  accent-color: var(--accent);
+}
+.extract-cols {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+}
+.extract-pane textarea {
+  width: 100%;
+  min-height: 20rem;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.625rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--syn-normal);
+  background: var(--bg-output);
+  border: 1px solid var(--border);
+  resize: vertical;
+  outline: none;
+}
+.extract-pane textarea:focus {
+  border-color: var(--accent);
+}
+.cell-actions button.extract-btn:hover {
+  color: var(--mauve);
+}

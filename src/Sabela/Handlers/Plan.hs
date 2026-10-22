@@ -22,6 +22,7 @@ import qualified Data.Text as T
 import Sabela.Deps (collectMetadata)
 import Sabela.Handlers.Compile (CompileOutcome (..), runCompilePhase)
 import Sabela.Handlers.Lifecycle (
+    envStale,
     installAndRestartUnlocked,
     killAllSessionsUnlocked,
  )
@@ -98,18 +99,26 @@ executePlan app gen nb plan = do
     when envOk $ whenCurrentGen app gen $ runPlanPhases app gen plan
 
 {- | Execute the environment node: replace the kernel with one built for the
-notebook as it stands. Returns False if the rebuild failed or was superseded, in
-which case no cell may run against it.
+notebook as it stands, unless a run that held the lock first already did, so
+two runs planned against a stale kernel build it once. False if the rebuild
+failed or was superseded, in which case no cell may run against it.
 -}
 runEnvNode :: App -> Int -> Notebook -> IO Bool
 runEnvNode app gen nb =
     withHaskellLifecycle (appSessions app) $ do
-        debugLog app "[handler] runEnvNode: rebuilding the kernel"
-        killAllSessionsUnlocked app
+        stillStale <- envStale app (collectMetadata nb)
         current <- isCurrentGen app gen
         if not current
             then pure False
-            else installAndRestartUnlocked app gen (collectMetadata nb)
+            else
+                if not stillStale
+                    then
+                        True
+                            <$ debugLog app "[handler] runEnvNode: kernel already rebuilt by an earlier run"
+                    else do
+                        debugLog app "[handler] runEnvNode: rebuilding the kernel"
+                        killAllSessionsUnlocked app
+                        installAndRestartUnlocked app gen (collectMetadata nb)
 
 {- | An explicit Run of one cell forces that cell and is reactive beyond it:
 its consumers re-run in dependency order, exactly as after an edit. Once the

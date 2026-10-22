@@ -56,10 +56,8 @@ spec = describe "handleCellEdit dispatch"
         modifyNotebook (appNotebook app) $ \nb ->
             nb{nbCells = [seeded]}
         nb <- readNotebook (appNotebook app)
-        installHaskellSession
-            (appSessions app)
-            backend
-            (neededEnvSig app (collectMetadata nb))
+        neededEnvSig app (collectMetadata nb)
+            >>= installHaskellSession (appSessions app) backend
         rn <- setupReactive app
         t0 <- getMonotonicTimeNSec
         _ <- timeout 5_000_000 (rnCellEdit rn 1 "x = 2")

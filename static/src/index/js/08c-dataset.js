@@ -31,13 +31,15 @@ function selectSidePane(name) {
   document
     .querySelectorAll('.side-tab')
     .forEach((b) => b.setAttribute('aria-selected', String(b.dataset.pane === name)));
-  document.getElementById('side-pane-files').style.display = name === 'files' ? '' : 'none';
-  document.getElementById('side-pane-data').style.display = name === 'data' ? '' : 'none';
-  document.getElementById('sidebar').classList.toggle('data-active', name === 'data');
+  document.querySelectorAll('.side-pane').forEach((p) => {
+    p.style.display = p.id === 'side-pane-' + name ? '' : 'none';
+  });
+  document.getElementById('sidebar').classList.toggle('data-active', name !== 'files');
   if (name === 'data' && !dataLoaded) {
     dataLoaded = true;
     loadDataFiles();
   }
+  if (name === 'components' && !componentsLoaded) loadComponents();
 }
 
 function dataExt(path) {
@@ -143,9 +145,13 @@ function dataRow(f) {
   const dir = document.createElement('span');
   dir.className = 'data-dir';
   dir.textContent = f.fePath.slice(0, Math.max(0, f.fePath.length - f.feName.length - 1));
+  row.appendChild(dataCheckbox(f));
   row.appendChild(name);
+  const badge = dataLoadedBadge(f.fePath);
+  if (badge) row.appendChild(badge);
   row.appendChild(dir);
   row.onclick = () => showDataset(f.fePath);
+  makeFileDraggable(row, f.fePath);
   return row;
 }
 

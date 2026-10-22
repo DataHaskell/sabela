@@ -21,6 +21,7 @@ import qualified Test.CellDefinesSpec as CellDefinesSpec
 import qualified Test.CellResultWireSpec as CellResultWireSpec
 import qualified Test.CellShapeSpec as CellShapeSpec
 import qualified Test.CellWireSpec as CellWireSpec
+import qualified Test.ChatFocusSpec as ChatFocusSpec
 import qualified Test.CheckTypeRouteSpec as CheckTypeRouteSpec
 import qualified Test.CheckTypeStructSpec as CheckTypeStructSpec
 import qualified Test.CompactResultSpec as CompactResultSpec
@@ -62,6 +63,7 @@ import qualified Test.KernelVocabSpec as KernelVocabSpec
 import qualified Test.KnockOnSpec as KnockOnSpec
 import qualified Test.LeaseSpec as LeaseSpec
 import Test.Live (liveSpecs)
+import qualified Test.MakeChartToolSpec as MakeChartToolSpec
 import qualified Test.MarkerSpec as MarkerSpec
 import qualified Test.NotebookExportSpec as NotebookExportSpec
 import qualified Test.NotebookStateSpec as NotebookStateSpec
@@ -130,6 +132,7 @@ import qualified Test.UrlSpec as UrlSpec
 import qualified Test.UsageEventSpec as UsageEventSpec
 import qualified Test.UsageMergeSpec as UsageMergeSpec
 import qualified Test.VerdictSpec as VerdictSpec
+import qualified Test.VizSourceSpec as VizSourceSpec
 import qualified Test.WorkspaceRecoverySpec as WorkspaceRecoverySpec
 import qualified Test.WriteAbandonSpec as WriteAbandonSpec
 import qualified Test.WriteAckLiveSpec as WriteAckLiveSpec
@@ -255,6 +258,9 @@ allSpecsB = do
     QueryGuidanceSpec.spec
     OrphanSpec.spec
     TimeoutEscalationSpec.spec
+    VizSourceSpec.spec
+    ChatFocusSpec.spec
+    MakeChartToolSpec.spec
     liveSpecs $ do
         GateFrontierLiveSpec.spec
         HarnessHonestyLiveSpec.spec

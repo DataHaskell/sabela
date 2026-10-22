@@ -1,6 +1,46 @@
 // ── Command tables: what the palette and overflow menu offer ──
 const PALETTE_COMMANDS = [
   {
+    id: 'add-object',
+    label: 'Add… (thought, chart, control, media)',
+    hint: kbd('mod', 'shift', 'a'),
+    run: () => openInsertMenuAtFocused(),
+  },
+  {
+    id: 'insert-chart',
+    label: 'Insert chart after focused cell',
+    run: () => insertAfterFocused('chart'),
+  },
+  {
+    id: 'insert-table',
+    label: 'Insert table after focused cell',
+    run: () => insertAfterFocused('table'),
+  },
+  {
+    id: 'insert-slider',
+    label: 'Insert slider after focused cell',
+    run: () => insertAfterFocused('slider'),
+  },
+  {
+    id: 'insert-thought',
+    label: 'Insert thought (markdown) after focused cell',
+    run: () => insertAfterFocused('thought'),
+  },
+  {
+    id: 'design-cell',
+    label: 'Edit focused chart in Visualize',
+    hint: kbd('mod', 'shift', 'd'),
+    run: () => openDesigner(focusedCellId()),
+  },
+  { id: 'ask-ai-cell', label: 'Ask AI about focused cell', run: () => askAiAbout(focusedCellId()) },
+  { id: 'panel-design', label: 'Toggle Visualize panel', run: () => togglePanel('design') },
+  {
+    id: 'extract-component',
+    label: 'Extract focused cell as component',
+    run: () => startExtract(focusedCellId()),
+  },
+  { id: 'pane-components', label: 'Show Components pane', run: () => selectSidePane('components') },
+  {
     id: 'save',
     label: 'Save notebook',
     icon: 'i-download',

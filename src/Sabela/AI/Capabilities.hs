@@ -45,6 +45,7 @@ import Sabela.AI.Capabilities.Kernel (
     haskellKernelOccupied,
  )
 import Sabela.AI.Capabilities.KernelHealth (busyEvidenceNow, cellOwner)
+import Sabela.AI.Capabilities.MakeChart (execMakeChart)
 import Sabela.AI.Capabilities.ModuleSearch (execFindFunction)
 import Sabela.AI.Capabilities.Notebook (
     execFindCells,
@@ -106,7 +107,13 @@ executeTool app store rn cancelTok toolName rawInput =
   where
     dispatch :: ToolName -> Value -> IO ToolOutcome
     dispatch tool input = do
-        mAck <- writeGate app store (tool == InsertCell) (needsKernel tool) input
+        mAck <-
+            writeGate
+                app
+                store
+                (tool `elem` [InsertCell, MakeChart])
+                (needsKernel tool)
+                input
         case mAck of
             Just out -> pure out
             Nothing
@@ -154,6 +161,7 @@ executeTool app store rn cancelTok toolName rawInput =
         ProposeEdit -> execProposeEdit app store input
         ReplaceCellSource -> execReplaceCellSource app store rn cancelTok input
         InsertCell -> execInsertCell app store rn cancelTok input
+        MakeChart -> execMakeChart app store rn cancelTok input
         DeleteCell -> execDeleteCell app input
         ExecuteCell -> execExecuteCell app store rn cancelTok input
         Try -> execTry app input
@@ -188,6 +196,7 @@ needsKernel = \case
     ExecuteCell -> True
     ReplaceCellSource -> True
     InsertCell -> True
+    MakeChart -> True
     ListBindings -> True
     CheckType -> True
     FindByType -> True

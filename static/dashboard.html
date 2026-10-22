@@ -20,103 +20,92 @@
     <script>
 // Theme bootstrap — shared with the editor via 'sabela-theme' localStorage key.
 (() => {
-  const KNOWN = ['default', 'summer', 'fall'];
+  const MAP = { default: 'default', dark: 'dark', summer: 'default', fall: 'dark' };
   const stored = localStorage.getItem('sabela-theme');
-  document.documentElement.dataset.theme = KNOWN.includes(stored) ? stored : 'default';
+  document.documentElement.dataset.theme = MAP[stored] || 'default';
   window.__sabelaThemePinned = !!stored;
   if (window.self !== window.top) document.documentElement.classList.add('framed');
 })();
     </script>
     <style>
-@import url('https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap');
+
+@font-face {
+  font-family: 'Nordwand Mono';
+  font-weight: 400;
+  font-display: swap;
+  src: url('/vendor/fonts/NordwandMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Nordwand Mono';
+  font-weight: 500;
+  font-display: swap;
+  src: url('/vendor/fonts/NordwandMono-Medium.woff2') format('woff2');
+}
 
 /* The dashboard shares the editor's schemes and its 'sabela-theme' key, so a
-   published page looks like the notebook it came from. */
+   published page looks like the notebook it came from: a pale page with
+   white cards, after Metabase. */
 :root {
-  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-sans: 'Lato', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'Nordwand Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-  --main-max-w: 820px;
-  --radius: 0px;
-  --pad-x: 14px;
-  --shadow: none;
+  --main-max-w: 53.75rem;
+  --radius: 0.5rem;
+  --pad-x: 1rem;
+  --shadow: 0 1px 3px rgba(76, 87, 115, 0.09);
 
-  --bg: #2e2e32;
-  --bg-muted: #252529;
-  --bg-card: #2e2e32;
-  --fg: #e1e1e6;
-  --fg-dim: #97979c;
-  --fg-heading: #e1e1e6;
-  --accent: #93ddfa;
-  --accent-rgb: 147, 221, 250;
-  --accent-hover: #e1e1e6;
-  --selection: #48484f;
-  --border: #202024;
-  --border-light: #202024;
-  --err-border: #ff3333;
-  --err-bg: #252529;
-  --err-fg: #ff3333;
-  --hl-keyword: #e58ac9;
-  --hl-string: #f7c95c;
-  --hl-number: #ffa94d;
-  --hl-comment: #676b6f;
-  --hl-function: #93ddfa;
-  --hl-type: #f77483;
-  --hl-builtin: #93ddfa;
-  --hl-operator: #93ddfa;
-  --hl-meta: #e58ac9;
+  --bg: #f9fbfc;
+  --bg-muted: #f4f7f9;
+  --bg-card: #ffffff;
+  --fg: #4c5773;
+  --fg-dim: #949aab;
+  --fg-heading: #4c5773;
+  --accent: #509ee3;
+  --accent-rgb: 80, 158, 227;
+  --accent-hover: #2d86d4;
+  --selection: #cbe2f7;
+  --border: #eeecec;
+  --border-light: #eeecec;
+  --err-border: #ed6e6e;
+  --err-bg: #fdf1f1;
+  --err-fg: #d94f4f;
+  --hl-keyword: #7172ad;
+  --hl-string: #70a63a;
+  --hl-number: #e28f43;
+  --hl-comment: #949aab;
+  --hl-function: #2d86d4;
+  --hl-type: #a989c5;
+  --hl-builtin: #2d86d4;
+  --hl-operator: #509ee3;
+  --hl-meta: #7172ad;
 }
-:root[data-theme='summer'] {
-  --bg: #fbfbfb;
-  --bg-muted: #f2f2f2;
-  --bg-card: #fbfbfb;
-  --fg: #181818;
-  --fg-dim: #808080;
-  --fg-heading: #181818;
-  --accent: #fc1785;
-  --accent-rgb: 252, 23, 133;
-  --accent-hover: #181818;
-  --selection: #b7dce8;
-  --border: #e8e8e8;
-  --border-light: #e8e8e8;
-  --err-border: #d9262a;
-  --err-bg: #f2f2f2;
-  --err-fg: #d9262a;
-  --hl-keyword: #fb6620;
-  --hl-string: #1586d2;
-  --hl-number: #1586d2;
-  --hl-comment: #22a21f;
-  --hl-function: #fc1785;
-  --hl-type: #fc1785;
-  --hl-builtin: #fc1785;
-  --hl-operator: #fb6620;
-  --hl-meta: #fb6620;
-}
-:root[data-theme='fall'] {
-  --bg: #343233;
-  --bg-muted: #2c2a2b;
-  --bg-card: #343233;
-  --fg: #efdab9;
-  --fg-dim: #c4b398;
-  --fg-heading: #ffd152;
-  --accent: #61efce;
-  --accent-rgb: 97, 239, 206;
-  --accent-hover: #ffd152;
-  --selection: #454244;
-  --border: #242223;
-  --border-light: #242223;
-  --err-border: #ef6179;
-  --err-bg: #2c2a2b;
-  --err-fg: #ef6179;
-  --hl-keyword: #d36e2d;
-  --hl-string: #ffd152;
-  --hl-number: #ffd152;
-  --hl-comment: #615d5f;
-  --hl-function: #61efce;
-  --hl-type: #ef6179;
-  --hl-builtin: #61efce;
-  --hl-operator: #efdab9;
-  --hl-meta: #d36e2d;
+:root[data-theme='dark'] {
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --bg: #262c31;
+  --bg-muted: #22282d;
+  --bg-card: #2e353b;
+  --fg: #e8ecef;
+  --fg-dim: #8b959e;
+  --fg-heading: #e8ecef;
+  --accent: #6cb0ec;
+  --accent-rgb: 108, 176, 236;
+  --accent-hover: #93c6f2;
+  --selection: #3b5473;
+  --border: #3b444c;
+  --border-light: #3b444c;
+  --err-border: #ef8c8c;
+  --err-bg: #3a2f31;
+  --err-fg: #ef8c8c;
+  --hl-keyword: #a989c5;
+  --hl-string: #88bf4d;
+  --hl-number: #f2a86f;
+  --hl-comment: #7d8891;
+  --hl-function: #98d9d9;
+  --hl-type: #ef8c8c;
+  --hl-builtin: #98d9d9;
+  --hl-operator: #6cb0ec;
+  --hl-meta: #a989c5;
 }
 
 * {
@@ -138,7 +127,7 @@ body {
   background: var(--bg);
   color: var(--fg);
   line-height: 1.55;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 ::selection {
   background: var(--selection);
@@ -147,16 +136,16 @@ body {
 .dash-code {
   background: var(--bg-muted);
   border: 1px solid var(--border-light);
-  margin: 0 0 12px;
+  margin: 0 0 0.75rem;
   overflow-x: auto;
 }
 .dash-code pre {
   margin: 0;
-  padding: 14px 16px;
+  padding: 0.875rem 1rem;
 }
 .dash-code code {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.55;
   display: block;
   white-space: pre;
@@ -232,21 +221,21 @@ body {
   background: var(--bg);
   color: var(--fg);
   line-height: 1.65;
-  font-size: 15px;
+  font-size: 0.9375rem;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-/* ── Header: one flat strip, title left, plain-word actions right ── */
+/* ── Header: a white nav strip, bold title left, quiet buttons right ── */
 .dashboard-header {
   position: sticky;
   top: 0;
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 34px;
+  gap: 0.75rem;
+  height: 3rem;
   padding: 0 var(--pad-x);
-  background: var(--bg-muted);
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
 }
 /* Inside the hub's reader frame the hub already draws the nav bar. */
@@ -256,8 +245,8 @@ body {
 }
 .dashboard-header h1 {
   font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 400;
+  font-size: 0.9375rem;
+  font-weight: 700;
   color: var(--fg);
   flex: 1;
   overflow: hidden;
@@ -272,13 +261,14 @@ body {
 .header-actions a,
 .header-actions button {
   font-family: var(--font-sans);
-  font-size: 12px;
-  height: 26px;
-  padding: 0 10px;
+  font-size: 0.75rem;
+  height: 1.875rem;
+  padding: 0 0.625rem;
   border: none;
-  border-radius: 0;
+  border-radius: 0.375rem;
   background: transparent;
-  color: var(--fg-dim);
+  color: var(--fg);
+  font-weight: 700;
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;
@@ -287,7 +277,8 @@ body {
 }
 .header-actions a:hover,
 .header-actions button:hover {
-  color: var(--fg);
+  color: var(--accent);
+  background: var(--selection);
 }
 
 /* Theme picker menu: the editor's. */
@@ -296,10 +287,12 @@ body {
   z-index: 200;
   display: none;
   flex-direction: column;
-  min-width: 190px;
-  padding: 2px 0;
-  background: var(--bg-muted);
+  min-width: 11.875rem;
+  padding: 0.375rem;
+  background: var(--bg-card);
   border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 0.375rem 1.25rem rgba(76, 87, 115, 0.18);
 }
 .theme-menu.open {
   display: flex;
@@ -307,14 +300,15 @@ body {
 .theme-menu-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 26px;
-  padding: 0 var(--pad-x);
+  gap: 0.625rem;
+  height: 1.875rem;
+  padding: 0 0.625rem;
   border: none;
+  border-radius: 0.375rem;
   background: none;
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   text-align: left;
   cursor: pointer;
 }
@@ -323,8 +317,8 @@ body {
   color: var(--accent);
 }
 .theme-menu-item .sw {
-  width: 22px;
-  height: 14px;
+  width: 1.375rem;
+  height: 0.875rem;
   border: 1px solid var(--border);
   display: inline-flex;
   align-items: center;
@@ -332,8 +326,8 @@ body {
   flex-shrink: 0;
 }
 .theme-menu-item .sw i {
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
 }
 .theme-menu-item.active .nm::after {
   content: ' ✓';
@@ -341,7 +335,7 @@ body {
 }
 /* ── Main content ──────────────────────────── */
 .dashboard-main {
-  padding: 32px 24px;
+  padding: 2rem 1.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -353,28 +347,28 @@ body {
 
 /* ── Sections (prose cells) ────────────────── */
 .dash-section {
-  margin-bottom: 24px;
+  margin-bottom: 1.5rem;
 }
 .dash-section h1 {
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
 }
 .dash-section h2 {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
 .dash-section h3 {
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
 }
 .dash-section p {
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }
 /* padding-left (not margin-left) so nested lists compound and markers
      have room after the global "* { padding:0 }" reset. */
@@ -382,7 +376,7 @@ body {
 .dash-section ol,
 .dash-output .mime-markdown ul,
 .dash-output .mime-markdown ol {
-  margin: 0 0 12px;
+  margin: 0 0 0.75rem;
   padding-left: 1.5em;
 }
 .dash-section li,
@@ -393,7 +387,7 @@ body {
 .dash-section li > ol,
 .dash-output .mime-markdown li > ul,
 .dash-output .mime-markdown li > ol {
-  margin: 3px 0 5px;
+  margin: 3px 0 0.3125rem;
 }
 .dash-section ul,
 .dash-output .mime-markdown ul {
@@ -416,34 +410,35 @@ body {
 }
 .dash-section code {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--bg-muted);
-  padding: 2px 6px;
+  padding: 2px 0.375rem;
 }
 .dash-section pre {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--bg-muted);
-  padding: 12px 16px;
+  padding: 0.75rem 1rem;
   overflow-x: auto;
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }
 /* ── Tables (prose + markdown outputs) ─────── */
 .dash-section table,
 .dash-output .mime-markdown table {
   border-collapse: collapse;
   width: 100%;
-  margin: 14px 0;
+  margin: 0.875rem 0;
   border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--bg-card);
 }
 .dash-section th,
 .dash-section td,
 .dash-output .mime-markdown th,
 .dash-output .mime-markdown td {
-  padding: 10px 14px;
+  padding: 0.625rem 0.875rem;
   text-align: left;
   border-bottom: 1px solid var(--border-light);
 }
@@ -456,7 +451,7 @@ body {
   background: var(--bg-muted);
   color: var(--fg-heading);
   font-weight: 500;
-  font-size: 13px;
+  font-size: 0.8125rem;
   border-bottom: 1px solid var(--border);
 }
 .dash-section tr:nth-child(even) td,
@@ -471,24 +466,27 @@ body {
 }
 .dash-section blockquote {
   border-left: 2px solid var(--accent);
-  padding: 8px 16px;
+  padding: 0.5rem 1rem;
   color: var(--fg-dim);
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }
 /* ── Output cards ──────────────────────────── */
 .dash-output {
-  margin-bottom: 24px;
+  margin-bottom: 1.5rem;
   border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background: var(--bg-card);
   overflow: hidden;
 }
 .dash-output iframe {
   width: 100%;
   border: none;
   display: block;
-  min-height: 60px;
+  min-height: 3.75rem;
 }
 .dash-output .mime-svg {
-  padding: 8px;
+  padding: 0.5rem;
 }
 .dash-output .mime-svg svg {
   max-width: 100%;
@@ -500,41 +498,43 @@ body {
 }
 .dash-output .mime-json {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125rem;
   background: var(--bg-muted);
-  padding: 12px 16px;
+  padding: 0.75rem 1rem;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .dash-output .mime-markdown {
-  padding: 16px;
+  padding: 1rem;
 }
 .dash-output .mime-latex {
-  padding: 16px;
+  padding: 1rem;
   text-align: center;
 }
 .dash-output .mime-plain {
   font-family: var(--font-mono);
-  font-size: 14px;
-  padding: 12px 16px;
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
   white-space: pre-wrap;
 }
 
 /* ── Inline widgets ────────────────────────── */
 .dash-widget {
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
   overflow: hidden;
-  background: var(--bg-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
 }
 .dash-widget iframe {
   width: 100%;
   border: none;
   display: block;
-  height: 36px;
+  height: 2.25rem;
 }
 .dash-widget .static-widget {
-  font-size: 14px;
-  padding: 6px 12px;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.75rem;
 }
 .dash-widget .static-widget input[disabled],
 .dash-widget .static-widget select[disabled] {
@@ -543,23 +543,23 @@ body {
 }
 /* ── Error display ─────────────────────────── */
 .dash-error {
-  margin-bottom: 24px;
-  padding: 12px 16px;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
   border: 1px solid var(--err-border);
   background: var(--err-bg);
   color: var(--err-fg);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125rem;
   white-space: pre-wrap;
 }
 
 /* ── Status indicator ──────────────────────── */
 .dash-status {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
-  padding: 3px 10px;
-  font-size: 12px;
+  bottom: 1rem;
+  right: 1rem;
+  padding: 3px 0.625rem;
+  font-size: 0.75rem;
   font-family: var(--font-sans);
   background: var(--bg-muted);
   border: 1px solid var(--border);
@@ -575,9 +575,9 @@ body {
 }
 
 /* ── Responsive ────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 48em) {
   .dashboard-main {
-    padding: 16px;
+    padding: 1rem;
   }
   .dashboard-content {
     max-width: 100%;
@@ -675,7 +675,7 @@ body {
   .print-inline {
     font-size: 11pt;
     line-height: 1.5;
-    padding: 4px 0;
+    padding: 0.25rem 0;
   }
   .print-inline img {
     max-width: 100%;
@@ -683,14 +683,14 @@ body {
   .print-inline table {
     border-collapse: collapse;
     width: 100%;
-    margin: 10px 0;
+    margin: 0.625rem 0;
     border: 1px solid var(--border);
     overflow: hidden;
     font-size: 10pt;
   }
   .print-inline th,
   .print-inline td {
-    padding: 6px 10px;
+    padding: 0.375rem 0.625rem;
     text-align: left;
     border-bottom: 1px solid var(--border-light);
   }
@@ -750,9 +750,8 @@ let notebookData = null;
 
 // ── Theme handling (the same picker as the editor; 'sabela-theme' key) ──
 const THEMES = [
-  { id: 'default', name: 'Default', mode: 'dark', bg: '#2e2e32', accent: '#93ddfa' },
-  { id: 'summer', name: 'Summer', mode: 'light', bg: '#fbfbfb', accent: '#fc1785' },
-  { id: 'fall', name: 'Fall', mode: 'dark', bg: '#343233', accent: '#ffd152' },
+  { id: 'default', name: 'Light', mode: 'light', bg: '#f9fbfc', accent: '#509ee3' },
+  { id: 'dark', name: 'Dark', mode: 'dark', bg: '#2e353b', accent: '#6cb0ec' },
 ];
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
@@ -891,9 +890,16 @@ function staticSrcdoc(content, kind, id) {
     '<scr' +
     "ipt>(function(){function r(){try{parent.postMessage({__sabelaH:document.documentElement.scrollHeight,__sabelaId:'" +
     id +
-    "'},'*')}catch(e){}}requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" +
+    "'},'*')}catch(e){}}window.__sabelaReportHeight=r;requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" +
     'ipt>';
-  return STATIC_CSP + style + content + reporter;
+  return STATIC_CSP + style + vegaPreamble(content) + content + reporter;
+}
+// A chart in a static export loads Vega from the page's own copy, written in
+// by the exporter, rather than from the network.
+function vegaPreamble(content) {
+  if (!content.includes('class="sabela-viz"') || typeof window.__SABELA_VEGA__ !== 'string')
+    return '';
+  return '<scr' + 'ipt>' + window.__SABELA_VEGA__ + '</scr' + 'ipt>';
 }
 function mountStaticFrame(container, content, kind) {
   const id = 'sframe' + __staticFrameSeq++;
@@ -913,6 +919,12 @@ window.addEventListener('message', (e) => {
   if (d && typeof d.__sabelaH === 'number' && d.__sabelaId) {
     const el = document.getElementById(d.__sabelaId);
     if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
+  }
+  if (d && d.type === 'sabelaResize' && typeof d.height === 'number') {
+    document.querySelectorAll('iframe').forEach((f) => {
+      if (f.contentWindow === e.source)
+        f.style.height = Math.max(60, Math.ceil(d.height) + 8) + 'px';
+    });
   }
 });
 // Initial sync (renders iframes with the active theme).
@@ -1117,6 +1129,13 @@ function renderCellOutputs(container, cell, insertBefore) {
 
 // ── Output classification ────────────────────────────────────────
 function classifyOutput(item) {
+  if (
+    item.oiMime === 'text/html' &&
+    item.oiOutput &&
+    item.oiOutput.includes('class="sabela-viz"')
+  ) {
+    return 'content';
+  }
   if (
     item.oiMime === 'text/html' &&
     item.oiOutput &&

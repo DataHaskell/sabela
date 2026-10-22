@@ -3,6 +3,23 @@ const cellErrors = {}; // cellId → [CellError]
 const cellWarnings = {}; // cellId → [CellError] (non-fatal diagnostics)
 const collapsedCells = new Set(); // cellId → collapsed
 const collapsedOutputs = new Set(); // cellId → output collapsed
+const codeShown = new Set(); // chart cellIds whose Haskell is unfolded
+let chatFocus = null; // {cellId, kind} the next chat message is about
+const vizSpecs = new Map(); // cellId → {spec, cols, types} of a mounted chart
+const vizLastSource = new Map(); // cellId → source the Design panel last wrote
+let designer = {
+  cellId: null,
+  afterId: null,
+  spec: null,
+  source: null,
+  armed: null,
+  timer: null,
+  blocked: false,
+  ownership: null,
+  message: '',
+  sources: [],
+  columns: [],
+};
 let notebook = null;
 let evtSource = null;
 let activeTab = 'info';

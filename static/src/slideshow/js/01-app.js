@@ -12,7 +12,7 @@ function currentTheme() {
 function applyTheme(theme, { persist = true } = {}) {
   document.documentElement.dataset.theme = theme;
   if (persist) {
-    localStorage.setItem('sabela-theme', theme === 'light' ? 'summer' : 'default');
+    localStorage.setItem('sabela-theme', theme === 'light' ? 'default' : 'dark');
     window.__sabelaThemePinned = true;
   }
   rerenderVisibleIframes();

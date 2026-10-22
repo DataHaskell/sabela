@@ -85,10 +85,8 @@ mkDeferredFixture = do
     modifyNotebook (appNotebook app) $ \nb ->
         nb{nbCells = [cellWith 1 "x = 1", cellWith 2 "y = x + 1"]}
     nb <- readNotebook (appNotebook app)
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
     rn <- setupReactive app
     pure (app, rn, getScripts)
 
@@ -100,10 +98,8 @@ mkToolFixture = do
     modifyNotebook (appNotebook app) $ \nb ->
         nb{nbCells = [cellWith 1 "x = 1", cellWith 2 "y = x + 1"]}
     nb <- readNotebook (appNotebook app)
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
     rn <- setupReactive app
     pure (app, store, rn, getScripts)
 

@@ -2,7 +2,7 @@
 
 module Test.UrlSpec (spec) where
 
-import Sabela.Url (rewriteGitHubUrl)
+import Sabela.Url (rewriteDataUrl, rewriteGitHubUrl)
 import Test.Hspec
 
 spec :: Spec
@@ -47,3 +47,20 @@ spec = describe "rewriteGitHubUrl" $ do
         rewriteGitHubUrl
             "https://github.com/o/r/tree/main/dir"
             `shouldBe` "https://github.com/o/r/tree/main/dir"
+
+    describe "rewriteDataUrl" $ do
+        it "maps s3:// to the bucket's public HTTPS endpoint" $
+            rewriteDataUrl "s3://my-bucket/dir/sales.csv"
+                `shouldBe` "https://my-bucket.s3.amazonaws.com/dir/sales.csv"
+        it "turns a Drive share link into a download link" $
+            rewriteDataUrl "https://drive.google.com/file/d/ABC123/view?usp=sharing"
+                `shouldBe` "https://drive.google.com/uc?export=download&id=ABC123"
+        it "turns a Drive open?id= link into a download link" $
+            rewriteDataUrl "https://drive.google.com/open?id=XYZ"
+                `shouldBe` "https://drive.google.com/uc?export=download&id=XYZ"
+        it "exports a Google Sheet as CSV, keeping its tab" $
+            rewriteDataUrl "https://docs.google.com/spreadsheets/d/SHEET/edit#gid=42"
+                `shouldBe` "https://docs.google.com/spreadsheets/d/SHEET/export?format=csv&gid=42"
+        it "still rewrites GitHub blob links" $
+            rewriteDataUrl "https://github.com/o/r/blob/main/d.csv"
+                `shouldBe` "https://raw.githubusercontent.com/o/r/main/d.csv"

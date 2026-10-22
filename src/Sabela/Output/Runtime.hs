@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import Sabela.Output.Fence (runtimeClose, runtimeOpen, wrapRuntime)
 import Sabela.Output.Grid (gridWidgetJs)
 import Sabela.Output.Scatter (scatterWidgetJs)
+import Sabela.Output.Viz (vizWidgetJs)
 import Sabela.Output.Widgets (sabelaWidgetsJs)
 
 {- | The runtimes by the name their markup fences them with, so what is read
@@ -27,6 +28,7 @@ runtimes =
     [ ("grid", gridWidgetJs)
     , ("scatter", scatterWidgetJs)
     , ("widgets", sabelaWidgetsJs)
+    , ("viz", vizWidgetJs)
     ]
 
 {- | A runtime as a notebook written before the fences carries it: the

@@ -1,7 +1,7 @@
-// Theme bootstrap — follows the editor's scheme ('sabela-theme' key): Summer
-// is the light deck, the other schemes are dark; unset follows the OS.
+// Theme bootstrap — follows the editor's scheme ('sabela-theme' key): the
+// default scheme is the light deck, dark is dark; unset follows the OS.
 (() => {
-  const MAP = { summer: 'light', default: 'dark', fall: 'dark', light: 'light', dark: 'dark' };
+  const MAP = { default: 'light', summer: 'light', dark: 'dark', fall: 'dark', light: 'light' };
   const stored = localStorage.getItem('sabela-theme');
   const theme =
     MAP[stored] ||

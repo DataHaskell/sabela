@@ -1,42 +1,44 @@
 /* ── Menus (file context menu, "More" dropdown) ── */
-/* A plain pane-coloured box with a 1px edge; rows are one line of text with
-   the hovered row filled in the caret colour, keybindings right-aligned and
-   dim. No glyphs, no coloured rows. */
+/* A white popover with a soft shadow; rows are rounded and take the brand
+   tint when hovered, keybindings right-aligned and dim. */
 .ctx-menu {
   position: fixed;
   z-index: 400;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  padding: 4px 0;
-  min-width: 220px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-strong);
+  padding: 0.375rem;
+  min-width: 13.75rem;
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .ctx-menu-item,
 .toolbar-dropdown-menu .dd-item,
 .theme-menu-item {
-  height: 24px;
-  padding: 0 24px 0 var(--pad-x);
+  height: 1.875rem;
+  padding: 0 1.125rem 0 0.625rem;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  color: var(--fg);
+  color: var(--fg-bright);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
   white-space: nowrap;
 }
 .ctx-menu-item:hover,
 .ctx-menu-item:focus-visible,
 .toolbar-dropdown-menu .dd-item:hover,
 .theme-menu-item:hover {
-  background: var(--accent);
-  color: var(--bg);
+  background: var(--accent-dim);
+  color: var(--accent);
   outline: none;
 }
 .ctx-menu-item .ctx-shortcut,
 .toolbar-dropdown-menu .dd-item .dd-hint {
   margin-left: auto;
-  padding-left: 24px;
-  font-size: 12px;
+  padding-left: 1.5rem;
+  font-size: 0.75rem;
   color: var(--fg-dim);
 }
 .ctx-menu-item:hover .ctx-shortcut,
@@ -44,7 +46,7 @@
 .toolbar-dropdown-menu .dd-item:hover .dd-chev,
 .theme-menu-item:hover .nm::after,
 .ctx-menu-item:hover .nm::after {
-  color: var(--bg);
+  color: var(--accent);
 }
 .ctx-menu-item.active {
   color: var(--fg-bright);
@@ -54,11 +56,11 @@
   color: var(--accent);
 }
 .lang-menu {
-  min-width: 140px;
+  min-width: 8.75rem;
 }
 .ctx-menu-sep,
 .toolbar-dropdown-menu .dd-sep {
   height: 1px;
   background: var(--border);
-  margin: 4px 0;
+  margin: 0.25rem 0;
 }

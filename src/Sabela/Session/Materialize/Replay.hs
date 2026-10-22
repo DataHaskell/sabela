@@ -9,10 +9,12 @@ module Sabela.Session.Materialize.Replay (
     snapshotRenderContext,
     renderCell,
     replayCells,
+    offerDisplays,
     applyBridgeExports,
     loadCompiled,
 ) where
 
+import Control.Exception (SomeException, try)
 import Control.Monad (forM_, void)
 import qualified Data.Map.Strict as M
 import Data.Text (Text)
@@ -26,6 +28,7 @@ import Sabela.Compiled (CompilePlan (..), moduleFilePath)
 import Sabela.Handlers.Shared (partitionExports)
 import Sabela.Model (Cell (..))
 import Sabela.Output (displayPrelude, parseMimeOutputs)
+import Sabela.Output.Optional (OptionalDisplay (..))
 import Sabela.Session.Materialize.Run (
     runChecked,
     runLoadChecked,
@@ -58,6 +61,7 @@ renderCell context bridge cell =
 
 replayCells ::
     ST.SessionBackend ->
+    [OptionalDisplay] ->
     RenderContext ->
     [Cell] ->
     IO
@@ -65,14 +69,14 @@ replayCells ::
             ([Int], Maybe Int, MaterializeStage, Text)
             ([Int], M.Map Text Text)
         )
-replayCells backend context = go True [] (rcBridgeValues context)
+replayCells backend wanted context = go True [] (rcBridgeValues context)
   where
     go _ done bridge [] = pure (Right (reverse done, bridge))
     go preludeReady done bridge (cell : rest) = do
         preludeResult <-
             if preludeReady
                 then pure (Right ("", ""))
-                else runChecked backend displayPrelude
+                else runChecked backend displayPrelude <* offerDisplays backend wanted
         case preludeResult of
             Left msg ->
                 pure (Left (reverse done, Nothing, StagePrelude, msg))
@@ -90,6 +94,18 @@ replayCells backend context = go True [] (rcBridgeValues context)
                             (cellId cell : done)
                             (applyBridgeExports bridge out)
                             rest
+
+{- | The optional display blocks the live session has (a chart or picture
+displays itself through them), offered to the trial session after each
+prelude run; a block the environment cannot take fails quietly, as at startup.
+-}
+offerDisplays :: ST.SessionBackend -> [OptionalDisplay] -> IO ()
+offerDisplays backend wanted =
+    forM_ wanted $ \od ->
+        void
+            ( try (ST.sbRunBlock backend (odDefs od)) ::
+                IO (Either SomeException (Text, Text))
+            )
 
 applyBridgeExports :: M.Map Text Text -> Text -> M.Map Text Text
 applyBridgeExports bridge rawOut =

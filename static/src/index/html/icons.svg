@@ -78,5 +78,35 @@
           <path d="M7 9l2-2M6 6.5l-2 2a2.1 2.1 0 0 0 3 3l1-1M10 9.5l2-2a2.1 2.1 0 0 0-3-3l-1 1" />
         </symbol>
         <symbol id="i-fold" viewBox="0 0 16 16"><polyline points="4 7 8 3 12 7" /><polyline points="4 12.5 8 8.5 12 12.5" /></symbol>
+        <symbol id="i-table" viewBox="0 0 16 16">
+          <rect x="2" y="3" width="12" height="10" rx="1.5" />
+          <path d="M2 6.5h12M6.5 6.5v6.5M10.5 6.5v6.5" />
+        </symbol>
+        <symbol id="i-viz-bar" viewBox="0 0 16 16">
+          <path d="M3 13.5V7M8 13.5V3M13 13.5V9.5" stroke-width="2.2" />
+        </symbol>
+        <symbol id="i-viz-line" viewBox="0 0 16 16"><polyline points="2 12 6 7 9.5 10 14 4" /></symbol>
+        <symbol id="i-viz-area" viewBox="0 0 16 16">
+          <path d="M2 13V11l4-5 3.5 3L14 4v9z" fill="currentColor" stroke="none" opacity="0.9" />
+        </symbol>
+        <symbol id="i-viz-point" viewBox="0 0 16 16">
+          <circle cx="4" cy="11" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="7.5" cy="6" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="10" cy="10" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="13" cy="4" r="1.6" fill="currentColor" stroke="none" />
+        </symbol>
+        <symbol id="i-viz-arc" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="5.5" />
+          <path d="M8 8V2.5A5.5 5.5 0 0 1 13.5 8z" fill="currentColor" stroke="none" />
+        </symbol>
+        <symbol id="i-viz-rect" viewBox="0 0 16 16">
+          <path d="M2 2h4v4H2zM6 6h4v4H6zM10 10h4v4h-4zM10 2h4v4h-4z" fill="currentColor" stroke="none" opacity="0.85" />
+          <path d="M2 6h4v4H2zM6 2h4v4H6zM2 10h4v4H2zM6 10h4v4H6zM10 6h4v4h-4z" fill="currentColor" stroke="none" opacity="0.3" />
+        </symbol>
+        <symbol id="i-viz-boxplot" viewBox="0 0 16 16">
+          <path d="M8 2v3M8 11v3M4 5h8v6H4zM4 8h8" />
+        </symbol>
+        <symbol id="i-viz-tick" viewBox="0 0 16 16"><path d="M3 4v8M6 4v8M8.5 4v8M12 4v8M13.5 4v8" /></symbol>
+        <symbol id="i-viz-text" viewBox="0 0 16 16"><path d="M3.5 4h9M8 4v9" stroke-width="1.8" /></symbol>
       </defs>
     </svg>

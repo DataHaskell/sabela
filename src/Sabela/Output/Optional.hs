@@ -17,6 +17,7 @@ import qualified Data.Text as T
 
 import Sabela.Deps (collectMetadata)
 import Sabela.Model (Notebook (..))
+import Sabela.Output.Optional.Viz (vizChartDefs)
 import ScriptHs.Parser (CabalMeta (..))
 
 data OptionalDisplay = OptionalDisplay
@@ -36,6 +37,7 @@ optionalDisplays =
     [ OptionalDisplay "sabela-notebook" False notebookDefs
     , OptionalDisplay "dataframe" True dataFrameDefs
     , OptionalDisplay "dataframe" True typedDataFrameDefs
+    , OptionalDisplay "dataframe" True vizChartDefs
     ]
 
 -- | Whether a notebook is offered one of these displays.

@@ -37,7 +37,7 @@ import Sabela.Server.Files (isWithinPath)
 import Sabela.Server.Static (safeUploadName)
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
-import Sabela.Url (rewriteGitHubUrl)
+import Sabela.Url (rewriteDataUrl)
 
 maxImportBytes :: Int
 maxImportBytes = 25 * 1024 * 1024
@@ -52,7 +52,7 @@ importUrlApp app req resp = do
         (Nothing, _) -> bad status400 "missing url"
         (_, Nothing) -> bad status400 "missing or invalid file name"
         (Just rawUrl, Just name) -> do
-            let url = rewriteGitHubUrl rawUrl
+            let url = rewriteDataUrl rawUrl
             case appHttpMgr app of
                 Nothing -> bad status400 "URL import unavailable (no HTTP manager)"
                 Just mgr
@@ -62,9 +62,12 @@ importUrlApp app req resp = do
                         eBytes <- fetchUrl mgr (T.unpack url)
                         case eBytes of
                             Left msg -> bad status502 msg
-                            Right bytes ->
-                                writeImport app mDir name bytes
-                                    >>= either (bad status400) (ok name)
+                            Right bytes
+                                | isDataName name && looksLikeHtml bytes ->
+                                    bad status400 htmlInsteadOfData
+                                | otherwise ->
+                                    writeImport app mDir name bytes
+                                        >>= either (bad status400) (ok name)
   where
     lookupQ k qq = case [p | p@(key, _) <- qq, key == k] of
         (x : _) -> Just x
@@ -78,6 +81,26 @@ importUrlApp app req resp = do
                 status200
                 [(hContentType, "application/json")]
                 (encode (object ["path" .= rel, "name" .= name]))
+
+{- | A private Drive or S3 file answers with a sign-in or error page, which
+must not be saved under a @.csv@ name and then fail to parse as one.
+-}
+htmlInsteadOfData :: Text
+htmlInsteadOfData =
+    "the link returned a web page, not a data file; make sure it is shared "
+        <> "publicly (anyone with the link can view)"
+
+isDataName :: Text -> Bool
+isDataName n =
+    any
+        (`T.isSuffixOf` T.toLower n)
+        [".csv", ".tsv", ".parquet", ".arrow", ".feather", ".json"]
+
+looksLikeHtml :: BS.ByteString -> Bool
+looksLikeHtml bs =
+    let start =
+            T.toLower (T.stripStart (TE.decodeUtf8With (\_ _ -> Just ' ') (BS.take 256 bs)))
+     in any (`T.isPrefixOf` start) ["<!doctype html", "<html", "<?xml"]
 
 isSafeRemoteUrl :: Text -> Bool
 isSafeRemoteUrl url = case schemeHost url of

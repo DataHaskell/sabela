@@ -23,10 +23,8 @@ settledApp = do
     app <- newApp "." Set.empty Nothing Nothing []
     backend <- inertBackend
     nb <- readNotebook (appNotebook app)
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
     rn <- setupReactive app
     pure (app, rn)
 

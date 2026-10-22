@@ -1,31 +1,31 @@
 /* ── Prose slides ──────────────────────────── */
 .prose h1 {
-  font-size: 42px;
+  font-size: 2.625rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 18px;
+  margin-bottom: 1.125rem;
   line-height: 1.2;
 }
 .prose h2 {
-  font-size: 32px;
+  font-size: 2rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 14px;
+  margin-bottom: 0.875rem;
   line-height: 1.25;
 }
 .prose h3 {
-  font-size: 24px;
+  font-size: 1.5rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 10px;
+  margin-bottom: 0.625rem;
 }
 .prose p {
-  font-size: 19px;
-  margin-bottom: 16px;
+  font-size: 1.1875rem;
+  margin-bottom: 1rem;
 }
 .prose ul,
 .prose ol {
-  font-size: 19px;
+  font-size: 1.1875rem;
 }
 /* padding-left (not margin-left) so nested lists compound and markers
      have room after the global "* { padding:0 }" reset. */
@@ -33,18 +33,18 @@
 .prose ol,
 .slide-output .mime-markdown ul,
 .slide-output .mime-markdown ol {
-  margin: 0 0 16px;
+  margin: 0 0 1rem;
   padding-left: 1.5em;
 }
 .prose li,
 .slide-output .mime-markdown li {
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
 .prose li > ul,
 .prose li > ol,
 .slide-output .mime-markdown li > ul,
 .slide-output .mime-markdown li > ol {
-  margin: 4px 0 6px;
+  margin: 0.25rem 0 0.375rem;
 }
 .prose ul,
 .slide-output .mime-markdown ul {
@@ -69,15 +69,15 @@
   font-family: var(--font-mono);
   font-size: 0.88em;
   background: var(--bg-muted);
-  padding: 2px 6px;
+  padding: 2px 0.375rem;
 }
 .prose pre {
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 0.9375rem;
   background: var(--bg-muted);
-  padding: 16px 20px;
+  padding: 1rem 1.25rem;
   overflow-x: auto;
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
 }
 .prose pre code {
   background: none;
@@ -86,10 +86,10 @@
 }
 .prose blockquote {
   border-left: 3px solid var(--accent);
-  padding: 8px 18px;
+  padding: 0.5rem 1.125rem;
   color: var(--fg-dim);
-  margin-bottom: 16px;
-  font-size: 19px;
+  margin-bottom: 1rem;
+  font-size: 1.1875rem;
 }
 .prose img {
   max-width: 100%;
@@ -98,17 +98,17 @@
 .slide-output .mime-markdown table {
   border-collapse: collapse;
   width: 100%;
-  margin: 16px 0;
+  margin: 1rem 0;
   border: 1px solid var(--border);
   overflow: hidden;
-  font-size: 15px;
+  font-size: 0.9375rem;
   background: var(--bg-card);
 }
 .prose th,
 .prose td,
 .slide-output .mime-markdown th,
 .slide-output .mime-markdown td {
-  padding: 10px 14px;
+  padding: 0.625rem 0.875rem;
   text-align: left;
   border-bottom: 1px solid var(--border-light);
   font-variant-numeric: tabular-nums;
@@ -122,7 +122,7 @@
   background: var(--bg-muted);
   color: var(--fg-heading);
   font-weight: 500;
-  font-size: 14px;
+  font-size: 0.875rem;
   border-bottom: 1px solid var(--border);
 }
 .prose tr:nth-child(even) td,

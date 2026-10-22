@@ -11,16 +11,31 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Sabela.Model (Notebook)
+import Sabela.Model (Cell (..), Notebook (..), OutputItem (..))
+import Sabela.Server.Vendor (vendorFiles)
 
 renderStaticDashboard :: BS.ByteString -> Notebook -> LBS.ByteString
 renderStaticDashboard template nb =
-    injectStatic template (assign "__SABELA_STATIC__" nb)
+    injectStatic template (assign "__SABELA_STATIC__" nb <> vegaBundle nb)
+
+{- | The chart runtime's dependency, carried by an export whose outputs hold a
+chart, so the page draws them with nothing to fetch.
+-}
+vegaBundle :: Notebook -> Text
+vegaBundle nb
+    | any hasChart (nbCells nb) =
+        "\nwindow.__SABELA_VEGA__ = "
+            <> jsLiteral (T.intercalate "\n;" (map (TE.decodeUtf8 . snd) vendorFiles))
+            <> ";"
+    | otherwise = ""
+  where
+    hasChart c = any (T.isInfixOf "class=\"sabela-viz\"" . oiOutput) (cellOutputs c)
 
 renderStaticNotebook :: BS.ByteString -> Notebook -> Text -> LBS.ByteString
 renderStaticNotebook template nb md =
     injectStatic template $
         assign "__SABELA_STATIC__" nb
+            <> vegaBundle nb
             <> "\nwindow.__SABELA_RENDER_MODE__ = \"notebook\";"
             <> "\nwindow.__SABELA_MARKDOWN__ = "
             <> jsLiteral md

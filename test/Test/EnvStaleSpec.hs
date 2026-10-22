@@ -38,10 +38,8 @@ environment it was built for recorded against it. Mirrors 'injectPrelude'.
 rebuildFor :: App -> Notebook -> IO ()
 rebuildFor app nb = do
     backend <- inertBackend
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
 
 {- | An App with a kernel installed and its environment recorded as having been
 built for @deps@ — i.e. a healthy, up-to-date session.

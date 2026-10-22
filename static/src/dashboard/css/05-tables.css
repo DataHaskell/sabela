@@ -3,17 +3,18 @@
 .dash-output .mime-markdown table {
   border-collapse: collapse;
   width: 100%;
-  margin: 14px 0;
+  margin: 0.875rem 0;
   border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--bg-card);
 }
 .dash-section th,
 .dash-section td,
 .dash-output .mime-markdown th,
 .dash-output .mime-markdown td {
-  padding: 10px 14px;
+  padding: 0.625rem 0.875rem;
   text-align: left;
   border-bottom: 1px solid var(--border-light);
 }
@@ -26,7 +27,7 @@
   background: var(--bg-muted);
   color: var(--fg-heading);
   font-weight: 500;
-  font-size: 13px;
+  font-size: 0.8125rem;
   border-bottom: 1px solid var(--border);
 }
 .dash-section tr:nth-child(even) td,
@@ -41,7 +42,7 @@
 }
 .dash-section blockquote {
   border-left: 2px solid var(--accent);
-  padding: 8px 16px;
+  padding: 0.5rem 1rem;
   color: var(--fg-dim);
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }

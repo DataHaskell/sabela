@@ -29,6 +29,7 @@ function handleSSE(ev) {
       clearPartialOutput(ev.cellId);
       break;
     case 'cellCompiling': {
+      hideEpochBanner();
       setCellRunning(ev.cellId, true);
       clearPartialOutput(ev.cellId);
       const cEl = document.querySelector(`.cell[data-id="${ev.cellId}"]`);
@@ -40,6 +41,7 @@ function handleSSE(ev) {
       appendPartialOutput(ev.cellId, ev.line);
       break;
     case 'cellResult':
+      hideEpochBanner();
       setCellRunning(ev.cellId, false);
       updateCellOutput(ev.cellId, ev.outputs || [], ev.error);
       if (ev.errors && ev.errors.length) applyErrorMarkers(ev.cellId, ev.errors);
@@ -66,6 +68,8 @@ function handleSSE(ev) {
       break;
     case 'executionDone':
       refreshKernelState();
+      if (activeTab === 'design' && typeof designerRefreshSources === 'function')
+        designerRefreshSources();
       scheduleBindingsRefresh();
       setStatus('Done', '');
       document

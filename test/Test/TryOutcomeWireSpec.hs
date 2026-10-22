@@ -65,10 +65,8 @@ appWithPureResult result = do
     app <- newApp "." Set.empty Nothing Nothing []
     backend <- fakePureBackend result
     nb <- readNotebook (appNotebook app)
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
     pure app
 
 pureResult :: ST.PureEvalVerdict -> Text -> Text -> ST.PureEvalResult

@@ -5,17 +5,17 @@
   display: block;
 }
 .deck.editing .slide.has-code .slide-inner {
-  max-width: 1500px;
+  max-width: 93.75rem;
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: 36px;
+  gap: 2.25rem;
   align-items: start;
 }
 .code-edit-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 0.625rem;
+  margin-bottom: 0.5rem;
 }
 .code-edit-head .code-lang {
   margin-bottom: 0;
@@ -24,11 +24,11 @@
 .run-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 0.3125rem;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 500;
-  padding: 5px 10px;
+  padding: 0.3125rem 0.625rem;
   border: 1px solid var(--accent);
   color: var(--accent);
   background: transparent;
@@ -38,8 +38,8 @@
   background: var(--selection);
 }
 .run-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 0.75rem;
+  height: 0.75rem;
 }
 .prose-editor {
   width: 100%;
@@ -47,13 +47,13 @@
   background: var(--bg-card);
   color: var(--fg);
   border: 1px solid var(--border);
-  padding: 18px 20px;
+  padding: 1.125rem 1.25rem;
   resize: vertical;
   outline: none;
   font-family: var(--font-sans);
-  font-size: 18px;
+  font-size: 1.125rem;
   line-height: 1.6;
-  min-height: 240px;
+  min-height: 15rem;
 }
 .prose-editor:focus {
   border-color: var(--accent);
@@ -75,9 +75,9 @@
   border: 0;
   box-sizing: border-box;
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.6;
-  padding: 18px 20px;
+  padding: 1.125rem 1.25rem;
   tab-size: 2;
   white-space: pre;
   overflow-wrap: normal;
@@ -101,7 +101,7 @@
   position: relative;
   display: block;
   width: 100%;
-  min-height: 180px;
+  min-height: 11.25rem;
   resize: vertical;
   overflow: auto;
   background: transparent;
@@ -113,8 +113,8 @@
   background: rgba(var(--accent-rgb), 0.3);
 }
 .edit-hint {
-  margin-top: 6px;
+  margin-top: 0.375rem;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
 }

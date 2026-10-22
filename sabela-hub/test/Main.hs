@@ -5,6 +5,7 @@ import qualified Test.AllowlistSpec
 import qualified Test.AuthSpec
 import qualified Test.BannerSpec
 import qualified Test.CliAuthSpec
+import qualified Test.ComponentShareSpec
 import qualified Test.DockerSpec
 import qualified Test.GalleryRenderSpec
 import qualified Test.GallerySpec
@@ -23,6 +24,7 @@ import qualified Test.UsersSpec
 main :: IO ()
 main = hspec $ do
     Test.AllowlistSpec.spec
+    Test.ComponentShareSpec.spec
     Test.AuthSpec.spec
     Test.GallerySpec.spec
     Test.GalleryRenderSpec.spec

@@ -14,8 +14,19 @@ import Servant
 import Sabela.Anthropic.Types (ToolDef)
 import Sabela.Api
 import Sabela.Api.Bindings (BindingsResult)
+import Sabela.Api.Components (
+    ComponentBundle,
+    ComponentInfo,
+    ExtractAccept,
+    ExtractPreview,
+    ExtractRequest,
+    InstallRequest,
+ )
 import Sabela.Api.FrameQuery (FrameQueryRequest, FrameQueryResult)
+import Sabela.Api.Viz (VizSourceRequest, VizSourceResult)
+import Sabela.Api.Viz.Columns (VizColumns)
 import Sabela.Model
+import Sabela.Server.ImportPath (ImportPathRequest, ImportPathResult)
 import qualified Sabela.SessionTypes as ST
 
 type JsonAPI =
@@ -102,6 +113,41 @@ type JsonAPI =
             :> "query"
             :> ReqBody '[JSON] FrameQueryRequest
             :> Post '[JSON] FrameQueryResult
+        :<|> "api"
+            :> "viz"
+            :> "source"
+            :> ReqBody '[JSON] VizSourceRequest
+            :> Post '[JSON] VizSourceResult
+        :<|> "api"
+            :> "viz"
+            :> "columns"
+            :> QueryParam "binding" Text
+            :> Get '[JSON] VizColumns
+        :<|> "api"
+            :> "import-path"
+            :> ReqBody '[JSON] ImportPathRequest
+            :> Post '[JSON] ImportPathResult
+        :<|> "api" :> "components" :> Get '[JSON] [ComponentInfo]
+        :<|> "api"
+            :> "components"
+            :> "extract"
+            :> ReqBody '[JSON] ExtractRequest
+            :> Post '[JSON] ExtractPreview
+        :<|> "api"
+            :> "components"
+            :> "accept"
+            :> ReqBody '[JSON] ExtractAccept
+            :> Post '[JSON] Notebook
+        :<|> "api"
+            :> "components"
+            :> "bundle"
+            :> QueryParam "module" Text
+            :> Get '[JSON] ComponentBundle
+        :<|> "api"
+            :> "components"
+            :> "install"
+            :> ReqBody '[JSON] InstallRequest
+            :> Post '[JSON] ComponentInfo
         :<|> "api" :> "examples" :> Get '[JSON] [Example]
         :<|> "api"
             :> "cell"
@@ -152,6 +198,7 @@ type FullAPI =
         :<|> "api" :> "asset" :> Raw
         :<|> "api" :> "upload" :> Raw
         :<|> "api" :> "import-url" :> Raw
+        :<|> "vendor" :> Raw
         :<|> Raw
 
 fullProxy :: Proxy FullAPI

@@ -53,6 +53,13 @@ import Sabela.Server.Ai (
  )
 import Sabela.Server.Api (FullAPI, fullProxy)
 import Sabela.Server.Bindings (bindingsH)
+import Sabela.Server.Components (
+    componentBundleH,
+    extractAcceptH,
+    extractPreviewH,
+    installComponentH,
+    listComponentsH,
+ )
 import Sabela.Server.Dataset (datasetPreviewH)
 import Sabela.Server.Export (
     exportDashboardApp,
@@ -74,6 +81,7 @@ import Sabela.Server.Files (
  )
 import Sabela.Server.FrameQuery (frameQueryH)
 import Sabela.Server.Import (importUrlApp)
+import Sabela.Server.ImportPath (importPathH)
 import Sabela.Server.Notebook (
     cellsToSegments,
     deleteCellH,
@@ -114,6 +122,8 @@ import Sabela.Server.Static (
     staticApp,
     uploadApp,
  )
+import Sabela.Server.Vendor (vendorApp)
+import Sabela.Server.Viz (vizColumnsH, vizSourceH)
 import Sabela.State (App (..), newApp)
 
 maxBodySize :: Int
@@ -196,6 +206,14 @@ server app rn =
         :<|> infoH app
         :<|> bindingsH app
         :<|> frameQueryH app
+        :<|> vizSourceH app
+        :<|> vizColumnsH app
+        :<|> importPathH app
+        :<|> listComponentsH app
+        :<|> extractPreviewH app
+        :<|> extractAcceptH app
+        :<|> componentBundleH app
+        :<|> installComponentH app
         :<|> examplesH
         :<|> setCellLangH app
         :<|> setWidgetH app rn
@@ -224,4 +242,5 @@ server app rn =
         :<|> Tagged (assetApp app)
         :<|> Tagged (uploadApp app)
         :<|> Tagged (importUrlApp app)
+        :<|> Tagged vendorApp
         :<|> Tagged staticApp

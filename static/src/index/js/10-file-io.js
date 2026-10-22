@@ -17,30 +17,46 @@ function startUpload(dir) {
   input.click();
 }
 
+// Each entry is a File, or {name, blob} for bytes already read.
 async function uploadFiles(dir, files) {
-  if (!files.length) return;
+  if (!files.length) return [];
   setStatus(
     'Uploading ' + files.length + ' file' + (files.length === 1 ? '' : 's') + '…',
     'running'
   );
-  let ok = 0,
-    fail = 0;
+  let ok = 0;
+  const failures = [];
+  const written = [];
   for (const file of files) {
     try {
       const url =
         '/api/upload?dir=' + encodeURIComponent(dir) + '&name=' + encodeURIComponent(file.name);
-      const r = await fetch(url, { method: 'POST', body: file });
-      if (r.ok) ok++;
-      else fail++;
+      const r = await fetch(url, { method: 'POST', body: file.blob || file });
+      if (r.ok) {
+        ok++;
+        written.push((dir === '.' ? '' : dir.replace(/\/+$/, '') + '/') + file.name);
+      } else {
+        const why = (await r.text().catch(() => '')).trim().slice(0, 160);
+        failures.push(file.name + ': HTTP ' + r.status + (why ? ' ' + why : ''));
+      }
     } catch (e) {
-      fail++;
+      failures.push(file.name + ': ' + (e && e.message ? e.message : String(e)));
     }
   }
   refreshFiles();
+  if (failures.length) {
+    console.error('upload failed:', failures);
+    showErrorBanner('Upload failed. ' + failures.join(' · '));
+  }
   setStatus(
-    'Uploaded ' + ok + ' file' + (ok === 1 ? '' : 's') + (fail ? ', ' + fail + ' failed' : ''),
-    fail ? 'error' : ''
+    'Uploaded ' +
+      ok +
+      ' file' +
+      (ok === 1 ? '' : 's') +
+      (failures.length ? '; failed: ' + failures.join(' · ') : ''),
+    failures.length ? 'error' : ''
   );
+  return written;
 }
 
 // ── Import from URL ──────────────────────────────────────────────
@@ -130,4 +146,24 @@ async function doImportUrl() {
   if (result.path && result.path.endsWith('.md')) {
     openFile({ feName: result.name, fePath: result.path, feIsDir: false });
   }
+}
+
+// A full error, readable and dismissable, above the notebook; the status
+// bar truncates long messages.
+function showErrorBanner(text) {
+  let banner = document.getElementById('error-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'error-banner';
+    banner.className = 'notebook-banner';
+    document.body.prepend(banner);
+  }
+  banner.innerHTML = '';
+  const msg = document.createElement('span');
+  msg.textContent = text;
+  const close = document.createElement('button');
+  close.textContent = 'Dismiss';
+  close.onclick = () => banner.remove();
+  banner.append(msg, close);
+  banner.style.display = 'flex';
 }

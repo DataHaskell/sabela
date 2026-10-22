@@ -1,17 +1,20 @@
 /* ── Output cards ──────────────────────────── */
 .dash-output {
-  margin-bottom: 24px;
+  margin-bottom: 1.5rem;
   border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background: var(--bg-card);
   overflow: hidden;
 }
 .dash-output iframe {
   width: 100%;
   border: none;
   display: block;
-  min-height: 60px;
+  min-height: 3.75rem;
 }
 .dash-output .mime-svg {
-  padding: 8px;
+  padding: 0.5rem;
 }
 .dash-output .mime-svg svg {
   max-width: 100%;
@@ -23,41 +26,43 @@
 }
 .dash-output .mime-json {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125rem;
   background: var(--bg-muted);
-  padding: 12px 16px;
+  padding: 0.75rem 1rem;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .dash-output .mime-markdown {
-  padding: 16px;
+  padding: 1rem;
 }
 .dash-output .mime-latex {
-  padding: 16px;
+  padding: 1rem;
   text-align: center;
 }
 .dash-output .mime-plain {
   font-family: var(--font-mono);
-  font-size: 14px;
-  padding: 12px 16px;
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
   white-space: pre-wrap;
 }
 
 /* ── Inline widgets ────────────────────────── */
 .dash-widget {
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
   overflow: hidden;
-  background: var(--bg-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
 }
 .dash-widget iframe {
   width: 100%;
   border: none;
   display: block;
-  height: 36px;
+  height: 2.25rem;
 }
 .dash-widget .static-widget {
-  font-size: 14px;
-  padding: 6px 12px;
+  font-size: 0.875rem;
+  padding: 0.375rem 0.75rem;
 }
 .dash-widget .static-widget input[disabled],
 .dash-widget .static-widget select[disabled] {

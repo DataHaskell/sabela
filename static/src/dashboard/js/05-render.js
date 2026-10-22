@@ -106,6 +106,13 @@ function classifyOutput(item) {
   if (
     item.oiMime === 'text/html' &&
     item.oiOutput &&
+    item.oiOutput.includes('class="sabela-viz"')
+  ) {
+    return 'content';
+  }
+  if (
+    item.oiMime === 'text/html' &&
+    item.oiOutput &&
     item.oiOutput.includes('parent.postMessage')
   ) {
     return 'widget';

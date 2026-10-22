@@ -14,6 +14,7 @@ import qualified Data.Text.Lazy.Encoding as TLE
 import Sabela.AI.Capabilities.Tools (chatToolSpecs)
 import Sabela.AI.Doc (defaultDocOpts, renderNotebookDoc)
 import Sabela.AI.PromptCore (sharedPromptCore, toolSurfaceBlock)
+import Sabela.AI.VizCard (vizGrammarCard)
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
 
@@ -21,7 +22,8 @@ systemPrompt :: Text
 systemPrompt =
     T.unlines
         [ "You are a Haskell data analyst in Sabela. Load tabular data with"
-        , "`dataframe`, plot with `granite` or `DataFrame.Display.Web.Plot`."
+        , "`dataframe`; chart with make_chart (dataframe's own typed chart"
+        , "language), dropping to `granite` only for what it cannot express."
         , "Drop to Python only when the Haskell ecosystem is missing a piece."
         , ""
         , sharedPromptCore
@@ -75,7 +77,7 @@ systemPrompt =
         , "loading before the schema is known."
         , ""
         , "```haskell"
-        , "-- cabal: build-depends: dataframe, text, granite"
+        , "-- cabal: build-depends: dataframe, text"
         , "-- cabal: default-extensions: DataKinds, TemplateHaskell, TypeApplications, OverloadedStrings"
         , "import qualified DataFrame as D"
         , "import qualified DataFrame.Functions as F"
@@ -95,15 +97,11 @@ systemPrompt =
         , "    |> DT.thaw"
         , "    |> D.toMarkdown' |> displayMarkdown"
         , ""
-        , "-- Plots (work on untyped D.DataFrame; DT.thaw to get there):"
-        , "import qualified DataFrame.Display.Web.Plot as Plt"
-        , "Plt.HtmlPlot p <- Plt.plotAllHistograms (DT.thaw tdf)"
-        , "displayHtml (T.unpack p)"
+        , "```"
         , ""
-        , "-- Granite SVG charts. Quick single-series one-liners (Granite.Svg):"
-        , "import Granite.Svg"
-        , "displaySvg $ T.unpack $ bars [(\"Q1\",12),(\"Q2\",18)] defPlot { plotTitle = \"Sales\" }"
-        , "-- Layered / faceted / fitted plots — grammar of graphics (Granite.Spec):"
+        , vizGrammarCard
+        , "```haskell"
+        , "-- Granite, for what the chart language cannot say (needs -- cabal: granite):"
         , "import Granite.Data.Frame"
         , "import Granite.Render.Pipeline (renderChartSvg)"
         , "import Granite.Spec"

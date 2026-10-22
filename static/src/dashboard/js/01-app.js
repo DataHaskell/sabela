@@ -13,9 +13,8 @@ let notebookData = null;
 
 // ── Theme handling (the same picker as the editor; 'sabela-theme' key) ──
 const THEMES = [
-  { id: 'default', name: 'Default', mode: 'dark', bg: '#2e2e32', accent: '#93ddfa' },
-  { id: 'summer', name: 'Summer', mode: 'light', bg: '#fbfbfb', accent: '#fc1785' },
-  { id: 'fall', name: 'Fall', mode: 'dark', bg: '#343233', accent: '#ffd152' },
+  { id: 'default', name: 'Light', mode: 'light', bg: '#f9fbfc', accent: '#509ee3' },
+  { id: 'dark', name: 'Dark', mode: 'dark', bg: '#2e353b', accent: '#6cb0ec' },
 ];
 function currentTheme() {
   const t = document.documentElement.dataset.theme;

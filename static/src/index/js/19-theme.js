@@ -1,8 +1,7 @@
 // ── Theme handling ───────────────────────────────────────────────
 const THEMES = [
-  { id: 'default', name: 'Default', mode: 'dark', bg: '#2e2e32', accent: '#93ddfa' },
-  { id: 'summer', name: 'Summer', mode: 'light', bg: '#fbfbfb', accent: '#fc1785' },
-  { id: 'fall', name: 'Fall', mode: 'dark', bg: '#343233', accent: '#ffd152' },
+  { id: 'default', name: 'Light', mode: 'light', bg: '#f9fbfc', accent: '#509ee3' },
+  { id: 'dark', name: 'Dark', mode: 'dark', bg: '#2e353b', accent: '#6cb0ec' },
 ];
 function currentTheme() {
   const t = document.documentElement.dataset.theme;
@@ -97,13 +96,18 @@ function openThemePicker() {
 function toggleTheme() {
   openThemePicker();
 }
+// The vendored face, so an output frame types like the notebook around it.
+const IFRAME_FONT_FACE =
+  "@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');" +
+  "@font-face{font-family:'Nordwand Mono';font-weight:400;font-display:swap;src:url('/vendor/fonts/NordwandMono-Regular.woff2') format('woff2')}" +
+  "@font-face{font-family:'Nordwand Mono';font-weight:500;font-display:swap;src:url('/vendor/fonts/NordwandMono-Medium.woff2') format('woff2')}";
 function iframeBaseStyle() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n, d) => (cs.getPropertyValue(n) || d).trim();
   const bg = v('--output-html-bg', '#ffffff');
   const fg = v('--output-html-fg', '#1e1e2e');
   const accent = v('--accent', '#89b4fa');
-  return `<style>:root{${notebookPaletteVars(v, bg, fg, accent)}}body{background:${bg};color:${fg};font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;margin:0;padding:4px 8px;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select,button{accent-color:${accent};font-family:inherit;font-size:13px;cursor:pointer}</style>`;
+  return `<style>${IFRAME_FONT_FACE}:root{${notebookPaletteVars(v, bg, fg, accent)}}body{background:${bg};color:${fg};font-family:'Nordwand Mono','JetBrains Mono',ui-monospace,monospace;font-size:13px;margin:0;padding:4px 8px;font-variant-ligatures:none;font-feature-settings:"calt" 0,"liga" 0}input,select,button{accent-color:${accent};font-family:inherit;font-size:13px;cursor:pointer}</style>`;
 }
 
 // The notebook's own palette, handed to an output iframe so a rendered widget

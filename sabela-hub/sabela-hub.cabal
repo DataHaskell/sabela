@@ -31,6 +31,7 @@ library
                       Hub.Gallery.Lyah.Convert,
                       Hub.Gallery.Lyah.Code,
                       Hub.Fork,
+                      Hub.Components,
                       Hub.Admin.Api,
                       Hub.Admin.Page,
                       Hub.Ecs,
@@ -89,6 +90,7 @@ test-suite sabela-hub-test
     main-is:          Main.hs
     other-modules:    Test.MockEcs,
                       Test.AllowlistSpec,
+                      Test.ComponentShareSpec,
                       Test.AuthSpec,
                       Test.SessionSpec,
                       Test.ReaperSpec,

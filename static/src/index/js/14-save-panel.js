@@ -83,9 +83,15 @@ function switchTab(tab, opts) {
   document.getElementById('panel-info').style.display = tab === 'info' ? 'block' : 'none';
   document.getElementById('panel-examples').style.display = tab === 'examples' ? 'block' : 'none';
   document.getElementById('panel-chat').style.display = tab === 'chat' ? 'flex' : 'none';
+  document.getElementById('panel-design').style.display = tab === 'design' ? 'block' : 'none';
   // Widen panel for chat via a class, so .collapsed can still override the
   // width when the drawer is toggled shut (inline styles would not let it).
   document.getElementById('right-panel').classList.toggle('chat-active', tab === 'chat');
+  document.getElementById('right-panel').classList.toggle('design-active', tab === 'design');
+  if (tab === 'design') {
+    renderDesigner();
+    designerRefreshSources();
+  }
   if (tab === 'info') {
     applyBindingsCollapsed();
     scheduleBindingsRefresh(0);

@@ -1,179 +1,149 @@
-@import url('https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap');
 
-/* Palette tokens: --bg is the document surface, --bg-panel/--bg-sidebar/
-   --bg-output the darker pane surface, --fg the UI text, --fg-bright the
-   code "normal" text, --accent the caret colour, --border the 1px divider. */
+/* Nordwand Mono is served by the binary (Sabela.Server.Vendor); an export
+   without the server falls back to the system monospace. */
+@font-face {
+  font-family: 'Nordwand Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/vendor/fonts/NordwandMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Nordwand Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/vendor/fonts/NordwandMono-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Nordwand Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/vendor/fonts/NordwandMono-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Nordwand Mono';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/vendor/fonts/NordwandMono-Italic.woff2') format('woff2');
+}
+
+/* Palette tokens, after Metabase: --bg is the page, --bg-cell the white
+   card, --bg-panel the nav surfaces, --bg-output the inset wells; --fg-bright
+   is primary text, --fg secondary, --fg-dim tertiary; --accent the brand blue
+   and --accent-dim its pale hover fill; --border the hairline. */
 :root {
-  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-sans: 'Lato', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'Nordwand Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   --font-display: var(--font-sans);
-  --radius: 0px;
-  --sidebar-w: 220px;
-  --panel-w: 320px;
-  --pad-x: 14px;
-  --pad-y: 7px;
-  --row-h: 26px;
+  --radius: 0.5rem;
+  --radius-sm: 0.375rem;
+  --sidebar-w: 15rem;
+  --panel-w: 21.25rem;
+  --pad-x: 1rem;
+  --pad-y: 0.5rem;
+  --row-h: 1.875rem;
 
-  --bg: #2e2e32;
-  --bg-cell: #2e2e32;
-  --bg-output: #252529;
-  --bg-sidebar: #252529;
-  --bg-panel: #252529;
-  --fg: #97979c;
-  --fg-dim: #525257;
-  --fg-bright: #e1e1e6;
-  --accent: #93ddfa;
-  --accent-rgb: 147, 221, 250;
-  --accent-soft: #e1e1e6;
-  --accent-dim: #343438;
-  --selection: #48484f;
-  --line-number: #525259;
-  --line-number2: #83838f;
-  --scrollbar: #414146;
-  --scrollbar2: #4b4b52;
-  --modified: #1c7c9c;
-  --green: #72b886;
-  --red: #ff3333;
-  --yellow: #ffa94d;
-  --peach: #ffa94d;
-  --mauve: #e58ac9;
-  --border: #202024;
-  --shadow-strong: none;
-  --shadow-soft: none;
-  --error-tooltip-bg: #252529;
+  --bg: #f9fbfc;
+  --bg-cell: #ffffff;
+  --bg-output: #f4f7f9;
+  --bg-sidebar: #f9fbfc;
+  --bg-panel: #ffffff;
+  --fg: #696e7b;
+  --fg-dim: #949aab;
+  --fg-bright: #4c5773;
+  --accent: #509ee3;
+  --accent-rgb: 80, 158, 227;
+  --accent-soft: #2d86d4;
+  --accent-dim: #eef6fc;
+  --selection: #cbe2f7;
+  --line-number: #c3c9d2;
+  --line-number2: #949aab;
+  --scrollbar: #dde2e7;
+  --scrollbar2: #c4cbd3;
+  --modified: #509ee3;
+  --green: #84bb4c;
+  --red: #ed6e6e;
+  --yellow: #e8a33d;
+  --peach: #f2a86f;
+  --mauve: #a989c5;
+  --border: #eeecec;
+  --shadow-strong: 0 0.375rem 1.25rem rgba(76, 87, 115, 0.18);
+  --shadow-soft: 0 1px 3px rgba(76, 87, 115, 0.09);
+  --error-tooltip-bg: #ffffff;
   --output-html-bg: #ffffff;
-  --output-html-fg: #2e2e32;
-  --syn-normal: #e1e1e6;
-  --syn-comment: #676b6f;
-  --syn-keyword: #e58ac9;
-  --syn-keyword2: #f77483;
-  --syn-number: #ffa94d;
-  --syn-string: #f7c95c;
-  --syn-operator: #93ddfa;
-  --syn-function: #93ddfa;
+  --output-html-fg: #4c5773;
+  --syn-normal: #4c5773;
+  --syn-comment: #949aab;
+  --syn-keyword: #7172ad;
+  --syn-keyword2: #a989c5;
+  --syn-number: #e28f43;
+  --syn-string: #70a63a;
+  --syn-operator: #509ee3;
+  --syn-function: #2d86d4;
 }
 
-/* Default dark scheme */
+/* Light (the default) — the tokens above, repeated so a stale stored id
+   still resolves. */
 :root[data-theme='default'] {
-  --bg: #2e2e32;
-  --bg-cell: #2e2e32;
-  --bg-output: #252529;
-  --bg-sidebar: #252529;
-  --bg-panel: #252529;
-  --fg: #97979c;
-  --fg-dim: #525257;
-  --fg-bright: #e1e1e6;
-  --accent: #93ddfa;
-  --accent-rgb: 147, 221, 250;
-  --accent-soft: #e1e1e6;
-  --accent-dim: #343438;
-  --selection: #48484f;
-  --line-number: #525259;
-  --line-number2: #83838f;
-  --scrollbar: #414146;
-  --scrollbar2: #4b4b52;
-  --modified: #1c7c9c;
-  --green: #72b886;
-  --red: #ff3333;
-  --yellow: #ffa94d;
-  --peach: #ffa94d;
-  --mauve: #e58ac9;
-  --border: #202024;
-  --shadow-strong: none;
-  --shadow-soft: none;
-  --error-tooltip-bg: #252529;
-  --output-html-bg: #ffffff;
-  --output-html-fg: #2e2e32;
-  --syn-normal: #e1e1e6;
-  --syn-comment: #676b6f;
-  --syn-keyword: #e58ac9;
-  --syn-keyword2: #f77483;
-  --syn-number: #ffa94d;
-  --syn-string: #f7c95c;
-  --syn-operator: #93ddfa;
-  --syn-function: #93ddfa;
+  --bg: #f9fbfc;
+  --bg-cell: #ffffff;
+  --bg-output: #f4f7f9;
+  --bg-sidebar: #f9fbfc;
+  --bg-panel: #ffffff;
+  --fg: #696e7b;
+  --fg-dim: #949aab;
+  --fg-bright: #4c5773;
+  --accent: #509ee3;
+  --accent-rgb: 80, 158, 227;
+  --accent-soft: #2d86d4;
+  --accent-dim: #eef6fc;
+  --selection: #cbe2f7;
+  --border: #eeecec;
 }
 
-/* Summer — light scheme */
-:root[data-theme='summer'] {
-  --bg: #fbfbfb;
-  --bg-cell: #fbfbfb;
-  --bg-output: #f2f2f2;
-  --bg-sidebar: #f2f2f2;
-  --bg-panel: #f2f2f2;
-  --fg: #404040;
-  --fg-dim: #b0b0b0;
-  --fg-bright: #181818;
-  --accent: #fc1785;
-  --accent-rgb: 252, 23, 133;
-  --accent-soft: #181818;
-  --accent-dim: #f2f2f2;
-  --selection: #b7dce8;
-  --line-number: #d0d0d0;
-  --line-number2: #808080;
-  --scrollbar: #e0e0e0;
-  --scrollbar2: #c0c0c0;
-  --modified: #1586d2;
-  --green: #22a21f;
-  --red: #d9262a;
-  --yellow: #fb6620;
-  --peach: #fb6620;
-  --mauve: #fb6620;
-  --border: #e8e8e8;
-  --shadow-strong: none;
-  --shadow-soft: none;
-  --error-tooltip-bg: #f2f2f2;
+/* Dark — Metabase's night palette on the same brand blue. */
+:root[data-theme='dark'] {
+  --bg: #262c31;
+  --bg-cell: #2e353b;
+  --bg-output: #22282d;
+  --bg-sidebar: #22282d;
+  --bg-panel: #2e353b;
+  --fg: #b9c1c9;
+  --fg-dim: #7d8891;
+  --fg-bright: #e8ecef;
+  --accent: #6cb0ec;
+  --accent-rgb: 108, 176, 236;
+  --accent-soft: #93c6f2;
+  --accent-dim: #2f4357;
+  --selection: #3b5473;
+  --line-number: #566069;
+  --line-number2: #8b959e;
+  --scrollbar: #3a434b;
+  --scrollbar2: #48525b;
+  --modified: #6cb0ec;
+  --green: #88bf4d;
+  --red: #ef8c8c;
+  --yellow: #f9d45c;
+  --peach: #f2a86f;
+  --mauve: #a989c5;
+  --border: #3b444c;
+  --shadow-strong: 0 0.375rem 1.25rem rgba(0, 0, 0, 0.4);
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --error-tooltip-bg: #2e353b;
   --output-html-bg: #ffffff;
-  --output-html-fg: #181818;
-  --syn-normal: #181818;
-  --syn-comment: #22a21f;
-  --syn-keyword: #fb6620;
-  --syn-keyword2: #fc1785;
-  --syn-number: #1586d2;
-  --syn-string: #1586d2;
-  --syn-operator: #fb6620;
-  --syn-function: #fc1785;
-}
-
-/* Fall — warm dark scheme */
-:root[data-theme='fall'] {
-  --bg: #343233;
-  --bg-cell: #343233;
-  --bg-output: #2c2a2b;
-  --bg-sidebar: #2c2a2b;
-  --bg-panel: #2c2a2b;
-  --fg: #c4b398;
-  --fg-dim: #615d5f;
-  --fg-bright: #ffd152;
-  --accent: #61efce;
-  --accent-rgb: 97, 239, 206;
-  --accent-soft: #ffd152;
-  --accent-dim: #383637;
-  --selection: #454244;
-  --line-number: #454244;
-  --line-number2: #615d5f;
-  --scrollbar: #454344;
-  --scrollbar2: #524f50;
-  --modified: #61efce;
-  --green: #61efce;
-  --red: #ef6179;
-  --yellow: #ffd152;
-  --peach: #ffd152;
-  --mauve: #d36e2d;
-  --border: #242223;
-  --shadow-strong: none;
-  --shadow-soft: none;
-  --error-tooltip-bg: #2c2a2b;
-  --output-html-bg: #ffffff;
-  --output-html-fg: #343233;
-  --syn-normal: #efdab9;
-  --syn-comment: #615d5f;
-  --syn-keyword: #d36e2d;
-  --syn-keyword2: #ef6179;
-  --syn-number: #ffd152;
-  --syn-string: #ffd152;
-  --syn-operator: #efdab9;
-  --syn-function: #61efce;
+  --output-html-fg: #4c5773;
+  --syn-normal: #e8ecef;
+  --syn-comment: #7d8891;
+  --syn-keyword: #a989c5;
+  --syn-keyword2: #ef8c8c;
+  --syn-number: #f2a86f;
+  --syn-string: #88bf4d;
+  --syn-operator: #6cb0ec;
+  --syn-function: #98d9d9;
 }
 
 * {
@@ -185,6 +155,9 @@
     'calt' 0,
     'liga' 0;
 }
+html {
+  font-size: 100%;
+}
 html,
 body {
   height: 100%;
@@ -193,7 +166,7 @@ body {
 }
 body {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--fg);
   background: var(--bg);
   line-height: 1.45;
@@ -205,17 +178,17 @@ body {
   color: var(--fg-bright);
 }
 
-/* ── Scrollbars: thin, square, grey ─────────── */
+/* ── Scrollbars: thin, grey ─────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
-  border-radius: 0;
+  border-radius: 0.25rem;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar2);
@@ -225,27 +198,27 @@ body {
   scrollbar-color: var(--scrollbar) transparent;
 }
 
-/* ── Shared flat controls ──────────────────── */
+/* ── Shared controls ───────────────────────── */
 button,
 input,
 select,
 textarea {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--fg);
 }
 kbd {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
   background: none;
   border: none;
   padding: 0;
 }
 :focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-  border-radius: 0;
+  outline: 2px solid var(--selection);
+  outline-offset: 0;
+  border-radius: var(--radius-sm);
 }
 
 /* ── Theme picker menu ─────────────────────── */
@@ -254,10 +227,12 @@ kbd {
   z-index: 200;
   display: none;
   flex-direction: column;
-  min-width: 190px;
-  padding: 4px 0;
+  min-width: 11.875rem;
+  padding: 0.375rem 0;
   background: var(--bg-panel);
   border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-strong);
 }
 .theme-menu.open {
   display: flex;
@@ -272,17 +247,18 @@ kbd {
   color: var(--fg-bright);
 }
 .theme-menu-item .sw {
-  width: 22px;
-  height: 14px;
+  width: 1.375rem;
+  height: 0.875rem;
   border: 1px solid var(--border);
+  border-radius: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 .theme-menu-item .sw i {
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
 }
 .theme-menu-item.active .nm::after {
   content: ' ✓';

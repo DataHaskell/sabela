@@ -11,6 +11,16 @@ document.addEventListener('keydown', (e) => {
     toggleSidebar();
     return;
   }
+  if (mod && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+    e.preventDefault();
+    openInsertMenuAtFocused();
+    return;
+  }
+  if (mod && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+    e.preventDefault();
+    openDesigner(focusedCellId());
+    return;
+  }
   if (mod && e.shiftKey && e.key === 'Enter') {
     e.preventDefault();
     runAll();

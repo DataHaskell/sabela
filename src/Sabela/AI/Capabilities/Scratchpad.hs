@@ -46,6 +46,7 @@ import Sabela.AI.Verdict (VerdictClass (..))
 import Sabela.Api (errorJson)
 import Sabela.Session.GhcProbe (resolvedGhcVersion)
 
+import Sabela.Components (replSupportFor, withComponentOverlay)
 import Sabela.Deps (collectMetadata, collectMetadataFromContent)
 import Sabela.Diagnose (hiddenPackage, packageNeedsFlag)
 import Sabela.Output (displayPrelude)
@@ -61,7 +62,7 @@ import Sabela.Session.Process (
     ghciBackend,
     newSession,
  )
-import Sabela.Session.Project (ReplSupport (..), setupReplProject)
+import Sabela.Session.Project (setupReplProject)
 import Sabela.SessionTypes (CellLang (..), SessionBackend (..))
 import Sabela.State (App (..), readNotebook)
 import Sabela.State.Environment (Environment (..))
@@ -241,10 +242,12 @@ ensureScratchpad app store lang deps = do
     nb <- readNotebook (appNotebook app)
     mSp <- getScratchpad store
     ghcVersion <- resolvedGhcVersion
+    locals <-
+        withComponentOverlay (envWorkDir (appEnv app)) (envLocalPackages (appEnv app))
     case scratchpadPlan
         ghcVersion
         (envWorkDir (appEnv app))
-        (envLocalPackages (appEnv app))
+        locals
         lang
         (envGlobalDeps (appEnv app))
         nb
@@ -259,7 +262,7 @@ ensureScratchpad app store lang deps = do
                 Haskell -> do
                     let projDir = envTmpDir (appEnv app) </> "scratch-project"
                     setupReplProject
-                        WithNotebookSupport
+                        (replSupportFor localPkgs)
                         localPkgs
                         projDir
                         meta

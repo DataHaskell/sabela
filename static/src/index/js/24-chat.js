@@ -25,7 +25,10 @@ async function sendChatMessage() {
     await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ crMessage: text }),
+      body: JSON.stringify({
+        crMessage: text,
+        crFocusCell: chatFocus ? chatFocus.cellId : null,
+      }),
     });
   } catch (e) {
     showChatError('Failed to send message: ' + e.message);
@@ -93,7 +96,7 @@ function showChatEditProposal(editId, cellId, oldSource, newSource) {
   div.className = 'chat-edit-proposal';
   div.dataset.editId = editId;
   div.innerHTML = `
-    <div style="font-size:10px;color:var(--fg-dim);margin-bottom:6px">Proposed edit for cell ${cellId}</div>
+    <div style="font-size:.625rem;color:var(--fg-dim);margin-bottom:.375rem">Proposed edit for cell ${cellId}</div>
     <pre style="color:var(--red);font-size:11px">${escapeHtml(oldSource.substring(0, 500))}</pre>
     <pre style="color:var(--green);font-size:11px">${escapeHtml(newSource.substring(0, 500))}</pre>
     <div class="chat-edit-actions">

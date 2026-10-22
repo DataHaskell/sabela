@@ -62,7 +62,8 @@ import Sabela.State.SessionManager (
 import ScriptHs.Parser (CabalMeta (..))
 import System.Timeout (timeout)
 
-import Sabela.Session.Project (ReplSupport (..), setupReplProject)
+import Sabela.Components (replSupportFor, withComponentOverlay)
+import Sabela.Session.Project (setupReplProject)
 
 killAllSessions :: App -> IO ()
 killAllSessions app =
@@ -105,9 +106,10 @@ envStale :: App -> CabalMeta -> IO Bool
 envStale app metas = do
     mSess <- getHaskellSession (appSessions app)
     recorded <- haskellEnvOf (appSessions app)
+    needed <- neededEnvSig app metas
     pure $ case (mSess, recorded) of
         (Just backend, Just (uid, sig)) ->
-            ST.sbSessionId backend /= uid || sig /= neededEnvSig app metas
+            ST.sbSessionId backend /= uid || sig /= needed
         _ -> True
 
 -- | The complement of 'envStale', kept for callers that read better positively.
@@ -115,18 +117,23 @@ sessionMetaMatches :: App -> CabalMeta -> IO Bool
 sessionMetaMatches app metas = not <$> envStale app metas
 
 -- | The environment this notebook needs, as recorded against a live kernel.
-neededEnvSig :: App -> CabalMeta -> EnvSig
-neededEnvSig app metas =
-    envSig
-        (envGlobalDeps (appEnv app))
-        (localPackagesFor app (mergedMeta (envGlobalDeps (appEnv app)) metas))
-        metas
+neededEnvSig :: App -> CabalMeta -> IO EnvSig
+neededEnvSig app metas = do
+    pkgs <- localPackagesFor app (mergedMeta (envGlobalDeps (appEnv app)) metas)
+    pure (envSig (envGlobalDeps (appEnv app)) pkgs metas)
 
-localPackagesFor :: App -> CabalMeta -> [FilePath]
-localPackagesFor app =
-    resolveLocalPackages
+{- | The local packages a session overlays: the server's, the notebook's own,
+and the workspace's components package when it has one.
+-}
+localPackagesFor :: App -> CabalMeta -> IO [FilePath]
+localPackagesFor app meta =
+    withComponentOverlay
         (envWorkDir (appEnv app))
-        (envLocalPackages (appEnv app))
+        ( resolveLocalPackages
+            (envWorkDir (appEnv app))
+            (envLocalPackages (appEnv app))
+            meta
+        )
 
 installAndRestart :: App -> Int -> CabalMeta -> IO Bool
 installAndRestart app gen metas =
@@ -156,9 +163,9 @@ runInstallAndStart app gen metas = do
     broadcastDepsStatus app metas
     let projDir = envReplProjectDir (appEnv app)
         merged = mergedMeta (envGlobalDeps (appEnv app)) metas
-        localPkgs = localPackagesFor app merged
+    localPkgs <- localPackagesFor app merged
     dirty <- buildIsDirty projDir
-    setupReplProject WithNotebookSupport localPkgs projDir merged
+    setupReplProject (replSupportFor localPkgs) localPkgs projDir merged
     current <- isCurrentGen app gen
     if not current
         then pure False
@@ -168,7 +175,7 @@ runInstallAndStart app gen metas = do
             recoverWorkspace app projDir dirty
             currentAfterDetach <- isCurrentGen app gen
             if currentAfterDetach
-                then startSessionWith app projDir (neededEnvSig app metas)
+                then neededEnvSig app metas >>= startSessionWith app projDir
                 else pure False
 
 {- | Discard artefacts a previous kernel was killed midway through writing.

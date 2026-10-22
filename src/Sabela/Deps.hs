@@ -107,9 +107,22 @@ sabelaDefaultExts =
 mergedMeta :: Set Text -> CabalMeta -> CabalMeta
 mergedMeta globalDeps meta =
     meta
-        { metaDeps = S.toList (S.fromList (metaDeps meta) <> globalDeps)
+        { metaDeps =
+            S.toList
+                (S.fromList (metaDeps meta) <> globalDeps <> companionDeps (metaDeps meta))
         , metaExts = S.toList (S.fromList (metaExts meta) <> S.fromList sabelaDefaultExts)
         }
+
+{- | Packages the kernel needs beside what the notebook declares: a frame's
+chart reaches the page as JSON, so dataframe sessions also see aeson and
+bytestring (dataframe's own dependencies). Never added to a cell or an export.
+-}
+companionDeps :: [Text] -> Set Text
+companionDeps deps
+    | "dataframe" `elem` names = S.fromList ["aeson", "bytestring"]
+    | otherwise = S.empty
+  where
+    names = map (T.takeWhile (\c -> isAlphaNum c || c == '-') . T.strip) deps
 
 data ProjectSig = ProjectSig
     { psLocalPackages :: [FilePath]

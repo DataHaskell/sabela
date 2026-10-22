@@ -23,7 +23,7 @@ buildTimeSupportDir = $(makeRelativeToProject "sabela-notebook" >>= \p -> [|p|])
 supportPackageName :: String
 supportPackageName = "sabela-notebook"
 
-data ReplSupport = WithNotebookSupport | BareRepl
+data ReplSupport = WithNotebookSupport | WithNotebookAnd [T.Text] | BareRepl
     deriving (Eq, Show)
 
 setupReplProject :: ReplSupport -> [FilePath] -> FilePath -> CabalMeta -> IO ()
@@ -44,6 +44,7 @@ setupReplProject support localPkgs dir meta = do
     ensureFile (dir </> "Main.hs") "main :: IO ()\nmain = pure ()\n"
     let extraDeps = case support of
             WithNotebookSupport -> [T.pack supportPackageName]
+            WithNotebookAnd more -> T.pack supportPackageName : more
             BareRepl -> []
     _ <-
         writeFileIfChanged

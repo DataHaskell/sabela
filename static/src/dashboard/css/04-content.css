@@ -1,6 +1,6 @@
 /* ── Main content ──────────────────────────── */
 .dashboard-main {
-  padding: 32px 24px;
+  padding: 2rem 1.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -12,28 +12,28 @@
 
 /* ── Sections (prose cells) ────────────────── */
 .dash-section {
-  margin-bottom: 24px;
+  margin-bottom: 1.5rem;
 }
 .dash-section h1 {
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
 }
 .dash-section h2 {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
 .dash-section h3 {
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 500;
   color: var(--fg-heading);
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
 }
 .dash-section p {
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }
 /* padding-left (not margin-left) so nested lists compound and markers
      have room after the global "* { padding:0 }" reset. */
@@ -41,7 +41,7 @@
 .dash-section ol,
 .dash-output .mime-markdown ul,
 .dash-output .mime-markdown ol {
-  margin: 0 0 12px;
+  margin: 0 0 0.75rem;
   padding-left: 1.5em;
 }
 .dash-section li,
@@ -52,7 +52,7 @@
 .dash-section li > ol,
 .dash-output .mime-markdown li > ul,
 .dash-output .mime-markdown li > ol {
-  margin: 3px 0 5px;
+  margin: 3px 0 0.3125rem;
 }
 .dash-section ul,
 .dash-output .mime-markdown ul {
@@ -75,15 +75,15 @@
 }
 .dash-section code {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--bg-muted);
-  padding: 2px 6px;
+  padding: 2px 0.375rem;
 }
 .dash-section pre {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--bg-muted);
-  padding: 12px 16px;
+  padding: 0.75rem 1rem;
   overflow-x: auto;
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }

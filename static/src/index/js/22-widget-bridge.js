@@ -11,6 +11,14 @@ window.addEventListener('message', (e) => {
     relayFrameQuery(e.source, d);
     return;
   }
+  if (d && d.type === 'sabelaResize') {
+    resizeOutputFrame(e.source, d.height);
+    return;
+  }
+  if (d && d.type === 'sabelaViz') {
+    if (typeof noteVizSpec === 'function') noteVizSpec(d);
+    return;
+  }
   if (d && d.type === 'widget') {
     if (d.sel !== undefined) _activeTextInput = { cellId: String(d.cellId), sel: d.sel };
     const key = d.cellId + ':' + d.name;
@@ -35,6 +43,14 @@ window.addEventListener('message', (e) => {
 function markThemedOutput(source) {
   document.querySelectorAll('.cell-output.mime-html iframe').forEach((f) => {
     if (f.contentWindow === source) f.parentElement.classList.add('themed');
+  });
+}
+
+// A chart that drew after its frame was sized asks for the room it needs.
+function resizeOutputFrame(source, height) {
+  if (typeof height !== 'number') return;
+  document.querySelectorAll('.cell-output.mime-html iframe').forEach((f) => {
+    if (f.contentWindow === source) f.style.height = Math.max(60, Math.ceil(height) + 8) + 'px';
   });
 }
 

@@ -11,14 +11,14 @@
   padding-left: 0;
 }
 .diag + .diag {
-  margin-top: 8px;
+  margin-top: 0.5rem;
 }
 .diag-head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   color: var(--fg-bright);
   line-height: 1.5;
 }
@@ -30,8 +30,8 @@
 }
 .diag-dot {
   flex: none;
-  width: 7px;
-  height: 7px;
+  width: 0.4375rem;
+  height: 0.4375rem;
   align-self: center;
   background: var(--red);
 }
@@ -49,16 +49,16 @@
 .diag-loc {
   flex: none;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
   white-space: nowrap;
 }
 .diag-body {
-  margin: 4px 0 0 15px;
-  padding-left: 10px;
+  margin: 0.25rem 0 0 0.9375rem;
+  padding-left: 0.625rem;
   border-left: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: var(--fg);
   white-space: pre-wrap;
@@ -74,16 +74,16 @@
 /* ── Info panel lookups ────────────────────── */
 .info-note {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--fg-dim);
   white-space: pre-wrap;
 }
 .info-sig {
   margin: 0;
-  padding: 8px 10px;
+  padding: 0.5rem 0.625rem;
   background: var(--bg-output);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: var(--syn-normal);
   white-space: pre-wrap;
@@ -114,9 +114,9 @@
   color: var(--syn-comment);
 }
 .info-where {
-  margin: 6px 0 12px;
+  margin: 0.375rem 0 0.75rem;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
   white-space: normal;
 }
@@ -126,21 +126,21 @@
 }
 .info-doc {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.55;
   color: var(--fg-bright);
   white-space: normal;
   max-width: 60ch;
 }
 .info-doc p {
-  margin: 0 0 8px;
+  margin: 0 0 0.5rem;
 }
 .info-doc h1,
 .info-doc h2,
 .info-doc h3,
 .info-doc h4 {
-  margin: 12px 0 4px;
-  font-size: 11px;
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -148,21 +148,21 @@
 }
 .info-doc code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--syn-operator);
 }
 .info-doc pre {
-  margin: 6px 0 10px;
-  padding: 6px 10px;
+  margin: 0.375rem 0 0.625rem;
+  padding: 0.375rem 0.625rem;
   background: var(--bg-output);
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .info-doc pre code {
   color: var(--syn-normal);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .info-doc a {
   color: var(--accent);
@@ -171,9 +171,9 @@
   color: var(--fg);
 }
 .info-instances {
-  margin-top: 10px;
+  margin-top: 0.625rem;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
   white-space: normal;
 }
@@ -193,9 +193,9 @@
 }
 .info-instance {
   margin-top: 3px;
-  padding-left: 14px;
+  padding-left: 0.875rem;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: var(--fg);
   white-space: pre-wrap;

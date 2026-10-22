@@ -97,6 +97,7 @@ spec = describe "siza/AI wire contract (sum-typed, the legacy blob is gone)" $ d
                     , "find_example_cell"
                     , "find_function"
                     , "search_capability"
+                    , "make_chart"
                     ]
         it "has no duplicate tool names" $
             length (nub toolNames) `shouldBe` length toolNames

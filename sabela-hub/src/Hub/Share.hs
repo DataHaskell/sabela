@@ -5,6 +5,7 @@ module Hub.Share (
     ShareStore,
     newShareStore,
     publishShare,
+    publishShareRaw,
     writeShareSource,
     lookupShareHtml,
     lookupShareSource,
@@ -76,6 +77,19 @@ publishShare store share html mSrc = do
             src
             (spliceBanner slug (TE.encodeUtf8 html))
         )
+    BS.writeFile (dir </> "meta") (TE.encodeUtf8 (metaText share))
+    maybe (pure ()) (writeShareSource store slug) mSrc
+    atomically $ modifyTVar' (ssCache store) (Map.insert slug share)
+
+{- | Publish a page as given, with no banner or runner spliced in: a
+component's page is its own, and its source is a bundle, not a notebook.
+-}
+publishShareRaw :: ShareStore -> Share -> Text -> Maybe Text -> IO ()
+publishShareRaw store share html mSrc = do
+    let dir = ssBaseDir store </> T.unpack (shareSlug share)
+        slug = shareSlug share
+    createDirectoryIfMissing True dir
+    BS.writeFile (dir </> "index.html") (TE.encodeUtf8 html)
     BS.writeFile (dir </> "meta") (TE.encodeUtf8 (metaText share))
     maybe (pure ()) (writeShareSource store slug) mSrc
     atomically $ modifyTVar' (ssCache store) (Map.insert slug share)

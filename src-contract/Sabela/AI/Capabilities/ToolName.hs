@@ -51,6 +51,7 @@ data ToolName
     | EvalLive
     | SetRunMode
     | RunPending
+    | MakeChart
     deriving (Eq, Show)
 
 parseToolName :: Text -> Maybe ToolName
@@ -62,6 +63,7 @@ parseToolName = \case
     "propose_edit" -> Just ProposeEdit
     "replace_cell_source" -> Just ReplaceCellSource
     "insert_cell" -> Just InsertCell
+    "make_chart" -> Just MakeChart
     "delete_cell" -> Just DeleteCell
     "execute_cell" -> Just ExecuteCell
     "try" -> Just Try
@@ -161,12 +163,14 @@ toolWireName = \case
     EvalLive -> "eval_live"
     SetRunMode -> "set_run_mode"
     RunPending -> "run_pending"
+    MakeChart -> "make_chart"
 
 mkTool :: ToolName -> Text -> Value -> ToolDef
 mkTool name desc schema = ToolDef (toolWireName name) desc schema Nothing
 
 actsOnNotebook :: ToolName -> Bool
 actsOnNotebook InsertCell = True
+actsOnNotebook MakeChart = True
 actsOnNotebook ReplaceCellSource = True
 actsOnNotebook DeleteCell = True
 actsOnNotebook ProposeEdit = True

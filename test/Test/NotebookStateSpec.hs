@@ -30,10 +30,8 @@ settled = do
     modifyNotebook (appNotebook app) (\nb -> nb{nbCells = chain})
     nb <- readNotebook (appNotebook app)
     backend <- inertBackend
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
     rn <- setupReactive app
     pure (app, rn)
 
@@ -71,10 +69,8 @@ spec = describe "notebookState (what the browser is told is out of date)" $ do
             nb{nbCells = [mkCell 1 "x = 1", mkCell 2 "unrelated = 42"]}
         nb <- readNotebook (appNotebook app)
         backend <- inertBackend
-        installHaskellSession
-            (appSessions app)
-            backend
-            (neededEnvSig app (collectMetadata nb))
+        neededEnvSig app (collectMetadata nb)
+            >>= installHaskellSession (appSessions app) backend
         rn <- setupReactive app
         rnCellEdit rn 1 "x = 99"
         ev <- notebookState app

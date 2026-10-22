@@ -77,12 +77,22 @@ exampleIndex =
         , "visualise"
         , "visualize"
         ]
-        "Draw a bar chart of labelled values"
+        "Bar chart with the chart language"
         ( T.unlines
-            [ "import Sabela.Notebook"
+            [ "-- cabal: build-depends: dataframe, text"
+            , "-- cabal: default-extensions: DataKinds, TemplateHaskell, TypeApplications, OverloadedStrings"
+            , "import qualified DataFrame as D"
+            , "import qualified DataFrame.Typed as DT"
+            , "import qualified DataFrame.Display.Web.Chart.Typed as C"
+            , "import DataFrame.Typed.Freeze (freezeOrThrow)"
+            , "import DataFrame ((|>))"
             , ""
-            , "-- barChart takes the pairs you already have; displayPicture shows it."
-            , "displayPicture (barChart [(\"Q1\", 12), (\"Q2\", 18), (\"Q3\", 9)])"
+            , "-- A frame, its schema derived by the compiler, frozen to it:"
+            , "sales0 = D.fromNamedColumns [(\"quarter\", D.fromList [\"Q1\", \"Q2\", \"Q3\" :: Text]), (\"units\", D.fromList [12, 18, 9 :: Int])]"
+            , "$(DT.deriveSchema \"Sales\" sales0)"
+            , "sales <- freezeOrThrow @Sales sales0"
+            , ""
+            , "C.chart sales |> C.mark C.Bar |> C.enc C.X (DT.col @\"quarter\") |> C.enc C.Y (DT.col @\"units\") |> C.title \"Sales\""
             ]
         )
     , Example
@@ -93,13 +103,24 @@ exampleIndex =
         , "histogram"
         , "distribution"
         ]
-        "Draw points, a line, or a distribution"
+        "Points, a line over them, or a histogram"
         ( T.unlines
-            [ "import Sabela.Notebook"
+            [ "-- cabal: build-depends: dataframe, text"
+            , "-- cabal: default-extensions: DataKinds, TemplateHaskell, TypeApplications, OverloadedStrings"
+            , "import qualified DataFrame as D"
+            , "import qualified DataFrame.Typed as DT"
+            , "import qualified DataFrame.Display.Web.Chart.Typed as C"
+            , "import DataFrame.Typed.Freeze (freezeOrThrow)"
+            , "import DataFrame ((|>))"
             , ""
-            , "displayPicture (scatterChart [(1, 2), (2, 4), (3, 3)])"
-            , "displayPicture (lineChart [(1, 2), (2, 4), (3, 3)])"
-            , "displayPicture (histogram 10 [1, 1, 2, 3, 5, 8, 13])"
+            , "rows0 = D.fromNamedColumns [(\"x\", D.fromList [1 .. 20 :: Int]), (\"y\", D.fromList [i * i | i <- [1 .. 20 :: Int]])]"
+            , "$(DT.deriveSchema \"Rows\" rows0)"
+            , "rows <- freezeOrThrow @Rows rows0"
+            , ""
+            , "-- Points with a line layered over them:"
+            , "C.layer [C.chart rows |> C.mark C.Point |> C.enc C.X (DT.col @\"x\") |> C.enc C.Y (DT.col @\"y\"), C.chart rows |> C.mark C.Line |> C.enc C.X (DT.col @\"x\") |> C.enc C.Y (DT.col @\"y\")]"
+            , "-- A histogram bins a number and counts rows:"
+            , "-- C.chart rows |> C.mark C.Bar |> C.enc C.X (DT.col @\"y\") |> C.binX |> C.aggregateOn C.Y C.Count"
             ]
         )
     , Example

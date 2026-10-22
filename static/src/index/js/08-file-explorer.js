@@ -54,8 +54,17 @@ function treeGlyph(open) {
   return `<svg class="icon-svg chev"><use href="#${chev}"/></svg><svg class="icon-svg"><use href="#i-folder"/></svg>`;
 }
 
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+// The sidebar folds to nothing and remembers the choice; the top-bar button
+// reflects it.
+function toggleSidebar(show) {
+  const sb = document.getElementById('sidebar');
+  const collapsed = show == null ? !sb.classList.contains('collapsed') : !show;
+  sb.classList.toggle('collapsed', collapsed);
+  const btn = document.getElementById('btn-sidebar-toggle');
+  if (btn) btn.setAttribute('aria-pressed', collapsed ? 'false' : 'true');
+  try {
+    localStorage.setItem('sabela-sidebar', collapsed ? 'closed' : 'open');
+  } catch (_e) {}
 }
 
 async function loadFileTree(path, container, depth) {
@@ -71,6 +80,7 @@ async function loadFileTree(path, container, depth) {
       row.dataset.name = entry.feName;
       row.dataset.isDir = entry.feIsDir ? '1' : '';
       if (notebook && notebook.nbTitle === entry.fePath) row.classList.add('active');
+      if (!entry.feIsDir) makeFileDraggable(row, entry.fePath);
 
       const indent = document.createElement('span');
       indent.className = 'file-indent';

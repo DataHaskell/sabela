@@ -51,10 +51,8 @@ mkApp = do
                 }
     modifyNotebook (appNotebook app) (\nb -> nb{nbCells = cells})
     nb <- readNotebook (appNotebook app)
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
     pure (app, transcript)
 
 seedLoaded :: App -> M.Map Text Text -> IO ()

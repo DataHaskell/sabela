@@ -270,8 +270,10 @@ data Example = Example
 instance ToJSON Example
 instance FromJSON Example
 
-newtype ChatRequest = ChatRequest
+data ChatRequest = ChatRequest
     { crMessage :: Text
+    , crFocusCell :: Maybe Int
+    -- ^ The cell the question is about, when it was asked from one.
     }
     deriving (Eq, Generic, Show)
 

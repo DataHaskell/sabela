@@ -22,7 +22,7 @@
   inset: 0;
   display: none;
   overflow: auto;
-  padding: 48px 56px 80px;
+  padding: 3rem 3.5rem 5rem;
 }
 .slide.active {
   display: flex;
@@ -30,14 +30,14 @@
 .slide-inner {
   margin: auto; /* centers when small, scrolls when large */
   width: 100%;
-  max-width: 900px;
+  max-width: 56.25rem;
   zoom: var(--slide-zoom, 1);
 }
 .deck.show-code .slide.has-code .slide-inner {
-  max-width: 1500px;
+  max-width: 93.75rem;
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: 36px;
+  gap: 2.25rem;
   align-items: start;
 }
 .slide-code {
@@ -48,12 +48,12 @@
 }
 .slide-code pre {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.6;
   background: var(--bg-card);
   color: var(--fg);
   border: 1px solid var(--border);
-  padding: 18px 20px;
+  padding: 1.125rem 1.25rem;
   overflow-x: auto;
   white-space: pre;
   tab-size: 2;

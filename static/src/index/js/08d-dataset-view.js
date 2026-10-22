@@ -17,7 +17,7 @@ function renderDataset(detail, d) {
     if (d.dpRows.length) detail.appendChild(datasetTable(d));
     else detail.appendChild(datasetNote('Schema only — no row preview for this format.'));
   }
-  detail.appendChild(datasetActions(d));
+  detail.appendChild(datasetActions(d, detail));
 }
 
 function datasetNote(text) {
@@ -110,22 +110,45 @@ function cellEl(tag, text, cls) {
   return el;
 }
 
-function datasetActions(d) {
+function datasetActions(d, detail) {
   const bar = document.createElement('div');
   bar.className = 'data-actions';
+  const loaded = loadedBindingFor(d.dpPath);
+  if (loaded) {
+    const note = document.createElement('div');
+    note.className = 'data-loaded-note';
+    note.textContent = 'Loaded as ' + loaded.name + ' — ';
+    const jump = document.createElement('a');
+    jump.href = '#';
+    jump.textContent = 'show cell';
+    jump.onclick = (e) => {
+      e.preventDefault();
+      jumpToCode(loaded.cellId);
+    };
+    note.appendChild(jump);
+    bar.appendChild(note);
+  }
+  const name = suggestBindingName(d.dpPath);
   const btn = document.createElement('button');
   btn.className = 'data-load-btn';
-  btn.textContent = '＋ Insert load cell';
-  btn.onclick = () => insertLoadCell(d.dpPath);
+  btn.textContent = (loaded ? '＋ Load again as ' : '＋ Load as ') + name;
+  btn.onclick = async () => {
+    const cell = await insertLoadCell(d.dpPath, { name });
+    await api('POST', 'run/' + cell.cellId).catch(() => {});
+    renderDataList();
+    renderDataset(detail, d);
+  };
   bar.appendChild(btn);
   return bar;
 }
 
 // The reader for a path, by extension. Parquet has no sniffer on the server
 // but dataframe reads it, so the cell is still worth offering.
-function datasetReader(path) {
-  return dataExt(path) === 'parquet' ? 'D.readParquet' : 'D.readCsv';
-}
+// The deps a typed load needs: the package, and the extensions the schema
+// splice and `DT.col @"name"` use.
+const TYPED_DEPS_CELL =
+  '-- cabal: build-depends: dataframe, text\n' +
+  '-- cabal: default-extensions: DataKinds, TemplateHaskell, TypeApplications, OverloadedStrings';
 
 // Does any cell already declare the dataframe package?
 function declaresDataframe() {
@@ -133,25 +156,89 @@ function declaresDataframe() {
   return cells.some((c) => /^--\s*cabal:.*\bdataframe\b/m.test(c.cellSource || ''));
 }
 
-/* Insert the cell that loads this file, and the deps cell it needs when the
-notebook has none. They are separate cells because re-running a `-- cabal:`
-cell restarts the kernel, which would wipe the binding it just made. */
-async function insertLoadCell(path) {
+// Does any cell already turn on the extensions typed loading needs?
+function declaresTypedExtensions() {
   const cells = (notebook && notebook.nbCells) || [];
-  let after = cells.length ? cells[cells.length - 1].cellId : -1;
-  if (!declaresDataframe()) {
-    after = await addCell(after, 'CodeCell', 'Haskell', '-- cabal: build-depends: dataframe');
+  return cells.some((c) =>
+    /^--\s*cabal:\s*default-extensions:.*\bTemplateHaskell\b/m.test(c.cellSource || '')
+  );
+}
+
+// The schema type a binding's file gets: `sales` is read as type `Sales`.
+function schemaNameFor(name) {
+  const parts = name.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const base = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+  return base || 'Data';
+}
+
+/* Insert the cell that loads this file as a typed frame, and the deps cell it
+needs when the notebook has none. They are separate cells because re-running a
+`-- cabal:` cell restarts the kernel, which would wipe the binding it just
+made. The schema is derived from the file by the dataframe library's own
+splice, so the cell is plain dataframe code. */
+async function insertLoadCell(path, opts) {
+  opts = opts || {};
+  const cells = (notebook && notebook.nbCells) || [];
+  let after = opts.after != null ? opts.after : cells.length ? cells[cells.length - 1].cellId : -1;
+  const name = opts.name || suggestBindingName(path);
+  if (!declaresDataframe() || !declaresTypedExtensions()) {
+    after = await addCell(after, 'CodeCell', 'Haskell', TYPED_DEPS_CELL);
   }
-  await addCell(
+  const schema = schemaNameFor(name);
+  const file = './' + path.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const parquet = dataExt(path) === 'parquet';
+  const reader = parquet ? 'TParquet.readParquet' : 'TCSV.readCsv';
+  const readerImport = parquet
+    ? 'import qualified DataFrame.Typed.IO.Parquet as TParquet'
+    : 'import qualified DataFrame.Typed.IO.CSV as TCSV';
+  const splice = parquet ? 'DT.deriveSchemaFromParquetFile' : 'DT.deriveSchemaFromCsvFile';
+  const body =
+    'import qualified DataFrame.Typed as DT\n' +
+    readerImport +
+    '\n\n$(' +
+    splice +
+    ' "' +
+    schema +
+    '" "' +
+    file +
+    '")\n' +
+    name +
+    ' <- ' +
+    reader +
+    ' @' +
+    schema +
+    ' "' +
+    file +
+    '"';
+  const cellId = await addCell(after, 'CodeCell', 'Haskell', body);
+  setStatus('inserted typed load cell for ' + path, 'ok');
+  return { cellId, name };
+}
+
+/* Insert the cell that freezes an untyped frame to a schema the compiler
+reads off it, so a chart can be typed against it. */
+async function insertFreezeCell(name, after) {
+  if (!declaresTypedExtensions()) {
+    after = await addCell(after, 'CodeCell', 'Haskell', TYPED_DEPS_CELL);
+  }
+  const schema = schemaNameFor(name);
+  const typedName = name + 'Typed';
+  const cellId = await addCell(
     after,
     'CodeCell',
     'Haskell',
-    'import qualified DataFrame as D\n\n' +
-      'df <- ' +
-      datasetReader(path) +
-      ' "./' +
-      path.replace(/\\/g, '\\\\').replace(/"/g, '\\"') +
-      '"'
+    'import qualified DataFrame.Typed as DT\n\n' +
+      '$(DT.deriveSchema "' +
+      schema +
+      '" ' +
+      name +
+      ')\n' +
+      typedName +
+      ' <- DT.freezeOrThrow @' +
+      schema +
+      ' ' +
+      name
   );
-  setStatus('inserted load cell for ' + path, 'ok');
+  setStatus('inserted typed frame ' + typedName, 'ok');
+  return { cellId, name: typedName };
 }

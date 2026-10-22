@@ -22,6 +22,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (Pair)
 import qualified Data.ByteString as BS
 import Data.Char (isPrint)
+import Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -82,7 +83,7 @@ sampleFile path = do
     grab h = do
         size <- hFileSize h
         let headLen = fromIntegral (min size (fromIntegral sampleBytes))
-        headBs <- BS.hGet h headLen
+        headBs <- stripBom <$> BS.hGet h headLen
         tailBs <-
             if size > fromIntegral sampleBytes
                 then do
@@ -129,7 +130,7 @@ describe size headBs tailBs =
         }
   where
     truncated = size > fromIntegral (BS.length headBs)
-    body = decodePrefix truncated headBs
+    body = T.replace "\r\n" "\n" (decodePrefix truncated headBs)
     peeked = peekData peekRowLimit (wholeLines truncated body)
     view
         | binaryish body = BinaryView
@@ -158,6 +159,12 @@ distinct = go Set.empty
     go seen (x : xs)
         | x `Set.member` seen = go seen xs
         | otherwise = x : go (Set.insert x seen) xs
+
+{- | A UTF-8 byte-order mark is an encoding note, never part of a header;
+Windows line ends are read as line ends, so a last column never ends in CR.
+-}
+stripBom :: BS.ByteString -> BS.ByteString
+stripBom bs = fromMaybe bs (BS.stripPrefix "\xEF\xBB\xBF" bs)
 
 {- | Decodes the sampled bytes so the result is always a prefix of the whole
 file's decoding: a byte sequence cut mid-character is dropped rather than

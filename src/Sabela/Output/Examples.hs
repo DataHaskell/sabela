@@ -8,6 +8,50 @@ import Sabela.Api (Example (..))
 builtinExamples :: [Example]
 builtinExamples =
     [ Example
+        "Bar chart"
+        "The chart language over labelled values"
+        "Charts"
+        ( T.unlines
+            [ "-- cabal: build-depends: dataframe, text"
+            , "-- cabal: default-extensions: DataKinds, TemplateHaskell, TypeApplications, OverloadedStrings"
+            , "import qualified DataFrame as D"
+            , "import qualified DataFrame.Typed as DT"
+            , "import qualified DataFrame.Display.Web.Chart.Typed as C"
+            , "import DataFrame.Typed.Freeze (freezeOrThrow)"
+            , "import DataFrame ((|>))"
+            , ""
+            , "-- A frame, its schema derived by the compiler, frozen to it:"
+            , "sales0 = D.fromNamedColumns [(\"quarter\", D.fromList [\"Q1\", \"Q2\", \"Q3\" :: Text]), (\"units\", D.fromList [12, 18, 9 :: Int])]"
+            , "$(DT.deriveSchema \"Sales\" sales0)"
+            , "sales <- freezeOrThrow @Sales sales0"
+            , ""
+            , "C.chart sales |> C.mark C.Bar |> C.enc C.X (DT.col @\"quarter\") |> C.enc C.Y (DT.col @\"units\") |> C.title \"Sales\""
+            ]
+        )
+    , Example
+        "Layered chart"
+        "Grouped sums with a mean line on top"
+        "Charts"
+        ( T.unlines
+            [ "-- cabal: build-depends: dataframe, text"
+            , "-- cabal: default-extensions: DataKinds, TemplateHaskell, TypeApplications, OverloadedStrings"
+            , "import qualified DataFrame as D"
+            , "import qualified DataFrame.Typed as DT"
+            , "import qualified DataFrame.Display.Web.Chart.Typed as C"
+            , "import DataFrame.Typed.Freeze (freezeOrThrow)"
+            , "import DataFrame ((|>))"
+            , ""
+            , "rows0 = D.fromNamedColumns [(\"x\", D.fromList [1 .. 20 :: Int]), (\"y\", D.fromList [i * i | i <- [1 .. 20 :: Int]])]"
+            , "$(DT.deriveSchema \"Rows\" rows0)"
+            , "rows <- freezeOrThrow @Rows rows0"
+            , ""
+            , "-- Points with a line layered over them:"
+            , "C.layer [C.chart rows |> C.mark C.Point |> C.enc C.X (DT.col @\"x\") |> C.enc C.Y (DT.col @\"y\"), C.chart rows |> C.mark C.Line |> C.enc C.X (DT.col @\"x\") |> C.enc C.Y (DT.col @\"y\")]"
+            , "-- A histogram bins a number and counts rows:"
+            , "-- C.chart rows |> C.mark C.Bar |> C.enc C.X (DT.col @\"y\") |> C.binX |> C.aggregateOn C.Y C.Count"
+            ]
+        )
+    , Example
         "Hello World"
         "Print a greeting"
         "Basics"

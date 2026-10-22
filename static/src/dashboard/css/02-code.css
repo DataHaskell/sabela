@@ -2,16 +2,16 @@
 .dash-code {
   background: var(--bg-muted);
   border: 1px solid var(--border-light);
-  margin: 0 0 12px;
+  margin: 0 0 0.75rem;
   overflow-x: auto;
 }
 .dash-code pre {
   margin: 0;
-  padding: 14px 16px;
+  padding: 0.875rem 1rem;
 }
 .dash-code code {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.55;
   display: block;
   white-space: pre;
@@ -87,7 +87,7 @@ body {
   background: var(--bg);
   color: var(--fg);
   line-height: 1.65;
-  font-size: 15px;
+  font-size: 0.9375rem;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

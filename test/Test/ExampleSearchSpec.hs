@@ -29,9 +29,9 @@ spec = describe "Sabela.AI.Examples.searchExamples (shape idioms only)" $ do
             [] -> expectationFailure "expected a typed column example"
 
     it "routes a plotting query to the drawing that ships with every notebook" $ do
-        topTitle "plotting" `shouldBe` "Draw a bar chart of labelled values"
-        topTitle "bar chart" `shouldBe` "Draw a bar chart of labelled values"
-        topTitle "histogram" `shouldBe` "Draw points, a line, or a distribution"
+        topTitle "plotting" `shouldBe` "Bar chart with the chart language"
+        topTitle "bar chart" `shouldBe` "Bar chart with the chart language"
+        topTitle "histogram" `shouldBe` "Points, a line over them, or a histogram"
 
     it "routes an interactive query to a widget" $ do
         topTitle "widget with a button"
@@ -56,4 +56,7 @@ spec = describe "Sabela.AI.Examples.searchExamples (shape idioms only)" $ do
     firstLine = T.takeWhile (/= '\n')
     -- Either it declares what it needs, or it imports what already ships with
     -- the notebook.
-    paste l = "-- cabal:" `T.isPrefixOf` l || "import Sabela.Notebook" `T.isPrefixOf` l
+    paste l =
+        "-- cabal:" `T.isPrefixOf` l
+            || "import Sabela.Notebook" `T.isPrefixOf` l
+            || "import qualified Sabela.Notebook" `T.isPrefixOf` l

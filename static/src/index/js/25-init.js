@@ -51,3 +51,23 @@ async function openForkTarget() {
   }
   await openForkTarget();
 })();
+installNotebookDropTargets();
+installOsFileDrop();
+// Wrapped lines keep their height when a side panel opens or closes, since
+// CodeMirror only re-measures on a window resize; re-measure on the column's.
+if (window.ResizeObserver) {
+  let refreshTimer = null;
+  new ResizeObserver(() => {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      for (const id in editors) {
+        try {
+          editors[id].refresh();
+        } catch (_e) {}
+      }
+    }, 120);
+  }).observe(document.getElementById('notebook-area'));
+}
+try {
+  if (localStorage.getItem('sabela-sidebar') === 'closed') toggleSidebar(false);
+} catch (_e) {}

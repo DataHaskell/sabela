@@ -51,6 +51,7 @@ function updateCellOutput(cellId, outputs, error) {
     el.appendChild(out);
     attachOutputFold(el, cellId);
   }
+  setTimeout(() => attachOutputHandle(el, cellId), 0);
 
   // Pin the wrapper's height so nothing collapses mid-swap; released after
   // the new content has rendered (covers iframe onload height settling).

@@ -89,9 +89,7 @@ mkReactive = do
                 }
     modifyNotebook (appNotebook app) (\nb -> nb{nbCells = cells})
     nb <- readNotebook (appNotebook app)
-    installHaskellSession
-        (appSessions app)
-        backend
-        (neededEnvSig app (collectMetadata nb))
+    neededEnvSig app (collectMetadata nb)
+        >>= installHaskellSession (appSessions app) backend
     rn <- setupReactive app
     pure (rn, transcript)

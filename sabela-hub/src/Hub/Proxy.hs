@@ -32,6 +32,7 @@ import Hub.CliAuth (
     resolveCliToken,
     revokeSessionTokens,
  )
+import Hub.Components (handlePublishComponent, serveUseComponent)
 import Hub.Fork (serveFork)
 import Hub.Gallery (GalleryStore)
 import Hub.Gallery.Public (
@@ -120,9 +121,17 @@ hubApp' sm store users gallery mgr states cliAuth req respond =
                      in serveFork cfg store email slug req respond
         ["_hub", "admin"] -> adminPageRoute
         ("_hub" : "admin" : _) -> adminDispatch sm users gallery store req respond
-        ["_hub", "publish"] ->
-            requireSession sm req respond $ \sess ->
-                handlePublish sm store mgr sess req respond
+        ["_hub", "publish"]
+            | lookup "mode" (queryString req) == Just (Just "component") ->
+                requireSession sm req respond $ \sess ->
+                    handlePublishComponent sm store mgr sess req respond
+            | otherwise ->
+                requireSession sm req respond $ \sess ->
+                    handlePublish sm store mgr sess req respond
+        ["_hub", "use", slug]
+            | requestMethod req == methodPost ->
+                requireSession sm req respond $ \sess ->
+                    serveUseComponent sm store mgr sess slug req respond
         ["_hub", "shares"] ->
             requireSession sm req respond $ \sess ->
                 handleListShares store sess respond

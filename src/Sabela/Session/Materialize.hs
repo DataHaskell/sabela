@@ -44,6 +44,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import System.Timeout (timeout)
 
+import Sabela.Components (replSupportFor, withComponentOverlay)
 import Sabela.Reactivity (
     ExecutionPlan,
     computeFullExecutionPlan,
@@ -79,7 +80,7 @@ import Sabela.Session.MaterializeStage (
     materializeStageText,
  )
 import Sabela.Session.Process (ghciBackend, newSession)
-import Sabela.Session.Project (ReplSupport (..), setupReplProject)
+import Sabela.Session.Project (setupReplProject)
 import Sabela.Session.Query (captureBindingsBaseline)
 import Sabela.Session.Timeout (readTimeoutConfig, tryBuildTimedOutMessage)
 import Sabela.Session.TryCache (
@@ -121,12 +122,11 @@ runDisposableTry app spec = do
                 Nothing -> do
                     ghcVersion <- resolvedGhcVersion
                     tryBuildBudget <- buildBudgetFor spec <$> readTimeoutConfig
+                    localPackages <-
+                        withComponentOverlay
+                            (envWorkDir env)
+                            (resolveLocalPackages (envWorkDir env) (envLocalPackages env) meta)
                     let cacheRoot = tryCacheRoot (envTmpDir env)
-                        localPackages =
-                            resolveLocalPackages
-                                (envWorkDir env)
-                                (envLocalPackages env)
-                                meta
                         key = cacheKeyText localPackages meta ghcVersion
                     withBucketLease cacheRoot (cacheKeyRaw key) tryBuildBudget $ \case
                         Nothing ->
@@ -206,7 +206,8 @@ runInDisposableRoot app snapshot plan meta spec lease entry localPackages tryBui
         projectDir = ceProjectDir entry
         base = emptyResult deps
     projectResult <-
-        try (setupReplProject WithNotebookSupport localPackages projectDir meta)
+        try
+            (setupReplProject (replSupportFor localPackages) localPackages projectDir meta)
     case projectResult of
         Left (e :: SomeException) -> do
             discardCacheEntry lease

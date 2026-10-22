@@ -12,6 +12,7 @@ import Sabela.Output.Display (
     interactivePrintSetting,
  )
 import Sabela.Output.Scatter (scatterDefs)
+import Sabela.Output.Viz (vizDefs)
 import Sabela.Output.Widgets (widgetDefs)
 
 {- | Every name this block looks up is reached through one of its own
@@ -93,6 +94,7 @@ displayPrelude =
         )
         <> widgetDefs
         <> scatterDefs
+        <> vizDefs
         <> displayDefs
         <> ":}\n"
         <> interactivePrintSetting

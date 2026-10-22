@@ -1,23 +1,22 @@
-/* ── Notebook area (the DocView) ───────────── */
-/* Full-width document surface. Cells are flat bands separated by dividers;
-   the 2px left edge is the only per-cell status colour (modified blue,
-   error red, caret colour while running). */
+/* ── Notebook area ─────────────────────────── */
+/* A pale page, as a Metabase dashboard: code cells are white cards with a
+   hairline and a soft shadow, prose flows between them. The gutter number
+   carries the per-cell status colour (modified blue, stale amber). */
 .notebook-area {
   flex: 1;
   overflow-y: auto;
   background: var(--bg);
 }
 .notebook {
-  max-width: none;
-  margin: 0;
-  padding: 4px 0 120px;
+  max-width: 70rem;
+  margin: 0 auto;
+  padding: 0.75rem 1.5rem 10rem;
 }
 
 /* ── Cell ──────────────────────────────────── */
 .cell {
   position: relative;
   margin-bottom: 0;
-  border-left: 2px solid transparent;
 }
 .cell:hover .cell-actions {
   opacity: 1;
@@ -33,24 +32,27 @@
 }
 .cell-actions button {
   font-family: var(--font-sans);
-  font-size: 12px;
-  height: 20px;
-  padding: 0 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  height: 1.5rem;
+  padding: 0 0.4375rem;
   border: none;
-  background: var(--bg);
-  color: var(--fg-dim);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--fg);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
   line-height: 1;
 }
 .cell-actions button .icon-svg {
-  width: 12px;
-  height: 12px;
+  width: 0.75rem;
+  height: 0.75rem;
 }
 .cell-actions button:hover {
-  color: var(--fg-bright);
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 .cell-actions button.run-btn:hover {
   color: var(--green);
@@ -64,20 +66,20 @@
 
 /* Prose */
 .cell.prose {
-  padding: 6px var(--pad-x) 6px 50px;
+  padding: 0.375rem var(--pad-x) 0.375rem 3rem;
   cursor: text;
 }
 .cell.prose .prose-rendered {
-  max-width: 820px;
+  max-width: 51.25rem;
   color: var(--fg-bright);
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 0.9375rem;
+  line-height: 1.6;
 }
 .cell.prose .prose-rendered h1,
 .cell.prose .prose-rendered h2,
 .cell.prose .prose-rendered h3 {
   font-family: var(--font-sans);
-  font-weight: 500;
+  font-weight: 700;
   color: var(--fg-bright);
   line-height: 1.25;
 }
@@ -98,9 +100,10 @@
 }
 .cell.prose .prose-rendered code {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.88em;
   background: var(--bg-output);
-  padding: 1px 4px;
+  border-radius: 0.25rem;
+  padding: 1px 0.3125rem;
 }
 .cell.prose .prose-rendered a {
   color: var(--accent);
@@ -150,13 +153,14 @@
 .cell.prose .prose-edit {
   display: none;
   width: 100%;
-  min-height: 60px;
+  min-height: 3.75rem;
   font-family: var(--font-mono);
-  font-size: 13px;
-  background: var(--bg);
+  font-size: 0.8125rem;
+  background: var(--bg-cell);
   color: var(--syn-normal);
   border: 1px solid var(--border);
-  padding: 8px 10px;
+  border-radius: var(--radius);
+  padding: 0.625rem 0.75rem;
   resize: vertical;
   line-height: 1.5;
   outline: none;
@@ -171,26 +175,29 @@
   display: block;
 }
 
-/* Code: a gutter column (run glyph, execution count) beside a framed box
-   holding the editor and a footer with the language; outputs hang below the
-   box. The focused cell's frame and left edge take the caret colour. */
+/* Code: a white card holding a gutter column (run glyph, execution count),
+   the editor with a footer naming the language, and the output below a
+   divider. The focused card takes the brand edge and focus ring. */
 .cell.code {
   display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
-  padding: 6px var(--pad-x) 6px 0;
-  background: var(--bg);
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  margin: 0.625rem 0;
+  padding: 0.375rem 0.75rem 0.375rem 0;
+  background: var(--bg-cell);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
 }
-.cell.code.has-error {
-  border-left-color: var(--red);
-}
-.cell.code.dirty {
-  border-left-color: var(--modified);
-}
+.cell.code.has-error,
 .cell.blamed {
-  border-left-color: var(--red);
+  border-color: var(--red);
+}
+.cell.code.dirty .cell-gutter .cell-number {
+  color: var(--modified);
 }
 .cell.code.focused {
-  border-left-color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--selection);
 }
 .cell.code .cell-gutter {
   grid-column: 1;
@@ -201,14 +208,15 @@
   justify-content: space-between;
   padding: 2px 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
 }
 .cell.code .cell-gutter .gutter-run {
-  width: 22px;
-  height: 22px;
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
   border: none;
+  border-radius: 50%;
   background: transparent;
   color: var(--fg);
   cursor: pointer;
@@ -217,43 +225,59 @@
   justify-content: center;
 }
 .cell.code .cell-gutter .gutter-run:hover {
-  color: var(--green);
+  color: #ffffff;
+  background: var(--accent);
 }
 .cell.code.running .cell-gutter .gutter-run {
   color: var(--accent);
 }
 .cell.code .cell-gutter .cell-number {
   color: var(--line-number2);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .cell.code .cell-box {
   grid-column: 2;
   grid-row: 1;
   position: relative;
   min-width: 0;
-  border: 1px solid var(--border);
-  background: var(--bg);
-}
-.cell.code.focused .cell-box {
-  border-color: var(--accent);
+  border: none;
+  background: transparent;
 }
 .cell.code .cell-actions {
-  top: -11px;
-  right: 8px;
+  top: -1.125rem;
+  right: 0;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  padding: 0 2px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
+  padding: 2px;
 }
 .cell.code .cell-foot {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  height: 20px;
-  padding: 0 8px;
+  gap: 0.625rem;
+  height: 1rem;
+  margin-top: -0.25rem;
+  padding: 0 0.375rem;
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
+}
+.cell.code .cell-foot > * {
+  pointer-events: auto;
+}
+.cell.code .cell-foot .lang-tag,
+.cell.code .cell-foot .compile-tag {
+  opacity: 0;
+}
+.cell.code:hover .cell-foot .lang-tag,
+.cell.code.focused .cell-foot .lang-tag,
+.cell.code .cell-foot .compile-tag {
+  opacity: 1;
 }
 .cell.code .cell-foot .cell-summary {
   margin-right: auto;
@@ -265,7 +289,7 @@
   padding: 0;
   border: none;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 0.6875rem;
   cursor: pointer;
 }
 .cell.code .cell-foot .lang-tag:hover,
@@ -275,27 +299,50 @@
 .cell.code .cell-foot .compile-tag {
   color: var(--accent);
 }
+.cell.code .cell-foot .lang-tag {
+  font-family: var(--font-mono);
+}
 .cell.code .CodeMirror {
   height: auto;
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 0.8125rem;
+  line-height: 1.65;
   background: transparent;
-  padding: 4px 0 0;
+  padding: 0.25rem 0;
 }
+.cell.code .CodeMirror-lines {
+  padding: 0.25rem 0;
+}
+/* The editor grows with its lines and never scrolls on its own, so code can
+   not slide out of view under the wheel. CodeMirror's own 50px overflow
+   recipe is kept: its height forcer needs that slack, or it is 50px of scroll. */
 .cell.code .CodeMirror-scroll {
-  min-height: 24px;
+  min-height: 1.75rem;
+  overflow: hidden !important;
+}
+.cell.code .CodeMirror-hscrollbar,
+.cell.code .CodeMirror-vscrollbar,
+.cell.code .CodeMirror-scrollbar-filler {
+  display: none !important;
+}
+.cell.code .CodeMirror-gutters {
+  margin-bottom: 0 !important;
+}
+.cell.code .CodeMirror-hscrollbar,
+.cell.code .CodeMirror-vscrollbar,
+.cell.code .CodeMirror-scrollbar-filler {
+  display: none !important;
 }
 .cell.code .CodeMirror-gutters {
   background: transparent;
   border: none;
-  min-width: 40px;
+  min-width: 1.75rem;
 }
 .cell.code .CodeMirror-linenumber {
   color: var(--line-number);
   opacity: 1;
-  padding: 0 10px 0 0;
-  min-width: 40px;
+  padding: 0 0.5rem 0 0;
+  min-width: 1.75rem;
 }
 .cell.code .CodeMirror-activeline .CodeMirror-linenumber {
   color: var(--line-number2);
@@ -304,11 +351,11 @@
 /* Error / warning gutter markers */
 .error-gutter,
 .warn-gutter {
-  width: 12px;
+  width: 0.75rem;
 }
 .error-marker {
   color: var(--red);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.5;
   cursor: pointer;
   text-align: center;
@@ -318,7 +365,7 @@
 }
 .warn-marker {
   color: var(--yellow);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.5;
   cursor: pointer;
   text-align: center;
@@ -331,12 +378,14 @@
   z-index: 200;
   background: var(--error-tooltip-bg);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--red);
-  padding: 6px 10px;
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-strong);
+  padding: 0.5rem 0.75rem;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--fg-bright);
-  max-width: 500px;
+  max-width: 31.25rem;
   white-space: pre-wrap;
   line-height: 1.4;
   pointer-events: none;
@@ -346,36 +395,37 @@
 .CodeMirror-hints {
   z-index: 200 !important;
   font-family: var(--font-mono) !important;
-  font-size: 12px !important;
+  font-size: 0.75rem !important;
   background: var(--bg-panel) !important;
   border: 1px solid var(--border) !important;
-  border-radius: 0 !important;
-  padding: 0 !important;
-  box-shadow: none !important;
+  border-radius: var(--radius) !important;
+  padding: 0.25rem !important;
+  box-shadow: var(--shadow-strong) !important;
 }
 .CodeMirror-hint {
-  color: var(--fg) !important;
-  padding: 2px 10px !important;
-  border-radius: 0 !important;
+  color: var(--fg-bright) !important;
+  padding: 3px 0.625rem !important;
+  border-radius: 0.25rem !important;
 }
 .CodeMirror-hint-active {
-  background: var(--selection) !important;
+  background: var(--accent-dim) !important;
   color: var(--accent) !important;
 }
 
-/* Output */
+/* Output: below a divider inside the same card. */
 .cell-output {
   grid-column: 2;
-  margin-top: 4px;
-  padding: 6px 10px;
-  background: var(--bg-output);
+  margin-top: 2px;
+  padding: 0.5rem 0.625rem 2px;
+  background: transparent;
+  border-top: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--fg-bright);
-  max-height: 500px;
+  max-height: 35rem;
   overflow-y: auto;
 }
 .cell-output.error {
@@ -388,15 +438,16 @@
 }
 .cell-stream {
   grid-column: 2;
-  margin-top: 4px;
-  padding: 6px 10px;
-  background: var(--bg-output);
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  background: transparent;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   white-space: pre-wrap;
   color: var(--fg);
-  max-height: 300px;
+  max-height: 18.75rem;
   overflow-y: auto;
   margin: 0;
 }
@@ -407,6 +458,7 @@
   white-space: normal;
   font-family: var(--font-sans);
   background: var(--output-html-bg);
+  padding-bottom: 0.5rem;
 }
 .cell-output.mime-html.themed {
   background: transparent;
@@ -414,12 +466,12 @@
 .cell-output.mime-html iframe {
   border: none;
   width: 100%;
-  min-height: 60px;
+  min-height: 3.75rem;
 }
 .cell-output.mime-markdown {
   white-space: pre-wrap;
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.5;
   color: var(--fg-bright);
 }
@@ -427,13 +479,14 @@
   overflow-x: auto;
   margin: 0.5em 0;
   border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 .cell-output.mime-markdown table {
   border-collapse: collapse;
   width: auto;
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   white-space: normal;
   word-break: normal;
 }
@@ -441,13 +494,14 @@
 .cell-output.mime-markdown td {
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
-  padding: 3px 10px;
+  padding: 3px 0.625rem;
   text-align: left;
 }
 .cell-output.mime-markdown th {
   color: var(--fg-bright);
-  font-weight: 500;
-  border-bottom: 1px solid var(--fg-dim);
+  font-weight: 700;
+  background: var(--bg-output);
+  border-bottom: 1px solid var(--border);
 }
 .cell-output.mime-markdown tr:nth-child(even) td {
   background: var(--bg);
@@ -465,14 +519,14 @@
 .cell-output.mime-markdown code {
   font-family: var(--font-mono);
   background: var(--bg);
-  padding: 1px 4px;
+  padding: 1px 0.25rem;
   font-size: 0.92em;
 }
 .cell-output.mime-svg {
   white-space: normal;
   text-align: center;
   background: var(--output-html-bg);
-  padding: 12px;
+  padding: 0.75rem;
 }
 .cell-output.mime-svg svg,
 .cell-output.mime-image img {
@@ -500,9 +554,9 @@
    to a one-line placeholder that expands it again. */
 .cell.code .fold-bar {
   flex: 1;
-  width: 22px;
-  min-height: 12px;
-  margin: 4px 0;
+  width: 1.375rem;
+  min-height: 0.75rem;
+  margin: 0.25rem 0;
   padding: 0;
   border: none;
   background: transparent;
@@ -514,6 +568,7 @@
 .cell.code .fold-bar::before {
   content: '';
   width: 3px;
+  border-radius: 2px;
   align-self: stretch;
   background: var(--fg-dim);
   opacity: 0;
@@ -538,7 +593,7 @@
   grid-row: 3 / span 2;
   align-self: stretch;
   justify-self: center;
-  margin: 4px 0 0;
+  margin: 0.25rem 0 0;
 }
 .cell.code .cell-output {
   grid-row: 4;
@@ -547,14 +602,14 @@
   display: none;
   grid-column: 2;
   grid-row: 3;
-  margin-top: 4px;
-  padding: 0 10px;
-  height: 22px;
-  line-height: 22px;
+  margin-top: 2px;
+  padding: 0 0.625rem;
+  height: 1.5rem;
+  line-height: 1.5rem;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-dim);
-  background: var(--bg-output);
+  border-top: 1px solid var(--border);
   cursor: pointer;
 }
 .cell.code .out-placeholder:hover {
@@ -574,7 +629,7 @@
 }
 .cell-summary {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--fg-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -595,21 +650,22 @@
 }
 
 /* Add cell */
-/* The row always occupies its 22px, so revealing it never moves a cell;
-   only the divider and the two labels fade in. */
+/* The row always occupies its 1.75rem, so revealing it never moves a cell;
+   only the divider and the pill buttons fade in. */
 .add-cell-row {
   position: relative;
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 0.5rem;
   padding: 0;
-  height: 22px;
+  height: 1.75rem;
+  align-items: center;
 }
 .add-cell-row::before {
   content: '';
   position: absolute;
-  left: var(--pad-x);
-  right: var(--pad-x);
+  left: 2.25rem;
+  right: 0;
   top: 50%;
   border-top: 1px solid var(--border);
   z-index: 0;
@@ -631,24 +687,27 @@
   position: relative;
   z-index: 1;
   font-family: var(--font-sans);
-  font-size: 12px;
-  height: 22px;
-  padding: 0 8px;
-  border: none;
-  background: var(--bg);
-  color: var(--fg-dim);
+  font-size: 0.75rem;
+  font-weight: 700;
+  height: 1.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 62.4375rem;
+  background: var(--bg-cell);
+  color: var(--fg);
   cursor: pointer;
 }
 .add-cell-row button:hover {
   color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* Trailing error in output */
 .output-error-trail {
   color: var(--red);
-  margin-top: 6px;
+  margin-top: 0.375rem;
   border-top: 1px solid var(--border);
-  padding-top: 6px;
+  padding-top: 0.375rem;
   white-space: pre-wrap;
 }
 

@@ -42,6 +42,7 @@ import Sabela.Api
 import Sabela.Handlers (ReactiveNotebook)
 import Sabela.Handlers.Shared (broadcast)
 import Sabela.Model
+import Sabela.Server.Ai.Focus (focusPreamble)
 import Sabela.Server.Ai.Models (knownModels)
 import Sabela.State (
     AIConfigUpdate (..),
@@ -149,8 +150,12 @@ jsonInt v = case fromJSON v of
     Error _ -> Nothing
 
 chatMessageH :: App -> ReactiveNotebook -> ChatRequest -> Handler NoContent
-chatMessageH app rn (ChatRequest msg) = liftIO $ do
+chatMessageH app rn (ChatRequest text mFocus) = liftIO $ do
     mStore <- getAIStore app
+    nb <- readNotebook (appNotebook app)
+    let msg = case mFocus >>= focusPreamble nb of
+            Just preamble -> preamble <> "\n" <> text
+            Nothing -> text
     case mStore of
         Nothing ->
             broadcast

@@ -36,19 +36,21 @@ isLowerHex :: Text -> Bool
 isLowerHex t =
     not (T.null t) && T.all (\c -> isDigit c || (c >= 'a' && c <= 'f')) t
 
-data ExportMode = ExpDashboard | ExpSlideshow | ExpNotebook
+data ExportMode = ExpDashboard | ExpSlideshow | ExpNotebook | ExpComponent
     deriving (Eq, Show)
 
 parseExportMode :: Text -> Maybe ExportMode
 parseExportMode "dashboard" = Just ExpDashboard
 parseExportMode "slideshow" = Just ExpSlideshow
 parseExportMode "notebook" = Just ExpNotebook
+parseExportMode "component" = Just ExpComponent
 parseExportMode _ = Nothing
 
 exportModeText :: ExportMode -> Text
 exportModeText ExpDashboard = "dashboard"
 exportModeText ExpSlideshow = "slideshow"
 exportModeText ExpNotebook = "notebook"
+exportModeText ExpComponent = "component"
 
 newtype UserId = UserId Text
     deriving (Eq, Ord, Show)

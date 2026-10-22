@@ -19,9 +19,16 @@ function staticSrcdoc(content, kind, id) {
     '<scr' +
     "ipt>(function(){function r(){try{parent.postMessage({__sabelaH:document.documentElement.scrollHeight,__sabelaId:'" +
     id +
-    "'},'*')}catch(e){}}requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" +
+    "'},'*')}catch(e){}}window.__sabelaReportHeight=r;requestAnimationFrame(function(){r();setTimeout(r,60)})})();</scr" +
     'ipt>';
-  return STATIC_CSP + style + content + reporter;
+  return STATIC_CSP + style + vegaPreamble(content) + content + reporter;
+}
+// A chart in a static export loads Vega from the page's own copy, written in
+// by the exporter, rather than from the network.
+function vegaPreamble(content) {
+  if (!content.includes('class="sabela-viz"') || typeof window.__SABELA_VEGA__ !== 'string')
+    return '';
+  return '<scr' + 'ipt>' + window.__SABELA_VEGA__ + '</scr' + 'ipt>';
 }
 function mountStaticFrame(container, content, kind) {
   const id = 'sframe' + __staticFrameSeq++;
@@ -41,6 +48,12 @@ window.addEventListener('message', (e) => {
   if (d && typeof d.__sabelaH === 'number' && d.__sabelaId) {
     const el = document.getElementById(d.__sabelaId);
     if (el && el.dataset.staticFrame) el.style.height = Math.max(32, d.__sabelaH) + 'px';
+  }
+  if (d && d.type === 'sabelaResize' && typeof d.height === 'number') {
+    document.querySelectorAll('iframe').forEach((f) => {
+      if (f.contentWindow === e.source)
+        f.style.height = Math.max(60, Math.ceil(d.height) + 8) + 'px';
+    });
   }
 });
 function iframeContentStyle() {

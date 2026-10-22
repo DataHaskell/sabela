@@ -1,6 +1,6 @@
 /* ── Output content ────────────────────────── */
 .slide-output .output-block {
-  margin-bottom: 18px;
+  margin-bottom: 1.125rem;
 }
 .slide-output .output-block:last-child {
   margin-bottom: 0;
@@ -9,7 +9,7 @@
   width: 100%;
   border: none;
   display: block;
-  min-height: 60px;
+  min-height: 3.75rem;
   border: 1px solid var(--border-light);
 }
 .slide-output .mime-svg {
@@ -28,42 +28,42 @@
 }
 .slide-output .mime-json {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--bg-muted);
-  padding: 14px 18px;
+  padding: 0.875rem 1.125rem;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .slide-output .mime-markdown {
-  font-size: 17px;
+  font-size: 1.0625rem;
 }
 .slide-output .mime-latex {
   text-align: center;
-  font-size: 22px;
-  padding: 12px 0;
+  font-size: 1.375rem;
+  padding: 0.75rem 0;
 }
 .slide-output .mime-plain {
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 1rem;
   background: var(--bg-muted);
-  padding: 16px 20px;
+  padding: 1rem 1.25rem;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .slide-widget {
   overflow: hidden;
   background: var(--bg-muted);
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }
 .slide-widget iframe {
   width: 100%;
   border: none;
   display: block;
-  height: 40px;
+  height: 2.5rem;
 }
 .slide-widget .static-widget {
-  font-size: 15px;
-  padding: 8px 14px;
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.875rem;
 }
 .slide-widget .static-widget input[disabled],
 .slide-widget .static-widget select[disabled] {
@@ -72,19 +72,19 @@
 }
 
 .slide-error {
-  padding: 14px 18px;
+  padding: 0.875rem 1.125rem;
   border: 1px solid var(--err-border);
   background: var(--err-bg);
   color: var(--err-fg);
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   white-space: pre-wrap;
 }
 .slide-empty {
   color: var(--fg-dim);
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: center;
   opacity: 0.6;
-  padding: 40px 0;
+  padding: 2.5rem 0;
 }

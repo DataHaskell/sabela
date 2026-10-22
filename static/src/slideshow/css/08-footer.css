@@ -4,7 +4,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 26px;
+  height: 1.625rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -15,17 +15,17 @@
 .slide-nav .nav-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
 }
 .slide-nav button {
-  height: 26px;
-  padding: 0 8px;
+  height: 1.625rem;
+  padding: 0 0.5rem;
   border: none;
   background: transparent;
   color: var(--fg-dim);
   cursor: pointer;
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .slide-nav button:hover:not(:disabled) {
   color: var(--fg);
@@ -36,9 +36,9 @@
 }
 .slide-counter {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--fg);
-  min-width: 56px;
+  min-width: 3.5rem;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }

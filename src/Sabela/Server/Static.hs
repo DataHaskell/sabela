@@ -125,6 +125,14 @@ assetContentType p = case map toLower (takeExtension p) of
     ".bmp" -> "image/bmp"
     ".ico" -> "image/x-icon"
     ".pdf" -> "application/pdf"
+    ".mp4" -> "video/mp4"
+    ".webm" -> "video/webm"
+    ".mov" -> "video/quicktime"
+    ".mp3" -> "audio/mpeg"
+    ".wav" -> "audio/wav"
+    ".ogg" -> "audio/ogg"
+    ".m4a" -> "audio/mp4"
+    ".flac" -> "audio/flac"
     _ -> "application/octet-stream"
 
 safeUploadName :: Text -> Maybe Text
@@ -167,7 +175,8 @@ uploadApp app req resp = do
     lookupQ k qq = case [p | p@(key, _) <- qq, key == k] of
         (x : _) -> Just x
         [] -> Nothing
-    bad msg =
+    bad msg = do
+        putStrLn ("[sabela] Upload rejected: " ++ T.unpack msg)
         resp $
             responseLBS
                 status400
