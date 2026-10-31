@@ -3,14 +3,22 @@
 module Main (main) where
 
 {- HLINT ignore "Use fewer imports" -}
+import Control.Applicative ((<|>))
 import Control.Exception (finally)
 import Control.Monad (unless, void, when)
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Set as S
+import Data.String (fromString)
 import qualified Data.Text as T
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Network.HTTP.Client.TLS (newTlsManager)
-import Network.Wai.Handler.Warp (run)
+import Network.Wai.Handler.Warp (
+    Settings,
+    defaultSettings,
+    runSettings,
+    setHost,
+    setPort,
+ )
 import Sabela.AI.Provenance (stateBase)
 import Sabela.AI.SearchCache (
     adoptHackageDb,
@@ -25,6 +33,12 @@ import Sabela.Handlers (
     shutdownAllSessions,
  )
 import Sabela.Server (mkApp, newApp)
+import Sabela.Server.Access (
+    Access (..),
+    accessMiddleware,
+    isLoopbackHost,
+    resolveAccess,
+ )
 import Sabela.Session.SupportSource (materializeSupportSource)
 import Sabela.State (App (..))
 import Sabela.State.Environment (Environment (..))
@@ -66,13 +80,34 @@ main = do
     setLocaleEncoding utf8
     homeDir <- getHomeDirectory
     let defaultGlobal = homeDir </> ".sabela" </> "global.md"
-    args <- getArgs
+    (hostFlag, args) <- splitHostFlag <$> getArgs
+    hostEnv <- lookupEnv "SABELA_HOST"
+    let host = fromMaybe "127.0.0.1" (hostFlag <|> hostEnv)
     case args of
-        [] -> start 3000 "." defaultGlobal []
-        [port] -> withPort port $ \p -> start p "." defaultGlobal []
-        [port, w] -> withPort port $ \p -> start p w defaultGlobal []
-        [port, w, g] -> withPort port $ \p -> start p w g []
-        (port : w : g : pkgs) -> withPort port $ \p -> start p w g pkgs
+        [] -> start host 3000 "." defaultGlobal []
+        [port] -> withPort port $ \p -> start host p "." defaultGlobal []
+        [port, w] -> withPort port $ \p -> start host p w defaultGlobal []
+        [port, w, g] -> withPort port $ \p -> start host p w g []
+        (port : w : g : pkgs) -> withPort port $ \p -> start host p w g pkgs
+
+-- | Pull @--host H@ out of the positional arguments.
+splitHostFlag :: [String] -> (Maybe String, [String])
+splitHostFlag ("--host" : h : rest) = (Just h, snd (splitHostFlag rest))
+splitHostFlag (a : rest) = (a :) <$> splitHostFlag rest
+splitHostFlag [] = (Nothing, [])
+
+warpSettings :: String -> Int -> Settings
+warpSettings host port = setHost (fromString host) (setPort port defaultSettings)
+
+-- | The URL to print at startup, carrying the token when one is required.
+startUrl :: String -> Int -> Access -> String
+startUrl host port access =
+    "http://" ++ shown ++ ":" ++ show port ++ "/index.html" ++ tokenQuery
+  where
+    shown = if isLoopbackHost host then "localhost" else host
+    tokenQuery = case access of
+        TokenRequired t -> "?token=" ++ T.unpack t
+        Open -> ""
 
 -- | Parse the port argument, or exit with a clear message (never 'read'-crash).
 withPort :: String -> (Int -> IO ()) -> IO ()
@@ -102,8 +137,10 @@ searchCacheRoots = do
     buildRoot <- makeAbsolute (takeDirectory buildTimeSupportDir)
     pure [buildRoot, cwd]
 
-start :: Int -> FilePath -> FilePath -> [String] -> IO ()
-start port workDir globalFile pkgs = do
+start :: String -> Int -> FilePath -> FilePath -> [String] -> IO ()
+start host port workDir globalFile pkgs = do
+    access <-
+        resolveAccess host >>= either (\e -> hPutStrLn stderr e >> exitFailure) pure
     cwd <- getCurrentDirectory
     putStrLn $ "Working directory: " ++ cwd
     putStrLn $ "File explorer root: " ++ workDir
@@ -129,12 +166,14 @@ start port workDir globalFile pkgs = do
         (\p -> putStrLn ("  search cache: adopted Hackage index " ++ p))
         adoptedHackage
     searchCacheReport roots >>= mapM_ (putStrLn . T.unpack)
-    putStrLn $ "sabela running on http://localhost:" ++ show port ++ "/index.html"
+    putStrLn $ "sabela running on " ++ startUrl host port access
+    when (access == Open && not (isLoopbackHost host)) $
+        putStrLn "  WARNING: network bind with SABELA_AUTH=none; every route is open"
     case mAiToken of
         Just _ -> putStrLn "  /api/ai/* requires Authorization: Bearer <SABELA_AI_TOKEN>"
         Nothing -> pure ()
     installShutdownHandlers
-    run port (mkApp app rn)
+    runSettings (warpSettings host port) (accessMiddleware access (mkApp app rn))
         `finally` ( do
                         shutdownAllSessions app
                         cleanupRegistry registryFile

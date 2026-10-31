@@ -11,7 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Build and run
 cabal run                                  # Starts server on localhost:3000
-cabal run sabela -- 3000 .                  # sabela <port> <work-dir> [global-file] [extra-pkgs...]
+cabal run sabela -- 3000 .                  # sabela [--host H] <port> <work-dir> [global-file] [extra-pkgs...]
+                                           # binds 127.0.0.1 by default (or SABELA_HOST); off loopback every
+                                           # route needs SABELA_TOKEN (generated + printed if unset)
 
 # Tests
 cabal test                                 # Runs HSpec test suite

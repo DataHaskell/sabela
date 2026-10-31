@@ -14,15 +14,8 @@ module Sabela.Server (
 ) where
 
 import Data.Aeson (encode)
-import Data.Bits (xor, (.|.))
-import qualified Data.ByteString as BS
-import Data.List (foldl')
 import Data.Text (Text)
-import qualified Data.Text.Encoding as TE
-import Data.Word (Word8)
 import Network.HTTP.Types (
-    HeaderName,
-    hAuthorization,
     hContentType,
     status401,
  )
@@ -38,6 +31,7 @@ import Servant
 
 import Sabela.Api (errorJson)
 import Sabela.Handlers
+import Sabela.Server.Access (checkBearer)
 import Sabela.Server.Ai (
     aiHealthH,
     aiNotebookH,
@@ -153,16 +147,6 @@ aiAuthMiddleware (Just tok) baseApp req sendResp
 isAiApi :: [Text] -> Bool
 isAiApi ("api" : "ai" : _) = True
 isAiApi _ = False
-
-checkBearer :: Text -> [(HeaderName, BS.ByteString)] -> Bool
-checkBearer tok hdrs = case lookup hAuthorization hdrs of
-    Just v -> constEqBS v ("Bearer " <> TE.encodeUtf8 tok)
-    Nothing -> False
-
-constEqBS :: BS.ByteString -> BS.ByteString -> Bool
-constEqBS a b =
-    BS.length a == BS.length b
-        && foldl' (.|.) 0 (BS.zipWith xor a b) == (0 :: Word8)
 
 limitRequestBody :: Int -> Application -> Application
 limitRequestBody sizeLimit innerApp req sendResp = do

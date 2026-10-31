@@ -13,8 +13,7 @@ import qualified DataFrame as D
 
 df <- D.readParquet "./examples/data/iris.parquet"
 
-md $ D.toMarkdown'
-                $ D.take 5 df
+md $ D.toMarkdown' $ D.take 5 df
 ```
 
 > <!-- scripths:mime text/markdown -->
@@ -31,22 +30,16 @@ md $ D.toMarkdown'
 Before modelling, it helps to know the shape and types of every column.
 
 ```haskell
-import DataFrame.Operators
+import DataFrame.Expression.Operators
 
 showMarkdown = displayMarkdown . D.toMarkdown'
 
 df |> D.describeColumns
-   |> showMarkdown
 ```
 
-> <!-- scripths:mime text/markdown -->
-> | Column Name<br>Text | # Non-null Values<br>Int | # Null Values<br>Int | Type<br>Text |
-> | --------------------|--------------------------|----------------------|------------- |
-> | variety             | 150                      | 0                    | Text         |
-> | petal.width         | 150                      | 0                    | Double       |
-> | petal.length        | 150                      | 0                    | Double       |
-> | sepal.width         | 150                      | 0                    | Double       |
-> | sepal.length        | 150                      | 0                    | Double       |
+> <!-- scripths:mime text/html -->
+> <div class="sabela-grid" data-frame-slot="3#0" data-frame-query="_sabelaDataFrameQuery"><script type="application/json" class="sabela-grid-data">{"cols":["Column Name","# Non-null Values","# Null Values","Type"],"types":["Text","Int","Int","Text"],"rows":[["variety","150","0","Text"],["petal.width","150","0","Double"],["petal.length","150","0","Double"],["sepal.width","150","0","Double"],["sepal.length","150","0","Double"]],"total":5}</script></div><script>/*sabela:runtime:grid*/
+> sabelaGridMountAll();</script>
 
 A summary of the numeric columns shows the ranges each measurement spans.
 
@@ -67,7 +60,7 @@ df |> D.summarize
 > | Max               | 7.9                    | 4.4                   | 6.9                    | 2.5                   |
 > | StdDev            | 0.83                   | 0.44                  | 1.77                   | 0.76                  |
 > | IQR               | 1.3                    | 0.5                   | 3.5                    | 1.5                   |
-> | Skewness          | 0.31                   | 0.31                  | -0.27                  | -0.1                  |
+> | Skewness          | 0.31                   | 0.32                  | -0.27                  | -0.1                  |
 
 ## Is the dataset balanced?
 
@@ -127,6 +120,19 @@ opts = defScatter
 sel <- mkWidget (scatterSelectWith "iris-petal-lasso" opts pts)
 ```
 
+> <!-- scripths:mime text/plain -->
+> <!-- MIME:text/html -->
+> <div id='sw_9_feature'></div><script>/*sabela:runtime:widgets*/sabelaDropdown({elId:"sw_9_feature",cid:9,name:"feature",options:["petal","sepal"],value:"petal"});</script>
+> <!-- MIME:text/html -->
+> <div style='font-family:sans-serif'>
+> <canvas id='sc_9_iris-petal-lasso' width='560' height='360' style='border:1px solid #e2e2ea;border-radius:6px;cursor:crosshair;max-width:100%;touch-action:none'></canvas>
+> <div style='color:#889;font-size:11px;margin-top:5px'>drag to lasso-select &middot; scroll to zoom &middot; shift-drag to pan &middot; double-click to reset &middot; 150 points</div>
+> <script>
+> /*sabela:runtime:scatter*/
+> sabelaScatter({elId:'sc_9_iris-petal-lasso',name:'iris-petal-lasso',cid:9,pts:[[1.4,0.2],[1.4,0.2],[1.3,0.2],[1.5,0.2],[1.4,0.2],[1.7,0.4],[1.4,0.3],[1.5,0.2],[1.4,0.2],[1.5,0.1],[1.5,0.2],[1.6,0.2],[1.4,0.1],[1.1,0.1],[1.2,0.2],[1.5,0.4],[1.3,0.4],[1.4,0.3],[1.7,0.3],[1.5,0.3],[1.7,0.2],[1.5,0.4],[1.0,0.2],[1.7,0.5],[1.9,0.2],[1.6,0.2],[1.6,0.4],[1.5,0.2],[1.4,0.2],[1.6,0.2],[1.6,0.2],[1.5,0.4],[1.5,0.1],[1.4,0.2],[1.5,0.2],[1.2,0.2],[1.3,0.2],[1.4,0.1],[1.3,0.2],[1.5,0.2],[1.3,0.3],[1.3,0.3],[1.3,0.2],[1.6,0.6],[1.9,0.4],[1.4,0.3],[1.6,0.2],[1.4,0.2],[1.5,0.2],[1.4,0.2],[4.7,1.4],[4.5,1.5],[4.9,1.5],[4.0,1.3],[4.6,1.5],[4.5,1.3],[4.7,1.6],[3.3,1.0],[4.6,1.3],[3.9,1.4],[3.5,1.0],[4.2,1.5],[4.0,1.0],[4.7,1.4],[3.6,1.3],[4.4,1.4],[4.5,1.5],[4.1,1.0],[4.5,1.5],[3.9,1.1],[4.8,1.8],[4.0,1.3],[4.9,1.5],[4.7,1.2],[4.3,1.3],[4.4,1.4],[4.8,1.4],[5.0,1.7],[4.5,1.5],[3.5,1.0],[3.8,1.1],[3.7,1.0],[3.9,1.2],[5.1,1.6],[4.5,1.5],[4.5,1.6],[4.7,1.5],[4.4,1.3],[4.1,1.3],[4.0,1.3],[4.4,1.2],[4.6,1.4],[4.0,1.2],[3.3,1.0],[4.2,1.3],[4.2,1.2],[4.2,1.3],[4.3,1.3],[3.0,1.1],[4.1,1.3],[6.0,2.5],[5.1,1.9],[5.9,2.1],[5.6,1.8],[5.8,2.2],[6.6,2.1],[4.5,1.7],[6.3,1.8],[5.8,1.8],[6.1,2.5],[5.1,2.0],[5.3,1.9],[5.5,2.1],[5.0,2.0],[5.1,2.4],[5.3,2.3],[5.5,1.8],[6.7,2.2],[6.9,2.3],[5.0,1.5],[5.7,2.3],[4.9,2.0],[6.7,2.0],[4.9,1.8],[5.7,2.1],[6.0,1.8],[4.8,1.8],[4.9,1.8],[5.6,2.1],[5.8,1.6],[6.1,1.9],[6.4,2.0],[5.6,2.2],[5.1,1.5],[5.6,1.4],[6.1,2.3],[5.6,2.4],[5.5,1.8],[4.8,1.8],[5.4,2.1],[5.6,2.4],[5.1,2.3],[5.1,1.9],[5.9,2.3],[5.7,2.5],[5.2,2.3],[5.0,1.9],[5.2,2.0],[5.4,2.3],[5.1,1.8],],sel:[],cval:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,2.0,],w:560,h:360,r:5.0,alpha:0.7,color:'#4a9eff',selColor:'#e3116c',title:'Iris: petal length vs petal width (colour = variety)',xlab:'petal.length',ylab:'petal.width',xb:null,yb:null,eq:false});
+> </script>
+> </div>
+
 ```haskell
 import DataFrame.Operations.Subset (selectRows)
 
@@ -139,6 +145,13 @@ displayMarkdown $
 
 showMarkdown chosen
 ```
+
+> <!-- scripths:mime text/plain -->
+> <!-- MIME:text/markdown -->
+> **0** of 150 flowers selected — draw a lasso on the plot above to begin.
+> <!-- MIME:text/markdown -->
+> | sepal.length<br>Double | sepal.width<br>Double | petal.length<br>Double | petal.width<br>Double | variety<br>Text |
+> | -----------------------|-----------------------|------------------------|-----------------------|---------------- |
 
 ## Feature engineering
 
@@ -153,18 +166,15 @@ area**, and the **petal aspect ratio** (length ÷ width).
 
 ```haskell
 import qualified DataFrame.Typed as DT
-import DataFrame.Typed (Column, TypedDataFrame)
-
 type IrisCols =
-    '[ Column "sepal.length" Double
-     , Column "sepal.width"  Double
-     , Column "petal.length" Double
-     , Column "petal.width"  Double
-     , Column "variety"      T.Text
+    '[ '("sepal.length", Double)
+     , '("sepal.width",  Double)
+     , '("petal.length", Double)
+     , '("petal.width",  Double)
+     , '("variety",      T.Text)
      ]
 
-let tdf = either (error . T.unpack) id
-            (DT.freezeWithError df :: Either T.Text (TypedDataFrame IrisCols))
+let tdf = either (error . T.unpack) id (DT.freezeWithError @IrisCols df)
 
 let featured =
         DT.thaw $ tdf
@@ -201,18 +211,17 @@ let charted = featured
         |> D.rename "petal.ratio" "petalRatio"
 
 type FeaturedCols =
-    '[ Column "sepal.length" Double
-     , Column "sepal.width"  Double
-     , Column "petal.length" Double
-     , Column "petal.width"  Double
-     , Column "variety"      T.Text
-     , Column "petalArea"    Double
-     , Column "sepalArea"    Double
-     , Column "petalRatio"   Double
+    '[ '("sepal.length", Double)
+     , '("sepal.width",  Double)
+     , '("petal.length", Double)
+     , '("petal.width",  Double)
+     , '("variety",      T.Text)
+     , '("petalArea",    Double)
+     , '("sepalArea",    Double)
+     , '("petalRatio",   Double)
      ]
 
-let ftdf = either (error . T.unpack) id
-            (DT.freezeWithError charted :: Either T.Text (TypedDataFrame FeaturedCols))
+let ftdf = either (error . T.unpack) id (DT.freezeWithError @FeaturedCols charted)
 
 html $ CT.toHtml $
     CT.chart ftdf
@@ -265,6 +274,10 @@ let (trainDf, testDf) = D.randomSplit (mkStdGen (fromMaybe 42 (readMaybe n'))) 0
 (D.dimensions trainDf, D.dimensions testDf)
 ```
 
+> <!-- scripths:mime text/html -->
+> <div id='sw_17_seed'></div><script>/*sabela:runtime:widgets*/sabelaTextInput({elId:"sw_17_seed",cid:17,name:"seed",value:"42"});</script>
+> ((104,5),(46,5))
+
 ## Fitting the decision tree
 
 This is the whole "training" step. `fitDecisionTree` takes a configuration, the
@@ -275,7 +288,7 @@ other columns. Everything else in the frame is treated as a candidate feature.
 ```haskell
 import qualified DataFrame.DecisionTree as DT
 
-let model = DT.fitDecisionTree DT.defaultTreeConfig (D.col @T.Text "variety") trainDf
+let model = DT.fit DT.defaultTreeConfig (D.col @T.Text "variety") trainDf
 ```
 
 The fitted model is just data — a tree of `if`/`then`/`else` rules over the
@@ -283,8 +296,19 @@ measurement columns. Unlike the neural network's weight matrices, you can read
 it directly and see exactly how the tree decides.
 
 ```haskell
-putStrLn $ D.prettyPrint model
+putStrLn $ D.prettyPrint (DT.predict model)
 ```
+
+> <!-- scripths:mime text/plain -->
+> if petal.length .<=. 2.5999999999999996
+>     "Setosa"
+> else if petal.width .<=. 1.65
+>     if petal.length .<=. 5.0
+>         "Versicolor"
+>     else
+>         "Virginica"
+> else
+>     "Virginica"
 
 ## Making predictions
 
@@ -293,12 +317,26 @@ we'd add any derived column: with `D.derive`. Here we add a `predicted` column
 next to the true `variety`.
 
 ```haskell
-let scored = testDf |> D.derive "predicted" model
+let scored = testDf |> D.derive "predicted" (D.predict model)
 
 scored |> D.select ["variety", "predicted"]
        |> D.take 10
        |> showMarkdown
 ```
+
+> <!-- scripths:mime text/markdown -->
+> | variety<br>Text | predicted<br>Text |
+> | ----------------|------------------ |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
+> | Setosa          | Setosa            |
 
 ## Measuring accuracy
 
@@ -321,6 +359,9 @@ let withCorrect =
 putStrLn ("Test accuracy: " ++ show (D.mean (F.col @Double "is_correct") withCorrect))
 ```
 
+> <!-- scripths:mime text/plain -->
+> Test accuracy: 0.9130434782608695
+
 ## Confusion matrix
 
 The original example built a confusion matrix by hand. With a `DataFrame` we get
@@ -334,6 +375,15 @@ scored |> D.groupBy ["variety", "predicted"]
        |> D.sortBy [D.Asc (D.col @T.Text "variety"), D.Asc (D.col @T.Text "predicted")]
        |> showMarkdown
 ```
+
+> <!-- scripths:mime text/markdown -->
+> | variety<br>Text | predicted<br>Text | count<br>Int |
+> | ----------------|-------------------|------------- |
+> | Setosa          | Setosa            | 14           |
+> | Versicolor      | Versicolor        | 15           |
+> | Versicolor      | Virginica         | 3            |
+> | Virginica       | Versicolor        | 1            |
+> | Virginica       | Virginica         | 13           |
 
 ## Conclusion
 

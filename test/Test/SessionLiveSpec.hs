@@ -94,7 +94,7 @@ spec = do
                     withTimeout 10_000_000 (destroySession ps)
                     withTimeout 10_000_000 (destroySession ps)
 
-    describe "integration: interrupt" $
+    describe "integration: interrupt" $ do
         it "stops a running cell; idle interrupts no-op; session stays usable" $ do
             cabal <- findExecutable "cabal"
             case cabal of
@@ -119,6 +119,30 @@ spec = do
                     withTimeout 15_000_000 (closeSession sess)
                     err `shouldSatisfy` T.isInfixOf "Interrupted"
                     T.strip out2 `shouldBe` "42"
+        it "one interrupt also drops a block queued behind the running one" $ do
+            cabal <- findExecutable "cabal"
+            case cabal of
+                Nothing -> pendingWith "cabal not found on PATH"
+                Just _ -> withSystemTempDirectory "sabela-test" $ \dir -> do
+                    setupReplProject BareRepl [] dir emptyMeta
+                    cfg <- mkSessionConfig dir dir
+                    sess <- withTimeout 120_000_000 (newSession cfg)
+                    let slow = "Control.Concurrent.threadDelay 60000000"
+                    first <- newEmptyMVar
+                    queued <- newEmptyMVar
+                    _ <- forkIO $ runBlock sess slow >>= putMVar first
+                    threadDelay 2_000_000
+                    _ <- forkIO $ runBlock sess slow >>= putMVar queued
+                    threadDelay 1_000_000
+                    interruptIfBusy sess
+                    (_, err1) <- withTimeout 30_000_000 (takeMVar first)
+                    (_, err2) <- withTimeout 30_000_000 (takeMVar queued)
+                    (out3, _) <-
+                        withTimeout 30_000_000 (runBlock sess "21 * 2")
+                    withTimeout 15_000_000 (closeSession sess)
+                    err1 `shouldSatisfy` T.isInfixOf "Interrupted"
+                    err2 `shouldSatisfy` T.isInfixOf "Interrupted"
+                    T.strip out3 `shouldBe` "42"
 
     describe "integration: ghci-backed session" $ do
         it "newSession/runBlock returns stdout and empty stderr for a simple expression" $ do

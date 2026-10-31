@@ -124,9 +124,19 @@ runBlockStreaming sess =
 
 runBlockStreamingWithTimeout ::
     Int -> Session -> Text -> (Text -> IO ()) -> IO (Text, Text)
-runBlockStreamingWithTimeout budgetUs sess block onLine =
-    withRunLock sess $
-        runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine
+runBlockStreamingWithTimeout budgetUs sess block onLine = do
+    requested <- getCurrentTime
+    withRunLock sess $ do
+        stale <- isRequestStale sess requested
+        if stale
+            then pure ("", interruptedWhileQueued)
+            else runBlockStreamingUnlockedWithTimeout budgetUs sess block onLine
+
+{- | What a block queued behind the run lock reports when an interrupt lands
+before it starts: it is dropped, worded as GHCi words an interrupted run.
+-}
+interruptedWhileQueued :: Text
+interruptedWhileQueued = "Interrupted."
 
 -- | Run a cell: the exclusive holder of the kernel.
 withRunLock :: Session -> IO a -> IO a
@@ -203,16 +213,16 @@ killAndRespawnWithTimeout budgetUs sess = do
 interruptSessionRaw :: Session -> IO ()
 interruptSessionRaw = interruptGroup . sessProcSess
 
-{- | Interrupt across the /whole/ run, not just the drain, so a signal arriving
-mid-write or during resync is no longer dropped. Stays conditional: it reaches
-the process group holding cabal and ghc, so an idle interrupt breaks the next.
+{- | Interrupt the whole run, not just the drain. Conditional, since the group
+holds cabal and ghc and an idle interrupt breaks the next run. Marks before
+signalling, so a block queued on the run lock sees the interrupt when it wakes.
 -}
 interruptIfBusy :: Session -> IO ()
 interruptIfBusy sess = do
     busy <- isBusy sess
     when busy $ do
-        interruptSessionRaw sess
         markInterrupt sess
+        interruptSessionRaw sess
 
 markInterrupt :: Session -> IO ()
 markInterrupt sess = do

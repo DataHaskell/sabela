@@ -7,6 +7,7 @@ module Sabela.Handlers.PostCompile (
 
 import Control.Monad (foldM_)
 import qualified Data.Set as S
+import Data.Time (UTCTime, getCurrentTime)
 
 import Sabela.Handlers.Compile (CompileOutcome (..), compiledDependents)
 import Sabela.Handlers.Exec (runAndBroadcast)
@@ -21,8 +22,10 @@ import Sabela.Reactivity.Upstream (
     settledFailures,
     upstreamFailureMsg,
  )
+import qualified Sabela.SessionTypes as ST
 import Sabela.State (App (..))
 import Sabela.State.NotebookStore (readNotebook)
+import Sabela.State.SessionManager (getHaskellSession)
 
 runPostCompile ::
     App -> Int -> ExecutionPlan -> CompileOutcome -> [Cell] -> IO ()
@@ -54,11 +57,13 @@ runCellsSuspending ::
     App -> Int -> ExecutionPlan -> S.Set Int -> [Cell] -> IO ()
 runCellsSuspending app gen plan compileBlocked cells = do
     nb <- readNotebook (appNotebook app)
-    foldM_ step (settledFailures (haskellCodeCells nb) cells) cells
+    started <- getCurrentTime
+    foldM_ (step started) (settledFailures (haskellCodeCells nb) cells) cells
   where
-    step failed c = do
+    step started failed c = do
         current <- isCurrentGen app gen
-        if not current
+        stopped <- interruptedSince app started
+        if not current || stopped
             then pure failed
             else runOne failed c
     runOne failed c
@@ -74,3 +79,11 @@ runCellsSuspending app gen plan compileBlocked cells = do
         | otherwise = do
             ok <- runAndBroadcast app gen c
             pure (if ok then failed else S.insert (cellId c) failed)
+
+{- | Has the kernel been interrupted since @t@? A Stop ends the whole plan, not
+just the cell it caught: the remaining cells stay stale instead of running.
+-}
+interruptedSince :: App -> UTCTime -> IO Bool
+interruptedSince app t =
+    getHaskellSession (appSessions app)
+        >>= maybe (pure False) (`ST.sbRequestStale` t)

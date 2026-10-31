@@ -4,6 +4,7 @@ import qualified Test.AdmissionSpec as AdmissionSpec
 import qualified Test.AiDocSpec as AiDocSpec
 import qualified Test.AiHandlesSpec as AiHandlesSpec
 import qualified Test.AiHistorySpec as AiHistorySpec
+import qualified Test.AccessSpec as AccessSpec
 import qualified Test.AiRestSpec as AiRestSpec
 import qualified Test.ApiRefSpec as ApiRefSpec
 import qualified Test.ApiWireSpec as ApiWireSpec
@@ -208,6 +209,7 @@ allSpecsB = do
     AiDocSpec.spec
     AiHandlesSpec.spec
     AiHistorySpec.spec
+    AccessSpec.spec
     AiRestSpec.spec
     CacheControlSpec.spec
     ProviderAdapterSpec.spec

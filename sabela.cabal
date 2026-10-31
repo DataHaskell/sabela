@@ -414,6 +414,7 @@ library
                       Sabela.AI.Capability,
                       Sabela.AI.Capability.Parse,
                       Sabela.Server,
+                      Sabela.Server.Access,
                       Sabela.Server.Ai,
                       Sabela.Server.Api,
                       Sabela.Server.Dataset,
@@ -717,6 +718,7 @@ test-suite sabela-test
                       Test.AiDocSpec,
                       Test.AiHandlesSpec,
                       Test.AiHistorySpec,
+                      Test.AccessSpec,
                       Test.AiRestSpec,
                       Test.CacheControlSpec,
                       Test.ProviderAdapterSpec,
@@ -834,6 +836,7 @@ test-suite sabela-test
         time >= 1.9 && < 2,
         ghc-lib-parser >= 9.6 && < 9.20,
         uniplate >= 1.6 && < 1.7,
+        wai >= 3.2 && < 3.3,
         zlib >= 0.6 && < 0.8,
         sabela,
         sabela:sabela-contract
