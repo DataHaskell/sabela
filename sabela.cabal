@@ -25,6 +25,7 @@ extra-source-files: static/index.html, static/dashboard.html, static/slideshow.h
                     prelude/frames.hs,
                     static/src/widgets/grid-model.js,
                     static/src/widgets/grid-view.js,
+                    static/src/widgets/grid-query.js,
                     static/src/widgets/grid-body.js,
                     static/src/widgets/viz.js,
                     static/src/vendor/vega/vega.min.js,
